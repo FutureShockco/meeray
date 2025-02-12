@@ -1,0 +1,3 @@
+[[script]]
+namespace = "avalon.contents"
+path = "/root/avalon/monstache_transform.js"

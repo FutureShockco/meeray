@@ -1,0 +1,69 @@
+{
+  "name": "avalon",
+  "version": "1.6.6",
+  "description": "",
+  "scripts": {
+    "start": "node src/main.js",
+    "cli": "node src/cli.js",
+    "lint": "eslint ./src/*",
+    "apidoc": "apidoc -i src/http -o apidoc"
+  },
+  "dependencies": {
+    "base-x": "^3.0.8",
+    "body-parser": "^1.15.2",
+    "bson": "^4.6.0",
+    "clone-deep": "^4.0.1",
+    "commander": "^2.20.0",
+    "cors": "^2.8.5",
+    "crypto-js": "^3.1.6",
+    "decay": "^1.0.12",
+    "dotenv": "^16.4.7",
+    "dsteem": "^0.11.3",
+    "express": "^4.16.4",
+    "growint": "^1.0.1",
+    "log4js": "^6.6.0",
+    "mongodb": "^4.2.2",
+    "node-fetch-commonjs": "^3.2.4",
+    "oembed-parser": "^1.2.2",
+    "open-graph-scraper": "^4.11.0",
+    "run-parallel": "^1.1.10",
+    "run-series": "^1.1.9",
+    "secp256k1": "^4.0.2",
+    "sha256-file": "^1.0.0",
+    "sharp": "^0.30.7",
+    "signale": "^1.4.0",
+    "simple-youtube-api": "^5.2.1",
+    "ws": "^7.5.3"
+  },
+  "engines": {
+    "node": ">=4.3.2"
+  },
+  "signale": {
+    "coloredInterpolation": false,
+    "displayScope": true,
+    "displayBadge": true,
+    "displayDate": false,
+    "displayFilename": false,
+    "displayLabel": false,
+    "displayTimestamp": true,
+    "underlineLabel": true,
+    "underlineMessage": false,
+    "underlinePrefix": false,
+    "underlineSuffix": false,
+    "uppercaseLabel": false
+  },
+  "apidoc": {
+    "name": "Avalon",
+    "title": "Avalon API Documentation",
+    "description": "REST API documentation for Avalon blockchain",
+    "sampleUrl": "https://api.avalonblocks.com",
+    "version": "1.6.2"
+  },
+  "devDependencies": {
+    "apidoc": "^0.50.2",
+    "chance": "^1.0.18",
+    "eslint": "^8.5.0",
+    "javalon": "^1.0.7",
+    "pkg": "^4.4.9"
+  }
+}
