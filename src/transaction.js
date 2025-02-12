@@ -17,8 +17,11 @@ let transaction = {
     pool: [], // the pool holds temporary txs that havent been published on chain yet
     eventConfirmation: new EventEmitter(),
     addToPool: (txs) => {
-        if (transaction.isPoolFull())
+        console.log('Attempting to add transactions to pool:', txs)
+        if (transaction.isPoolFull()) {
+            console.log('Transaction pool is full, not adding transactions')
             return
+        }
 
         for (let y = 0; y < txs.length; y++) {
             let exists = false
@@ -26,8 +29,12 @@ let transaction = {
                 if (transaction.pool[i].hash === txs[y].hash)
                     exists = true
 
-            if (!exists)
+            if (!exists) {
+                console.log('Adding transaction to pool:', txs[y])
                 transaction.pool.push(txs[y])
+            } else {
+                console.log('Transaction already exists in pool:', txs[y])
+            }
         }
 
     },
@@ -98,9 +105,9 @@ let transaction = {
             return cb(false, 'master dao account cannot transact with type ' + tx.type)
         // avoid transaction reuse
         // check if we are within 1 minute of timestamp seed
-        if (chain.getLatestBlock().timestamp - tx.ts > config.txExpirationTime) {
-            cb(false, 'invalid timestamp'); return
-        }
+        // if (chain.getLatestBlock().timestamp - tx.ts > config.txExpirationTime) {
+        //     cb(false, 'invalid timestamp'); return
+        // }
         // enforce maximum transaction expiration
         if (tx.ts - ts > config.txExpirationMax)
             return cb(false, 'timestamp expiration exceeds max limit of ' + config.txExpirationMax + 'ms')

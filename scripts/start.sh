@@ -21,13 +21,13 @@
 # Enable more modules
 #export NOTIFICATIONS=1
 #export RANKINGS=1
-#export CONTENTS=1
+#export TOKENS=1
 #export LEADER_STATS=1
 #export TX_HISTORY=1
 
 # Cache warmup option
 export WARMUP_ACCOUNTS=100000
-export WARMUP_CONTENTS=0
+export WARMUP_TOKENS=0
 
 # Warn when a transactions takes more than X ms
 export WARN_SLOW_VALID=5

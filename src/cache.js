@@ -5,7 +5,6 @@ const txHistory = require('./txHistory')
 let cache = {
     copy: {
         accounts: {},
-        contents: {},
         distributed: {},
         proposals: {},
         masterdao: {},
@@ -13,7 +12,6 @@ let cache = {
         tokens: {}
     },
     accounts: {},
-    contents: {},
     distributed: {},
     proposals: {},
     masterdao: {},
@@ -341,14 +339,14 @@ let cache = {
             })
             break
 
-        case 'contents':
+        case 'tokens':
             db.collection(collection).find({}, {
                 sort: {ts: -1},
                 limit: maxDoc
-            }).toArray(function(err, contents) {
+            }).toArray(function(err, tokens) {
                 if (err) throw err
-                for (let i = 0; i < contents.length; i++)
-                    cache[collection][contents[i]._id] = contents[i]
+                for (let i = 0; i < tokens.length; i++)
+                    cache[collection][tokens[i]._id] = tokens[i]
                 rs(null)
             })
             break

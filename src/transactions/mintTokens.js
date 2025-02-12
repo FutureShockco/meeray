@@ -5,14 +5,17 @@ const validate = require('../validate')
 module.exports = {
     fields: ['contractName', 'contractAction', 'contractPayload', 'steemTxId', 'timestamp', 'sender'],
     validate: (tx, ts, legitUser, cb) => {
+        console.log('Validating mint tokens transaction:', tx)
         // Validate required fields
         if (!tx.data.contractPayload) {
+            console.log('Missing contract payload')
             cb(false, 'missing contract payload')
             return
         }
 
         const payload = tx.data.contractPayload
         if (!payload.symbol || !payload.amount || !payload.to) {
+            console.log('Missing required fields:', { symbol: payload.symbol, amount: payload.amount, to: payload.to })
             cb(false, 'missing required fields')
             return
         }
@@ -20,27 +23,33 @@ module.exports = {
         // Validate amount
         const amount = parseFloat(payload.amount)
         if (isNaN(amount) || amount <= 0) {
+            console.log('Invalid amount:', payload.amount)
             cb(false, 'invalid amount')
             return
         }
 
         // Validate recipient
         if (!validate.string(payload.to, config.accountMaxLength, config.accountMinLength)) {
+            console.log('Invalid recipient:', payload.to)
             cb(false, 'invalid recipient')
             return
         }
 
         // Check if token exists and validate creator
+        console.log('Looking for token:', payload.symbol)
         cache.findOne('tokens', {symbol: payload.symbol}, function(err, token) {
             if (err) {
+                console.error('Database error finding token:', err)
                 cb(false, 'database error')
                 return
             }
             if (!token) {
+                console.log('Token does not exist:', payload.symbol)
                 cb(false, 'token does not exist')
                 return
             }
             if (token.creator !== tx.sender) {
+                console.log('Invalid token creator. Expected:', token.creator, 'Got:', tx.sender)
                 cb(false, 'only token creator can mint')
                 return
             }
@@ -49,20 +58,25 @@ module.exports = {
             const currentSupply = parseFloat(token.currentSupply)
             const maxSupply = parseFloat(token.maxSupply)
             if (currentSupply + amount > maxSupply) {
+                console.log('Mint would exceed max supply. Current:', currentSupply, 'Max:', maxSupply, 'Requested:', amount)
                 cb(false, 'mint would exceed max supply')
                 return
             }
 
             // Check if recipient account exists
+            console.log('Looking for recipient account:', payload.to)
             cache.findOne('accounts', {name: payload.to}, function(err, account) {
                 if (err) {
+                    console.error('Database error finding recipient:', err)
                     cb(false, 'database error')
                     return
                 }
                 if (!account) {
+                    console.log('Recipient account does not exist:', payload.to)
                     cb(false, 'recipient account does not exist')
                     return
                 }
+                console.log('Mint token validation successful')
                 cb(true)
             })
         })

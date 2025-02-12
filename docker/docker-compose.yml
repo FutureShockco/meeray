@@ -45,11 +45,11 @@ services:
         # enable more modules
         #- NOTIFICATIONS=${NOTIFICATIONS}
         #- RANKINGS=${RANKINGS}
-        #- CONTENTS=${CONTENTS}
+        #- TOKENS=${TOKENS}
 
         # Cache warmup option
       - WARMUP_ACCOUNTS=${WARMUP_ACCOUNTS}
-      - WARMUP_CONTENTS=${WARMUP_CONTENTS}
+      - WARMUP_TOKENS=${WARMUP_TOKENS}
 
         # Warn when a transactions takes more than X ms
       - WARN_SLOW_VALID=${WARN_SLOW_VALID}

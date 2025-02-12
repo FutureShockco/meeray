@@ -107,16 +107,11 @@ let mongo = {
             pub: config.masterPub,
             pub_leader: config.masterPubLeader || config.masterPub,
             balance: config.masterBalance,
-            bw: {v:0,t:config.block0ts},
-            vt: {v:0,t:config.block0ts},
             // we set those arbitrarily
             approves: [config.masterName],
             node_appr: config.masterBalance,
-            follows: [],
-            followers: [],
             keys: [],
             created: {
-                by: '',
                 ts: config.block0ts
             }
         }) 

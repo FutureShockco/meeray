@@ -54,11 +54,7 @@ module.exports = {
             name: tx.data.name.toLowerCase(),
             pub: tx.data.pub,
             balance: 0,
-            bw: newAccBw,
-            vt: newAccVt,
             baseBwGrowth: baseBwGrowth,
-            follows: [],
-            followers: [],
             keys: [],
             created: {
                 by: tx.sender,

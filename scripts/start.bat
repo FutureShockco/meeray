@@ -19,7 +19,7 @@ setx DB_URL "mongodb://localhost:27017"
 
 :: Cache warmup option
 setx WARMUP_ACCOUNTS "100000"
-setx WARMUP_CONTENTS "0"
+setx WARMUP_TOKENS "0"
 
 :: Warn when a transactions takes more than X ms
 setx WARN_SLOW_VALID "5"

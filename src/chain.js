@@ -74,7 +74,6 @@ let chain = {
 
         // Process Steem block first to get its transactions in the mempool
         steem.processBlock(nextSteemBlock).then((res) => {
-            console.log(res)
             // Add mempool transactions
             let txs = []
             let mempool = transaction.pool.sort(function (a, b) { return a.ts - b.ts })
@@ -100,7 +99,6 @@ let chain = {
             }
             txs = txs.sort(function (a, b) { return a.ts - b.ts })
             transaction.removeFromPool(txs)
-            console.log(txs)
             cb(null, new Block(nextIndex, nextSteemBlock, previousBlock.hash, nextTimestamp, txs, process.env.NODE_OWNER))
             return
         })
@@ -262,7 +260,7 @@ let chain = {
             mineInMs += 20
             logr.debug('Trying to mine in '+mineInMs+'ms')
             consensus.observer = false
-            if (mineInMs < config.blockTime/2) {
+            if (mineInMs < config.blockTime/3) {
                 logr.warn('Slow performance detected, will not try to mine next block')
                 return
             }
@@ -331,7 +329,7 @@ let chain = {
             output += '  dist: '+eco.round(chain.nextOutput.dist)
             output += '  burn: '+eco.round(chain.nextOutput.burn)
             output += '  delay: '+ (currentOutTime - block.timestamp)
-
+            output += '  steem block: '+ block.steemblock
             if (block.missedBy && !rebuilding)
                 output += '  MISS: '+block.missedBy
             else if (rebuilding) {
@@ -738,23 +736,11 @@ let chain = {
         // rewards leaders with 'free' voting power in the network
         cache.findOne('accounts', {name: name}, function(err, account) {
             let newBalance = account.balance + config.leaderReward
-            let newVt = new GrowInt(account.vt, {growth:account.balance/(config.vtGrowth)}).grow(ts)
-            let newBw = new GrowInt(account.bw, {
-                growth: Math.max(account.baseBwGrowth || 0, account.balance)/(config.bwGrowth),
-                max: config.bwMax
-            }).grow(ts)
-            if (!newVt || !newBw) 
-                logr.debug('error growing grow int', account, ts)
-            
-            if (config.leaderRewardVT)
-                newVt.v += config.leaderRewardVT
 
             if (config.leaderReward > 0 || config.leaderRewardVT > 0)
                 cache.updateOne('accounts', 
                     {name: account.name},
                     {$set: {
-                        vt: newVt,
-                        bw: newBw,
                         balance: newBalance
                     }},
                     function(err) {

@@ -67,7 +67,7 @@ module.exports = {
             precision: payload.precision,
             maxSupply: payload.maxSupply,
             currentSupply: '0',
-            creator: tx.data.sender,
+            creator: tx.sender,
             created: ts
         }
 

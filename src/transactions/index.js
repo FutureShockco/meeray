@@ -17,7 +17,6 @@ const transactions = [
     require('./setPasswordWeight.js'),
     require('./unsetSignThreshold.js'),
     require('./newAccountWithBw.js'),
-    require('./commentEdit.js'),
     require('./accountAuthorize.js'),
     require('./accountRevoke.js'),
     require('./dao/fundRequestCreate.js'),
@@ -50,21 +49,20 @@ module.exports = {
         SET_PASSWORD_WEIGHT: 11,
         UNSET_SIG_THRESHOLD: 12,
         NEW_ACCOUNT_WITH_BW: 13,
-        COMMENT_EDIT: 14,
-        ACCOUNT_AUTHORIZE: 15,
-        ACCOUNT_REVOKE: 16,
-        DAO_FUND_REQUEST_CREATE: 17,
-        DAO_FUND_REQUEST_CONTRIB: 18,
-        DAO_FUND_REQUEST_WORK: 19,
-        DAO_FUND_REQUEST_WORK_REVIEW: 20,
-        DAO_PROPOSAL_VOTE: 21,
-        DAO_PROPOSAL_EDIT: 22,
-        DAO_CHAIN_UPDATE_CREATE: 23,
-        DAO_MD_QUEUE: 24,
-        DAO_MD_SIGN: 25,
-        CREATE_TOKENS: 26,
-        MINT_TOKENS: 27,
-        TRANSFER_TOKENS: 28
+        ACCOUNT_AUTHORIZE: 14,
+        ACCOUNT_REVOKE: 15,
+        DAO_FUND_REQUEST_CREATE: 16,
+        DAO_FUND_REQUEST_CONTRIB: 17,
+        DAO_FUND_REQUEST_WORK: 18,
+        DAO_FUND_REQUEST_WORK_REVIEW: 19,
+        DAO_PROPOSAL_VOTE: 20,
+        DAO_PROPOSAL_EDIT: 21,
+        DAO_CHAIN_UPDATE_CREATE: 22,
+        DAO_MD_QUEUE: 23,
+        DAO_MD_SIGN: 24,
+        CREATE_TOKENS: 25,
+        MINT_TOKENS: 26,
+        TRANSFER_TOKENS: 27
     },
     validate: (tx, ts, legitUser, cb) => {
         logr.debug('tx:' + tx.type + ' validation begins')
@@ -87,7 +85,6 @@ module.exports = {
                 logr.warn('Slow tx type:' + tx.type + ' validation took: ' + timeDiff.toFixed(3) + 'ms')
             else
                 logr.perf('tx:' + tx.type + ' validation finish: ' + timeDiff.toFixed(3) + 'ms')
-            console.log(isValid, error)
 
             cb(isValid, error)
         })
