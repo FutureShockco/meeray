@@ -116,7 +116,6 @@ let chain = {
             cb(true, null); return
         }
         chain.prepareBlock(function (err, newBlock) {
-            console.log(newBlock)
             // run the transactions and validation
             // pre-validate our own block (not the hash and signature as we dont have them yet)
             // nor transactions because we will filter them on execution later
@@ -139,7 +138,6 @@ let chain = {
             if (err) {
                 cb(true, newBlock); return
             }
-            console.log('new', newBlock)
             // at this point transactions in the pool seem all validated
             // BUT with a different ts and without checking for double spend
             // so we will execute transactions in order and revalidate after each execution

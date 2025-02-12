@@ -10,3 +10,4 @@ dump
 genesis
 apidoc
 .DS_Store
+src/logs/output.log
