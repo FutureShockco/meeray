@@ -17,7 +17,6 @@ let transaction = {
     pool: [], // the pool holds temporary txs that havent been published on chain yet
     eventConfirmation: new EventEmitter(),
     addToPool: (txs) => {
-        console.log('Attempting to add transactions to pool:', txs)
         if (transaction.isPoolFull()) {
             console.log('Transaction pool is full, not adding transactions')
             return
@@ -30,11 +29,8 @@ let transaction = {
                     exists = true
 
             if (!exists) {
-                console.log('Adding transaction to pool:', txs[y])
                 transaction.pool.push(txs[y])
-            } else {
-                console.log('Transaction already exists in pool:', txs[y])
-            }
+            } 
         }
 
     },

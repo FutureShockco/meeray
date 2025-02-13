@@ -5,61 +5,15 @@ const chain = require('./chain.js')
 const cache = require('./cache.js')
 const transaction = require('./transaction.js')
 const Transaction = require('./transactions')
+
 let nextSteemBlock = 0
 let lastVerifiedBlock = 0
-
 let processing = false
 let processingBlocks = []
 
 module.exports = {
     init: (blockNum) => {
         nextSteemBlock = blockNum
-    },
-    isOnSteemBlock: (block) => {
-        return new Promise((resolve, reject) => {
-            client.database.getBlockHeader(block.steemblock)
-                .then((steemBlock) => {
-                    if (!steemBlock) {
-                        resolve(false)
-                        return
-                    }
-
-                    // Check each transaction in our block against Steem block
-                    for (let tx of block.txs) {
-                        if (tx.type !== 'custom_json')
-                            continue
-
-                        // Find matching custom_json operation in Steem block
-                        let found = false
-                        for (let steemTx of steemBlock.transactions) {
-                            for (let op of steemTx.operations) {
-                                if (op[0] !== 'custom_json')
-                                    continue
-
-                                if (op[1].id === 'sidechain' &&
-                                    op[1].json === JSON.stringify({
-                                        contractName: tx.data.contractName,
-                                        contractAction: tx.data.contractAction,
-                                        contractPayload: tx.data.contractPayload
-                                    })) {
-                                    found = true
-                                    break
-                                }
-                            }
-                            if (found) break
-                        }
-
-                        if (!found) {
-                            resolve(false)
-                            return
-                        }
-                    }
-                    resolve(true)
-                })
-                .catch((err) => {
-                    resolve(false)
-                })
-        })
     },
     processBlock: (blockNum) => {
         return new Promise((resolve, reject) => {
@@ -68,6 +22,7 @@ module.exports = {
                 return
             }
             processing = true
+            processingBlocks = processingBlocks.filter(b => b !== blockNum)
 
             client.database.getBlock(blockNum)
                 .then((steemBlock) => {
@@ -78,6 +33,7 @@ module.exports = {
                     }
 
                     const validationPromises = []
+
                     // Process each transaction
                     for (let tx of steemBlock.transactions) {
                         for (let op of tx.operations) {
@@ -103,6 +59,30 @@ module.exports = {
                                     case 'transfertokens':
                                         txType = Transaction.Types.TRANSFER_TOKENS
                                         break
+                                    case 'createNft':
+                                        txType = Transaction.Types.CREATE_NFT_COLLECTION
+                                        break
+                                    case 'mintNft':
+                                        txType = Transaction.Types.MINT_NFT
+                                        break
+                                    case 'transferNft':
+                                        txType = Transaction.Types.TRANSFER_NFT
+                                        break
+                                    case 'createMarket':
+                                        txType = Transaction.Types.CREATE_MARKET
+                                        break
+                                    case 'placeOrder':
+                                        txType = Transaction.Types.PLACE_ORDER
+                                        break
+                                    case 'createStakingPool':
+                                        txType = Transaction.Types.CREATE_STAKING_POOL
+                                        break
+                                    case 'stakeTokens':
+                                        txType = Transaction.Types.STAKE_TOKENS
+                                        break
+                                    case 'unstakeTokens':
+                                        txType = Transaction.Types.UNSTAKE_TOKENS
+                                        break
                                     default:
                                         const typeNum = parseInt(json.contractAction)
                                         if (!isNaN(typeNum) && Transaction.transactions[typeNum]) {
@@ -111,118 +91,22 @@ module.exports = {
                                             continue
                                         }
                                 }
-                                console.log(txType)
 
-                                // Create accounts if needed (returns a promise)
-                                const createAccountsIfNeeded = new Promise((resolveAccounts) => {
-                                    const sender = opData.required_posting_auths[0] || opData.required_auths[0]
-                                    console.log('Checking sender account:', sender)
-                                    
-                                    // First check/create sender account
-                                    cache.findOne('accounts', { name: sender }, function (err, account) {
-                                        if (err) throw err
-                                        console.log('Sender account exists?', !!account)
-                                        if (!account) {
-                                            console.log('Creating sender account:', sender)
-                                            // Create sender account and write to disk immediately
-                                            const senderDoc = {
-                                                name: sender.toLowerCase(),
-                                                balance: 0,
-                                                created: {
-                                                    ts: new Date(steemBlock.timestamp + 'Z').getTime()
-                                                }
-                                            }
-                                            db.collection('accounts').insertOne(senderDoc, function(err) {
-                                                if (err) throw err
-                                                console.log('Sender account created and written to disk')
-                                                cache.copy.accounts[sender.toLowerCase()] = senderDoc
-                                                
-                                                // After sender account, check/create recipient account if needed
-                                                if (json.contractPayload && json.contractPayload.to) {
-                                                    const recipient = json.contractPayload.to
-                                                    console.log('Checking recipient account:', recipient)
-                                                    cache.findOne('accounts', { name: recipient }, function (err, account) {
-                                                        if (err) throw err
-                                                        console.log('Recipient account exists?', !!account)
-                                                        if (!account) {
-                                                            console.log('Creating recipient account:', recipient)
-                                                            // Create recipient account and write to disk immediately
-                                                            const recipientDoc = {
-                                                                name: recipient.toLowerCase(),
-                                                                balance: 0,
-                                                                created: {
-                                                                    ts: new Date(steemBlock.timestamp + 'Z').getTime()
-                                                                }
-                                                            }
-                                                            db.collection('accounts').insertOne(recipientDoc, function(err) {
-                                                                if (err) throw err
-                                                                console.log('Recipient account created and written to disk')
-                                                                cache.copy.accounts[recipient.toLowerCase()] = recipientDoc
-                                                                resolveAccounts()
-                                                            })
-                                                        } else {
-                                                            resolveAccounts()
-                                                        }
-                                                    })
-                                                } else {
-                                                    resolveAccounts()
-                                                }
-                                            })
-                                        } else {
-                                            // Check recipient if needed
-                                            if (json.contractPayload && json.contractPayload.to) {
-                                                const recipient = json.contractPayload.to
-                                                console.log('Checking recipient account:', recipient)
-                                                cache.findOne('accounts', { name: recipient }, function (err, account) {
-                                                    if (err) throw err
-                                                    console.log('Recipient account exists?', !!account)
-                                                    if (!account) {
-                                                        console.log('Creating recipient account:', recipient)
-                                                        // Create recipient account and write to disk immediately
-                                                        const recipientDoc = {
-                                                            name: recipient.toLowerCase(),
-                                                            balance: 0,
-                                                            created: {
-                                                                ts: new Date(steemBlock.timestamp + 'Z').getTime()
-                                                            }
-                                                        }
-                                                        db.collection('accounts').insertOne(recipientDoc, function(err) {
-                                                            if (err) throw err
-                                                            console.log('Recipient account created and written to disk')
-                                                            cache.copy.accounts[recipient.toLowerCase()] = recipientDoc
-                                                            resolveAccounts()
-                                                        })
-                                                    } else {
-                                                        resolveAccounts()
-                                                    }
-                                                })
-                                            } else {
-                                                resolveAccounts()
-                                            }
-                                        }
-                                    })
-                                })
+                                const newTx = {
+                                    type: txType,
+                                    data: json,
+                                    sender: opData.required_posting_auths[0] || opData.required_auths[0],
+                                    ts: new Date(steemBlock.timestamp + 'Z').getTime(),
+                                    ref: blockNum + ':' + tx.operations.indexOf(op)
+                                }
 
-                                // Add validation promise that waits for account creation
                                 validationPromises.push(new Promise((resolveValidation) => {
-                                    console.log('Waiting for account creation to complete...')
-                                    createAccountsIfNeeded.then(() => {
-                                        console.log('Account creation completed, proceeding with transaction')
-                                        const newTx = {
-                                            type: txType,
-                                            data: json,
-                                            sender: opData.required_posting_auths[0] || opData.required_auths[0],
-                                            ts: new Date(steemBlock.timestamp + 'Z').getTime(),
-                                            ref: blockNum + ':' + tx.operations.indexOf(op)
+                                    transaction.isValid(newTx, new Date(steemBlock.timestamp + 'Z').getTime(), (isValid, error) => {
+                                        if (isValid) {
+                                            transaction.addToPool([newTx])
                                         }
-
-                                        transaction.isValid(newTx, new Date(steemBlock.timestamp + 'Z').getTime(), (isValid, error) => {
-                                            if (isValid) {
-                                                transaction.addToPool([newTx])
-                                            }
-                                            console.log(error)
-                                            resolveValidation()
-                                        })
+                                        console.log(error)
+                                        resolveValidation()
                                     })
                                 }))
                             } catch (err) {

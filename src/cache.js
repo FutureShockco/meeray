@@ -5,18 +5,32 @@ const txHistory = require('./txHistory')
 let cache = {
     copy: {
         accounts: {},
-        distributed: {},
+        blocks: {},
         proposals: {},
         masterdao: {},
         state: {},
-        tokens: {}
+        tokens: {},
+        nftCollections: {},
+        nfts: {},
+        markets: {},
+        orders: {},
+        nftMarket: {},
+        stakingPools: {},
+        stakes: {}
     },
     accounts: {},
-    distributed: {},
+    blocks: {},
     proposals: {},
     masterdao: {},
     state: {},
     tokens: {},
+    nftCollections: {},
+    nfts: {},
+    markets: {},
+    orders: {},
+    nftMarket: {},
+    stakingPools: {},
+    stakes: {},
     changes: [],
     inserts: [],
     rebuild: {
@@ -318,6 +332,20 @@ let cache = {
             return 'name'
         case 'tokens':
             return 'symbol'
+        case 'nftCollections':
+            return 'symbol'
+        case 'nfts':
+            return '_id'
+        case 'markets':
+            return 'id'
+        case 'orders':
+            return '_id'
+        case 'nftMarket':
+            return '_id'
+        case 'stakingPools':
+            return 'id'
+        case 'stakes':
+            return '_id'
         default:
             return '_id'
         }
@@ -371,7 +399,72 @@ let cache = {
             }
             rs(accs.length)
         })
-    })
+    }),
+    init: (cb) => {
+        // Create indexes for existing collections
+        db.collection('accounts').createIndex('name', {unique: true}, function(err) {
+            if (err) throw err
+            db.collection('accounts').createIndex('tokens', function(err) {
+                if (err) throw err
+                // NFT Collections
+                db.collection('nftCollections').createIndex('symbol', {unique: true}, function(err) {
+                    if (err) throw err
+                    db.collection('nftCollections').createIndex('creator', function(err) {
+                        if (err) throw err
+                        // NFTs
+                        db.collection('nfts').createIndex({collection: 1, tokenId: 1}, {unique: true}, function(err) {
+                            if (err) throw err
+                            db.collection('nfts').createIndex('owner', function(err) {
+                                if (err) throw err
+                                // Markets
+                                db.collection('markets').createIndex('id', {unique: true}, function(err) {
+                                    if (err) throw err
+                                    db.collection('markets').createIndex({baseToken: 1, quoteToken: 1}, {unique: true}, function(err) {
+                                        if (err) throw err
+                                        // Orders
+                                        db.collection('orders').createIndex({market: 1, price: 1}, function(err) {
+                                            if (err) throw err
+                                            db.collection('orders').createIndex('owner', function(err) {
+                                                if (err) throw err
+                                                // NFT Market
+                                                db.collection('nftMarket').createIndex({collection: 1, tokenId: 1}, {unique: true}, function(err) {
+                                                    if (err) throw err
+                                                    db.collection('nftMarket').createIndex('seller', function(err) {
+                                                        if (err) throw err
+                                                        // Staking
+                                                        db.collection('stakingPools').createIndex('id', {unique: true}, function(err) {
+                                                            if (err) throw err
+                                                            db.collection('stakingPools').createIndex('token', function(err) {
+                                                                if (err) throw err
+                                                                db.collection('stakes').createIndex({pool: 1, account: 1}, {unique: true}, function(err) {
+                                                                    if (err) throw err
+                                                                    db.collection('stakes').createIndex('account', function(err) {
+                                                                        if (err) throw err
+                                                                        // Blocks (existing)
+                                                                        db.collection('blocks').createIndex('_id', {unique: true}, function(err) {
+                                                                            if (err) throw err
+                                                                            db.collection('blocks').createIndex('hash', function(err) {
+                                                                                if (err) throw err
+                                                                                cb()
+                                                                            })
+                                                                        })
+                                                                    })
+                                                                })
+                                                            })
+                                                        })
+                                                    })
+                                                })
+                                            })
+                                        })
+                                    })
+                                })
+                            })
+                        })
+                    })
+                })
+            })
+        })
+    },
 }
 
 module.exports = cache

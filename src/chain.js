@@ -248,12 +248,16 @@ let chain = {
             mineInMs = config.blockTime
         // else if the scheduled leaders miss blocks
         // backups witnesses are available after each block time intervals
-        else for (let i = 1; i < 2*config.leaders; i++)
-            if (chain.recentBlocks[chain.recentBlocks.length - i]
-            && chain.recentBlocks[chain.recentBlocks.length - i].miner === process.env.NODE_OWNER) {
-                mineInMs = (i+1)*config.blockTime
-                break
+        else
+            for (let i = 1; i < 2*config.leaders; i++) {
+                if (!chain.recentBlocks[chain.recentBlocks.length - i])
+                    break
+                if (chain.recentBlocks[chain.recentBlocks.length - i].miner === process.env.NODE_OWNER) {
+                    mineInMs = (i+1)*config.blockTime
+                    break
+                }
             }
+                
 
         if (mineInMs) {
             mineInMs -= (new Date().getTime()-block.timestamp)
@@ -525,7 +529,7 @@ let chain = {
         }
         if (newBlock.missedBy && typeof newBlock.missedBy !== 'string') 
             logr.error('invalid block missedBy')
-           
+          
 
         // verify that its indeed the next block
         let previousBlock = chain.getLatestBlock()
@@ -550,9 +554,8 @@ let chain = {
         let minerPriority = 0
         if (chain.schedule.shuffle[(newBlock._id-1)%config.leaders].name === newBlock.miner) 
             minerPriority = 1
-        // allow miners of n blocks away
-        // to mine after (n+1)*blockTime as 'backups'
-        // so that the network can keep going even if 1,2,3...n node(s) have issues
+        // else if the scheduled leaders miss blocks
+        // backups witnesses are available after each block time intervals
         else
             for (let i = 1; i <= config.leaders; i++) {
                 if (!chain.recentBlocks[chain.recentBlocks.length - i])
@@ -606,7 +609,54 @@ let chain = {
         // revalidating transactions in orders if revalidate = true
         // adding transaction to recent transactions (to prevent tx re-use) if isFinal = true
         let executions = []
-        for (let i = 0; i < block.txs.length; i++) 
+
+        // Get required accounts from transactions
+        const accounts = new Set()
+        for (let tx of block.txs) {
+            // Add sender
+            if (tx.sender) accounts.add(tx.sender)
+            // Add recipient for token operations
+            if (tx.data && tx.data.contractPayload && tx.data.contractPayload.to) {
+                accounts.add(tx.data.contractPayload.to)
+            }
+        }
+
+        // Create missing accounts first
+        executions.push(function(callback) {
+            series(Array.from(accounts).map(accountName => {
+                return function(accountCallback) {
+                    cache.findOne('accounts', { name: accountName.toLowerCase() }, function(err, existingAccount) {
+                        if (err) {
+                            accountCallback(err)
+                            return
+                        }
+                        
+                        if (!existingAccount) {
+                            const account = {
+                                name: accountName.toLowerCase(),
+                                balance: 0,
+                                created: {
+                                    ts: block.timestamp
+                                }
+                            }
+                            cache.insertOne('accounts', account, function(err) {
+                                if (err) {
+                                    accountCallback(err)
+                                    return
+                                }
+                                logr.info('Created account:', accountName)
+                                accountCallback(null, { created: true })
+                            })
+                        } else {
+                            accountCallback(null, { exists: true })
+                        }
+                    })
+                }
+            }), callback)
+        })
+
+        // Then process all transactions
+        for (let i = 0; i < block.txs.length; i++) {
             executions.push(function(callback) {
                 let tx = block.txs[i]
                 if (revalidate)
@@ -625,7 +675,7 @@ let chain = {
                             })
                         else {
                             logr.error(error, tx)
-                            callback(null, false)
+                            callback(null, { executed: false })
                         }
                     })
                 else
@@ -638,42 +688,52 @@ let chain = {
                             burned: burned
                         })
                     })
-                i++
             })
+        }
+
         executions.push((callback) => chain.applyHardfork(block,callback))
         
         let blockTimeBefore = new Date().getTime()
-        series(executions, async function(err, results) {
-            let string = 'executed'
-            if(revalidate) string = 'validated & '+string
-            logr.debug('Block '+string+' in '+(new Date().getTime()-blockTimeBefore)+'ms')
+        series(executions, function(err, results) {
             if (err) throw err
+            
+            // First result is from account creation
+            const accountResults = results.shift()
+            
+            // Rest are from transaction execution
             let executedSuccesfully = []
             let distributedInBlock = 0
             let burnedInBlock = 0
-            for (let i = 0; i < results.length; i++) {
-                if (results[i].executed)
+            
+            for (let i = 0; i < block.txs.length; i++) {
+                const result = results[i]
+                if (result && result.executed) {
                     executedSuccesfully.push(block.txs[i])
-                if (results[i].distributed)
-                    distributedInBlock += results[i].distributed
-                if (results[i].burned)
-                    burnedInBlock += results[i].burned
+                    if (result.distributed) distributedInBlock += result.distributed
+                    if (result.burned) burnedInBlock += result.burned
+                }
             }
 
+            let string = 'executed'
+            if(revalidate) string = 'validated & '+string
+            logr.debug('Block '+string+' in '+(new Date().getTime()-blockTimeBefore)+'ms')
+
             // execute periodic burn
-            let additionalBurn = await chain.decayBurnAccount(block)
-
-            // execute dao triggers
-            let daoBurn = await dao.runTriggers(block.timestamp)
-
-            // add rewards for the leader who mined this block
-            chain.leaderRewards(block.miner, block.timestamp, function(dist) {
-                distributedInBlock += dist
-                distributedInBlock = Math.round(distributedInBlock*1000) / 1000
+            chain.decayBurnAccount(block).then(additionalBurn => {
                 burnedInBlock += additionalBurn
-                burnedInBlock += daoBurn
-                burnedInBlock = Math.round(burnedInBlock*1000) / 1000
-                cb(executedSuccesfully, distributedInBlock, burnedInBlock)
+                
+                // execute dao triggers
+                dao.runTriggers(block.timestamp).then(daoBurn => {
+                    burnedInBlock += daoBurn
+                    burnedInBlock = Math.round(burnedInBlock*1000) / 1000
+                    
+                    // add rewards for the leader who mined this block
+                    chain.leaderRewards(block.miner, block.timestamp, function(dist) {
+                        distributedInBlock += dist
+                        distributedInBlock = Math.round(distributedInBlock*1000) / 1000
+                        cb(executedSuccesfully, distributedInBlock, burnedInBlock)
+                    })
+                })
             })
         })
     },
