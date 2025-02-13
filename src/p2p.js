@@ -27,7 +27,9 @@ const MessageType = {
     BLOCK: 3,
     NEW_BLOCK: 4,
     NEW_TX: 5,
-    BLOCK_CONF_ROUND: 6
+    BLOCK_CONF_ROUND: 6,
+    SYNC_REQUIRED: 7,
+    SYNC_COMPLETE: 8
 }
 
 let p2p = {
@@ -37,6 +39,8 @@ let p2p = {
     recovering: false,
     recoverAttempt: 0,
     nodeId: null,
+    lastSyncMessage: 0,
+    lastSyncCompleteMessage: 0,
     init: () => {
         p2p.generateNodeId()
         let server = new WebSocket.Server({host:p2p_host, port: p2p_port})
@@ -328,14 +332,15 @@ let p2p = {
                 break
 
             case MessageType.BLOCK_CONF_ROUND:
+                const blockTime = steem.isSyncing() ? config.syncBlockTime : config.blockTime
                 // we are receiving a consensus round confirmation
                 // it should come from one of the elected leaders, so let's verify signature
                 if (p2p.recovering) return
                 if (!message.s || !message.s.s || !message.s.n) return
                 if (!message.d || !message.d.ts || 
                     typeof message.d.ts != 'number' ||
-                    message.d.ts + 2*config.blockTime < new Date().getTime() ||
-                    message.d.ts - 2*config.blockTime > new Date().getTime()) return
+                    message.d.ts + 2*blockTime < new Date().getTime() ||
+                    message.d.ts - 2*blockTime > new Date().getTime()) return
 
                 logr.cons(message.s.n+' U-R'+message.d.r)
 
@@ -346,7 +351,7 @@ let p2p = {
                 }
 
                 for (let i = 0; i < consensus.processed.length; i++) {
-                    if (consensus.processed[i][1] + 2*config.blockTime < new Date().getTime()) {
+                    if (consensus.processed[i][1] + 2*blockTime < new Date().getTime()) {
                         consensus.processed.splice(i, 1)
                         i--
                         continue
@@ -378,6 +383,40 @@ let p2p = {
                             consensus.remoteRoundConfirm(message)
                     })
                 })
+                break
+
+            case MessageType.SYNC_REQUIRED:
+                // Only handle sync messages that are newer than our last one
+                if (!message.d.timestamp || message.d.timestamp <= p2p.lastSyncMessage) {
+                    break
+                }
+                p2p.lastSyncMessage = message.d.timestamp
+                
+                // Handle sync required message
+                chain.syncPaused = true
+                logr.info(`Chain sync started by leader ${message.d.currentLeader}`)
+                // Only rebroadcast if we haven't seen this message
+                if (message.d.origin !== p2p.nodeId) {
+                    message.d.origin = p2p.nodeId
+                    p2p.broadcast({t: MessageType.SYNC_REQUIRED, d: message.d})
+                }
+                break
+
+            case MessageType.SYNC_COMPLETE:
+                // Only handle sync complete messages that are newer than our last one
+                if (!message.d.timestamp || message.d.timestamp <= p2p.lastSyncCompleteMessage) {
+                    break
+                }
+                p2p.lastSyncCompleteMessage = message.d.timestamp
+                
+                // Handle sync complete message
+                chain.syncPaused = false
+                logr.info('Chain sync completed')
+                // Only rebroadcast if we haven't seen this message
+                if (message.d.origin !== p2p.nodeId) {
+                    message.d.origin = p2p.nodeId
+                    p2p.broadcast({t: MessageType.SYNC_COMPLETE, d: message.d})
+                }
                 break
             }
         })

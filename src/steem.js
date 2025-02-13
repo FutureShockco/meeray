@@ -11,12 +11,15 @@ let lastVerifiedBlock = 0
 let currentSteemBlock = 0
 let processing = false
 let processingBlocks = []
+let isSyncing = false
 
 // Update current Steem block every 3 seconds
 setInterval(async () => {
     try {
         const dynGlobalProps = await client.database.getDynamicGlobalProperties()
         currentSteemBlock = dynGlobalProps.head_block_number
+        // Check if we're more than 10 blocks behind
+        isSyncing = (currentSteemBlock - nextSteemBlock) > 10
     } catch (err) {
         logr.error('Error getting current Steem block:', err)
     }
@@ -26,9 +29,13 @@ module.exports = {
     init: (blockNum) => {
         nextSteemBlock = blockNum
         currentSteemBlock = blockNum
+        isSyncing = false
     },
     getCurrentBlock: () => {
         return currentSteemBlock
+    },
+    isSyncing: () => {
+        return isSyncing
     },
     isOnSteemBlock: (block) => {
         return new Promise((resolve, reject) => {
@@ -189,6 +196,7 @@ module.exports = {
                     Promise.all(validationPromises)
                         .then(() => {
                             lastVerifiedBlock = blockNum
+                            nextSteemBlock = blockNum + 1
                             processing = false
                             resolve()
                         })

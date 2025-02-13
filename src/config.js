@@ -2,7 +2,7 @@ let config = {
     history: {
         0: {
             // Steem block to start streaming from
-            steemStartBlock: 92981016,
+            steemStartBlock: 92981017,
             // this is the block 0 configuration for mainnet
             accountPriceBase: 20000,
             accountPriceCharMult: 4,
@@ -23,6 +23,7 @@ let config = {
             blockHashSerialization: 1,
             // the block time in ms
             blockTime: 3000,
+            syncBlockTime: 1000,
             // the number of ms needed for 0.01 DTC to generate 1 byte of bw
             bwGrowth: 36000000, // +10 bytes per hour per DTC (3600 * 1000 * 100 / 10)
             // the maximum bandwidth an account can have available
@@ -52,8 +53,6 @@ let config = {
             ecoStartRent: 0.75,
             // the maximum number of follows a single account can do
             followsMax: 2000,
-            // F
-            hotfix1: false,
             // the max size of a stringified json input (content / user profile)
             // best if kept slightly lower than bwMax
             jsonMaxBytes: 60000,
@@ -119,26 +118,9 @@ let config = {
             },
             // the number of ms needed for 0.01 DTC to generate 1 vt
             vtGrowth: 360000000, // +1 vt per hour per DTC (3600 * 1000 * 100)
-            vtPerBurn: 6 // can be updated in the future to modify incentives
-        },
-        1000090: {
-            leaders: 13,
-            leaderRewardVT: 100,
-            vtPerBurn: 44
-        },
-        4800000: {
-            // Author tip hardfork
-            txLimits: {
-                14: 2,
-                15: 2,
-                19: 0,
-                23: 1,
-                24: 1,
-                28: 1
-            }
-        },
-        4860000: {
-            hotfix1: true
+            vtPerBurn: 6, // can be updated in the future to modify incentives
+            // Sync settings
+            syncThreshold: 10, // Number of blocks behind before triggering sync
         },
         8500050: {
             maxKeys: 25,

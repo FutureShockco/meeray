@@ -76,7 +76,7 @@ let eco = {
             if (txs[y].type === TransactionType.VOTE
                 || txs[y].type === TransactionType.COMMENT
                 || txs[y].type === TransactionType.PROMOTED_COMMENT
-                || (txs[y].type === TransactionType.TIPPED_VOTE && config.hotfix1))
+                || (txs[y].type === TransactionType.TIPPED_VOTE))
                 votes += Math.abs(txs[y].data.vt)
         return votes
     },

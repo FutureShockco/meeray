@@ -114,7 +114,7 @@ let mongo = {
             created: {
                 ts: config.block0ts
             }
-        }) 
+        })
     },
     insertBlockZero: async () => {
         if (process.env.BLOCKS_DIR) return

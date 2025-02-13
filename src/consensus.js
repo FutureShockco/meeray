@@ -199,7 +199,8 @@ let consensus = {
                             i--
                             continue
                         }
-                        if (consensus.queue[i].d.ts + 2*config.blockTime < new Date().getTime()) {
+                        let blockTime = steem.isSyncing() ? config.syncBlockTime : config.blockTime
+                        if (consensus.queue[i].d.ts + 2*blockTime < new Date().getTime()) {
                             consensus.queue.splice(i, 1)
                             i--
                         }

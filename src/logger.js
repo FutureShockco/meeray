@@ -1,4 +1,16 @@
 let log4js = require('log4js')
+const fs = require('fs')
+const path = require('path')
+
+// Create logs directory if it doesn't exist
+const logsDir = path.join(__dirname, '..', 'logs')
+if (!fs.existsSync(logsDir)) {
+    fs.mkdirSync(logsDir, { recursive: true })
+}
+
+// Use node owner or a random string for the log file name
+const nodeIdentifier = process.env.NODE_OWNER || Math.random().toString(36).substring(7)
+const logFile = path.join(logsDir, `output-${nodeIdentifier}.log`)
 
 log4js.configure({
     levels: {
@@ -13,7 +25,7 @@ log4js.configure({
         }},
         file: {
             type: 'file',
-            filename: './logs/output.log',
+            filename: logFile,
             maxLogSize: 10485760,
             backups: 3,
             compress: true
@@ -28,5 +40,5 @@ log4js.configure({
 })
 
 let logger = log4js.getLogger()
-logger.info('Logger initialized')
+logger.info('Logger initialized for node: ' + nodeIdentifier)
 module.exports = logger

@@ -181,12 +181,12 @@ let chain = {
     validateAndAddBlock: (newBlock, revalidate, cb) => {
         // when we receive an outside block and check whether we should add it to our chain or not
         if (chain.shuttingDown) return
-        chain.isValidNewBlock(newBlock, revalidate, false, function(isValid) {
+        chain.isValidNewBlock(newBlock, revalidate, false, function (isValid) {
             if (!isValid) {
                 return cb(true, newBlock)
             }
             // straight execution
-            chain.executeBlockTransactions(newBlock, revalidate, function(validTxs, distributed, burned) {
+            chain.executeBlockTransactions(newBlock, revalidate, function (validTxs, distributed, burned) {
                 // if any transaction is wrong, thats a fatal error
                 if (newBlock.txs.length !== validTxs.length) {
                     logr.error('Invalid tx(s) in block')
@@ -211,7 +211,7 @@ let chain = {
                 // remove all transactions from this block from our transaction pool
                 transaction.removeFromPool(newBlock.txs)
 
-                chain.addBlock(newBlock, function() {
+                chain.addBlock(newBlock, function () {
                     // and broadcast to peers (if not replaying)
                     if (!p2p.recovering)
                         p2p.broadcastBlock(newBlock)
@@ -243,39 +243,46 @@ let chain = {
         }
 
         let mineInMs = null
-        // if we are the next scheduled witness, try to mine in time
-        if (chain.schedule.shuffle[(block._id)%config.leaders].name === process.env.NODE_OWNER)
-            mineInMs = config.blockTime
-        // else if the scheduled leaders miss blocks
-        // backups witnesses are available after each block time intervals
-        else
-            for (let i = 1; i < 2*config.leaders; i++) {
-                if (!chain.recentBlocks[chain.recentBlocks.length - i])
-                    break
-                if (chain.recentBlocks[chain.recentBlocks.length - i].miner === process.env.NODE_OWNER) {
-                    mineInMs = (i+1)*config.blockTime
-                    break
+        let blockTime = steem.isSyncing() ? config.syncBlockTime : config.blockTime
+
+        if (steem.isSyncing()) {
+            // During sync, just ensure we're not too close to the previous block
+            let timeSinceLastBlock = new Date().getTime() - block.timestamp
+            mineInMs = Math.max(blockTime - timeSinceLastBlock, 0) + 20
+        } else {
+            // Normal operation - use the leader schedule
+            if (chain.schedule.shuffle[(block._id) % config.leaders].name === process.env.NODE_OWNER)
+                mineInMs = blockTime
+            else
+                for (let i = 1; i < 2*config.leaders; i++) {
+                    if (!chain.recentBlocks[chain.recentBlocks.length - i])
+                        break
+                    if (chain.recentBlocks[chain.recentBlocks.length - i].miner === process.env.NODE_OWNER) {
+                        mineInMs = (i+1)*blockTime
+                        break
+                    }
                 }
-            }
-                
+        }
 
         if (mineInMs) {
-            mineInMs -= (new Date().getTime()-block.timestamp)
-            mineInMs += 20
-            logr.debug('Trying to mine in '+mineInMs+'ms')
+            let timeDiff = new Date().getTime() - block.timestamp
+            // Don't let mineInMs go too low
+            mineInMs = Math.max(mineInMs - timeDiff, 0) + 20
+            logr.debug('Trying to mine in ' + mineInMs + 'ms')
             consensus.observer = false
-            if (mineInMs < config.blockTime/3) {
+            // Only check performance during normal operation, skip during sync
+            if (!steem.isSyncing() && mineInMs < config.blockTime/2) {
                 logr.warn('Slow performance detected, will not try to mine next block')
                 return
             }
-            chain.worker = setTimeout(function(){
-                chain.mineBlock(function(error, finalBlock) {
+            chain.worker = setTimeout(function () {
+                chain.mineBlock(function (error, finalBlock) {
                     if (error)
                         logr.warn('miner worker trying to mine but couldnt', finalBlock)
                 })
             }, mineInMs)
         }
-            
+
     },
     addBlock: async (block, cb) => {
         // add the block in our own db
@@ -306,38 +313,38 @@ let chain = {
         cache.writeToDisk(false)
         cb(true)
     },
-    output: (block,rebuilding) => {
+    output: (block, rebuilding) => {
         chain.nextOutput.txs += block.txs.length
         if (block.dist)
             chain.nextOutput.dist += block.dist
         if (block.burn)
             chain.nextOutput.burn += block.burn
 
-        if (block._id%replay_output === 0 || (!rebuilding && !p2p.recovering)) {
+        if (block._id % replay_output === 0 || (!rebuilding && !p2p.recovering)) {
             let currentOutTime = new Date().getTime()
             let output = ''
             if (rebuilding)
                 output += 'Rebuilt '
 
-            output += '#'+block._id
+            output += '#' + block._id
 
             if (rebuilding)
                 output += '/' + chain.restoredBlocks
             else
-                output += '  by '+block.miner
+                output += '  by ' + block.miner
 
-            output += '  '+chain.nextOutput.txs+' tx'
-            if (chain.nextOutput.txs>1)
+            output += '  ' + chain.nextOutput.txs + ' tx'
+            if (chain.nextOutput.txs > 1)
                 output += 's'
 
-            output += '  dist: '+eco.round(chain.nextOutput.dist)
-            output += '  burn: '+eco.round(chain.nextOutput.burn)
-            output += '  delay: '+ (currentOutTime - block.timestamp)
-            output += '  steem block: '+ block.steemblock
+            output += '  dist: ' + eco.round(chain.nextOutput.dist)
+            output += '  burn: ' + eco.round(chain.nextOutput.burn)
+            output += '  delay: ' + (currentOutTime - block.timestamp)
+            output += '  steem block: ' + block.steemblock
             if (block.missedBy && !rebuilding)
-                output += '  MISS: '+block.missedBy
+                output += '  MISS: ' + block.missedBy
             else if (rebuilding) {
-                output += '  Performance: ' + Math.floor(replay_output/(currentOutTime-chain.lastRebuildOutput)*1000) + 'b/s'
+                output += '  Performance: ' + Math.floor(replay_output / (currentOutTime - chain.lastRebuildOutput) * 1000) + 'b/s'
                 chain.lastRebuildOutput = currentOutTime
             }
 
@@ -348,7 +355,7 @@ let chain = {
                 burn: 0
             }
         }
-            
+
     },
     nextOutput: {
         txs: 0,
@@ -365,7 +372,7 @@ let chain = {
     },
     isValidSignature: (user, txType, hash, sign, cb) => {
         // verify signature and bandwidth
-        cache.findOne('accounts', {name: user}, async function(err, account) {
+        cache.findOne('accounts', { name: user }, async function (err, account) {
             if (err) throw err
             if (!account) {
                 cb(false); return
@@ -378,14 +385,14 @@ let chain = {
             let threshold = 1
             // add all secondary keys having this transaction type as allowed keys
             if (account.keys && typeof txType === 'number' && Number.isInteger(txType))
-                for (let i = 0; i < account.keys.length; i++) 
+                for (let i = 0; i < account.keys.length; i++)
                     if (account.keys[i].types.indexOf(txType) > -1)
                         allowedPubKeys.push([account.keys[i].pub, account.keys[i].weight || 1])
             // account authorities
             if (account.auths && typeof txType === 'number' && Number.isInteger(txType))
                 for (let i in account.auths)
                     if (account.auths[i].types.indexOf(txType) > -1) {
-                        let authorizedAcc = await cache.findOnePromise('accounts',{name: account.auths[i].user})
+                        let authorizedAcc = await cache.findOnePromise('accounts', { name: account.auths[i].user })
                         if (authorizedAcc && authorizedAcc.keys)
                             for (let a in authorizedAcc.keys)
                                 if (authorizedAcc.keys[a].id === account.auths[i].id) {
@@ -410,8 +417,8 @@ let chain = {
 
             // multisig transactions
             if (config.multisig && Array.isArray(sign))
-                return chain.isValidMultisig(account,threshold,allowedPubKeys,hash,sign,cb)
-            
+                return chain.isValidMultisig(account, threshold, allowedPubKeys, hash, sign, cb)
+
             // single signature
             try {
                 for (let i = 0; i < allowedPubKeys.length; i++) {
@@ -423,18 +430,18 @@ let chain = {
                         return
                     }
                 }
-            } catch (e) {}
+            } catch (e) { }
             cb(false)
         })
     },
-    isValidMultisig: (account,threshold,allowedPubKeys,hash,signatures,cb) => {
+    isValidMultisig: (account, threshold, allowedPubKeys, hash, signatures, cb) => {
         let validWeights = 0
         let validSigs = []
         try {
             let hashBuf = Buffer.from(hash, 'hex')
             for (let s = 0; s < signatures.length; s++) {
                 let signBuf = bs58.decode(signatures[s][0])
-                let recoveredPub = bs58.encode(secp256k1.ecdsaRecover(signBuf,signatures[s][1],hashBuf))
+                let recoveredPub = bs58.encode(secp256k1.ecdsaRecover(signBuf, signatures[s][1], hashBuf))
                 if (validSigs.includes(recoveredPub))
                     return cb(false, 'duplicate signatures found')
                 for (let p = 0; p < allowedPubKeys.length; p++)
@@ -453,7 +460,7 @@ let chain = {
     },
     isValidHashAndSignature: (newBlock, cb) => {
         // and that the hash is correct
-        let theoreticalHash = chain.calculateHashForBlock(newBlock,true)
+        let theoreticalHash = chain.calculateHashForBlock(newBlock, true)
         if (theoreticalHash !== newBlock.hash) {
             logr.debug(typeof (newBlock.hash) + ' ' + typeof theoreticalHash)
             logr.error('invalid hash: ' + theoreticalHash + ' ' + newBlock.hash)
@@ -461,7 +468,7 @@ let chain = {
         }
 
         // finally, verify the signature of the miner
-        chain.isValidSignature(newBlock.miner, null, newBlock.hash, newBlock.signature, function(legitUser) {
+        chain.isValidSignature(newBlock.miner, null, newBlock.hash, newBlock.signature, function (legitUser) {
             if (!legitUser) {
                 logr.error('invalid miner signature')
                 cb(false); return
@@ -470,7 +477,7 @@ let chain = {
         })
     },
     isValidBlockTxs: (newBlock, cb) => {
-        chain.executeBlockTransactions(newBlock, true, function(validTxs, dist, burn) {
+        chain.executeBlockTransactions(newBlock, true, function (validTxs, dist, burn) {
             cache.rollback()
             dao.resetID()
             daoMaster.resetID()
@@ -480,13 +487,13 @@ let chain = {
             }
             let blockDist = newBlock.dist || 0
             if (blockDist !== dist) {
-                logr.error('Wrong dist amount',blockDist,dist)
+                logr.error('Wrong dist amount', blockDist, dist)
                 return cb(false)
             }
 
             let blockBurn = newBlock.burn || 0
             if (blockBurn !== burn) {
-                logr.error('Wrong burn amount',blockBurn,burn)
+                logr.error('Wrong burn amount', blockBurn, burn)
                 return cb(false)
             }
             cb(true)
@@ -527,7 +534,7 @@ let chain = {
             logr.error('invalid block signature')
             cb(false); return
         }
-        if (newBlock.missedBy && typeof newBlock.missedBy !== 'string') 
+        if (newBlock.missedBy && typeof newBlock.missedBy !== 'string')
             logr.error('invalid block missedBy')
 
         // get previous block
@@ -563,14 +570,14 @@ let chain = {
         function continueValidation() {
             // verify all block txs are legit
             if (verifyTxValidity) {
-                chain.isValidBlockTxs(newBlock, function(isValid) {
+                chain.isValidBlockTxs(newBlock, function (isValid) {
                     if (!isValid) {
                         logr.error('invalid block transactions')
                         cb(false); return
                     }
                     if (verifyHashAndSignature)
                         // and finally verify block hash
-                        chain.isValidHashAndSignature(newBlock, function(isValid) {
+                        chain.isValidHashAndSignature(newBlock, function (isValid) {
                             if (!isValid) {
                                 logr.error('invalid block hash')
                                 cb(false); return
@@ -581,7 +588,7 @@ let chain = {
                         cb(true)
                 })
             } else if (verifyHashAndSignature)
-                chain.isValidHashAndSignature(newBlock, function(isValid) {
+                chain.isValidHashAndSignature(newBlock, function (isValid) {
                     if (!isValid) {
                         logr.error('invalid block hash')
                         cb(false); return
@@ -610,15 +617,15 @@ let chain = {
         }
 
         // Create missing accounts first
-        executions.push(function(callback) {
+        executions.push(function (callback) {
             series(Array.from(accounts).map(accountName => {
-                return function(accountCallback) {
-                    cache.findOne('accounts', { name: accountName.toLowerCase() }, function(err, existingAccount) {
+                return function (accountCallback) {
+                    cache.findOne('accounts', { name: accountName.toLowerCase() }, function (err, existingAccount) {
                         if (err) {
                             accountCallback(err)
                             return
                         }
-                        
+
                         if (!existingAccount) {
                             const account = {
                                 name: accountName.toLowerCase(),
@@ -628,7 +635,7 @@ let chain = {
                                     ts: block.timestamp
                                 },
                             }
-                            cache.insertOne('accounts', account, function(err) {
+                            cache.insertOne('accounts', account, function (err) {
                                 if (err) {
                                     accountCallback(err)
                                     return
@@ -646,12 +653,12 @@ let chain = {
 
         // Then process all transactions
         for (let i = 0; i < block.txs.length; i++) {
-            executions.push(function(callback) {
+            executions.push(function (callback) {
                 let tx = block.txs[i]
                 if (revalidate)
-                    transaction.isValid(tx, block.timestamp, function(isValid, error) {
-                        if (isValid) 
-                            transaction.execute(tx, block.timestamp, function(executed, distributed, burned) {
+                    transaction.isValid(tx, block.timestamp, function (isValid, error) {
+                        if (isValid)
+                            transaction.execute(tx, block.timestamp, function (executed, distributed, burned) {
                                 if (!executed) {
                                     logr.fatal('Tx execution failure', tx)
                                     process.exit(1)
@@ -668,7 +675,7 @@ let chain = {
                         }
                     })
                 else
-                    transaction.execute(tx, block.timestamp, function(executed, distributed, burned) {
+                    transaction.execute(tx, block.timestamp, function (executed, distributed, burned) {
                         if (!executed)
                             logr.fatal('Tx execution failure', tx)
                         callback(null, {
@@ -680,20 +687,20 @@ let chain = {
             })
         }
 
-        executions.push((callback) => chain.applyHardfork(block,callback))
-        
+        executions.push((callback) => chain.applyHardfork(block, callback))
+
         let blockTimeBefore = new Date().getTime()
-        series(executions, function(err, results) {
+        series(executions, function (err, results) {
             if (err) throw err
-            
+
             // First result is from account creation
             const accountResults = results.shift()
-            
+
             // Rest are from transaction execution
             let executedSuccesfully = []
             let distributedInBlock = 0
             let burnedInBlock = 0
-            
+
             for (let i = 0; i < block.txs.length; i++) {
                 const result = results[i]
                 if (result && result.executed) {
@@ -704,22 +711,22 @@ let chain = {
             }
 
             let string = 'executed'
-            if(revalidate) string = 'validated & '+string
-            logr.debug('Block '+string+' in '+(new Date().getTime()-blockTimeBefore)+'ms')
+            if (revalidate) string = 'validated & ' + string
+            logr.debug('Block ' + string + ' in ' + (new Date().getTime() - blockTimeBefore) + 'ms')
 
             // execute periodic burn
             chain.decayBurnAccount(block).then(additionalBurn => {
                 burnedInBlock += additionalBurn
-                
+
                 // execute dao triggers
                 dao.runTriggers(block.timestamp).then(daoBurn => {
                     burnedInBlock += daoBurn
-                    burnedInBlock = Math.round(burnedInBlock*1000) / 1000
-                    
+                    burnedInBlock = Math.round(burnedInBlock * 1000) / 1000
+
                     // add rewards for the leader who mined this block
-                    chain.leaderRewards(block.miner, block.timestamp, function(dist) {
+                    chain.leaderRewards(block.miner, block.timestamp, function (dist) {
                         distributedInBlock += dist
-                        distributedInBlock = Math.round(distributedInBlock*1000) / 1000
+                        distributedInBlock = Math.round(distributedInBlock * 1000) / 1000
                         cb(executedSuccesfully, distributedInBlock, burnedInBlock)
                     })
                 })
@@ -728,22 +735,22 @@ let chain = {
     },
     minerSchedule: (block) => {
         let hash = block.hash
-        let rand = parseInt('0x'+hash.substr(hash.length-config.leaderShufflePrecision))
+        let rand = parseInt('0x' + hash.substr(hash.length - config.leaderShufflePrecision))
         if (!p2p.recovering)
             logr.debug('Generating schedule... NRNG: ' + rand)
         let miners = chain.generateLeaders(true, false, config.leaders, 0)
-        miners = miners.sort(function(a,b) {
-            if(a.name < b.name) return -1
-            if(a.name > b.name) return 1
+        miners = miners.sort(function (a, b) {
+            if (a.name < b.name) return -1
+            if (a.name > b.name) return 1
             return 0
         })
         let shuffledMiners = []
         while (miners.length > 0) {
-            let i = rand%miners.length
+            let i = rand % miners.length
             shuffledMiners.push(miners[i])
             miners.splice(i, 1)
         }
-        
+
         let y = 0
         while (shuffledMiners.length < config.leaders) {
             shuffledMiners.push(shuffledMiners[y])
@@ -776,26 +783,28 @@ let chain = {
                 leaderDetails.ws = leader.json.node.ws
             leaders.push(leaderDetails)
         }
-        leaders = leaders.sort(function(a,b) {
+        leaders = leaders.sort(function (a, b) {
             return b.node_appr - a.node_appr
         })
         return leaders.slice(start, limit)
     },
     leaderRewards: (name, ts, cb) => {
         // rewards leaders with 'free' voting power in the network
-        cache.findOne('accounts', {name: name}, function(err, account) {
+        cache.findOne('accounts', { name: name }, function (err, account) {
             let newBalance = account.balance + config.leaderReward
 
             if (config.leaderReward > 0 || config.leaderRewardVT > 0)
-                cache.updateOne('accounts', 
-                    {name: account.name},
-                    {$set: {
-                        balance: newBalance
-                    }},
-                    function(err) {
+                cache.updateOne('accounts',
+                    { name: account.name },
+                    {
+                        $set: {
+                            balance: newBalance
+                        }
+                    },
+                    function (err) {
                         if (err) throw err
                         if (config.leaderReward > 0)
-                            transaction.adjustNodeAppr(account, config.leaderReward, function() {
+                            transaction.adjustNodeAppr(account, config.leaderReward, function () {
                                 cb(config.leaderReward)
                             })
                         else
@@ -803,7 +812,7 @@ let chain = {
                     }
                 )
             else cb(0)
-        },true)
+        }, true)
     },
     decayBurnAccount: (block) => {
         return new Promise((rs) => {
@@ -814,13 +823,13 @@ let chain = {
             let burnAmount = Math.floor(rp.dist)
             if (burnAmount <= 0)
                 return rs(0)
-            cache.findOne('accounts', {name: config.burnAccount}, (e,burnAccount) => {
+            cache.findOne('accounts', { name: config.burnAccount }, (e, burnAccount) => {
                 // do nothing if there is none to burn
                 if (burnAccount.balance <= 0)
                     return rs(0)
                 // burn only up to available balance
-                burnAmount = Math.min(burnAmount,burnAccount.balance)
-                cache.updateOne('accounts', {name: config.burnAccount}, {$inc: {balance: -burnAmount}},() =>
+                burnAmount = Math.min(burnAmount, burnAccount.balance)
+                cache.updateOne('accounts', { name: config.burnAccount }, { $inc: { balance: -burnAmount } }, () =>
                     transaction.updateGrowInts(burnAccount, block.timestamp, () => {
                         transaction.adjustNodeAppr(burnAccount, -burnAmount, () => {
                             logr.econ('Burned ' + burnAmount + ' periodically from ' + config.burnAccount)
@@ -831,7 +840,7 @@ let chain = {
             })
         })
     },
-    calculateHashForBlock: (block,deleteExisting) => {
+    calculateHashForBlock: (block, deleteExisting) => {
         if (config.blockHashSerialization === 1)
             return chain.calculateHashV1(block._id, block.phash, block.timestamp, block.txs, block.miner, block.missedBy, block.dist, block.burn)
         else if (config.blockHashSerialization === 2) {
@@ -851,10 +860,10 @@ let chain = {
         if (burned) string += burned
 
         return CryptoJS.SHA256(string).toString()
-    },    
+    },
     getLatestBlock: () => {
-        return chain.recentBlocks[chain.recentBlocks.length-1]
-    },    
+        return chain.recentBlocks[chain.recentBlocks.length - 1]
+    },
     getFirstMemoryBlock: () => {
         return chain.recentBlocks[0]
     },
@@ -868,7 +877,7 @@ let chain = {
             logr.trace('Keeping old blocks in memory because ecoBlocks is changing soon')
             return
         }
-            
+
         let extraBlocks = chain.recentBlocks.length - config.ecoBlocks
         while (extraBlocks > 0) {
             chain.recentBlocks.shift()
@@ -880,20 +889,22 @@ let chain = {
             if (chain.recentTxs[hash].ts + config.txExpirationTime < chain.getLatestBlock().timestamp)
                 delete chain.recentTxs[hash]
     },
-    applyHardfork: (block,cb) => {
+    applyHardfork: (block, cb) => {
         // Do something on hardfork block after tx executions and before leader rewards distribution
         // As this is not a real transaction, no actual transaction is considered executed here
         if (block._id === 17150000)
             // Clear @dtube.airdrop account
-            cache.findOne('accounts', {name: config.burnAccount}, (e,burnAccount) => {
+            cache.findOne('accounts', { name: config.burnAccount }, (e, burnAccount) => {
                 let burned = burnAccount.balance
                 cache.updateOne('accounts',
-                    {name: config.burnAccount},
-                    {$set: {
-                        balance: 0,
-                        bw: { v: 0, t: block.timestamp },
-                        vt: { v: 0, t: block.timestamp }
-                    }}, () => cb(null, { executed: false, distributed: 0, burned: burned })
+                    { name: config.burnAccount },
+                    {
+                        $set: {
+                            balance: 0,
+                            bw: { v: 0, t: block.timestamp },
+                            vt: { v: 0, t: block.timestamp }
+                        }
+                    }, () => cb(null, { executed: false, distributed: 0, burned: burned })
                 )
             })
         else
@@ -904,45 +915,45 @@ let chain = {
         if (blockNum === 4860000)
             eco.loadHistory() // reset previous votes
     },
-    batchLoadBlocks: (blockNum,cb) => {
+    batchLoadBlocks: (blockNum, cb) => {
         if (chain.blocksToRebuild.length === 0)
             if (blocks.isOpen) {
-                chain.blocksToRebuild = blocks.readRange(blockNum, blockNum+max_batch_blocks-1)
+                chain.blocksToRebuild = blocks.readRange(blockNum, blockNum + max_batch_blocks - 1)
                 cb(chain.blocksToRebuild.shift())
             } else
-                db.collection('blocks').find({_id: { $gte: blockNum, $lt: blockNum+max_batch_blocks }}).toArray((e,loadedBlocks) => {
+                db.collection('blocks').find({ _id: { $gte: blockNum, $lt: blockNum + max_batch_blocks } }).toArray((e, loadedBlocks) => {
                     if (e) throw e
                     if (loadedBlocks) chain.blocksToRebuild = loadedBlocks
                     cb(chain.blocksToRebuild.shift())
                 })
         else cb(chain.blocksToRebuild.shift())
     },
-    rebuildState: (blockNum,cb) => {
+    rebuildState: (blockNum, cb) => {
         // If chain shutting down, stop rebuilding and output last number for resuming
         if (chain.shuttingDown)
-            return cb(null,blockNum)
-            
+            return cb(null, blockNum)
+
         // Genesis block is handled differently
         if (blockNum === 0) {
-            eco.history = [{_id: 0, votes: 0, cDist: 0, cBurn: 0}]
+            eco.history = [{ _id: 0, votes: 0, cDist: 0, cBurn: 0 }]
             chain.recentBlocks = [chain.getGenesisBlock()]
             chain.schedule = chain.minerSchedule(chain.getGenesisBlock())
-            chain.rebuildState(blockNum+1,cb)
+            chain.rebuildState(blockNum + 1, cb)
             return
         }
 
         chain.batchLoadBlocks(blockNum, async (blockToRebuild) => {
             if (!blockToRebuild)
                 // Rebuild is complete
-                return cb(null,blockNum)
-            
+                return cb(null, blockNum)
+
             // Validate block and transactions, then execute them
             if (process.env.REBUILD_NO_VALIDATE !== '1') {
-                let isValidBlock = await chain.isValidNewBlockPromise(blockToRebuild,true,false)
+                let isValidBlock = await chain.isValidNewBlockPromise(blockToRebuild, true, false)
                 if (!isValidBlock)
                     return cb(true, blockNum)
             }
-            chain.executeBlockTransactions(blockToRebuild,process.env.REBUILD_NO_VALIDATE !== '1',(validTxs,dist,burn) => {
+            chain.executeBlockTransactions(blockToRebuild, process.env.REBUILD_NO_VALIDATE !== '1', (validTxs, dist, burn) => {
                 // if any transaction is wrong, thats a fatal error
                 // transactions should have been verified in isValidNewBlock
                 if (blockToRebuild.txs.length !== validTxs.length) {
@@ -956,9 +967,9 @@ let chain = {
                     return cb('Wrong dist amount ' + blockDist + ' ' + dist, blockNum)
 
                 let blockBurn = blockToRebuild.burn || 0
-                if (blockBurn !== burn) 
+                if (blockBurn !== burn)
                     return cb('Wrong burn amount ' + blockBurn + ' ' + burn, blockNum)
-                
+
                 // update the config if an update was scheduled
                 chain.addRecentTxsInBlock(blockToRebuild.txs)
                 config = require('./config.js').read(blockToRebuild._id)
@@ -980,12 +991,12 @@ let chain = {
                         chain.schedule = chain.minerSchedule(blockToRebuild)
                     chain.recentBlocks.push(blockToRebuild)
                     chain.output(blockToRebuild, true)
-                    
+
                     // process notifications and leader stats (non blocking)
                     notifications.processBlock(blockToRebuild)
 
                     // next block
-                    chain.rebuildState(blockNum+1, cb)
+                    chain.rebuildState(blockNum + 1, cb)
                 }, blockToRebuild._id % writeInterval === 0)
             })
         })
