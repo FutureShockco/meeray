@@ -59,28 +59,28 @@ module.exports = {
                                     case 'transfertokens':
                                         txType = Transaction.Types.TRANSFER_TOKENS
                                         break
-                                    case 'createNft':
+                                    case 'createnftcollection':
                                         txType = Transaction.Types.CREATE_NFT_COLLECTION
                                         break
-                                    case 'mintNft':
+                                    case 'mintnft':
                                         txType = Transaction.Types.MINT_NFT
                                         break
-                                    case 'transferNft':
+                                    case 'transfernft':
                                         txType = Transaction.Types.TRANSFER_NFT
                                         break
-                                    case 'createMarket':
+                                    case 'createmarket':
                                         txType = Transaction.Types.CREATE_MARKET
                                         break
-                                    case 'placeOrder':
+                                    case 'placeorder':
                                         txType = Transaction.Types.PLACE_ORDER
                                         break
-                                    case 'createStakingPool':
+                                    case 'createstakingpool':
                                         txType = Transaction.Types.CREATE_STAKING_POOL
                                         break
-                                    case 'stakeTokens':
+                                    case 'staketokens':
                                         txType = Transaction.Types.STAKE_TOKENS
                                         break
-                                    case 'unstakeTokens':
+                                    case 'unstaketokens':
                                         txType = Transaction.Types.UNSTAKE_TOKENS
                                         break
                                     default:
@@ -105,7 +105,7 @@ module.exports = {
                                         if (isValid) {
                                             transaction.addToPool([newTx])
                                         }
-                                        console.log(error)
+                                        else console.log(error)
                                         resolveValidation()
                                     })
                                 }))

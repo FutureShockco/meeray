@@ -1,7 +1,6 @@
 module.exports = {
     fields: ['contractName', 'contractAction', 'contractPayload', 'timestamp', 'sender'],
     validate: (tx, ts, legitUser, cb) => {
-        console.log('Validating mint tokens transaction:', tx)
         // Validate required fields
         if (!tx.data.contractPayload) {
             console.log('Missing contract payload')
@@ -32,7 +31,6 @@ module.exports = {
         }
 
         // Check if token exists and validate creator
-        console.log('Looking for token:', payload.symbol)
         cache.findOne('tokens', {symbol: payload.symbol}, function(err, token) {
             if (err) {
                 console.error('Database error finding token:', err)
@@ -58,9 +56,6 @@ module.exports = {
                 cb(false, 'mint would exceed max supply')
                 return
             }
-
-            // Account existence check removed since accounts are created before transaction execution
-            console.log('Mint token validation successful')
             cb(true)
         })
     },

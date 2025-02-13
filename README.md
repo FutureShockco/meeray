@@ -38,7 +38,7 @@ AVA is a sidechain implementation that extends the Steem blockchain with advance
 ### Setup
 1. Clone the repository
 ```bash
-git clone https://github.com/yourusername/ava.git
+git clone https://github.com/hightouch67/ava.git
 cd ava
 ```
 
