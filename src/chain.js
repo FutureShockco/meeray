@@ -604,8 +604,8 @@ let chain = {
             // Add sender
             if (tx.sender) accounts.add(tx.sender)
             // Add recipient for token operations
-            if (tx.data && tx.data.contractPayload && tx.data.contractPayload.to) {
-                accounts.add(tx.data.contractPayload.to)
+            if (tx.data && tx.data.payload && tx.data.payload.to) {
+                accounts.add(tx.data.payload.to)
             }
         }
 
@@ -623,9 +623,10 @@ let chain = {
                             const account = {
                                 name: accountName.toLowerCase(),
                                 balance: 0,
+                                tokens: {},
                                 created: {
                                     ts: block.timestamp
-                                }
+                                },
                             }
                             cache.insertOne('accounts', account, function(err) {
                                 if (err) {

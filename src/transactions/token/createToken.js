@@ -49,7 +49,7 @@ module.exports = {
         const token = {
             name: tx.data.payload.name,
             symbol: tx.data.payload.symbol,
-            supply: 0,
+            currentSupply: 0,
             maxSupply: tx.data.payload.maxSupply,
             precision: tx.data.payload.precision,
             creator: tx.sender,

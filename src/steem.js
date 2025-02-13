@@ -8,12 +8,27 @@ const Transaction = require('./transactions')
 
 let nextSteemBlock = 0
 let lastVerifiedBlock = 0
+let currentSteemBlock = 0
 let processing = false
 let processingBlocks = []
+
+// Update current Steem block every 3 seconds
+setInterval(async () => {
+    try {
+        const dynGlobalProps = await client.database.getDynamicGlobalProperties()
+        currentSteemBlock = dynGlobalProps.head_block_number
+    } catch (err) {
+        logr.error('Error getting current Steem block:', err)
+    }
+}, 3000)
 
 module.exports = {
     init: (blockNum) => {
         nextSteemBlock = blockNum
+        currentSteemBlock = blockNum
+    },
+    getCurrentBlock: () => {
+        return currentSteemBlock
     },
     isOnSteemBlock: (block) => {
         return new Promise((resolve, reject) => {
@@ -94,7 +109,8 @@ module.exports = {
 
                             try {
                                 const json = JSON.parse(opData.json)
-                                if (!json.contract || !json.payload)
+                                console.log(json)
+                                if (!json.contract || !json.contractPayload)
                                     continue
 
                                 let txType
@@ -143,17 +159,16 @@ module.exports = {
                                             continue
                                         }
                                 }
-
                                 const newTx = {
                                     type: txType,
                                     data: {
                                         contract: json.contract,
-                                        payload: json.payload
+                                        payload: json.contractPayload
                                     },
                                     sender: opData.required_posting_auths[0] || opData.required_auths[0],
                                     ts: new Date(steemBlock.timestamp + 'Z').getTime(),
                                     ref: blockNum + ':' + tx.operations.indexOf(op)
-                                }
+                                }   
 
                                 validationPromises.push(new Promise((resolveValidation) => {
                                     transaction.isValid(newTx, new Date(steemBlock.timestamp + 'Z').getTime(), (isValid, error) => {
