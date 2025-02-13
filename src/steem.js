@@ -50,11 +50,11 @@ module.exports = {
                                 let txType
                                 const contractType = json.contractAction + json.contractName
                                 switch (contractType.toLowerCase()) {
-                                    case 'minttokens':
-                                        txType = Transaction.Types.MINT_TOKENS
-                                        break
                                     case 'createtokens':
                                         txType = Transaction.Types.CREATE_TOKENS
+                                        break
+                                    case 'minttokens':
+                                        txType = Transaction.Types.MINT_TOKENS
                                         break
                                     case 'transfertokens':
                                         txType = Transaction.Types.TRANSFER_TOKENS
