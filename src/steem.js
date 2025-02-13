@@ -15,6 +15,57 @@ module.exports = {
     init: (blockNum) => {
         nextSteemBlock = blockNum
     },
+    isOnSteemBlock: (block) => {
+        return new Promise((resolve, reject) => {
+            client.database.getBlockHeader(block.steemblock)
+                .then((steemBlock) => {
+                    if (!steemBlock) {
+                        resolve(false)
+                        return
+                    }
+
+                    // Check each transaction in our block against Steem block
+                    for (let tx of block.txs) {
+                        if (tx.type !== 'custom_json')
+                            continue
+
+                        // Find matching custom_json operation in Steem block
+                        let found = false
+                        for (let steemTx of steemBlock.transactions) {
+                            for (let op of steemTx.operations) {
+                                if (op[0] !== 'custom_json')
+                                    continue
+
+                                if (op[1].id === 'sidechain' &&
+                                    op[1].json === JSON.stringify({
+                                        contract: tx.data.contract,
+                                        payload: tx.data.payload
+                                    })) {
+                                    found = true
+                                    break
+                                }
+                            }
+                            if (found) break
+                        }
+
+                        if (!found) {
+                            logr.debug('Transaction not found in Steem block:', {
+                                blockNum: block.steemblock,
+                                tx: {
+                                    contract: tx.data.contract
+                                }
+                            })
+                            resolve(false)
+                            return
+                        }
+                    }
+                    resolve(true)
+                })
+                .catch((err) => {
+                    resolve(false)
+                })
+        })
+    },
     processBlock: (blockNum) => {
         return new Promise((resolve, reject) => {
             if (processing) {
@@ -33,7 +84,6 @@ module.exports = {
                     }
 
                     const validationPromises = []
-
                     // Process each transaction
                     for (let tx of steemBlock.transactions) {
                         for (let op of tx.operations) {
@@ -44,20 +94,22 @@ module.exports = {
 
                             try {
                                 const json = JSON.parse(opData.json)
-                                if (!json.contractName || !json.contractAction || !json.contractPayload)
+                                if (!json.contract || !json.payload)
                                     continue
 
                                 let txType
-                                const contractType = json.contractAction + json.contractName
-                                switch (contractType.toLowerCase()) {
-                                    case 'createtokens':
-                                        txType = Transaction.Types.CREATE_TOKENS
+                                switch (json.contract.toLowerCase()) {
+                                    case 'enablenode':
+                                        txType = Transaction.Types.ENABLE_NODE
                                         break
-                                    case 'minttokens':
-                                        txType = Transaction.Types.MINT_TOKENS
+                                    case 'createtoken':
+                                        txType = Transaction.Types.CREATE_TOKEN
                                         break
-                                    case 'transfertokens':
-                                        txType = Transaction.Types.TRANSFER_TOKENS
+                                    case 'minttoken':
+                                        txType = Transaction.Types.MINT_TOKEN
+                                        break
+                                    case 'transfertoken':
+                                        txType = Transaction.Types.TRANSFER_TOKEN
                                         break
                                     case 'createnftcollection':
                                         txType = Transaction.Types.CREATE_NFT_COLLECTION
@@ -84,7 +136,7 @@ module.exports = {
                                         txType = Transaction.Types.UNSTAKE_TOKENS
                                         break
                                     default:
-                                        const typeNum = parseInt(json.contractAction)
+                                        const typeNum = parseInt(json.contract)
                                         if (!isNaN(typeNum) && Transaction.transactions[typeNum]) {
                                             txType = typeNum
                                         } else {
@@ -94,7 +146,10 @@ module.exports = {
 
                                 const newTx = {
                                     type: txType,
-                                    data: json,
+                                    data: {
+                                        contract: json.contract,
+                                        payload: json.payload
+                                    },
                                     sender: opData.required_posting_auths[0] || opData.required_auths[0],
                                     ts: new Date(steemBlock.timestamp + 'Z').getTime(),
                                     ref: blockNum + ':' + tx.operations.indexOf(op)

@@ -529,80 +529,68 @@ let chain = {
         }
         if (newBlock.missedBy && typeof newBlock.missedBy !== 'string') 
             logr.error('invalid block missedBy')
-          
 
-        // verify that its indeed the next block
+        // get previous block
         let previousBlock = chain.getLatestBlock()
-        if (previousBlock._id + 1 !== newBlock._id) {
+        if (newBlock._id !== previousBlock._id + 1) {
             logr.error('invalid index')
             cb(false); return
         }
-        // from the same chain
-        if (previousBlock.hash !== newBlock.phash) {
+        if (newBlock.phash !== previousBlock.hash) {
             logr.error('invalid phash')
             cb(false); return
         }
 
-        // check if miner isnt trying to fast forward time
-        // this might need to be tuned in the future to allow for network delay / clocks desync / etc
-        if (newBlock.timestamp > new Date().getTime() + config.maxDrift) {
-            logr.error('timestamp from the future', newBlock.timestamp, new Date().getTime())
-            cb(false); return
+        // Verify that all transactions exist in Steem block for non-leader nodes
+        if (process.env.NODE_OWNER !== newBlock.miner) {
+            steem.isOnSteemBlock(newBlock)
+                .then((isValid) => {
+                    if (!isValid) {
+                        logr.error('Block transactions not found in Steem block')
+                        cb(false)
+                        return
+                    }
+                    continueValidation()
+                })
+                .catch((err) => {
+                    logr.error('Error verifying Steem block:', err)
+                    cb(false)
+                })
+        } else {
+            continueValidation()
         }
 
-        // check if miner is normal scheduled one
-        let minerPriority = 0
-        if (chain.schedule.shuffle[(newBlock._id-1)%config.leaders].name === newBlock.miner) 
-            minerPriority = 1
-        // else if the scheduled leaders miss blocks
-        // backups witnesses are available after each block time intervals
-        else
-            for (let i = 1; i <= config.leaders; i++) {
-                if (!chain.recentBlocks[chain.recentBlocks.length - i])
-                    break
-                if (chain.recentBlocks[chain.recentBlocks.length - i].miner === newBlock.miner) {
-                    minerPriority = i+1
-                    break
-                }
-            }
-                
-
-        if (minerPriority === 0) {
-            logr.error('unauthorized miner')
-            cb(false); return
-        }
-
-        // check if new block isnt too early
-        if (newBlock.timestamp - previousBlock.timestamp < minerPriority*config.blockTime) {
-            logr.error('block too early for miner with priority #'+minerPriority)
-            cb(false); return
-        }
-
-        if (!verifyTxValidity) {
-            if (!verifyHashAndSignature) {
-                cb(true); return
-            }
-            chain.isValidHashAndSignature(newBlock, function(isValid) {
-                if (!isValid) {
-                    cb(false); return
-                }
-                cb(true)
-            })
-        } else
-            chain.isValidBlockTxs(newBlock, function(isValid) {
-                if (!isValid) {
-                    cb(false); return
-                }
-                if (!verifyHashAndSignature) {
-                    cb(true); return
-                }
+        function continueValidation() {
+            // verify all block txs are legit
+            if (verifyTxValidity) {
+                chain.isValidBlockTxs(newBlock, function(isValid) {
+                    if (!isValid) {
+                        logr.error('invalid block transactions')
+                        cb(false); return
+                    }
+                    if (verifyHashAndSignature)
+                        // and finally verify block hash
+                        chain.isValidHashAndSignature(newBlock, function(isValid) {
+                            if (!isValid) {
+                                logr.error('invalid block hash')
+                                cb(false); return
+                            }
+                            cb(true)
+                        })
+                    else
+                        cb(true)
+                })
+            } else if (verifyHashAndSignature)
                 chain.isValidHashAndSignature(newBlock, function(isValid) {
                     if (!isValid) {
+                        logr.error('invalid block hash')
                         cb(false); return
                     }
                     cb(true)
                 })
-            })
+            else
+                cb(true)
+        }
     },
     isValidNewBlockPromise: (newBlock, verifyHashAndSig, verifyTxValidity) => new Promise((rs) => chain.isValidNewBlock(newBlock, verifyHashAndSig, verifyTxValidity, rs)),
     executeBlockTransactions: (block, revalidate, cb) => {

@@ -19,9 +19,9 @@ const transactions = [
     require('./dao/mdQueue.js'),
     require('./dao/mdSign.js'),
     // Token transactions
-    require('./token/createTokens.js'),
-    require('./token/mintTokens.js'),
-    require('./token/transferTokens.js'),
+    require('./token/createToken.js'),
+    require('./token/mintToken.js'),
+    require('./token/transferToken.js'),
     // NFT transactions
     require('./nft/createCollection.js'),
     require('./nft/mintNFT.js'),
@@ -53,9 +53,9 @@ module.exports = {
         DAO_MD_QUEUE: 12,
         DAO_MD_SIGN: 13,
         // Token transaction types
-        CREATE_TOKENS: 14,
-        MINT_TOKENS: 15,
-        TRANSFER_TOKENS: 16,
+        CREATE_TOKEN: 14,
+        MINT_TOKEN: 15,
+        TRANSFER_TOKEN: 16,
         // NFT transaction types
         CREATE_NFT_COLLECTION: 17,
         MINT_NFT: 18,

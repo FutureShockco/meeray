@@ -1,12 +1,12 @@
 module.exports = {
-    fields: ['contractName', 'contractAction', 'contractPayload'],
+    fields: ['contract', 'payload', 'sender'],
     validate: (tx, ts, legitUser, cb) => {
-        if (!tx.data.contractPayload) {
+        if (!tx.data.payload) {
             cb(false, 'missing contract payload')
             return
         }
 
-        const payload = tx.data.contractPayload
+        const payload = tx.data.payload
         if (!payload.collection || !payload.tokenId || !payload.to || !payload.metadata) {
             cb(false, 'missing required fields')
             return
@@ -19,7 +19,7 @@ module.exports = {
         }
 
         // Check if collection exists and validate creator
-        cache.findOne('nftCollections', {symbol: payload.collection}, function(err, collection) {
+        cache.findOne('nft_collections', {symbol: payload.collection}, function(err, collection) {
             if (err) {
                 cb(false, 'database error')
                 return

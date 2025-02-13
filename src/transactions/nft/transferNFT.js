@@ -1,12 +1,12 @@
 module.exports = {
-    fields: ['contractName', 'contractAction', 'contractPayload'],
+    fields: ['contract', 'payload', 'sender'],
     validate: (tx, ts, legitUser, cb) => {
-        if (!tx.data.contractPayload) {
+        if (!tx.data.payload) {
             cb(false, 'missing contract payload')
             return
         }
 
-        const payload = tx.data.contractPayload
+        const payload = tx.data.payload
         if (!payload.collection || !payload.tokenId || !payload.to) {
             cb(false, 'missing required fields')
             return
@@ -60,7 +60,7 @@ module.exports = {
         })
     },
     execute: (tx, ts, cb) => {
-        const payload = tx.data.contractPayload
+        const payload = tx.data.payload
 
         // Update NFT owner
         cache.updateOne('nfts',
