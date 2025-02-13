@@ -1,185 +1,184 @@
-# AVALON
+# AVA Chain
 
-## Get a node running
+AVA is a sidechain implementation that extends the Steem blockchain with advanced features like tokens, NFTs, markets, and staking. It processes Steem custom_json operations to enable these additional functionalities while maintaining the security and decentralization of the Steem blockchain.
 
-#### Dependencies
-* [MongoDB](https://mongodb.com)
-* [NodeJS](https://nodejs.org/en/download/) **v14/16** (LTS)
-* [ntpd](https://linux.die.net/man/8/ntpd) or any NTP alternative for your system. ntpd comes pre-installed on most linux distributions
+## Features
 
-## Install and run an Avalon node for Linux
-* `npm install` to install nodejs dependencies
-* `chmod +x scripts/start.sh`
-* `./scripts/start.sh`
+### Token System
+- Create custom tokens
+- Mint tokens
+- Transfer tokens between accounts
+- Query token information and holder balances
 
-### Environment Variables
-The `start.sh` shows the list of available environment variables you can set to make avalon behave slightly differently from the default install.
+### NFT System
+- Create NFT collections
+- Mint NFTs
+- Transfer NFTs
+- Query NFT collections and ownership
 
-## Install and run an Avalon node for Windows
-* `npm install` to install nodejs dependencies
-* Get your own keys with `node src/cli.js keypair`
-* Save your keys
-* Add your keys to `scripts/start.bat`
-* Define the path to your directory in `scripts/start.bat`
-* Run `scripts/start.bat`
-* Note: to restore a genesis.zip file you may need to download the [mongo databasetools](https://www.mongodb.com/try/download/database-tools?tck=docs_databasetools) and put the mongorestore.exe binary into your main directory.
+### Market System
+- Create trading pairs
+- Place buy/sell orders
+- View order books and market statistics
+- Track trading history
 
+### Staking System
+- Create staking pools
+- Stake tokens for rewards
+- Unstake tokens
+- Track staking rewards
 
-## [Syncing your node](./doc/syncing-your-node.md)
-## [Become a leader and produce blocks](./doc/leader-101.md)
-## [Debian 10 quick install procedure](./doc/debian-10.md)
+## Installation
 
-## Get helped
-We have a discord channel dedicated to node owners (aka leaders), where you can get support to get set up. Join [discorg.gg/dtube](https://discord.gg/dtube) and go to `DTube Chain -> #leader-candidates`
+### Dependencies
+- NodeJS v16 or higher
+- MongoDB v4.4 or higher
+- PM2 (optional, for production)
 
-## Using Avalon
-Once you have a node running, there are many ways to interact with Avalon:
-
-### With the CLI tool
-You can use the CLI tool to transact with Avalon. Simply try `node src/cli --help` or `node src/cli <command> --help` for a full help.
-
-### Using Javalon
-[Javalon](https://www.npmjs.com/package/javalon) is the javascript wrapper for Avalon's API. Working on both browser and nodejs.
-
-### HTTP API
-Avalon's API uses 100% JSON. The GET calls will allow you to fetch the public information which is already available through the d.tube UI.
-
-Examples:
-* Account data: /account/:username, i.e https://avalon.d.tube/account/rt-international
-* Video data: /content/:username/:link i.e. https://avalon.d.tube/content/rongibsonchannel/QmdjVMdeTtTEy1CJTDbtjuaiRKMP6H364Dv4n7FsWGpnPH
-
-### Full list of API endpoints
-[https://docs.google.com/spreadsheets/d/1ORoHjrdq5V5OkTChijTUOEYRzTujVXTzCyNYt-ysVhw/edit?usp=drive_web&ouid=109732502499946497195](https://docs.google.com/spreadsheets/d/1ORoHjrdq5V5OkTChijTUOEYRzTujVXTzCyNYt-ysVhw/edit?usp=drive_web&ouid=109732502499946497195)
-
-This lists all the available API endpoints for Avalon. We also have recommended security practises if you want to open your node's API to the world. You can do it easily with nginx and [avalon-nginx-config](https://github.com/dtube/avalon-nginx-config).
-
-### Sending Transactions to the network (POST /transact)
-Once you have an account and balance (if you don't, you can create one on [https://signup.d.tube](https://signup.d.tube), your account will start generating bandwidth and voting power (respectively the bw and vt fields in your account data). You can consume those resources by transacting.
-
-Every transaction will have a bandwidth cost, calculated based on the number of bytes required for the storage of your transaction inside a block.
-Certain transaction types will require you to spend voting power, such as publishing a content, voting or tagging a content.
-
-To transact, you need to use the /transact POST call of the Avalon API. All the examples here are for the CLI tool, but the same can be achieved with [Javalon](https://npmjs.org/javalon) in Javascript.
-
-Necessary for all transactions:
-* *key*: your private key
-* * Use -K MyKeyHere to use a plain-text key
-* * Or use -F file.json to use a key inside a file to sign (this will prevent your key from showing on the screen too much)
-* *user*: your username
-
-#### Vote for a leader
-* *target*: the node owner to approve
-```
-node src/cli.js vote-leader -K <key> -M <user> <target>
-
-// alice votes for bob as a leader
-node src/cli.js vote-leader -K 5DPwDJqTvMuykHimmZxThfKttPSNLzJjpbNtkGNnjPAf -M alice bob
+### Setup
+1. Clone the repository
+```bash
+git clone https://github.com/yourusername/ava.git
+cd ava
 ```
 
-#### Unvote a leader
-* *target*: the node owner to approve
-```
-node src/cli.js vote-leader -K <key> -M <user> <target>
-
-// charlie does not want to vote for daniel as a leader anymore
-node src/cli.js unvote-leader -F charlie_key.txt -M charlie daniel
+2. Install dependencies
+```bash
+npm install
 ```
 
-#### Transfer tokens
-* *receiver*: username of the receiver of the transfer
-* *amount*: number of tokens to transfer to the receiver. Warning! 1 DTC in UI = 100 tokens
-* *memo*: arbitrary short text content
-```
-node src/cli.js transfer -K <bob_key> -M <user> <receiver> <amount> <memo>
-// bob sends 50 DTC to charles
-node src/cli.js transfer -K HkUbQ5YpejWVSPt8Qgz8pkPGwkDrMn3XECd4Asn3ANB3 -M bob charles 50 'thank you'
+3. Configure your node
+```bash
+cp config.example.js config.js
+# Edit config.js with your settings
 ```
 
-#### Add a post / Commenting
-* *link*: a short string to be used as the index of the content
-* *parent_author*: the username of the author of the parent post
-* *parent_link*: the link of the parent post
-* *json*: arbitrary json input. example: `{"string":"aye", array:[1,2,3]}`
-* *tag*: arbitrary short text content
-* *weight* : the number of vote tokens to spend on this vote
-```
-node src/cli.js comment -K <key> -M <user> <link> <parent_author> <parent_link> <json>
+4. Start MongoDB
+```bash
+mongod --dbpath /your/db/path
 ```
 
-#### Vote a post
-* *link*: the link of the post to vote on
-* *author*: the username of the author to vote on
-* *weight*: the number of vote tokens to spend on this vote
-* *tag*: arbitrary short text content
-```
-node src/cli.js vote -K <key> -M <user> <link> <author> <weight> <tag>
+5. Start the node
+```bash
+node start.js
 ```
 
-#### Edit your user json object
-* *json*: arbitrary json input. example: `{"string":"aye", array:[1,2,3]}`
-```
-node src/cli.js profile -K <key> -M <user> <json>
-```
-
-#### Follow a user
-* *target*: the user to follow
-```
-node src/cli.js follow -K <key> -M <user> <target>
+For production:
+```bash
+pm2 start start.js --name ava
 ```
 
-#### Unfollow a user
-* *target*: the user to unfollow
-```
-node src/cli.js unfollow -K <key> -M <user> <target>
+## API Endpoints
+
+### Account Endpoints
+- GET `/account/:account` - Get account details
+- GET `/accounts/:skip/:limit` - List accounts with pagination
+- GET `/history/:account/:skip?/:limit?` - Get account transaction history
+
+### Token Endpoints
+- GET `/supply` - Get total token supply
+- GET `/holders/:symbol` - Get token holders for a specific token
+- GET `/distribution/:symbol` - Get token distribution statistics
+
+### NFT Endpoints
+- GET `/nft/collections` - List all NFT collections
+- GET `/nft/collection/:symbol` - Get collection details
+- GET `/nft/tokens/:collection` - List NFTs in a collection
+- GET `/nft/token/:collection/:id` - Get NFT details
+- GET `/nft/account/:account` - List NFTs owned by an account
+
+### Market Endpoints
+- GET `/market/pairs` - List all trading pairs
+- GET `/market/:pair` - Get market details
+- GET `/market/:pair/orderbook` - Get order book
+- GET `/market/:pair/history` - Get trading history
+- GET `/market/account/:account` - Get account's open orders
+
+### Staking Endpoints
+- GET `/staking/pools` - List all staking pools
+- GET `/staking/pool/:id` - Get pool details
+- GET `/staking/stakes/:account` - List account's stakes
+- GET `/staking/rewards/:account` - Get pending rewards
+
+### Transaction Endpoints
+- GET `/tx/:txid` - Get transaction details
+- POST `/tx` - Submit a new transaction
+
+### Block Endpoints
+- GET `/block/:block` - Get block details
+- GET `/count` - Get current block count
+
+### Node Endpoints
+- GET `/peers` - List connected peers
+- GET `/leader` - Get current leader info
+- GET `/schedule` - Get block production schedule
+
+## Transaction Types
+
+The chain supports various transaction types through Steem's custom_json operations:
+
+1. Base Operations
+- TRANSFER (0)
+- APPROVE_NODE (1)
+- DISAPPROVE_NODE (2)
+- ENABLE_NODE (3)
+- USER_JSON (4)
+
+2. DAO Operations (5-14)
+- Chain updates
+- Fund requests
+- Proposals
+- Metadata management
+
+3. Token Operations (15-17)
+- CREATE_TOKENS
+- MINT_TOKENS
+- TRANSFER_TOKENS
+
+4. NFT Operations (18-20)
+- CREATE_NFT_COLLECTION
+- MINT_NFT
+- TRANSFER_NFT
+
+5. Market Operations (21-22)
+- CREATE_MARKET
+- PLACE_ORDER
+
+6. Staking Operations (23-25)
+- CREATE_STAKING_POOL
+- STAKE_TOKENS
+- UNSTAKE_TOKENS
+
+## Running a Node
+
+1. Sync from Genesis
+```bash
+node start.js --replay
 ```
 
-#### Signing a raw transaction
+2. Sync from Snapshot
+```bash
+# Download latest snapshot
+wget https://snapshot.ava.com/latest.tar.gz
+tar -xzvf latest.tar.gz
 
-To create a transaction and export it to a file, you can use the `sign` CLI tool
-```
-node src/cli.js sign <priv_key> <user> <tx> > tmptx.json
-```
-For example to approve a node owner and publishing it only 5 seconds later:
-```
-node src/cli.js sign -K 4L1C3553KRETK3Y -M alice '{"type":1,"data":{"target":"miner1"}}' > tmptx.json
-sleep 5
-curl -H "Content-type:application/json" --data @tmptx.json http://localhost:3001/transact
+# Start node with snapshot
+node start.js
 ```
 
-### Other POST Calls
-
-#### Mine Block
-Will force the node to try to produce a block even if it's unscheduled. Useful for block #1 and working on development
-```
-curl  http://localhost:3001/mineBlock
-``` 
-
-#### Add peer
-Manually force connection to a peer without having to restart the node
-```
-curl -H "Content-type:application/json" --data '{"peer" : "ws://localhost:6001"}' http://localhost:3001/addPeer
+3. Monitor Node
+```bash
+pm2 logs ava
 ```
 
-### Data storage
+## Contributing
 
-### MongoDB
-Avalon saves the state of the chain into mongodb after each block. You can easily query mongodb directly to get any data you want, that wouldn't be provided by the API itself.
-```
-mongo <db_name>
-db.accounts.findOne({name:'master'})
-db.blocks.findOne({_id: 0})
-```
-However be sure not to write to any collection used by avalon in this database (namely the accounts, blocks and contents). If you do, your node will irremediably fork sooner or later.
+1. Fork the repository
+2. Create your feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a new Pull Request
 
-### Elastic Search
-Avalon can also copy the accounts and contents into an elastic search database with [monstache](https://github.com/rwynn/monstache). A configuration file for monstache is provided in the root of this repository. Once running you can do text queries on accounts or contents like so: 
+## License
 
-```
-# search contents
-curl http://localhost:9200/avalon.contents/_search?q=football
-# search accounts
-curl http://localhost:9200/avalon.accounts/_search?q=satoshi
-```
-Please refer to Elastic Search documentation for more complex queries.
-
-D.Tube runs a public Elastic Search mirror of the current testnet on https://search.d.tube
+This project is licensed under the MIT License - see the LICENSE file for details.
