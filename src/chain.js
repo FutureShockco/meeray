@@ -247,8 +247,8 @@ let chain = {
 
         if (steem.isSyncing()) {
             // During sync, just ensure we're not too close to the previous block
-            let timeSinceLastBlock = new Date().getTime() - block.timestamp
-            mineInMs = Math.max(blockTime - timeSinceLastBlock, 0) + 20
+            mineInMs -= (new Date().getTime()-block.timestamp)
+            mineInMs += 20
         } else {
             // Normal operation - use the leader schedule
             if (chain.schedule.shuffle[(block._id) % config.leaders].name === process.env.NODE_OWNER)
@@ -265,13 +265,12 @@ let chain = {
         }
 
         if (mineInMs) {
-            let timeDiff = new Date().getTime() - block.timestamp
-            // Don't let mineInMs go too low
-            mineInMs = Math.max(mineInMs - timeDiff, 0) + 20
-            logr.debug('Trying to mine in ' + mineInMs + 'ms')
+            mineInMs -= (new Date().getTime()-block.timestamp)
+            mineInMs += 20
+            logr.debug('Trying to mine in '+mineInMs+'ms')
             consensus.observer = false
-            // Only check performance during normal operation, skip during sync
-            if (!steem.isSyncing() && mineInMs < config.blockTime/2) {
+            // Always do performance check using current blockTime to prevent collisions
+            if (mineInMs < blockTime/3) {
                 logr.warn('Slow performance detected, will not try to mine next block')
                 return
             }

@@ -125,6 +125,9 @@ module.exports = {
                                     case 'enablenode':
                                         txType = Transaction.Types.ENABLE_NODE
                                         break
+                                    case 'approvenode':
+                                        txType = Transaction.Types.APPROVE_NODE
+                                        break
                                     case 'createtoken':
                                         txType = Transaction.Types.CREATE_TOKEN
                                         break
@@ -175,7 +178,7 @@ module.exports = {
                                     sender: opData.required_posting_auths[0] || opData.required_auths[0],
                                     ts: new Date(steemBlock.timestamp + 'Z').getTime(),
                                     ref: blockNum + ':' + tx.operations.indexOf(op)
-                                }   
+                                }
 
                                 validationPromises.push(new Promise((resolveValidation) => {
                                     transaction.isValid(newTx, new Date(steemBlock.timestamp + 'Z').getTime(), (isValid, error) => {

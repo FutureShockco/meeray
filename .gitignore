@@ -11,3 +11,5 @@ genesis
 apidoc
 .DS_Store
 src/logs/output.log
+scripts/start copy - Copie.bat
+scripts/start copy.bat

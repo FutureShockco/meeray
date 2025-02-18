@@ -43,7 +43,7 @@ setx PEERS "ws://localhost:6001"
 setx MAX_PEERS "20"
 
 :: your user and keys (only useful for active node owners)
-setx NODE_OWNER "futureshock"
+setx NODE_OWNER "observer"
 setx NODE_OWNER_PUB "h2pKuBA3LzBDyBgR8d6x9TuntE7UsKv6oK8QRUfhvEpw"
 setx NODE_OWNER_PRIV "9yMf1Ed1uL7VYq5jQsUKxVzasDvkicKfgZyiKgjZ4YM9"
 

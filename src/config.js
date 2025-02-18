@@ -2,7 +2,7 @@ let config = {
     history: {
         0: {
             // Steem block to start streaming from
-            steemStartBlock: 92981017,
+            steemStartBlock: 92984622,
             // this is the block 0 configuration for mainnet
             accountPriceBase: 20000,
             accountPriceCharMult: 4,
@@ -23,7 +23,7 @@ let config = {
             blockHashSerialization: 1,
             // the block time in ms
             blockTime: 3000,
-            syncBlockTime: 1000,
+            syncBlockTime: 1500,
             // the number of ms needed for 0.01 DTC to generate 1 byte of bw
             bwGrowth: 36000000, // +10 bytes per hour per DTC (3600 * 1000 * 100 / 10)
             // the maximum bandwidth an account can have available
