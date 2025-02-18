@@ -38,7 +38,7 @@ Echelon is a next generation sidechain designed to extend the capabilities of th
 ### Setup
 1. Clone the repository
 ```bash
-git clone https://github.com/hightouch67/ava.git
+git clone https://github.com/hightouch67/echelon.git
 cd ava
 ```
 
@@ -159,7 +159,7 @@ node start.js --replay
 2. Sync from Snapshot
 ```bash
 # Download latest snapshot
-wget https://snapshot.ava.com/latest.tar.gz
+wget https://snapshot.steemx.com/latest.tar.gz
 tar -xzvf latest.tar.gz
 
 # Start node with snapshot
