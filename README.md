@@ -179,6 +179,12 @@ pm2 logs ava
 4. Push to the branch
 5. Create a new Pull Request
 
+## Credits & Acknowledgments
+
+This project was originally forked from Avalon, but it has since undergone extensive modifications, improvements, and new features that make it a unique evolution of the original concept.
+
+We appreciate the foundation laid by the Avalon developers and acknowledge their contributions to the open-source community.
+
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
