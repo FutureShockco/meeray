@@ -243,45 +243,35 @@ let chain = {
         }
 
         let mineInMs = null
-        let blockTime = steem.isSyncing() ? config.syncBlockTime : config.blockTime
-
-        if (steem.isSyncing()) {
-            // During sync, just ensure we're not too close to the previous block
-            mineInMs -= (new Date().getTime()-block.timestamp)
-            mineInMs += 20
-        } else {
-            // Normal operation - use the leader schedule
-            if (chain.schedule.shuffle[(block._id) % config.leaders].name === process.env.NODE_OWNER)
-                mineInMs = blockTime
-            else
-                for (let i = 1; i < 2*config.leaders; i++) {
-                    if (!chain.recentBlocks[chain.recentBlocks.length - i])
-                        break
-                    if (chain.recentBlocks[chain.recentBlocks.length - i].miner === process.env.NODE_OWNER) {
-                        mineInMs = (i+1)*blockTime
-                        break
-                    }
-                }
-        }
+        // if we are the next scheduled witness, try to mine in time
+        if (chain.schedule.shuffle[(block._id)%config.leaders].name === process.env.NODE_OWNER)
+            mineInMs = config.blockTime
+        // else if the scheduled leaders miss blocks
+        // backups witnesses are available after each block time intervals
+        else for (let i = 1; i < 2*config.leaders; i++)
+            if (chain.recentBlocks[chain.recentBlocks.length - i]
+            && chain.recentBlocks[chain.recentBlocks.length - i].miner === process.env.NODE_OWNER) {
+                mineInMs = (i+1)*config.blockTime
+                break
+            }
 
         if (mineInMs) {
             mineInMs -= (new Date().getTime()-block.timestamp)
             mineInMs += 20
             logr.debug('Trying to mine in '+mineInMs+'ms')
             consensus.observer = false
-            // Always do performance check using current blockTime to prevent collisions
-            if (mineInMs < blockTime/3) {
+            if (mineInMs < config.blockTime/2) {
                 logr.warn('Slow performance detected, will not try to mine next block')
                 return
             }
-            chain.worker = setTimeout(function () {
-                chain.mineBlock(function (error, finalBlock) {
+            chain.worker = setTimeout(function(){
+                chain.mineBlock(function(error, finalBlock) {
                     if (error)
                         logr.warn('miner worker trying to mine but couldnt', finalBlock)
                 })
             }, mineInMs)
         }
-
+            
     },
     addBlock: async (block, cb) => {
         // add the block in our own db
