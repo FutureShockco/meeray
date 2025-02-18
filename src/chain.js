@@ -243,24 +243,27 @@ let chain = {
         }
 
         let mineInMs = null
+        // Get the appropriate block time based on sync state
+        let blockTime = steem.isSyncing() ? config.syncBlockTime : config.blockTime
+        
         // if we are the next scheduled witness, try to mine in time
         if (chain.schedule.shuffle[(block._id)%config.leaders].name === process.env.NODE_OWNER)
-            mineInMs = config.blockTime
+            mineInMs = blockTime
         // else if the scheduled leaders miss blocks
         // backups witnesses are available after each block time intervals
         else for (let i = 1; i < 2*config.leaders; i++)
             if (chain.recentBlocks[chain.recentBlocks.length - i]
             && chain.recentBlocks[chain.recentBlocks.length - i].miner === process.env.NODE_OWNER) {
-                mineInMs = (i+1)*config.blockTime
+                mineInMs = (i+1)*blockTime
                 break
             }
 
         if (mineInMs) {
             mineInMs -= (new Date().getTime()-block.timestamp)
             mineInMs += 20
-            logr.debug('Trying to mine in '+mineInMs+'ms')
+            logr.debug('Trying to mine in '+mineInMs+'ms'+' (sync: '+steem.isSyncing()+')')
             consensus.observer = false
-            if (mineInMs < config.blockTime/2) {
+            if (mineInMs < blockTime/4) {
                 logr.warn('Slow performance detected, will not try to mine next block')
                 return
             }
