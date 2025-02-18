@@ -1,6 +1,6 @@
-# AVA Chain
+# Echelon: Powering Steem's future
 
-AVA is a sidechain implementation that extends the Steem blockchain with advanced features like tokens, NFTs, markets, and staking. It processes Steem custom_json operations to enable these additional functionalities while maintaining the security and decentralization of the Steem blockchain.
+Echelon is a next generation sidechain designed to extend the capabilities of the Steem Blockchain with advanced features like tokens, NFTs, markets, and staking. It processes Steem custom_json operations to enable these additional functionalities while maintaining the security and decentralization of the Steem blockchain.
 
 ## Features
 
