@@ -139,7 +139,7 @@ let config = {
             blockHashSerialization: 2,
             burnAccountIsBlackhole: true,
 
-            // avalon dao
+            // echelon dao
             daoEnabled: true,
             daoLeaderSnapshotBlocks: 30,
             daoMembers: [],

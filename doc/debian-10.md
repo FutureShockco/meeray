@@ -1,12 +1,12 @@
-# Avalon install procedure for debian 10:
+# Echelon install procedure for debian 10:
 
 Make sure debian is up-to-date and download git and a few other packages from the debian repos.
 ```bash
 sudo apt-get update
 sudo apt-get upgrade
 sudo apt-get install git wget tmux htop jq unzip
-git clone https://github.com/dtube/avalon.git
-cd avalon/
+git clone https://github.com/hightouch/echelon.git
+cd echelon/
 ```
 
 Install NodeJS + NPM
@@ -14,7 +14,7 @@ Install NodeJS + NPM
 sudo apt-get install nodejs npm
 ```
 
-Check node version with `node -v`. Avalon runs with node v14 and v16 only. If needed, install NVM and install and use other node versions:
+Check node version with `node -v`. Echelon runs with node v14 and v16 only. If needed, install NVM and install and use other node versions:
 ```bash
 wget -qO- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash
 nvm install v16
@@ -35,9 +35,9 @@ sudo systemctl enable mongod
 sudo systemctl start mongod
 ```
 
-And install NPM modules that Avalon uses.
+And install NPM modules that Echelon uses.
 ```bash
 npm install
 ```
 
-Then, you should be able to launch an avalon development chain by running the node with `./scripts/start.sh`. If you want to connect to an existing network, read [Syncing your node](./syncing-your-node.md) doc.
+Then, you should be able to launch an echelon development chain by running the node with `./scripts/start.sh`. If you want to connect to an existing network, read [Syncing your node](./syncing-your-node.md) doc.

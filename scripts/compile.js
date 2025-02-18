@@ -14,8 +14,8 @@ if (arch === 'x32')
     arch = 'x86'
 
 var target = 'node'+nodeVersion+'-'+platform+'-'+arch
-console.log('Compiling avalon for '+target)
-var cmd = 'src/cli.js --output '+outPath+'/avalon --targets '+target
+console.log('Compiling echelon for '+target)
+var cmd = 'src/cli.js --output '+outPath+'/echelon --targets '+target
 
 const compile_cli = spawn('pkg', cmd.split(' '))
 compile_cli.stdout.on('data', function (data) {
@@ -27,10 +27,10 @@ compile_cli.stderr.on('data', function (data) {
 })
 
 compile_cli.on('exit', function (code) {
-    console.log('Finished compiling avalon')
-    console.log('Compiling avalond for '+target)
+    console.log('Finished compiling echelon')
+    console.log('Compiling echelond for '+target)
 
-    cmd = 'src/main.js --options stack-size=65500 --output '+outPath+'/avalond --targets '+target
+    cmd = 'src/main.js --options stack-size=65500 --output '+outPath+'/echelond --targets '+target
     const compile_daemon = spawn('pkg', cmd.split(' '))
     compile_daemon.stdout.on('data', function (data) {
         console.log(data.toString())
@@ -41,7 +41,7 @@ compile_cli.on('exit', function (code) {
     })
     
     compile_daemon.on('exit', function (code) {
-        console.log('Finished compiling avalond')
+        console.log('Finished compiling echelond')
     })
 })
 

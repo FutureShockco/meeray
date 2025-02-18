@@ -7,7 +7,7 @@
 #export P2P_HOST=0.0.0.0
 
 # MongoDB configuration
-#export DB_NAME=avalon
+#export DB_NAME=echelon
 #export DB_URL=mongodb://localhost:27017
 
 # Directory to folder containing blocks.bson file

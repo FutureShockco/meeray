@@ -27,20 +27,20 @@ RUN apt-get -y update && apt-get install -y openssl vim tmux locales-all curl
 # Install nvm with node and npm
 RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && apt-get install -y nodejs
 
-LABEL "project.home"="https://github.com/dtube/avalon"
-RUN cd / && git clone https://github.com/dtube/avalon
+LABEL "project.home"="https://github.com/dtube/echelon"
+RUN cd / && git clone https://github.com/dtube/echelon
 
-RUN mkdir /avalon/log
-RUN mkdir /avalon/genesis
-RUN mkdir /avalon/blocks
-WORKDIR /avalon
+RUN mkdir /echelon/log
+RUN mkdir /echelon/genesis
+RUN mkdir /echelon/blocks
+WORKDIR /echelon
 RUN npm install
 RUN npm install --save axios
-RUN echo "" > log/avalon.log
+RUN echo "" > log/echelon.log
 
-VOLUME $HOME/avalon/logs /avalon/log
-VOLUME $HOME/avalon/mongodb /data/db
-VOLUME $HOME/avalon/blocks /avalon/blocks
+VOLUME $HOME/echelon/logs /echelon/log
+VOLUME $HOME/echelon/mongodb /data/db
+VOLUME $HOME/echelon/blocks /echelon/blocks
 
 ADD ./scripts/start_dtube.sh ./scripts/start_dtube.sh
 ADD ./scripts/start_mainnet.sh ./scripts/start_mainnet.sh

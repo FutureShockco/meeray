@@ -3,9 +3,7 @@ const http = require('http')
 
 var apis = [
     'http://localhost:3001',
-    'https://avalon.d.tube',
-    'https://avalon.oneloved.tube',
-    'https://avalon.tibfox.com',
+    'https://rpc.steemx.com'
 ]
 
 var leaders = [

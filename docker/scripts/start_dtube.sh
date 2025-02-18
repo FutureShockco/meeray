@@ -8,8 +8,8 @@ echo "Running dtube node"
 node restartMining.js &
 echo
 echo "Cleaning log folder..."
-rm /avalon/log/*
-touch /avalon/log/avalon.log
+rm /echelon/log/*
+touch /echelon/log/echelon.log
 secs=5
 msg=" ..."
 while [ $secs -gt 0 ]
@@ -18,4 +18,4 @@ do
     sleep 1
 done
 echo
-tail -f log/avalon.log
+tail -f log/echelon.log

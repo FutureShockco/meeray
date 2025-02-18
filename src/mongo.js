@@ -1,4 +1,4 @@
-const db_name = process.env.DB_NAME || 'avalon'
+const db_name = process.env.DB_NAME || 'echelon'
 const db_url = process.env.DB_URL || 'mongodb://localhost:27017'
 const MongoClient = require('mongodb').MongoClient
 const fs = require('fs')
@@ -104,7 +104,6 @@ let mongo = {
         logr.info('Inserting new master account: '+config.masterName)
         await db.collection('accounts').insertOne({
             name: config.masterName,
-            pub: config.masterPub,
             pub_leader: config.masterPubLeader || config.masterPub,
             balance: config.masterBalance,
             // we set those arbitrarily
@@ -125,7 +124,6 @@ let mongo = {
         await db.collection('accounts').createIndex({name:1})
         await db.collection('accounts').createIndex({balance:1})
         await db.collection('accounts').createIndex({node_appr:1})
-        await db.collection('accounts').createIndex({pub:1})
         await db.collection('accounts').createIndex({'keys.pub':1})
         await db.collection('tokens').createIndex({symbol:1})
     },

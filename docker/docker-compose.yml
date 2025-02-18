@@ -1,15 +1,15 @@
 version: "3.2"
 services:
-  avalon:
+  echelon:
     build:
         context: .
         dockerfile: Dockerfile
         args:
           - rebuild
 
-    image: avalon:1.0.0
-    hostname: avalon
-    container_name: avalon
+    image: echelon:1.0.0
+    hostname: echelon
+    container_name: echelon
 
     deploy:
       #run as 'docker-compose --compatibility up' to avoid warning
@@ -19,9 +19,9 @@ services:
           memory: 8G
 
     volumes:
-      - $HOME/avalon/mongodb:/var/lib/mongodb
-      - $HOME/avalon/logs:/data/avalon/log
-      - $HOME/avalon/blocks:/data/avalon/blocks
+      - $HOME/echelon/mongodb:/var/lib/mongodb
+      - $HOME/echelon/logs:/data/echelon/log
+      - $HOME/echelon/blocks:/data/echelon/blocks
 
     #restart: on-failure
 
@@ -36,7 +36,7 @@ services:
       - DB_URL=${DB_URL}
       - MONGODBDIR=/var/lib/mongodb
       # Directory to folder containing blocks.bson file
-      - BLOCKS_DIR=/data/avalon/blocks/
+      - BLOCKS_DIR=/data/echelon/blocks/
         # peering configuration
         #- OFFLINE=${OFFLINE}
         #- NO_DISCOVERY=${NO_DISCOVERY}
@@ -88,7 +88,7 @@ services:
       - $HTTP_PORT:$HTTP_PORT
       - $P2P_PORT:$P2P_PORT
 
-    #command: /avalon/scripts/start.sh
+    #command: /echelon/scripts/start.sh
     #command: ["node", "--stack-size=65500", "src/main.js"]
     #command: tail -f /dev/null
     command: ["./scripts/start_dtube.sh"]

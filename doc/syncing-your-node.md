@@ -1,6 +1,6 @@
-# Sync your Avalon node
+# Sync your Echelon node
 
-Once your avalon node and dependencies are setup correctly, if you run it with `./scripts/start.sh`, it will start a new developement chain. Instead, you probably want to sync your node to the mainnet.
+Once your echelon node and dependencies are setup correctly, if you run it with `./scripts/start.sh`, it will start a new developement chain. Instead, you probably want to sync your node to the mainnet.
 
 First, we need to download the genesis block (block #0) and save it as `./genesis/genesis.zip`:
 ```bash
@@ -24,9 +24,9 @@ You would also need to specify the path to the folder containing `blocks.bson` f
 export BLOCKS_DIR=/path/to/blocks/dir
 ```
 
-Then finally you want to start replaying the blocks. Unless this is a brand new node install, your avalon database will probably contain data. You will need to wipe it before starting a replay.
+Then finally you want to start replaying the blocks. Unless this is a brand new node install, your echelon database will probably contain data. You will need to wipe it before starting a replay.
 
-You can wipe the mongodb by doing `mongosh avalon --eval "db.dropDatabase()"` (assuming you are using the default 'avalon' db name).
+You can wipe the mongodb by doing `mongosh echelon --eval "db.dropDatabase()"` (assuming you are using the default 'echelon' db name).
 
 Finally, to replay the blocks and transactions, you have 3 options:
 
@@ -39,7 +39,7 @@ This is the fastest method that reverifies locally all the past blocks and trans
 ```bash
 cd /path/to/blocks/dir
 wget -c https://backup.d.tube/blocks.bson
-cd /path/to/avalon/directory
+cd /path/to/echelon/directory
 REBUILD_STATE=1 ./scripts/start.sh
 ```
 
@@ -55,7 +55,7 @@ mkdir dump
 cd dump
 wget https://backup.d.tube/$(date -u +%H).tar.gz
 tar xfvz ./*
-mongorestore -d avalon ./
+mongorestore -d echelon ./
 cd ..
 rm -rf ./dump
 ./scripts/start.sh
@@ -66,6 +66,6 @@ Alternatively, if you do not want to have to trust our backups (coming from d.tu
 
 First, shut-down your node to avoid any new incoming data contaminating your backup. Then just run:
 ```
-mongodump -d avalon -o ~/avalon-backup/
+mongodump -d echelon -o ~/echelon-backup/
 ```
 And restart your node

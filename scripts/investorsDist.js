@@ -557,7 +557,7 @@ console.log(totalDTC)
 const url = 'mongodb://localhost:27017';
  
 // Database Name
-const dbName = 'avalon2';
+const dbName = 'echelon2';
  
 // // Use connect method to connect to the server
 MongoClient.connect(url, {useUnifiedTopology: true}, function(err, client) {

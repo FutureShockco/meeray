@@ -1,5 +1,5 @@
 {
-  "name": "avalon",
+  "name": "echelon",
   "version": "1.6.6",
   "description": "",
   "scripts": {
@@ -53,10 +53,10 @@
     "uppercaseLabel": false
   },
   "apidoc": {
-    "name": "Avalon",
-    "title": "Avalon API Documentation",
-    "description": "REST API documentation for Avalon blockchain",
-    "sampleUrl": "https://api.avalonblocks.com",
+    "name": "echelon",
+    "title": "echelon API Documentation",
+    "description": "REST API documentation for echelon blockchain",
+    "sampleUrl": "https://api.echelonblocks.com",
     "version": "1.6.2"
   },
   "devDependencies": {

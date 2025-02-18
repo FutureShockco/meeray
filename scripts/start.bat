@@ -6,7 +6,7 @@ setx HTTP_PORT "3001"
 setx P2P_PORT "6001"
 
 :: MongoDB configuration
-setx DB_NAME "avalon"
+setx DB_NAME "echelon"
 setx DB_URL "mongodb://localhost:27017"
 
 :: Peering configuration

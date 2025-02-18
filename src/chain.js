@@ -70,10 +70,10 @@ let chain = {
         let previousBlock = chain.getLatestBlock()
         let nextIndex = previousBlock._id + 1
         let nextTimestamp = new Date().getTime()
-        let nextSteemBlock = previousBlock.steemblock + 1
+        let previousSteemBlock = previousBlock.steemblock + 1
 
         // Process Steem block first to get its transactions in the mempool
-        steem.processBlock(nextSteemBlock).then((res) => {
+        steem.processBlock(previousSteemBlock).then((nextSteemBlock) => {
             // Add mempool transactions
             let txs = []
             let mempool = transaction.pool.sort(function (a, b) { return a.ts - b.ts })

@@ -23,10 +23,10 @@ async function downloadFile(fileUrl, outputLocationPath) {
 }
 // END OF COPY-PASTED, SLIGHTLY MODIFIED CODE WITH CC BY-SA 4.0 LICENSE <===
 
-const db_name = process.env.DB_NAME || 'avalon'
+const db_name = process.env.DB_NAME || 'echelon'
 const db_url = process.env.DB_URL || 'mongodb://localhost:27017'
 
-const genesisFilePath = "/avalon/genesis/genesis.zip"
+const genesisFilePath = "/echelon/genesis/genesis.zip"
 const backupUrlMain = process.env.BACKUP_URL || "https://dtube.fso.ovh/"
 const backupUrlOrig = "https://backup.d.tube/"
 
@@ -47,11 +47,11 @@ let config = {
     host: 'http://localhost',
     port: process.env.HTTP_PORT || '3001',
     homeDir: "/home/ec2-user/",
-    testnetDir: "/home/ec2-user/avalon_testnet/tavalon/avalon_testnet/",
-    mainnetDir: "/home/ec2-user/tavalon/avalon/",
+    testnetDir: "/home/ec2-user/echelon_testnet/techelon/echelon_testnet/",
+    mainnetDir: "/home/ec2-user/techelon/echelon/",
     scriptPath: "./scripts/start_mainnet.sh",
-    logPath: "/avalon/log/avalon.log",
-    replayLogPath: "/avalon/log/avalon_replay.log",
+    logPath: "/echelon/log/echelon.log",
+    replayLogPath: "/echelon/log/echelon_replay.log",
     backupUrl: backupUrlOrig + "$(TZ=GMT date +\"%d%h%Y_%H\").tar.gz",
     blockBackupUrl: backupUrlMain + "blocks.bson",
     genesisSourceUrl: backupUrlMain + "genesis.zip",
@@ -87,7 +87,7 @@ var mongo = {
     },
     dropDatabase: (cb) => {
         db.dropDatabase(function() {
-            logr.info("Dropped avalon mongo db.")
+            logr.info("Dropped echelon mongo db.")
             if (typeof cb == 'function') {
                 cb()
             }
@@ -153,7 +153,7 @@ async function getGenesisBlocks() {
                 logr.info("Skipping getGenesisBlock as we already have block data.")
             } else {
                 logr.info("Genesis collection started.")
-                logr.info("Dropping avalon mongo db (getting genesis blocks)")
+                logr.info("Dropping echelon mongo db (getting genesis blocks)")
                 mongo.dropDatabase()
             }
         })
@@ -164,11 +164,11 @@ async function getGenesisBlocks() {
         } else {
             logr.info("Getting genesis.zip")
             shouldGetGenesisBlocks = 0
-            cmd = "cd /avalon"
+            cmd = "cd /echelon"
             cmd += " && "
-            cmd += "if [[ ! -d \"/avalon/genesis\" ]]; then `mkdir -p /avalon/genesis`; fi;"
+            cmd += "if [[ ! -d \"/echelon/genesis\" ]]; then `mkdir -p /echelon/genesis`; fi;"
             runCmd(cmd)
-            downloadFile(config.genesisSourceUrl, "/avalon/genesis/genesis.zip").then(()=>{resolve(true)})
+            downloadFile(config.genesisSourceUrl, "/echelon/genesis/genesis.zip").then(()=>{resolve(true)})
         }
     })
 }
@@ -176,8 +176,8 @@ async function getGenesisBlocks() {
 async function downloadBlocksFile(cb) {
     return new Promise((resolve, reject) => {
         let mtime = null
-        if (fs.existsSync('/data/avalon/blocks/blocks.bson')) {
-            mtime = fs.statSync('/data/avalon/blocks/blocks.bson', (error, stats) => {
+        if (fs.existsSync('/data/echelon/blocks/blocks.bson')) {
+            mtime = fs.statSync('/data/echelon/blocks/blocks.bson', (error, stats) => {
                 if(error) {
                     console.log(error)
                 } else {
@@ -188,7 +188,7 @@ async function downloadBlocksFile(cb) {
         if(Date.now() - mtime > 86400000) { // if the file is older than 1 day, then re-download it.
             backupUrl = config.blockBackupUrl
             logr.info("Downloading blocks.bson file... it may take a while.")
-            downloadFile(backupUrl, "/data/avalon/blocks/blocks.bson").then(() =>{
+            downloadFile(backupUrl, "/data/echelon/blocks/blocks.bson").then(() =>{
                 if (typeof cb == 'function') {
                     cb()
                 }
@@ -209,7 +209,7 @@ function replayAndRebuildStateFromBlocks(cb) {
     runCmd(cmd)
     downloadBlocksFile().then(()=>{
         getGenesisBlocks().then(()=>{
-            cmd = "cd /avalon"
+            cmd = "cd /echelon"
             cmd += " && sleep 2 && "
             cmd += "REBUILD_STATE=1 " + config.scriptPath + " >> " + config.logPath + " 2>&1"
             logr.info("Rebuilding state from blocks commands = ", cmd)
@@ -221,7 +221,7 @@ function replayAndRebuildStateFromBlocks(cb) {
     })
 }
 
-function replayFromAvalonBackup(cb) {
+function replayFromechelonBackup(cb) {
     cmd = "if [[ ! `ps aux | grep -v grep | grep -v defunct | grep mongod` ]]; then `mongod --dbpath " + config.mongodbPath + " > mongo.log 2>&1 &`; fi"
     runCmd(cmd)
 
@@ -229,18 +229,18 @@ function replayFromAvalonBackup(cb) {
     runCmd(cmd)
 
     var backupUrl = config.backupUrl
-    cmd = "cd /avalon"
+    cmd = "cd /echelon"
     cmd += " && "
-    cmd += "if [[ ! -d \"/avalon/dump\" ]]; then `mkdir /avalon/dump`; else `rm -rf /avalon/dump/*`; fi"
+    cmd += "if [[ ! -d \"/echelon/dump\" ]]; then `mkdir /echelon/dump`; else `rm -rf /echelon/dump/*`; fi"
     cmd += " && "
-    cmd += "cd /avalon/dump"
+    cmd += "cd /echelon/dump"
     cmd += " && "
     downloadCmd = "wget -q --show-progress --progress=bar:force " + backupUrl + " >> " + config.replayLogPath + " 2>&1"
     cmd += "if [[ ! -f $(TZ=GMT date +'%d%h%Y_%H').tar.gz ]]; then `" + downloadCmd + "`; fi" +  " && " + "tar xfvz ./*" + " >> " +  config.replayLogPath
     cmd += " && "
     cmd += "if [[ ! `ps aux | grep -v grep | grep -v defunct | grep mongorestore` ]]; then `mongorestore -d " + db_name + " ./ >> " + config.replayLogPath + " 2>&1`; fi"
     cmd += " && "
-    cmd += "cd /avalon"
+    cmd += "cd /echelon"
     cmd += " && "
     cmd += "if [[ ! `ps aux | grep -v grep | grep -v defunct | grep src/main` ]]; then `" + config.scriptPath + " >> " + config.logPath + " 2>1&" + "`; fi"
 
@@ -265,7 +265,7 @@ function checkHeightAndRun() {
                 runCmd(mineStartCmd)
             }
         } else if (prevbHeight == curbHeight) {
-            //runCmd(runAvalonScriptCmd)
+            //runCmd(runechelonScriptCmd)
             if (replayState) {
                 logr.info("Replaying from database")
             } else if (rebuildState) {
@@ -274,7 +274,7 @@ function checkHeightAndRun() {
                 }
                 logr.info("Rebuilding state from blocks")
                     mongo.init(()=> {
-                        logr.info("Dropping avalon mongo db (replayState from database snapshot)")
+                        logr.info("Dropping echelon mongo db (replayState from database snapshot)")
                         mongo.dropDatabase(()=>{
                             replayAndRebuildStateFromBlocks()
                         })
@@ -285,7 +285,7 @@ function checkHeightAndRun() {
                     logr.info('Replay count max reached. Rebuilding block state.')
                     /*
                     mongo.init(function() {
-                        logr.info("Dropping avalon mongo db (replayState from database snapshot)")
+                        logr.info("Dropping echelon mongo db (replayState from database snapshot)")
                         mongo.dropDatabase(function(){
                         })
                     })
@@ -297,10 +297,10 @@ function checkHeightAndRun() {
                     if (curbHeight == 0 || tryRestartForSameHeight == restartThreshold) {
                         tryRestartForSameHeight = 0
                         mongo.init(function() {
-                            logr.info("Dropping avalon mongo db (replayState from database snapshot)")
+                            logr.info("Dropping echelon mongo db (replayState from database snapshot)")
                             mongo.dropDatabase(function(){
                                 replayState = 1
-                                replayFromAvalonBackup(function(replayCount, replayState) {
+                                replayFromechelonBackup(function(replayCount, replayState) {
                                     replayCount++
                                     replayState = 0
                                 })
@@ -311,9 +311,9 @@ function checkHeightAndRun() {
                         cmd = "pgrep \"src/main\" | xargs --no-run-if-empty kill  -9"
                         runCmd(cmd)
 
-                        logr.info("Restarting avalon with new net")
-                        runAvalonScriptCmd = config.scriptPath + " >> " + config.logPath + " 2>&1"
-                        runCmd(runAvalonScriptCmd)
+                        logr.info("Restarting echelon with new net")
+                        runechelonScriptCmd = config.scriptPath + " >> " + config.logPath + " 2>&1"
+                        runCmd(runechelonScriptCmd)
                         tryRestartForSameHeight++
                     }
                 }
@@ -331,15 +331,15 @@ function checkHeightAndRun() {
         if(createNet) {
             mongo.init(function() {
                 logr.info("Creating net")
-                logr.info("Dropping avalon mongo db (creating new net)")
+                logr.info("Dropping echelon mongo db (creating new net)")
                 mongo.dropDatabase(function(){
                     logr.info("Removing genesis.zip")
-                    var removeGenesisCmd = "if [[ -d \"/avalon/genesis/genesis.zip\" ]]; then rm -rf /avalon/genesis; fi"
+                    var removeGenesisCmd = "if [[ -d \"/echelon/genesis/genesis.zip\" ]]; then rm -rf /echelon/genesis; fi"
                     runCmd(removeGenesisCmd)
 
-                    logr.info("Restarting avalon with new net")
-                    runAvalonScriptCmd = config.scriptPath + " >> " + config.logPath + " 2>&1"
-                    runCmd(runAvalonScriptCmd)
+                    logr.info("Restarting echelon with new net")
+                    runechelonScriptCmd = config.scriptPath + " >> " + config.logPath + " 2>&1"
+                    runCmd(runechelonScriptCmd)
                 });
             })
         } else {
@@ -349,10 +349,10 @@ function checkHeightAndRun() {
                 if (replayCheck == 5000) {
                     checkRestartCmd = ""
                     restartMongoDB = "if [[ ! $(ps aux | grep -v grep | grep -v defunct | grep 'mongod --dbpath') ]]; then `mongod --dbpath " + config.mongodbPath + " > mongo.log 2>&1 &`; fi && sleep 20"
-                    restartAvalon = "if [[ ! $(ps aux | grep -v grep | grep -v defunct | grep src/main) ]]; then `" + config.scriptPath + " >> " + config.logPath + " 2>1&" + "`; fi"
+                    restartechelon = "if [[ ! $(ps aux | grep -v grep | grep -v defunct | grep src/main) ]]; then `" + config.scriptPath + " >> " + config.logPath + " 2>1&" + "`; fi"
 
                     checkRestartCmd =  restartMongoDB + " && "
-                    checkRestartCmd += "echo '"+mongo.getHeadBlock()+"' > tmp.out 2>&1 && a=$(cat tmp.out) && sleep 5 && echo '" + mongo.getHeadBlock() + "'> tmp2.out 2>&1 && b=$(cat tmp2.out) && sleep 30 && if [ $a == $b ]; then ` "+ restartAvalon + " `; fi"
+                    checkRestartCmd += "echo '"+mongo.getHeadBlock()+"' > tmp.out 2>&1 && a=$(cat tmp.out) && sleep 5 && echo '" + mongo.getHeadBlock() + "'> tmp2.out 2>&1 && b=$(cat tmp2.out) && sleep 30 && if [ $a == $b ]; then ` "+ restartechelon + " `; fi"
                     logr.info("Check restart command = " + checkRestartCmd)
                     runCmd(checkRestartCmd)
                     replayState = 0
@@ -367,11 +367,11 @@ function checkHeightAndRun() {
         }
         if (rebuildState == 0 && replayState == 0 && ! rebuildUnfinished) {
             checkRestartCmd = ""
-            restartMongoDB = "if [[ ! $(ps aux | grep -v grep | grep -v defunct | grep 'mongod --dbpath') ]]; then mongod --dbpath /data/db >> /avalon/log/mongo.log 2>&1; fi && sleep 20"
-            restartAvalon = "if [[ ! $(ps aux | grep -v grep | grep -v defunct | grep src/main) ]]; then `" + config.scriptPath + " >> " + config.logPath + " 2>1&" + "`; fi;"
+            restartMongoDB = "if [[ ! $(ps aux | grep -v grep | grep -v defunct | grep 'mongod --dbpath') ]]; then mongod --dbpath /data/db >> /echelon/log/mongo.log 2>&1; fi && sleep 20"
+            restartechelon = "if [[ ! $(ps aux | grep -v grep | grep -v defunct | grep src/main) ]]; then `" + config.scriptPath + " >> " + config.logPath + " 2>1&" + "`; fi;"
 
             checkRestartCmd = restartMongoDB + " && "
-            checkRestartCmd += "echo '"+mongo.getHeadBlock()+"' > tmp.out 2>&1 && a=$(cat tmp.out) && sleep 15 && echo '"+mongo.getHeadBlock()+"' > tmp2.out 2>&1 && b=$(cat tmp2.out) && sleep 2 && if [ \"$a\" == \"$b\" ] ; then "+restartAvalon+" fi;"
+            checkRestartCmd += "echo '"+mongo.getHeadBlock()+"' > tmp.out 2>&1 && a=$(cat tmp.out) && sleep 15 && echo '"+mongo.getHeadBlock()+"' > tmp2.out 2>&1 && b=$(cat tmp2.out) && sleep 2 && if [ \"$a\" == \"$b\" ] ; then "+restartechelon+" fi;"
             logr.debug("Check restart command = " + checkRestartCmd)
             runCmd(checkRestartCmd)
         }
@@ -382,20 +382,20 @@ function checkHeightAndRun() {
 
 
 restartMongoDB = "if [[ ! `ps aux | grep -v grep | grep -v defunct | grep 'mongod --dbpath'` ]]; then `mongod --dbpath " + config.mongodbPath + " &`; sleep 15; fi"
-restartAvalon = "if [[ ! `ps aux | grep -v grep | grep -v defunct | grep src/main` ]]; then `echo \" Restarting avalon\" >> " + config.logPath + " `; `" + config.scriptPath + " >> " + config.logPath + " 2>1&" + "`; fi"
+restartechelon = "if [[ ! `ps aux | grep -v grep | grep -v defunct | grep src/main` ]]; then `echo \" Restarting echelon\" >> " + config.logPath + " `; `" + config.scriptPath + " >> " + config.logPath + " 2>1&" + "`; fi"
 // running first time
 if (shouldGetGenesisBlocks) {
     getGenesisBlocks().then(()=>{
         runCmd(restartMongoDB)
         if(rebuildState == 0) {
-            runCmd(restartAvalon)
+            runCmd(restartechelon)
         }
         checkHeightAndRun()
     })
 } else {
     runCmd(restartMongoDB)
     if(rebuildState == 0) {
-        runCmd(restartAvalon)
+        runCmd(restartechelon)
     }
     checkHeightAndRun()
 }
