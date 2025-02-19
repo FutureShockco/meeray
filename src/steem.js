@@ -13,6 +13,8 @@ let processing = false
 let processingBlocks = []
 let isSyncing = false
 let syncInterval = null
+let syncGracePeriod = false
+let syncGraceTimeout = null
 const MAX_CONSECUTIVE_ERRORS = 10
 const MIN_RETRY_DELAY = 3000
 const MAX_RETRY_DELAY = 30000
@@ -250,60 +252,52 @@ const processTransactions = async (steemBlock, blockNum) => {
 
 // Update current Steem block
 const updateSteemBlock = async () => {
-    // Check circuit breaker
-    if (isCircuitBreakerOpen()) {
-        logr.warn('Circuit breaker is open, skipping block update')
-        return
-    }
-
     try {
-        // Perform health check
-        if (healthCheckFailures > 0 && !await checkApiHealth()) {
-            logr.warn('Skipping block update due to failed health check')
+        if (isCircuitBreakerOpen()) {
             return
         }
 
         const dynGlobalProps = await client.database.getDynamicGlobalProperties()
-            .catch(err => {
-                logr.error(`Failed to get dynamic global properties: ${err.message}\nStack: ${err.stack}`)
-                return null
-            })
-
         if (!dynGlobalProps) {
-            consecutiveErrors++
-            
-            if (consecutiveErrors >= CIRCUIT_BREAKER_THRESHOLD) {
-                circuitBreakerOpen = true
-                lastCircuitBreakerTrip = Date.now()
-                logr.error('Circuit breaker tripped due to too many consecutive errors')
-                return
-            }
-
-            if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-                const delay = calculateRetryDelay()
-                logr.warn(`Too many consecutive errors, waiting ${delay}ms before retrying...`)
-                await new Promise(resolve => setTimeout(resolve, delay))
-            }
-            return
+            throw new Error('Failed to get dynamic global properties')
         }
 
         currentSteemBlock = dynGlobalProps.head_block_number
         resetErrorState()
 
         const newSyncState = (currentSteemBlock - nextSteemBlock) > 10
-
+        
         if (newSyncState !== isSyncing) {
             isSyncing = newSyncState
             if (isSyncing) {
+                // Entering sync mode
                 logr.info(`Entering sync mode, ${currentSteemBlock - nextSteemBlock} blocks behind`)
                 if (syncInterval) clearInterval(syncInterval)
+                if (syncGraceTimeout) clearTimeout(syncGraceTimeout)
+                syncGracePeriod = false
                 syncInterval = setInterval(updateSteemBlock, 1000)
                 processBlock(nextSteemBlock)
             } else {
+                // Exiting sync mode
                 logr.info('Exiting sync mode, caught up with Steem')
                 if (syncInterval) clearInterval(syncInterval)
-                syncInterval = setInterval(updateSteemBlock, 3000)
+                
+                // Set grace period
+                syncGracePeriod = true
+                if (syncGraceTimeout) clearTimeout(syncGraceTimeout)
+                
+                // After grace period, resume normal operation
+                syncGraceTimeout = setTimeout(() => {
+                    logr.info('Grace period ended, resuming normal operation')
+                    syncGracePeriod = false
+                    syncInterval = setInterval(updateSteemBlock, 3000)
+                }, 5000) // 5 second grace period
             }
+        }
+
+        // During grace period, keep processing blocks but don't mine
+        if (syncGracePeriod) {
+            processBlock(nextSteemBlock)
         }
     } catch (err) {
         logr.error(`Error getting current Steem block: ${err.message}\nStack: ${err.stack}`)
@@ -314,12 +308,6 @@ const updateSteemBlock = async () => {
             lastCircuitBreakerTrip = Date.now()
             logr.error('Circuit breaker tripped due to too many consecutive errors')
             return
-        }
-
-        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-            const delay = calculateRetryDelay()
-            logr.warn(`Too many consecutive errors, waiting ${delay}ms before retrying...`)
-            await new Promise(resolve => setTimeout(resolve, delay))
         }
     }
 }

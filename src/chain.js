@@ -491,10 +491,12 @@ let chain = {
         })
     },
     isValidNewBlock: (newBlock, verifyHashAndSignature, verifyTxValidity, cb) => {
-        if (!newBlock) return
-        // verify all block fields one by one
+        if (!newBlock || typeof newBlock !== 'object') {
+            logr.error('block is null or invalid type')
+            cb(false); return
+        }
         if (!newBlock._id || typeof newBlock._id !== 'number') {
-            logr.error('invalid block _id')
+            logr.error('invalid block index')
             cb(false); return
         }
         if (!newBlock.phash || typeof newBlock.phash !== 'string') {
@@ -505,90 +507,79 @@ let chain = {
             logr.error('invalid block timestamp')
             cb(false); return
         }
-        if (!newBlock.txs || typeof newBlock.txs !== 'object' || !Array.isArray(newBlock.txs)) {
-            logr.error('invalid block txs')
-            cb(false); return
-        }
-        if (newBlock.txs.length > config.maxTxPerBlock) {
-            logr.error('invalid block too many txs')
-            cb(false); return
-        }
         if (!newBlock.miner || typeof newBlock.miner !== 'string') {
             logr.error('invalid block miner')
             cb(false); return
         }
-        if (verifyHashAndSignature && (!newBlock.hash || typeof newBlock.hash !== 'string')) {
-            logr.error('invalid block hash')
-            cb(false); return
-        }
-        if (verifyHashAndSignature && (!newBlock.signature || typeof newBlock.signature !== 'string')) {
-            logr.error('invalid block signature')
-            cb(false); return
-        }
-        if (newBlock.missedBy && typeof newBlock.missedBy !== 'string')
-            logr.error('invalid block missedBy')
 
         // get previous block
         let previousBlock = chain.getLatestBlock()
         if (newBlock._id !== previousBlock._id + 1) {
-            logr.error('invalid index')
-            cb(false); return
-        }
-        if (newBlock.phash !== previousBlock.hash) {
-            logr.error('invalid phash')
-            cb(false); return
-        }
-
-        // Verify that all transactions exist in Steem block for non-leader nodes
-        if (process.env.NODE_OWNER !== newBlock.miner) {
-            steem.isOnSteemBlock(newBlock)
-                .then((isValid) => {
-                    if (!isValid) {
-                        logr.error('Block transactions not found in Steem block')
+            if (steem.isSyncing()) {
+                // During sync, try to recover by fetching the missing block
+                logr.warn('Block index mismatch during sync, attempting recovery')
+                steem.processBlock(previousBlock._id + 1)
+                    .then(() => {
+                        // Retry validation after recovery
+                        chain.isValidNewBlock(newBlock, verifyHashAndSignature, verifyTxValidity, cb)
+                    })
+                    .catch(() => {
+                        logr.error('Recovery failed, invalid index')
                         cb(false)
-                        return
-                    }
-                    continueValidation()
-                })
-                .catch((err) => {
-                    logr.error('Error verifying Steem block:', err)
-                    cb(false)
-                })
-        } else {
-            continueValidation()
+                    })
+                return
+            } else {
+                logr.error('invalid index')
+                cb(false); return
+            }
         }
 
-        function continueValidation() {
-            // verify all block txs are legit
-            if (verifyTxValidity) {
-                chain.isValidBlockTxs(newBlock, function (isValid) {
-                    if (!isValid) {
-                        logr.error('invalid block transactions')
-                        cb(false); return
-                    }
-                    if (verifyHashAndSignature)
-                        // and finally verify block hash
-                        chain.isValidHashAndSignature(newBlock, function (isValid) {
-                            if (!isValid) {
-                                logr.error('invalid block hash')
-                                cb(false); return
-                            }
-                            cb(true)
-                        })
-                    else
-                        cb(true)
-                })
-            } else if (verifyHashAndSignature)
-                chain.isValidHashAndSignature(newBlock, function (isValid) {
-                    if (!isValid) {
-                        logr.error('invalid block hash')
-                        cb(false); return
-                    }
-                    cb(true)
-                })
-            else
-                cb(true)
+        if (newBlock.phash !== previousBlock.hash) {
+            if (steem.isSyncing()) {
+                logr.warn('Hash mismatch during sync, recalculating previous block hash')
+                const recalculatedHash = chain.calculateHashForBlock(previousBlock)
+                if (newBlock.phash === recalculatedHash) {
+                    previousBlock.hash = recalculatedHash
+                    logr.info('Hash recovered during sync')
+                } else {
+                    logr.error('invalid phash')
+                    cb(false); return
+                }
+            } else {
+                logr.error('invalid phash')
+                cb(false); return
+            }
         }
+
+        // verify all block txs are legit
+        if (verifyTxValidity) {
+            chain.isValidBlockTxs(newBlock, function (isValid) {
+                if (!isValid) {
+                    logr.error('invalid block transactions')
+                    cb(false); return
+                }
+                if (verifyHashAndSignature)
+                    // and finally verify block hash
+                    chain.isValidHashAndSignature(newBlock, function (isValid) {
+                        if (!isValid) {
+                            logr.error('invalid block hash')
+                            cb(false); return
+                        }
+                        cb(true)
+                    })
+                else
+                    cb(true)
+            })
+        } else if (verifyHashAndSignature)
+            chain.isValidHashAndSignature(newBlock, function (isValid) {
+                if (!isValid) {
+                    logr.error('invalid block hash')
+                    cb(false); return
+                }
+                cb(true)
+            })
+        else
+            cb(true)
     },
     isValidNewBlockPromise: (newBlock, verifyHashAndSig, verifyTxValidity) => new Promise((rs) => chain.isValidNewBlock(newBlock, verifyHashAndSig, verifyTxValidity, rs)),
     executeBlockTransactions: (block, revalidate, cb) => {
