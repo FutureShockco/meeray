@@ -130,14 +130,45 @@ let mongo = {
     fillInMemoryBlocks: (cb,headBlock) => {
         let query = {}
         if (headBlock) query._id = {$lt: headBlock}
-        db.collection('blocks').find(query, {
-            sort: {_id: -1},
-            limit: config.ecoBlocksIncreasesSoon ? config.ecoBlocksIncreasesSoon : config.ecoBlocks
-        }).toArray(function(err, blocks) {
+        
+        // First check if blocks are consistent
+        db.collection('blocks').find({}, {
+            sort: {_id: 1}
+        }).toArray(function(err, allBlocks) {
             if (err) throw err
-            chain.recentBlocks = blocks.reverse()
-            eco.loadHistory()
-            cb()
+            
+            // Check for gaps in block numbers
+            let hasGaps = false
+            for (let i = 1; i < allBlocks.length; i++) {
+                if (allBlocks[i]._id !== allBlocks[i-1]._id + 1) {
+                    hasGaps = true
+                    logr.error('Found gap in blocks: ' + allBlocks[i-1]._id + ' -> ' + allBlocks[i]._id)
+                }
+            }
+            
+            if (hasGaps) {
+                logr.warn('Database has gaps in block numbers. Clearing database...')
+                db.collection('blocks').deleteMany({}, () => {
+                    // Reinitialize from genesis
+                    mongo.insertBlockZero().then(() => {
+                        chain.recentBlocks = [chain.getGenesisBlock()]
+                        eco.loadHistory()
+                        cb()
+                    })
+                })
+                return
+            }
+            
+            // If no gaps, proceed with normal loading
+            db.collection('blocks').find(query, {
+                sort: {_id: -1},
+                limit: config.ecoBlocksIncreasesSoon ? config.ecoBlocksIncreasesSoon : config.ecoBlocks
+            }).toArray(function(err, blocks) {
+                if (err) throw err
+                chain.recentBlocks = blocks.reverse()
+                eco.loadHistory()
+                cb()
+            })
         })
     },
     lastBlock: () => new Promise((rs,rj) => {

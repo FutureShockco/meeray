@@ -384,7 +384,7 @@ module.exports = {
     },
     isOnSteemBlock: (block) => {
         return new Promise((resolve, reject) => {
-            client.database.getBlockHeader(block.steemblock)
+            client.database.getBlock(block.steemblock)
                 .then((steemBlock) => {
                     if (!steemBlock) {
                         resolve(false)
