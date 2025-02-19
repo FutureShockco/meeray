@@ -23,7 +23,7 @@ let config = {
             blockHashSerialization: 1,
             // the block time in ms
             blockTime: 3000,
-            syncBlockTime: 1000,
+            syncBlockTime: 1500,
             // the number of ms needed for 0.01 DTC to generate 1 byte of bw
             bwGrowth: 36000000, // +10 bytes per hour per DTC (3600 * 1000 * 100 / 10)
             // the maximum bandwidth an account can have available
