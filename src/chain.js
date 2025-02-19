@@ -70,10 +70,9 @@ let chain = {
         let previousBlock = chain.getLatestBlock()
         let nextIndex = previousBlock._id + 1
         let nextTimestamp = new Date().getTime()
-        let previousSteemBlock = previousBlock.steemblock + 1
-
+        let nextSteemBlock = previousBlock.steemblock + 1
         // Process Steem block first to get its transactions in the mempool
-        steem.processBlock(previousSteemBlock).then((nextSteemBlock) => {
+        steem.processBlock(nextSteemBlock).then(() => {
             // Add mempool transactions
             let txs = []
             let mempool = transaction.pool.sort(function (a, b) { return a.ts - b.ts })
@@ -245,36 +244,36 @@ let chain = {
         let mineInMs = null
         // Get the appropriate block time based on sync state
         let blockTime = steem.isSyncing() ? config.syncBlockTime : config.blockTime
-        
+
         // if we are the next scheduled witness, try to mine in time
-        if (chain.schedule.shuffle[(block._id)%config.leaders].name === process.env.NODE_OWNER)
+        if (chain.schedule.shuffle[(block._id) % config.leaders].name === process.env.NODE_OWNER)
             mineInMs = blockTime
         // else if the scheduled leaders miss blocks
         // backups witnesses are available after each block time intervals
-        else for (let i = 1; i < 2*config.leaders; i++)
+        else for (let i = 1; i < 2 * config.leaders; i++)
             if (chain.recentBlocks[chain.recentBlocks.length - i]
-            && chain.recentBlocks[chain.recentBlocks.length - i].miner === process.env.NODE_OWNER) {
-                mineInMs = (i+1)*blockTime
+                && chain.recentBlocks[chain.recentBlocks.length - i].miner === process.env.NODE_OWNER) {
+                mineInMs = (i + 1) * blockTime
                 break
             }
 
         if (mineInMs) {
-            mineInMs -= (new Date().getTime()-block.timestamp)
+            mineInMs -= (new Date().getTime() - block.timestamp)
             mineInMs += 20
-            logr.debug('Trying to mine in '+mineInMs+'ms'+' (sync: '+steem.isSyncing()+')')
+            logr.debug('Trying to mine in ' + mineInMs + 'ms' + ' (sync: ' + steem.isSyncing() + ')')
             consensus.observer = false
-            if (mineInMs < blockTime/4) {
+            if (mineInMs < blockTime / 4) {
                 logr.warn('Slow performance detected, will not try to mine next block')
                 return
             }
-            chain.worker = setTimeout(function(){
-                chain.mineBlock(function(error, finalBlock) {
+            chain.worker = setTimeout(function () {
+                chain.mineBlock(function (error, finalBlock) {
                     if (error)
                         logr.warn('miner worker trying to mine but couldnt', finalBlock)
                 })
             }, mineInMs)
         }
-            
+
     },
     addBlock: async (block, cb) => {
         // add the block in our own db
@@ -996,6 +995,12 @@ let chain = {
     shutDown: () => {
         chain.shuttingDown = true
         chain.mining = false
+    },
+    signBlock: (block) => {
+        let nextHash = chain.calculateHashForBlock(block)
+        let signature = secp256k1.ecdsaSign(Buffer.from(nextHash, 'hex'), bs58.decode(process.env.NODE_OWNER_PRIV))
+        signature = bs58.encode(signature.signature)
+        return new Block(block._id, block.steemblock, block.phash, block.timestamp, block.txs, block.miner, block.missedBy, block.dist, block.burn, signature, nextHash)
     },
 }
 

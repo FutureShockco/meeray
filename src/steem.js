@@ -13,50 +13,97 @@ let processing = false
 let processingBlocks = []
 let isSyncing = false
 let syncInterval = null
+const MAX_CONSECUTIVE_ERRORS = 10
+const MIN_RETRY_DELAY = 3000
+const MAX_RETRY_DELAY = 30000
+const CIRCUIT_BREAKER_THRESHOLD = 15
+const CIRCUIT_BREAKER_RESET_TIMEOUT = 60000
+
+let consecutiveErrors = 0
+let retryDelay = MIN_RETRY_DELAY
+let circuitBreakerOpen = false
+let lastCircuitBreakerTrip = 0
+let healthCheckFailures = 0
+
+// Cache for prefetched blocks
+let blockCache = new Map()
+let prefetchInProgress = false
+
+const prefetchBlocks = async (startBlock, count = 2) => {
+    if (prefetchInProgress) return
+    prefetchInProgress = true
+    
+    try {
+        const promises = []
+        for (let i = 0; i < count; i++) {
+            const blockNum = startBlock + i
+            if (!blockCache.has(blockNum)) {
+                promises.push(
+                    client.database.getBlock(blockNum)
+                        .then(block => {
+                            if (block) blockCache.set(blockNum, block)
+                            return block
+                        })
+                        .catch(err => {
+                            logr.error(`Failed to prefetch block ${blockNum}: ${err.message}`)
+                            return null
+                        })
+                )
+            }
+        }
+        
+        if (promises.length > 0) {
+            await Promise.all(promises)
+        }
+    } catch (error) {
+        logr.error('Error in prefetchBlocks:', error)
+    } finally {
+        prefetchInProgress = false
+    }
+}
 
 // Function declarations
 const processBlock = async (blockNum) => {
-    if (processingBlocks.includes(blockNum)) return
     processingBlocks.push(blockNum)
     
     try {
-        // During sync, process multiple blocks in parallel
-        if (isSyncing && !processing) {
-            processing = true
-            const batchSize = 10 // Process more blocks at once during sync
-            const promises = []
-            
-            for (let i = 0; i < batchSize && nextSteemBlock + i <= currentSteemBlock; i++) {
-                const nextBlock = nextSteemBlock + i
-                if (!processingBlocks.includes(nextBlock)) {
-                    processingBlocks.push(nextBlock)
-                    promises.push(client.database.getBlock(nextBlock))
-                }
-            }
-            
-            if (promises.length > 0) {
-                const blocks = await Promise.all(promises)
-                for (let i = 0; i < blocks.length; i++) {
-                    const steemBlock = blocks[i]
-                    if (steemBlock) {
-                        const txs = await processTransactions(steemBlock, nextSteemBlock + i)
-                        if (txs.length > 0) {
-                            transaction.addToPool(txs)
-                        }
-                    }
-                    processingBlocks = processingBlocks.filter(b => b !== nextSteemBlock + i)
-                    nextSteemBlock = nextSteemBlock + i + 1
-                }
-            }
-            
-            processing = false
-            return
+        // Check circuit breaker
+        if (isCircuitBreakerOpen()) {
+            logr.warn('Circuit breaker is open, skipping block processing')
+            processingBlocks = processingBlocks.filter(b => b !== blockNum)
+            return blockNum
         }
 
-        const steemBlock = await client.database.getBlock(blockNum)
+        // Start prefetching next blocks while we process current one
+        prefetchBlocks(blockNum + 1)
+
+        // Try to get block from cache first
+        let steemBlock = blockCache.get(blockNum)
+        if (!steemBlock) {
+            // If not in cache, fetch directly
+            steemBlock = await client.database.getBlock(blockNum)
+        } else {
+            // Remove from cache if we used it
+            blockCache.delete(blockNum)
+        }
+
         if (!steemBlock) {
             processingBlocks = processingBlocks.filter(b => b !== blockNum)
-            return
+            consecutiveErrors++
+            
+            if (consecutiveErrors >= CIRCUIT_BREAKER_THRESHOLD) {
+                circuitBreakerOpen = true
+                lastCircuitBreakerTrip = Date.now()
+                logr.error('Circuit breaker tripped due to too many consecutive errors')
+                return blockNum
+            }
+            
+            if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+                const delay = calculateRetryDelay()
+                logr.warn(`Too many consecutive errors, waiting ${delay}ms before retrying...`)
+                await new Promise(resolve => setTimeout(resolve, delay))
+            }
+            return blockNum
         }
 
         const txs = await processTransactions(steemBlock, blockNum)
@@ -66,9 +113,29 @@ const processBlock = async (blockNum) => {
         
         processingBlocks = processingBlocks.filter(b => b !== blockNum)
         nextSteemBlock = blockNum + 1
+        resetErrorState()
+        
+        return blockNum
+
     } catch (error) {
-        logr.error('Error processing block:', error)
+        logr.error(`Error processing block ${blockNum}:`, error)
+        logr.error(`Stack trace: ${error.stack}`)
         processingBlocks = processingBlocks.filter(b => b !== blockNum)
+        consecutiveErrors++
+        
+        if (consecutiveErrors >= CIRCUIT_BREAKER_THRESHOLD) {
+            circuitBreakerOpen = true
+            lastCircuitBreakerTrip = Date.now()
+            logr.error('Circuit breaker tripped due to too many consecutive errors')
+            return blockNum
+        }
+
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+            const delay = calculateRetryDelay()
+            logr.warn(`Too many consecutive errors, waiting ${delay}ms before retrying...`)
+            await new Promise(resolve => setTimeout(resolve, delay))
+        }
+        return blockNum
     }
 }
 
@@ -76,19 +143,24 @@ const processBlock = async (blockNum) => {
 const processTransactions = async (steemBlock, blockNum) => {
     const txs = []
     const validationPromises = []
+    let opIndex = 0
 
     // Process each transaction
     for (let tx of steemBlock.transactions) {
         for (let op of tx.operations) {
             const [opType, opData] = op
 
-            if (opType !== 'custom_json' || opData.id !== 'sidechain')
+            if (opType !== 'custom_json' || opData.id !== 'sidechain') {
+                opIndex++
                 continue
+            }
 
             try {
                 const json = JSON.parse(opData.json)
-                if (!json.contract || !json.contractPayload)
+                if (!json.contract || !json.contractPayload) {
+                    opIndex++
                     continue
+                }
 
                 let txType
                 switch (json.contract.toLowerCase()) {
@@ -136,6 +208,7 @@ const processTransactions = async (steemBlock, blockNum) => {
                         if (!isNaN(typeNum) && Transaction.transactions[typeNum]) {
                             txType = typeNum
                         } else {
+                            opIndex++
                             continue
                         }
                 }
@@ -148,7 +221,7 @@ const processTransactions = async (steemBlock, blockNum) => {
                     },
                     sender: opData.required_posting_auths[0] || opData.required_auths[0],
                     ts: new Date(steemBlock.timestamp + 'Z').getTime(),
-                    ref: blockNum + ':' + tx.operations.indexOf(op)
+                    ref: blockNum + ':' + opIndex
                 }
 
                 validationPromises.push(
@@ -166,6 +239,7 @@ const processTransactions = async (steemBlock, blockNum) => {
             } catch (err) {
                 logr.warn('Error processing Steem transaction', err)
             }
+            opIndex++
         }
     }
 
@@ -176,36 +250,137 @@ const processTransactions = async (steemBlock, blockNum) => {
 
 // Update current Steem block
 const updateSteemBlock = async () => {
+    // Check circuit breaker
+    if (isCircuitBreakerOpen()) {
+        logr.warn('Circuit breaker is open, skipping block update')
+        return
+    }
+
     try {
+        // Perform health check
+        if (healthCheckFailures > 0 && !await checkApiHealth()) {
+            logr.warn('Skipping block update due to failed health check')
+            return
+        }
+
         const dynGlobalProps = await client.database.getDynamicGlobalProperties()
+            .catch(err => {
+                logr.error(`Failed to get dynamic global properties: ${err.message}\nStack: ${err.stack}`)
+                return null
+            })
+
+        if (!dynGlobalProps) {
+            consecutiveErrors++
+            
+            if (consecutiveErrors >= CIRCUIT_BREAKER_THRESHOLD) {
+                circuitBreakerOpen = true
+                lastCircuitBreakerTrip = Date.now()
+                logr.error('Circuit breaker tripped due to too many consecutive errors')
+                return
+            }
+
+            if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+                const delay = calculateRetryDelay()
+                logr.warn(`Too many consecutive errors, waiting ${delay}ms before retrying...`)
+                await new Promise(resolve => setTimeout(resolve, delay))
+            }
+            return
+        }
+
         currentSteemBlock = dynGlobalProps.head_block_number
-        // Check if we're more than 5 blocks behind (more aggressive sync)
+        resetErrorState()
+
         const newSyncState = (currentSteemBlock - nextSteemBlock) > 5
         
-        // If sync state changed, adjust check frequency
         if (newSyncState !== isSyncing) {
             isSyncing = newSyncState
             if (isSyncing) {
-                logr.info('Entering sync mode, '+(currentSteemBlock - nextSteemBlock)+' blocks behind')
-                // Check more frequently during sync
+                logr.info(`Entering sync mode, ${currentSteemBlock - nextSteemBlock} blocks behind`)
                 if (syncInterval) clearInterval(syncInterval)
                 syncInterval = setInterval(updateSteemBlock, 1000)
-                // Trigger immediate block processing
                 processBlock(nextSteemBlock)
             } else {
                 logr.info('Exiting sync mode, caught up with Steem')
-                // Normal operation frequency
                 if (syncInterval) clearInterval(syncInterval)
                 syncInterval = setInterval(updateSteemBlock, 3000)
             }
         }
     } catch (err) {
-        logr.error('Error getting current Steem block:', err)
+        logr.error(`Error getting current Steem block: ${err.message}\nStack: ${err.stack}`)
+        consecutiveErrors++
+        
+        if (consecutiveErrors >= CIRCUIT_BREAKER_THRESHOLD) {
+            circuitBreakerOpen = true
+            lastCircuitBreakerTrip = Date.now()
+            logr.error('Circuit breaker tripped due to too many consecutive errors')
+            return
+        }
+
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+            const delay = calculateRetryDelay()
+            logr.warn(`Too many consecutive errors, waiting ${delay}ms before retrying...`)
+            await new Promise(resolve => setTimeout(resolve, delay))
+        }
     }
+}
+
+// Health monitoring
+const checkApiHealth = async () => {
+    try {
+        const startTime = Date.now()
+        const response = await client.database.getDynamicGlobalProperties()
+        const latency = Date.now() - startTime
+        
+        if (!response) {
+            healthCheckFailures++
+            logr.warn(`API health check failed. Failure count: ${healthCheckFailures}`)
+            return false
+        }
+        
+        healthCheckFailures = 0
+        logr.debug(`API health check passed. Latency: ${latency}ms`)
+        return true
+    } catch (err) {
+        healthCheckFailures++
+        logr.warn(`API health check failed: ${err.message}. Failure count: ${healthCheckFailures}`)
+        return false
+    }
+}
+
+// Circuit breaker check
+const isCircuitBreakerOpen = () => {
+    if (!circuitBreakerOpen) return false
+    
+    // Check if enough time has passed to try resetting the circuit breaker
+    if (Date.now() - lastCircuitBreakerTrip >= CIRCUIT_BREAKER_RESET_TIMEOUT) {
+        circuitBreakerOpen = false
+        logr.info('Circuit breaker reset after timeout period')
+        return false
+    }
+    
+    return true
+}
+
+// Exponential backoff calculation
+const calculateRetryDelay = () => {
+    retryDelay = Math.min(retryDelay * 2, MAX_RETRY_DELAY)
+    return retryDelay
+}
+
+// Reset error handling state
+const resetErrorState = () => {
+    consecutiveErrors = 0
+    retryDelay = MIN_RETRY_DELAY
+    healthCheckFailures = 0
 }
 
 // Initial interval
 syncInterval = setInterval(updateSteemBlock, 3000)
+
+const initPrefetch = () => {
+    const startBlock = nextSteemBlock
+    prefetchBlocks(startBlock)
+}
 
 module.exports = {
     init: (blockNum) => {
@@ -270,5 +445,6 @@ module.exports = {
                 })
         })
     },
-    processBlock: processBlock
+    processBlock: processBlock,
+    initPrefetch
 }
