@@ -168,7 +168,12 @@ node start.js
 
 3. Monitor Node
 ```bash
-pm2 logs ava
+pm2 logs echelon
+```
+
+4. Stop + Reset db + Git update + Restart
+```bash
+ pm2 stop echelon && mongo echelon --eval "db.dropDatabase()" && git pull && pm2 restart echelon && pm2 log echelon
 ```
 
 ## Contributing
