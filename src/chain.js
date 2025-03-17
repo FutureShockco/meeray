@@ -537,7 +537,7 @@ let chain = {
                         .then(() => {
                             chain.recovering = false
                             // Retry validation after recovery
-                            chain.isValidNewBlock(newBlock, verifyHashAndSignature, verifyTxValidity, cb)
+                            // chain.isValidNewBlock(newBlock, verifyHashAndSignature, verifyTxValidity, cb)
                         })
                         .catch(() => {
                             chain.recovering = false
