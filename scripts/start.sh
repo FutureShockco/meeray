@@ -50,7 +50,7 @@ export PEERS=
 export MAX_PEERS=20
 
 # your user and keys (only useful for active node owners)
-export NODE_OWNER="echelon-node1"
+export NODE_OWNER="hightouch"
 export NODE_OWNER_PUB="e27B66QHwRLjnjxi5KAa9G7fLSDajtoB6CxuZ87oTdfS"
 export NODE_OWNER_PRIV="AFW24kVuhjd4YRcK9qVJe72k3tQYJfGH7k45NRhupjLn"
 
