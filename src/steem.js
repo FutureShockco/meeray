@@ -1,7 +1,6 @@
 const dsteem = require('dsteem')
-const client = new dsteem.Client(process.env.STEEM_API)
-const chain = require('./chain.js')
-const cache = require('./cache.js')
+const client = new dsteem.Client([process.env.STEEM_API])
+
 const transaction = require('./transaction.js')
 const Transaction = require('./transactions')
 
