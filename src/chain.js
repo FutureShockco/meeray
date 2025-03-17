@@ -517,14 +517,7 @@ let chain = {
 
         // get previous block
         let previousBlock = chain.getLatestBlock()
-        if (steem.isSyncing()) {
-            logr.warn('Validating block while syncing');
-            // Perform partial validation checks
-            if (!newBlock || typeof newBlock !== 'object') {
-                logr.error('Block is null or invalid type');
-                cb(false); return;
-            }
-        }
+
         if (newBlock._id !== previousBlock._id + 1) {
             if (steem.isSyncing() && !chain.recovering && chain.recoveryAttempts < chain.maxRecoveryAttempts) {
                 // During sync, try to recover by fetching the missing block
@@ -537,7 +530,7 @@ let chain = {
                         .then(() => {
                             chain.recovering = false
                             // Retry validation after recovery
-                            // chain.isValidNewBlock(newBlock, verifyHashAndSignature, verifyTxValidity, cb)
+                            chain.isValidNewBlock(newBlock, verifyHashAndSignature, verifyTxValidity, cb)
                         })
                         .catch(() => {
                             chain.recovering = false
@@ -574,6 +567,34 @@ let chain = {
             }
         }
 
+        // check if miner is normal scheduled one
+        let minerPriority = 0
+        if (chain.schedule.shuffle[(newBlock._id - 1) % config.leaders].name === newBlock.miner)
+            minerPriority = 1
+        // allow miners of n blocks away
+        // to mine after (n+1)*blockTime as 'backups'
+        // so that the network can keep going even if 1,2,3...n node(s) have issues
+        else
+            for (let i = 1; i <= config.leaders; i++) {
+                if (!chain.recentBlocks[chain.recentBlocks.length - i])
+                    break
+                if (chain.recentBlocks[chain.recentBlocks.length - i].miner === newBlock.miner) {
+                    minerPriority = i + 1
+                    break
+                }
+            }
+
+
+        if (minerPriority === 0) {
+            logr.error('unauthorized miner')
+            cb(false); return
+        }
+
+        // check if new block isnt too early
+        if (newBlock.timestamp - previousBlock.timestamp < minerPriority * config.blockTime) {
+            logr.error('block too early for miner with priority #' + minerPriority)
+            cb(false); return
+        }
         // verify all block txs are legit
         if (verifyTxValidity) {
             chain.isValidBlockTxs(newBlock, function (isValid) {
