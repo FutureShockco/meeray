@@ -76,7 +76,7 @@ let config = {
             // masterFee = 19 => <5% fee
             masterFee: 9,
             // the init account username
-            masterName: 'hightouch',
+            masterName: 'echelon-node1',
             // if false master can create accounts with usernames without burning tokens
             masterPaysForUsernames: false,
             // the master account public original key (irrelevant if using genesis)
