@@ -7,8 +7,8 @@
 #export P2P_HOST=0.0.0.0
 
 # MongoDB configuration
-#export DB_NAME=echelon
-#export DB_URL=mongodb://localhost:27017
+export DB_NAME=echelon
+export DB_URL=mongodb://localhost:27017
 
 # Directory to folder containing blocks.bson file
 #export BLOCKS_DIR=
@@ -16,7 +16,7 @@
 # Peering configuration
 #export OFFLINE=1
 #export NO_DISCOVERY=1
-#export DISCOVERY_EXCLUDE=dtube
+#export DISCOVERY_EXCLUDE=echelon-node1
 
 # Enable more modules
 #export NOTIFICATIONS=1
