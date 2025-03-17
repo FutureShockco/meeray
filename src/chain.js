@@ -517,6 +517,14 @@ let chain = {
 
         // get previous block
         let previousBlock = chain.getLatestBlock()
+        if (steem.isSyncing()) {
+            logr.warn('Validating block while syncing');
+            // Perform partial validation checks
+            if (!newBlock || typeof newBlock !== 'object') {
+                logr.error('Block is null or invalid type');
+                cb(false); return;
+            }
+        }
         if (newBlock._id !== previousBlock._id + 1) {
             if (steem.isSyncing() && !chain.recovering && chain.recoveryAttempts < chain.maxRecoveryAttempts) {
                 // During sync, try to recover by fetching the missing block
@@ -557,11 +565,11 @@ let chain = {
                     previousBlock.hash = recalculatedHash
                     logr.info('Hash recovered during sync')
                 } else {
-                    logr.error('invalid phash')
+                    logr.error(`Invalid phash: expected ${recalculatedHash}, got ${newBlock.phash}`)
                     cb(false); return
                 }
             } else {
-                logr.error('invalid phash')
+                logr.error(`Invalid phash: expected ${previousBlock.hash}, got ${newBlock.phash}`)
                 cb(false); return
             }
         }
