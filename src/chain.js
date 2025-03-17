@@ -591,7 +591,13 @@ let chain = {
         }
 
         // check if new block isnt too early
-        if (newBlock.timestamp - previousBlock.timestamp < minerPriority * config.blockTime) {
+        if (steem.isSyncing()) {
+            logr.warn('Block validation while syncing')   
+            if (newBlock.timestamp - previousBlock.timestamp < minerPriority * config.syncBlockTime) {
+                logr.error('block too early for miner with priority #' + minerPriority)
+                cb(false); return
+            }
+        } else if (newBlock.timestamp - previousBlock.timestamp < minerPriority * config.blockTime) {
             logr.error('block too early for miner with priority #' + minerPriority)
             cb(false); return
         }
