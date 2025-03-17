@@ -39,7 +39,7 @@ Echelon is a next generation sidechain designed to extend the capabilities of th
 1. Clone the repository
 ```bash
 git clone https://github.com/hightouch67/echelon.git
-cd ava
+cd echelon
 ```
 
 2. Install dependencies
@@ -67,6 +67,15 @@ For production:
 ```bash
 pm2 start start.js --name ava
 ```
+
+## Testnet
+
+### Nodes/Peers (Ports http:3001, p2p/ws:6001)
+- Dusseldorf: [ws://ws.steemx.com]
+- New York: [ws://157.230.212.22:6001]
+- Amsterdam: [ws://157.245.66.84:6001]
+- Singapour: [ws://188.166.190.109:6001]
+- Sydney: [ws://134.199.149.13:6001]
 
 ## API Endpoints
 
