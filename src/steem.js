@@ -1,5 +1,5 @@
 const dsteem = require('dsteem')
-const client = new dsteem.Client('https://api.justyy.com')
+const client = new dsteem.Client(process.env.STEEM_API)
 const chain = require('./chain.js')
 const cache = require('./cache.js')
 const transaction = require('./transaction.js')
