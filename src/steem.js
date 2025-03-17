@@ -1,4 +1,3 @@
-const config = require('./config.js')
 const dsteem = require('dsteem')
 const client = new dsteem.Client('https://api.justyy.com')
 const chain = require('./chain.js')
@@ -264,7 +263,7 @@ const updateSteemBlock = async () => {
 
         currentSteemBlock = dynGlobalProps.head_block_number
         resetErrorState()
-
+        console.log(config.steemStartBlock)
         const newSyncState = (currentSteemBlock - nextSteemBlock) > 10
         
         if (newSyncState !== isSyncing) {
