@@ -6,7 +6,7 @@ const cache = require('./cache.js')
 const transaction = require('./transaction.js')
 const Transaction = require('./transactions')
 
-let nextSteemBlock = 0
+let nextSteemBlock = config.steemStartBlock || 0
 let lastVerifiedBlock = 0
 let currentSteemBlock = 0
 let processing = false
