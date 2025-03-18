@@ -16,6 +16,7 @@ const MIN_RETRY_DELAY = 1000
 const MAX_RETRY_DELAY = 15000
 const CIRCUIT_BREAKER_THRESHOLD = 30
 const CIRCUIT_BREAKER_RESET_TIMEOUT = 30000
+const MAX_PREFETCH_BLOCKS = 10  // Maximum number of blocks to prefetch at once
 
 let consecutiveErrors = 0
 let retryDelay = MIN_RETRY_DELAY
@@ -545,7 +546,7 @@ module.exports = {
             }
         })
     },
-    processBlock: processBlock,
+    processBlock,
     initPrefetch,
     fetchMissingBlock,
     prefetchBlocks
