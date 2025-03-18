@@ -524,6 +524,9 @@ let chain = {
         
         // from the same chain
         if (previousBlock.hash !== newBlock.phash) {
+            console.log(previousBlock)
+            console.log(newBlock)
+
             logr.error('invalid phash')
             cb(false); return
         }
