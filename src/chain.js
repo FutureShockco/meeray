@@ -514,49 +514,98 @@ let chain = {
         })
     },
     isValidNewBlock: (newBlock, revalidate, skipSteem, cb) => {
-        // Check if block is too early
-        const currentTime = new Date().getTime()
-        const blockTime = steem.isSyncing() ? config.syncBlockTime : config.blockTime
-        const expectedTime = chain.getLatestBlock().timestamp + blockTime
-        
-        if (newBlock.timestamp < expectedTime - config.maxDrift) {
-            logr.error(`Block too early for miner with priority #1. Current time: ${currentTime}, Expected time: ${expectedTime}, Block time: ${newBlock.timestamp}`)
+        if (!newBlock || typeof newBlock !== 'object') {
+            logr.error('block is null or invalid type')
             cb(false)
             return
         }
 
-        // Check if block is too late
-        if (newBlock.timestamp > currentTime + config.maxDrift) {
-            logr.error(`Block too late. Current time: ${currentTime}, Block time: ${newBlock.timestamp}`)
+        // Basic block validation
+        if (!newBlock._id || typeof newBlock._id !== 'number') {
+            logr.error('invalid block index')
+            cb(false)
+            return
+        }
+        if (!newBlock.phash || typeof newBlock.phash !== 'string') {
+            logr.error('invalid block phash')
+            cb(false)
+            return
+        }
+        if (!newBlock.timestamp || typeof newBlock.timestamp !== 'number') {
+            logr.error('invalid block timestamp')
+            cb(false)
+            return
+        }
+        if (!newBlock.miner || typeof newBlock.miner !== 'string') {
+            logr.error('invalid block miner')
             cb(false)
             return
         }
 
-        // Rest of validation...
-        if (newBlock._id !== chain.getLatestBlock()._id + 1) {
-            logr.error('invalid block id')
+        // Get previous block
+        let previousBlock = chain.getLatestBlock()
+        if (previousBlock._id + 1 !== newBlock._id) {
+            logr.error('invalid index')
             cb(false)
             return
         }
 
-        if (newBlock.phash !== chain.getLatestBlock().hash) {
-            logr.error('invalid previous hash')
+        // Check previous hash
+        if (previousBlock.hash !== newBlock.phash) {
+            logr.error('invalid phash')
             cb(false)
             return
         }
 
-        if (newBlock.steemblock !== chain.getLatestBlock().steemblock + 1) {
+        // Check Steem block
+        if (newBlock.steemblock !== previousBlock.steemblock + 1) {
             logr.error('invalid steem block')
             cb(false)
             return
         }
 
+        // Check transaction count
         if (newBlock.txs.length > config.maxTxPerBlock) {
             logr.error('too many transactions')
             cb(false)
             return
         }
 
+        // Check miner priority
+        let minerPriority = 0
+        if (chain.schedule.shuffle[(newBlock._id - 1) % config.leaders].name === newBlock.miner)
+            minerPriority = 1
+        else for (let i = 1; i < 2 * config.leaders; i++)
+            if (chain.recentBlocks[chain.recentBlocks.length - i]
+                && chain.recentBlocks[chain.recentBlocks.length - i].miner === newBlock.miner) {
+                minerPriority = i + 1
+                break
+            }
+
+        if (minerPriority === 0) {
+            logr.error('unauthorized miner')
+            cb(false)
+            return
+        }
+
+        // Check block timing
+        const currentTime = new Date().getTime()
+        const blockTime = steem.isSyncing() ? config.syncBlockTime : config.blockTime
+        const expectedTime = previousBlock.timestamp + (minerPriority * blockTime)
+        
+        if (newBlock.timestamp < expectedTime - config.maxDrift) {
+            logr.error(`Block too early for miner with priority #${minerPriority}. Current time: ${currentTime}, Expected time: ${expectedTime}, Block time: ${newBlock.timestamp}`)
+            cb(false)
+            return
+        }
+
+        if (newBlock.timestamp > currentTime + config.maxDrift) {
+            logr.error(`Block too late. Current time: ${currentTime}, Block time: ${newBlock.timestamp}`)
+            cb(false)
+            return
+        }
+
+        // Validate transactions and signature if needed
         if (!skipSteem) {
             chain.isValidHashAndSignature(newBlock, function (isValid) {
                 if (!isValid) {
