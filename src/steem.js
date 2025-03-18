@@ -548,6 +548,5 @@ module.exports = {
     processBlock: processBlock,
     initPrefetch,
     fetchMissingBlock,
-    prefetchBlocks,
-    isSyncing: () => processes.steem && processes.steem.behindBlocks > 1
+    prefetchBlocks
 }
