@@ -103,7 +103,10 @@ let chain = {
             txs = txs.sort(function (a, b) { return a.ts - b.ts })
 
             transaction.removeFromPool(txs)
-            cb(null, new Block(nextIndex, nextSteemBlock, previousBlock.hash, nextTimestamp, txs, process.env.NODE_OWNER))
+            let newBlock = new Block(nextIndex, nextSteemBlock, previousBlock.hash, nextTimestamp, txs, process.env.NODE_OWNER)
+            // Hash and sign the block immediately
+            newBlock = chain.hashAndSignBlock(newBlock)
+            cb(null, newBlock)
             return
         })
     },
