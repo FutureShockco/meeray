@@ -26,50 +26,51 @@ let healthCheckFailures = 0
 // Cache for prefetched blocks
 let blockCache = new Map()
 let prefetchInProgress = false
+let prefetchTimer = null
 
-const prefetchBlocks = async (startBlock, count = 5) => {
-    if (prefetchInProgress) return
+const prefetchBlocks = async () => {
+    if (prefetchInProgress || circuitBreakerOpen) return
+
     prefetchInProgress = true
-    try {
-        const promises = []
-        const prefetchRange = []
-        
-        // Determine which blocks to prefetch
-        for (let i = 0; i < count; i++) {
-            const blockNum = startBlock + i
-            if (!blockCache.has(blockNum) && !processingBlocks.includes(blockNum)) {
-                prefetchRange.push(blockNum)
-                promises.push(
-                    client.database.getBlock(blockNum)
-                        .then(block => {
-                            if (block) {
-                                blockCache.set(blockNum, block)
-                                // Keep only recent blocks in cache
-                                const maxCacheSize = 100
-                                if (blockCache.size > maxCacheSize) {
-                                    const oldestKey = Array.from(blockCache.keys())[0]
-                                    blockCache.delete(oldestKey)
-                                }
-                            }
-                            return block
-                        })
-                        .catch(err => {
-                            logr.error(`Failed to prefetch block ${blockNum}: ${err.message}`)
-                            return null
-                        })
-                )
+    const currentBlock = nextSteemBlock
+    const latestSteemBlock = await getLatestSteemBlockNum()
+    
+    if (latestSteemBlock && currentBlock <= latestSteemBlock) {
+        try {
+            // Determine how many blocks to prefetch
+            const prefetchCount = Math.min(MAX_PREFETCH_BLOCKS, latestSteemBlock - currentBlock + 1)
+            
+            if (prefetchCount > 0) {
+                logr.debug(`Prefetching ${prefetchCount} Steem blocks starting from ${currentBlock}`)
+                
+                // Prefetch blocks one by one
+                for (let i = 0; i < prefetchCount; i++) {
+                    const blockNum = currentBlock + i
+                    
+                    // Skip if already being processed
+                    if (processingBlocks.includes(blockNum)) {
+                        logr.debug(`Block ${blockNum} is already being processed, skipping prefetch`)
+                        continue
+                    }
+                    
+                    // Skip if already in cache
+                    if (blockCache.get(blockNum)) {
+                        logr.debug(`Block ${blockNum} already in cache, skipping prefetch`)
+                        continue
+                    }
+                    
+                    // Process the block to cache it
+                    await processBlock(blockNum)
+                }
+                
+                logr.debug(`Prefetched ${prefetchCount} blocks successfully`)
             }
+        } catch (error) {
+            logr.error('Error prefetching blocks:', error)
         }
-
-        if (promises.length > 0) {
-            await Promise.all(promises)
-            logr.debug(`Prefetched ${promises.length} blocks starting from ${startBlock}`)
-        }
-    } catch (error) {
-        logr.error('Error in prefetchBlocks:', error)
-    } finally {
-        prefetchInProgress = false
     }
+    
+    prefetchInProgress = false
 }
 
 // Function declarations
@@ -90,7 +91,7 @@ const processBlock = async (blockNum) => {
         }
 
         // Start prefetching next blocks while we process current one
-        prefetchBlocks(blockNum + 1)
+        prefetchBlocks()
 
         // Try to get block from cache first
         let steemBlock = blockCache.get(blockNum)
@@ -405,9 +406,66 @@ const resetErrorState = () => {
 // Initial interval
 syncInterval = setInterval(updateSteemBlock, 3000)
 
-const initPrefetch = () => {
-    const startBlock = nextSteemBlock
-    prefetchBlocks(startBlock)
+const initPrefetch = (startBlock) => {
+    // Initialize prefetching
+    nextSteemBlock = startBlock
+    
+    // Start prefetch process
+    prefetchTimer = setInterval(() => {
+        if (prefetchInProgress) return
+        prefetchBlocks()
+    }, 1000)
+    
+    // Run first prefetch immediately
+    prefetchBlocks()
+}
+
+const fetchMissingBlock = async (blockNum) => {
+    // Function to fetch a specific Steem block that's missing from cache
+    logr.info('Fetching missing Steem block:', blockNum)
+    prefetchInProgress = true
+    
+    try {
+        let retries = 3
+        let steemBlock = null
+        
+        while (retries > 0) {
+            try {
+                steemBlock = await client.database.getBlock(blockNum)
+                if (steemBlock) break
+            } catch (err) {
+                retries--
+                if (retries === 0) throw err
+                await new Promise(resolve => setTimeout(resolve, 1000))
+            }
+        }
+        
+        if (steemBlock) {
+            // Cache the block for future reference
+            blockCache.set(blockNum, steemBlock)
+            logr.debug('Successfully fetched and cached missing block:', blockNum)
+        } else {
+            logr.error('Failed to fetch missing block after retries:', blockNum)
+        }
+        
+        prefetchInProgress = false
+        return steemBlock
+    } catch (err) {
+        prefetchInProgress = false
+        logr.error('Error fetching missing block:', blockNum, err)
+        return null
+    }
+}
+
+// Function to get the latest Steem block number
+const getLatestSteemBlockNum = async () => {
+    try {
+        const dynGlobalProps = await client.database.getDynamicGlobalProperties()
+        return dynGlobalProps.head_block_number
+    } catch (error) {
+        logr.error('Error getting latest Steem block number:', error)
+        return null
+    }
 }
 
 module.exports = {
@@ -423,14 +481,28 @@ module.exports = {
         return isSyncing
     },
     isOnSteemBlock: (block) => {
-        return new Promise((resolve, reject) => {
+        return new Promise(async (resolve, reject) => {
             try {
-                const steemBlock = blockCache.get(block.steemblock)
+                // Try to get the block from cache
+                let steemBlock = blockCache.get(block.steemblock)
+                
+                // If block not in cache, try to fetch it
                 if (!steemBlock) {
-                    logr.warn(`Steem block ${block.steemblock} not found in cache`)
-                    return resolve(false)
+                    logr.warn(`Steem block ${block.steemblock} not found in cache, attempting to fetch it`)
+                    steemBlock = await module.exports.fetchMissingBlock(block.steemblock)
+                    
+                    // If still can't get the block, resolve with false
+                    if (!steemBlock) {
+                        logr.error(`Could not fetch Steem block ${block.steemblock} after attempts`)
+                        return resolve(false)
+                    }
                 }
     
+                // If we have no transactions to validate, return true
+                if (!block.txs || block.txs.length === 0) {
+                    return resolve(true)
+                }
+                
                 // Check each transaction in our block against Steem block
                 for (let tx of block.txs) {
                     if (tx.type !== 'custom_json')
@@ -474,5 +546,8 @@ module.exports = {
         })
     },
     processBlock: processBlock,
-    initPrefetch
+    initPrefetch,
+    fetchMissingBlock,
+    prefetchBlocks,
+    isSyncing: () => processes.steem && processes.steem.behindBlocks > 1
 }
