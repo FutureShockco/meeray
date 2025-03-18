@@ -72,8 +72,29 @@ let chain = {
     prepareBlock: (cb) => {
         let previousBlock = chain.getLatestBlock()
         let nextIndex = previousBlock._id + 1
-        let nextTimestamp = new Date().getTime()
+        
+        // Calculate the appropriate timestamp based on miner priority
+        let minerPriority = 1 // Default priority for the leader
+        if (chain.schedule.shuffle[(nextIndex - 1) % config.leaders].name !== process.env.NODE_OWNER) {
+            // We're not the scheduled leader, calculate our priority
+            for (let i = 1; i < 2 * config.leaders; i++) {
+                if (chain.recentBlocks[chain.recentBlocks.length - i]
+                    && chain.recentBlocks[chain.recentBlocks.length - i].miner === process.env.NODE_OWNER) {
+                    minerPriority = i + 1
+                    break
+                }
+            }
+        }
+        
+        // Calculate timestamp based on priority
+        const blockTime = steem.isSyncing() ? config.syncBlockTime : config.blockTime
+        const nextTimestamp = Math.max(
+            new Date().getTime(),
+            previousBlock.timestamp + (minerPriority * blockTime)
+        )
+        
         let nextSteemBlock = previousBlock.steemblock + 1
+        
         // Process Steem block first to get its transactions in the mempool
         steem.processBlock(nextSteemBlock).then(() => {
             // Add mempool transactions
