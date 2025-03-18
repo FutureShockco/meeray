@@ -420,9 +420,10 @@ module.exports = {
         return isSyncing
     },
     isOnSteemBlock: (block) => {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             const steemBlock = blockCache.get(block.steemblock)
             if (!steemBlock) {
+                logr.warn(`Steem block ${block.steemblock} not found in cache`)
                 resolve(false)
                 return
             }
@@ -452,18 +453,13 @@ module.exports = {
                 }
 
                 if (!found) {
-                    logr.debug('Transaction not found in Steem block:', {
-                        blockNum: block.steemblock,
-                        tx: {
-                            contract: tx.data.contract
-                        }
-                    })
+                    logr.warn(`Transaction not found in Steem block ${block.steemblock}`)
                     resolve(false)
                     return
                 }
             }
-            resolve(true)
 
+            resolve(true)
         })
     },
     processBlock: processBlock,
