@@ -73,9 +73,9 @@ pm2 start start.js --name ava
 ### Nodes/Peers (Ports http:3001, p2p/ws:6001)
 - Dusseldorf: [ws://ws.steemx.com]
 - New York: [ws://157.230.212.229:6001]
-- Amsterdam: [ws://152.42.141.133:6001]
-- Singapour: [ws://139.59.233.163:6001]
-- Sydney: [ws://134.199.148.11:6001]
+- Amsterdam: [ws://167.99.222.168:6001]
+- Singapour: [ws://159.223.66.172:6001]
+- Sydney: [ws://170.64.143.57:6001]
 
 ## API Endpoints
 

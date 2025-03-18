@@ -15,3 +15,4 @@ scripts/start.sh
 scripts/start copy - Copie.bat
 scripts/start copy.bat
 scripts/start.sh
+scripts/keys.json
