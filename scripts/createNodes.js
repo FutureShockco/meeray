@@ -17,7 +17,7 @@ const publicKeys = ['e27B66QHwRLjnjxi5KAa9G7fLSDajtoB6CxuZ87oTdfS', 'mxRB23vGuuj
 
 const create = async () => {
     try {
-        for (i = 0; i < nodes.length; i++) {
+        for (i = 1; i < nodes.length; i++) {
             const node = nodes[i]
             const pubkey = publicKeys[i]
             const pkey = privateKeys[i]
