@@ -517,7 +517,15 @@ let chain = {
 
         // get previous block
         let previousBlock = chain.getLatestBlock()
-
+        if (previousBlock._id + 1 !== newBlock._id) {
+            logr.error('invalid index')
+            cb(false); return
+        }
+        // from the same chain
+        if (previousBlock.hash !== newBlock.phash) {
+            logr.error('invalid phash')
+            cb(false); return
+        }
         if (newBlock._id !== previousBlock._id + 1) {
             if (steem.isSyncing() && !chain.recovering && chain.recoveryAttempts < chain.maxRecoveryAttempts) {
                 // During sync, try to recover by fetching the missing block
@@ -530,14 +538,14 @@ let chain = {
                         .then(() => {
                             chain.recovering = false
                             // Retry validation after recovery
-                            chain.isValidNewBlock(newBlock, verifyHashAndSignature, verifyTxValidity, cb)
+                            // chain.isValidNewBlock(newBlock, verifyHashAndSignature, verifyTxValidity, cb)
                         })
                         .catch(() => {
                             chain.recovering = false
                             logr.error('Recovery failed, invalid index')
                             cb(false)
                         })
-                }, 1000) // Add 1 second delay between recovery attempts
+                }, 1500) // Add 1.5 second delay between recovery attempts
                 return
             } else {
                 if (chain.recoveryAttempts >= chain.maxRecoveryAttempts) {
@@ -592,7 +600,6 @@ let chain = {
 
         // check if new block isnt too early
         if (steem.isSyncing()) {
-            logr.warn('Block validation while syncing')   
             if (newBlock.timestamp - previousBlock.timestamp < minerPriority * config.syncBlockTime) {
                 logr.error('block too early for miner with priority #' + minerPriority)
                 cb(false); return
