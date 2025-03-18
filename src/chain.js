@@ -189,53 +189,65 @@ let chain = {
             if (!isValid) {
                 return cb(true, newBlock)
             }
-            if (newBlock.txs.length > 0)
+            
+            // If block has transactions, verify they exist on Steem
+            if (newBlock.txs.length > 0) {
                 steem.isOnSteemBlock(newBlock).then((result) => {
-                    if (!result)
-                        cb(true, newBlock); return
-
+                    if (!result) {
+                        logr.error('Block transactions not found on Steem')
+                        return cb(true, newBlock)
+                    }
+                    chain.executeValidatedBlock(newBlock, revalidate, cb)
+                }).catch(err => {
+                    logr.error('Error verifying block on Steem:', err)
+                    return cb(true, newBlock)
                 })
-            // straight execution
-            chain.executeBlockTransactions(newBlock, revalidate, function (validTxs, distributed, burned) {
-                // if any transaction is wrong, thats a fatal error
-                if (newBlock.txs.length !== validTxs.length) {
-                    logr.error('Invalid tx(s) in block')
-                    cb(true, newBlock); return
-                }
+            } else {
+                chain.executeValidatedBlock(newBlock, revalidate, cb)
+            }
+        })
+    },
+    executeValidatedBlock: (newBlock, revalidate, cb) => {
+        // straight execution
+        chain.executeBlockTransactions(newBlock, revalidate, function (validTxs, distributed, burned) {
+            // if any transaction is wrong, thats a fatal error
+            if (newBlock.txs.length !== validTxs.length) {
+                logr.error('Invalid tx(s) in block')
+                cb(true, newBlock); return
+            }
 
-                // error if distributed or burned computed amounts are different than the reported one
-                let blockDist = newBlock.dist || 0
-                if (blockDist !== distributed) {
-                    logr.error('Wrong dist amount', blockDist, distributed)
-                    cb(true, newBlock); return
-                }
-                let blockBurn = newBlock.burn || 0
-                if (blockBurn !== burned) {
-                    logr.error('Wrong burn amount', blockBurn, burned)
-                    cb(true, newBlock); return
-                }
+            // error if distributed or burned computed amounts are different than the reported one
+            let blockDist = newBlock.dist || 0
+            if (blockDist !== distributed) {
+                logr.error('Wrong dist amount', blockDist, distributed)
+                cb(true, newBlock); return
+            }
+            let blockBurn = newBlock.burn || 0
+            if (blockBurn !== burned) {
+                logr.error('Wrong burn amount', blockBurn, burned)
+                cb(true, newBlock); return
+            }
 
-                // add txs to recents
-                chain.addRecentTxsInBlock(newBlock.txs)
+            // add txs to recents
+            chain.addRecentTxsInBlock(newBlock.txs)
 
-                // remove all transactions from this block from our transaction pool
-                transaction.removeFromPool(newBlock.txs)
+            // remove all transactions from this block from our transaction pool
+            transaction.removeFromPool(newBlock.txs)
 
-                chain.addBlock(newBlock, function () {
-                    // and broadcast to peers (if not replaying)
-                    if (!p2p.recovering)
-                        p2p.broadcastBlock(newBlock)
+            chain.addBlock(newBlock, function () {
+                // and broadcast to peers (if not replaying)
+                if (!p2p.recovering)
+                    p2p.broadcastBlock(newBlock)
 
-                    // process notifications and leader stats (non blocking)
-                    notifications.processBlock(newBlock)
+                // process notifications and leader stats (non blocking)
+                notifications.processBlock(newBlock)
 
-                    // emit event to confirm new transactions in the http api
-                    if (!p2p.recovering)
-                        for (let i = 0; i < newBlock.txs.length; i++)
-                            transaction.eventConfirmation.emit(newBlock.txs[i].hash)
+                // emit event to confirm new transactions in the http api
+                if (!p2p.recovering)
+                    for (let i = 0; i < newBlock.txs.length; i++)
+                        transaction.eventConfirmation.emit(newBlock.txs[i].hash)
 
-                    cb(null, newBlock)
-                })
+                cb(null, newBlock)
             })
         })
     },

@@ -172,7 +172,7 @@ process.on('SIGINT', function() {
     setInterval(() => {
         blocks.close()
         if (cache.writerQueue.queue.length === 0 && !cache.writerQueue.processing) {
-            logr.info('Avalon exitted safely')
+            logr.info('Echelon exitted safely')
             process.exit(0)
         }
     },1000)

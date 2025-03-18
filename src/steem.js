@@ -5,19 +5,17 @@ const transaction = require('./transaction.js')
 const Transaction = require('./transactions')
 
 let nextSteemBlock = config.steemStartBlock || 0
-let lastVerifiedBlock = 0
 let currentSteemBlock = 0
-let processing = false
 let processingBlocks = []
 let isSyncing = false
 let syncInterval = null
 let syncGracePeriod = false
 let syncGraceTimeout = null
-const MAX_CONSECUTIVE_ERRORS = 10
-const MIN_RETRY_DELAY = 3000
-const MAX_RETRY_DELAY = 30000
-const CIRCUIT_BREAKER_THRESHOLD = 15
-const CIRCUIT_BREAKER_RESET_TIMEOUT = 60000
+const MAX_CONSECUTIVE_ERRORS = 20
+const MIN_RETRY_DELAY = 1000
+const MAX_RETRY_DELAY = 15000
+const CIRCUIT_BREAKER_THRESHOLD = 30
+const CIRCUIT_BREAKER_RESET_TIMEOUT = 30000
 
 let consecutiveErrors = 0
 let retryDelay = MIN_RETRY_DELAY
@@ -34,13 +32,25 @@ const prefetchBlocks = async (startBlock, count = 5) => {
     prefetchInProgress = true
     try {
         const promises = []
+        const prefetchRange = []
+        
+        // Determine which blocks to prefetch
         for (let i = 0; i < count; i++) {
             const blockNum = startBlock + i
-            if (!blockCache.has(blockNum)) {
+            if (!blockCache.has(blockNum) && !processingBlocks.includes(blockNum)) {
+                prefetchRange.push(blockNum)
                 promises.push(
                     client.database.getBlock(blockNum)
                         .then(block => {
-                            if (block) blockCache.set(blockNum, block)
+                            if (block) {
+                                blockCache.set(blockNum, block)
+                                // Keep only recent blocks in cache
+                                const maxCacheSize = 100
+                                if (blockCache.size > maxCacheSize) {
+                                    const oldestKey = Array.from(blockCache.keys())[0]
+                                    blockCache.delete(oldestKey)
+                                }
+                            }
                             return block
                         })
                         .catch(err => {
@@ -53,6 +63,7 @@ const prefetchBlocks = async (startBlock, count = 5) => {
 
         if (promises.length > 0) {
             await Promise.all(promises)
+            logr.debug(`Prefetched ${promises.length} blocks starting from ${startBlock}`)
         }
     } catch (error) {
         logr.error('Error in prefetchBlocks:', error)
@@ -63,6 +74,11 @@ const prefetchBlocks = async (startBlock, count = 5) => {
 
 // Function declarations
 const processBlock = async (blockNum) => {
+    if (processingBlocks.includes(blockNum)) {
+        logr.debug(`Block ${blockNum} is already being processed`)
+        return blockNum
+    }
+    
     processingBlocks.push(blockNum)
 
     try {
@@ -79,12 +95,18 @@ const processBlock = async (blockNum) => {
         // Try to get block from cache first
         let steemBlock = blockCache.get(blockNum)
         if (!steemBlock) {
-            // If not in cache, fetch directly
-            steemBlock = await client.database.getBlock(blockNum)
-        } else {
-            // Remove from cache if we used it
-            if (blockCache.get(blockNum - 1))
-                blockCache.delete(blockNum - 1)
+            // If not in cache, fetch directly with retry
+            let retries = 3
+            while (retries > 0) {
+                try {
+                    steemBlock = await client.database.getBlock(blockNum)
+                    if (steemBlock) break
+                } catch (err) {
+                    retries--
+                    if (retries === 0) throw err
+                    await new Promise(resolve => setTimeout(resolve, 1000))
+                }
+            }
         }
 
         if (!steemBlock) {
@@ -148,15 +170,23 @@ const processTransactions = async (steemBlock, blockNum) => {
     // Process each transaction
     for (let tx of steemBlock.transactions) {
         for (let op of tx.operations) {
-            const [opType, opData] = op
-
-            if (opType !== 'custom_json' || opData.id !== 'sidechain') {
-                opIndex++
-                continue
-            }
-
             try {
-                const json = JSON.parse(opData.json)
+                const [opType, opData] = op
+
+                if (opType !== 'custom_json' || opData.id !== 'sidechain') {
+                    opIndex++
+                    continue
+                }
+
+                let json
+                try {
+                    json = JSON.parse(opData.json)
+                } catch (e) {
+                    logr.warn(`Failed to parse JSON in block ${blockNum}, operation ${opIndex}:`, e)
+                    opIndex++
+                    continue
+                }
+
                 if (!json.contract || !json.contractPayload) {
                     opIndex++
                     continue
@@ -208,6 +238,7 @@ const processTransactions = async (steemBlock, blockNum) => {
                         if (!isNaN(typeNum) && Transaction.transactions[typeNum]) {
                             txType = typeNum
                         } else {
+                            logr.debug(`Unknown transaction type in block ${blockNum}, operation ${opIndex}:`, json.contract)
                             opIndex++
                             continue
                         }
@@ -224,22 +255,25 @@ const processTransactions = async (steemBlock, blockNum) => {
                     ref: blockNum + ':' + opIndex
                 }
 
+                // Validate the transaction
                 validationPromises.push(
                     new Promise((resolve) => {
-                        transaction.isValid(newTx, new Date(steemBlock.timestamp + 'Z').getTime(), (isValid, error) => {
+                        transaction.isValid(newTx, newTx.ts, (isValid, error) => {
                             if (isValid) {
                                 txs.push(newTx)
                             } else {
-                                console.log(error)
+                                logr.debug(`Invalid transaction in block ${blockNum}, operation ${opIndex}:`, error)
                             }
                             resolve()
                         })
                     })
                 )
-            } catch (err) {
-                logr.warn('Error processing Steem transaction', err)
+
+                opIndex++
+            } catch (error) {
+                logr.error(`Error processing operation ${opIndex} in block ${blockNum}:`, error)
+                opIndex++
             }
-            opIndex++
         }
     }
 
@@ -335,20 +369,23 @@ const checkApiHealth = async () => {
 // Circuit breaker check
 const isCircuitBreakerOpen = () => {
     if (!circuitBreakerOpen) return false
-
-    // Check if enough time has passed to try resetting the circuit breaker
-    if (Date.now() - lastCircuitBreakerTrip >= CIRCUIT_BREAKER_RESET_TIMEOUT) {
+    
+    // Check if we should reset the circuit breaker
+    if (Date.now() - lastCircuitBreakerTrip > CIRCUIT_BREAKER_RESET_TIMEOUT) {
         circuitBreakerOpen = false
-        logr.info('Circuit breaker reset after timeout period')
+        consecutiveErrors = 0
+        retryDelay = MIN_RETRY_DELAY
         return false
     }
-
     return true
 }
 
 // Exponential backoff calculation
 const calculateRetryDelay = () => {
-    retryDelay = Math.min(retryDelay * 2, MAX_RETRY_DELAY)
+    // Exponential backoff with jitter
+    const baseDelay = Math.min(retryDelay * 1.5, MAX_RETRY_DELAY)
+    const jitter = Math.random() * 1000
+    retryDelay = baseDelay + jitter
     return retryDelay
 }
 
@@ -356,7 +393,10 @@ const calculateRetryDelay = () => {
 const resetErrorState = () => {
     consecutiveErrors = 0
     retryDelay = MIN_RETRY_DELAY
-    healthCheckFailures = 0
+    if (circuitBreakerOpen) {
+        circuitBreakerOpen = false
+        healthCheckFailures = 0
+    }
 }
 
 // Initial interval
