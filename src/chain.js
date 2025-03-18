@@ -265,7 +265,7 @@ let chain = {
             mineInMs += 20
             logr.debug('Trying to mine in ' + mineInMs + 'ms' + ' (sync: ' + steem.isSyncing() + ')')
             consensus.observer = false
-            if (mineInMs < blockTime / 4) {
+            if (mineInMs < blockTime / 2) {
                 logr.warn('Slow performance detected, will not try to mine next block')
                 return
             }
