@@ -32,7 +32,6 @@ let prefetchInProgress = false
 const prefetchBlocks = async (startBlock, count = 5) => {
     if (prefetchInProgress) return
     prefetchInProgress = true
-    
     try {
         const promises = []
         for (let i = 0; i < count; i++) {
@@ -51,7 +50,7 @@ const prefetchBlocks = async (startBlock, count = 5) => {
                 )
             }
         }
-        
+
         if (promises.length > 0) {
             await Promise.all(promises)
         }
@@ -65,7 +64,7 @@ const prefetchBlocks = async (startBlock, count = 5) => {
 // Function declarations
 const processBlock = async (blockNum) => {
     processingBlocks.push(blockNum)
-    
+
     try {
         // Check circuit breaker
         if (isCircuitBreakerOpen()) {
@@ -84,20 +83,21 @@ const processBlock = async (blockNum) => {
             steemBlock = await client.database.getBlock(blockNum)
         } else {
             // Remove from cache if we used it
-            blockCache.delete(blockNum)
+            if (blockCache.get(blockNum - 1))
+                blockCache.delete(blockNum - 1)
         }
 
         if (!steemBlock) {
             processingBlocks = processingBlocks.filter(b => b !== blockNum)
             consecutiveErrors++
-            
+
             if (consecutiveErrors >= CIRCUIT_BREAKER_THRESHOLD) {
                 circuitBreakerOpen = true
                 lastCircuitBreakerTrip = Date.now()
                 logr.error('Circuit breaker tripped due to too many consecutive errors')
                 return blockNum
             }
-            
+
             if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
                 const delay = calculateRetryDelay()
                 logr.warn(`Too many consecutive errors, waiting ${delay}ms before retrying...`)
@@ -110,11 +110,11 @@ const processBlock = async (blockNum) => {
         if (txs.length > 0) {
             transaction.addToPool(txs)
         }
-        
+
         processingBlocks = processingBlocks.filter(b => b !== blockNum)
         nextSteemBlock = blockNum + 1
         resetErrorState()
-        
+
         return blockNum
 
     } catch (error) {
@@ -122,7 +122,7 @@ const processBlock = async (blockNum) => {
         logr.error(`Stack trace: ${error.stack}`)
         processingBlocks = processingBlocks.filter(b => b !== blockNum)
         consecutiveErrors++
-        
+
         if (consecutiveErrors >= CIRCUIT_BREAKER_THRESHOLD) {
             circuitBreakerOpen = true
             lastCircuitBreakerTrip = Date.now()
@@ -263,7 +263,7 @@ const updateSteemBlock = async () => {
         currentSteemBlock = dynGlobalProps.head_block_number
         resetErrorState()
         const newSyncState = (currentSteemBlock - nextSteemBlock) > 10
-        
+
         if (newSyncState !== isSyncing) {
             isSyncing = newSyncState
             if (isSyncing) {
@@ -278,11 +278,11 @@ const updateSteemBlock = async () => {
                 // Exiting sync mode
                 logr.info('Exiting sync mode, caught up with Steem')
                 if (syncInterval) clearInterval(syncInterval)
-                
+
                 // Set grace period
                 syncGracePeriod = true
                 if (syncGraceTimeout) clearTimeout(syncGraceTimeout)
-                
+
                 // After grace period, resume normal operation
                 syncGraceTimeout = setTimeout(() => {
                     logr.info('Grace period ended, resuming normal operation')
@@ -299,7 +299,7 @@ const updateSteemBlock = async () => {
     } catch (err) {
         logr.error(`Error getting current Steem block: ${err.message}\nStack: ${err.stack}`)
         consecutiveErrors++
-        
+
         if (consecutiveErrors >= CIRCUIT_BREAKER_THRESHOLD) {
             circuitBreakerOpen = true
             lastCircuitBreakerTrip = Date.now()
@@ -315,13 +315,13 @@ const checkApiHealth = async () => {
         const startTime = Date.now()
         const response = await client.database.getDynamicGlobalProperties()
         const latency = Date.now() - startTime
-        
+
         if (!response) {
             healthCheckFailures++
             logr.warn(`API health check failed. Failure count: ${healthCheckFailures}`)
             return false
         }
-        
+
         healthCheckFailures = 0
         logr.debug(`API health check passed. Latency: ${latency}ms`)
         return true
@@ -335,14 +335,14 @@ const checkApiHealth = async () => {
 // Circuit breaker check
 const isCircuitBreakerOpen = () => {
     if (!circuitBreakerOpen) return false
-    
+
     // Check if enough time has passed to try resetting the circuit breaker
     if (Date.now() - lastCircuitBreakerTrip >= CIRCUIT_BREAKER_RESET_TIMEOUT) {
         circuitBreakerOpen = false
         logr.info('Circuit breaker reset after timeout period')
         return false
     }
-    
+
     return true
 }
 
@@ -381,53 +381,49 @@ module.exports = {
     },
     isOnSteemBlock: (block) => {
         return new Promise((resolve, reject) => {
-            client.database.getBlock(block.steemblock)
-                .then((steemBlock) => {
-                    if (!steemBlock) {
-                        resolve(false)
-                        return
-                    }
+            const steemBlock = blockCache.get(block.steemblock)
+            if (!steemBlock) {
+                resolve(false)
+                return
+            }
 
-                    // Check each transaction in our block against Steem block
-                    for (let tx of block.txs) {
-                        if (tx.type !== 'custom_json')
+            // Check each transaction in our block against Steem block
+            for (let tx of block.txs) {
+                if (tx.type !== 'custom_json')
+                    continue
+
+                // Find matching custom_json operation in Steem block
+                let found = false
+                for (let steemTx of steemBlock.transactions) {
+                    for (let op of steemTx.operations) {
+                        if (op[0] !== 'custom_json')
                             continue
 
-                        // Find matching custom_json operation in Steem block
-                        let found = false
-                        for (let steemTx of steemBlock.transactions) {
-                            for (let op of steemTx.operations) {
-                                if (op[0] !== 'custom_json')
-                                    continue
-
-                                if (op[1].id === 'sidechain' &&
-                                    op[1].json === JSON.stringify({
-                                        contract: tx.data.contract,
-                                        payload: tx.data.payload
-                                    })) {
-                                    found = true
-                                    break
-                                }
-                            }
-                            if (found) break
-                        }
-
-                        if (!found) {
-                            logr.debug('Transaction not found in Steem block:', {
-                                blockNum: block.steemblock,
-                                tx: {
-                                    contract: tx.data.contract
-                                }
-                            })
-                            resolve(false)
-                            return
+                        if (op[1].id === 'sidechain' &&
+                            op[1].json === JSON.stringify({
+                                contract: tx.data.contract,
+                                payload: tx.data.payload
+                            })) {
+                            found = true
+                            break
                         }
                     }
-                    resolve(true)
-                })
-                .catch((err) => {
+                    if (found) break
+                }
+
+                if (!found) {
+                    logr.debug('Transaction not found in Steem block:', {
+                        blockNum: block.steemblock,
+                        tx: {
+                            contract: tx.data.contract
+                        }
+                    })
                     resolve(false)
-                })
+                    return
+                }
+            }
+            resolve(true)
+
         })
     },
     processBlock: processBlock,

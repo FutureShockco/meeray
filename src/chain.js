@@ -79,6 +79,7 @@ let chain = {
             // Add mempool transactions
             let txs = []
             let mempool = transaction.pool.sort(function (a, b) { return a.ts - b.ts })
+
             loopOne:
             for (let i = 0; i < mempool.length; i++) {
                 if (txs.length === config.maxTxPerBlock)
@@ -100,6 +101,7 @@ let chain = {
                 txs.push(mempool[i])
             }
             txs = txs.sort(function (a, b) { return a.ts - b.ts })
+
             transaction.removeFromPool(txs)
             cb(null, new Block(nextIndex, nextSteemBlock, previousBlock.hash, nextTimestamp, txs, process.env.NODE_OWNER))
             return
@@ -187,6 +189,12 @@ let chain = {
             if (!isValid) {
                 return cb(true, newBlock)
             }
+            if (newBlock.txs.length > 0)
+                steem.isOnSteemBlock(newBlock).then((result) => {
+                    if (!result)
+                        cb(true, newBlock); return
+
+                })
             // straight execution
             chain.executeBlockTransactions(newBlock, revalidate, function (validTxs, distributed, burned) {
                 // if any transaction is wrong, thats a fatal error
@@ -521,7 +529,7 @@ let chain = {
             logr.error('invalid index')
             cb(false); return
         }
-        
+
         // from the same chain
         if (previousBlock.hash !== newBlock.phash) {
             console.log(previousBlock)
@@ -537,7 +545,7 @@ let chain = {
         //         chain.recovering = true
         //         chain.recoveryAttempts++
         //         logr.warn('Block index mismatch during sync, attempting recovery (attempt ' + chain.recoveryAttempts + '/' + chain.maxRecoveryAttempts + ')')
-                
+
         //         setTimeout(() => {
         //             steem.processBlock(previousBlock._id + 1)
         //                 .then(() => {
