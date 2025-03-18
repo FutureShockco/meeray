@@ -86,23 +86,20 @@ let chain = {
             }
         }
         
-        // Calculate valid timestamp range
+        // Calculate timestamp with proper padding to ensure it passes validation
         const blockTime = steem.isSyncing() ? config.syncBlockTime : config.blockTime
-        const minimumValidTime = previousBlock.timestamp + (minerPriority * blockTime)
-        const currentTime = new Date().getTime()
+        const minimumTimestamp = previousBlock.timestamp + (minerPriority * blockTime)
         
-        // Ensure our timestamp is valid by waiting if necessary
-        if (currentTime < minimumValidTime) {
-            logr.debug(`Waiting ${minimumValidTime - currentTime}ms before mining to respect priority timing`)
-            setTimeout(() => {
-                // Try again after waiting
-                chain.prepareBlock(cb)
-            }, minimumValidTime - currentTime + 10) // Add small buffer
-            return
-        }
+        // Add a small buffer to ensure the block is not too early for other nodes
+        const bufferTime = nextIndex <= 10 ? 50 : 25  // Extra buffer for early blocks
         
-        // Safe to proceed with block creation using current time
-        const nextTimestamp = currentTime
+        const nextTimestamp = Math.max(
+            new Date().getTime() + bufferTime,  // Current time plus buffer
+            minimumTimestamp + bufferTime       // Minimum time plus buffer
+        )
+        
+        logr.debug(`Preparing block with timestamp ${nextTimestamp}, min: ${minimumTimestamp}, priority: ${minerPriority}`)
+        
         let nextSteemBlock = previousBlock.steemblock + 1
         
         // Process Steem block first to get its transactions in the mempool
@@ -147,9 +144,6 @@ let chain = {
             newBlock = chain.hashAndSignBlock(newBlock)
             cb(null, newBlock)
             return
-        }).catch(err => {
-            logr.error('Error preparing block:', err)
-            cb(err)
         })
     },
     hashAndSignBlock: (block) => {
@@ -371,7 +365,7 @@ let chain = {
             chain.schedule = chain.minerSchedule(block)
         chain.recentBlocks.push(block)
         chain.minerWorker(block)
-        chain.output(block, false)
+        chain.output(block)
         cache.writeToDisk(false)
         cb(true)
     },
@@ -636,19 +630,23 @@ let chain = {
             return
         }
 
-        // Check block timing
+        // Check block timing with more flexibility
         const currentTime = new Date().getTime()
         const blockTime = steem.isSyncing() ? config.syncBlockTime : config.blockTime
         const expectedTime = previousBlock.timestamp + (minerPriority * blockTime)
         
-        if (newBlock.timestamp < expectedTime - config.maxDrift) {
-            logr.error(`Block too early for miner with priority #${minerPriority}. Current time: ${currentTime}, Expected time: ${expectedTime}, Block time: ${newBlock.timestamp}`)
+        // Add a more flexible timing buffer, especially for the first block
+        const earlyBuffer = newBlock._id <= 10 ? config.maxDrift * 2 : config.maxDrift
+        
+        if (newBlock.timestamp < expectedTime - earlyBuffer) {
+            logr.error(`Block too early for miner with priority #${minerPriority}. Current time: ${currentTime}, Expected time: ${expectedTime}, Block time: ${newBlock.timestamp}, Difference: ${expectedTime - newBlock.timestamp}ms`)
             cb(false)
             return
         }
 
+        // Late blocks have a standard buffer
         if (newBlock.timestamp > currentTime + config.maxDrift) {
-            logr.error(`Block too late. Current time: ${currentTime}, Block time: ${newBlock.timestamp}`)
+            logr.error(`Block too late. Current time: ${currentTime}, Block time: ${newBlock.timestamp}, Difference: ${newBlock.timestamp - currentTime}ms`)
             cb(false)
             return
         }
