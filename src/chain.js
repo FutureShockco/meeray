@@ -265,7 +265,7 @@ let chain = {
             mineInMs += 20
             logr.debug('Trying to mine in ' + mineInMs + 'ms' + ' (sync: ' + steem.isSyncing() + ')')
             consensus.observer = false
-            if (mineInMs < blockTime / 2) {
+            if (mineInMs < blockTime / 3) {
                 logr.warn('Slow performance detected, will not try to mine next block')
                 return
             }
@@ -521,42 +521,44 @@ let chain = {
             logr.error('invalid index')
             cb(false); return
         }
+        
         // from the same chain
         if (previousBlock.hash !== newBlock.phash) {
             logr.error('invalid phash')
             cb(false); return
         }
-        if (newBlock._id !== previousBlock._id + 1) {
-            if (steem.isSyncing() && !chain.recovering && chain.recoveryAttempts < chain.maxRecoveryAttempts) {
-                // During sync, try to recover by fetching the missing block
-                chain.recovering = true
-                chain.recoveryAttempts++
-                logr.warn('Block index mismatch during sync, attempting recovery (attempt ' + chain.recoveryAttempts + '/' + chain.maxRecoveryAttempts + ')')
+
+        // if (newBlock._id !== previousBlock._id + 1) {
+        //     if (steem.isSyncing() && !chain.recovering && chain.recoveryAttempts < chain.maxRecoveryAttempts) {
+        //         // During sync, try to recover by fetching the missing block
+        //         chain.recovering = true
+        //         chain.recoveryAttempts++
+        //         logr.warn('Block index mismatch during sync, attempting recovery (attempt ' + chain.recoveryAttempts + '/' + chain.maxRecoveryAttempts + ')')
                 
-                setTimeout(() => {
-                    steem.processBlock(previousBlock._id + 1)
-                        .then(() => {
-                            chain.recovering = false
-                            // Retry validation after recovery
-                            chain.isValidNewBlock(newBlock, verifyHashAndSignature, verifyTxValidity, cb)
-                        })
-                        .catch(() => {
-                            chain.recovering = false
-                            logr.error('Recovery failed, invalid index')
-                            cb(false)
-                        })
-                }, 3000) // Add 3 second delay between recovery attempts
-                return
-            } else {
-                if (chain.recoveryAttempts >= chain.maxRecoveryAttempts) {
-                    logr.error('Max recovery attempts reached, invalid index')
-                    chain.recoveryAttempts = 0 // Reset for next time
-                } else {
-                    logr.error('invalid index')
-                }
-                cb(false); return
-            }
-        }
+        //         setTimeout(() => {
+        //             steem.processBlock(previousBlock._id + 1)
+        //                 .then(() => {
+        //                     chain.recovering = false
+        //                     // Retry validation after recovery
+        //                     chain.isValidNewBlock(newBlock, verifyHashAndSignature, verifyTxValidity, cb)
+        //                 })
+        //                 .catch(() => {
+        //                     chain.recovering = false
+        //                     logr.error('Recovery failed, invalid index')
+        //                     cb(false)
+        //                 })
+        //         }, 3000) // Add 3 second delay between recovery attempts
+        //         return
+        //     } else {
+        //         if (chain.recoveryAttempts >= chain.maxRecoveryAttempts) {
+        //             logr.error('Max recovery attempts reached, invalid index')
+        //             chain.recoveryAttempts = 0 // Reset for next time
+        //         } else {
+        //             logr.error('invalid index')
+        //         }
+        //         cb(false); return
+        //     }
+        // }
 
         if (newBlock.phash !== previousBlock.hash) {
             if (steem.isSyncing()) {
