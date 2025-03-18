@@ -513,155 +513,61 @@ let chain = {
             cb(true)
         })
     },
-    isValidNewBlock: (newBlock, verifyHashAndSignature, verifyTxValidity, cb) => {
-        if (!newBlock || typeof newBlock !== 'object') {
-            logr.error('block is null or invalid type')
-            cb(false); return
-        }
-        if (!newBlock._id || typeof newBlock._id !== 'number') {
-            logr.error('invalid block index')
-            cb(false); return
-        }
-        if (!newBlock.phash || typeof newBlock.phash !== 'string') {
-            logr.error('invalid block phash')
-            cb(false); return
-        }
-        if (!newBlock.timestamp || typeof newBlock.timestamp !== 'number') {
-            logr.error('invalid block timestamp')
-            cb(false); return
-        }
-        if (!newBlock.miner || typeof newBlock.miner !== 'string') {
-            logr.error('invalid block miner')
-            cb(false); return
+    isValidNewBlock: (newBlock, revalidate, skipSteem, cb) => {
+        // Check if block is too early
+        const currentTime = new Date().getTime()
+        const blockTime = steem.isSyncing() ? config.syncBlockTime : config.blockTime
+        const expectedTime = chain.getLatestBlock().timestamp + blockTime
+        
+        if (newBlock.timestamp < expectedTime - config.maxDrift) {
+            logr.error(`Block too early for miner with priority #1. Current time: ${currentTime}, Expected time: ${expectedTime}, Block time: ${newBlock.timestamp}`)
+            cb(false)
+            return
         }
 
-        // get previous block
-        let previousBlock = chain.getLatestBlock()
-        if (previousBlock._id + 1 !== newBlock._id) {
-            logr.error('invalid index')
-            cb(false); return
+        // Check if block is too late
+        if (newBlock.timestamp > currentTime + config.maxDrift) {
+            logr.error(`Block too late. Current time: ${currentTime}, Block time: ${newBlock.timestamp}`)
+            cb(false)
+            return
         }
 
-        // from the same chain
-        if (previousBlock.hash !== newBlock.phash) {
-            console.log(previousBlock)
-            console.log(newBlock)
-
-            logr.error('invalid phash')
-            cb(false); return
+        // Rest of validation...
+        if (newBlock._id !== chain.getLatestBlock()._id + 1) {
+            logr.error('invalid block id')
+            cb(false)
+            return
         }
 
-        // if (newBlock._id !== previousBlock._id + 1) {
-        //     if (steem.isSyncing() && !chain.recovering && chain.recoveryAttempts < chain.maxRecoveryAttempts) {
-        //         // During sync, try to recover by fetching the missing block
-        //         chain.recovering = true
-        //         chain.recoveryAttempts++
-        //         logr.warn('Block index mismatch during sync, attempting recovery (attempt ' + chain.recoveryAttempts + '/' + chain.maxRecoveryAttempts + ')')
-
-        //         setTimeout(() => {
-        //             steem.processBlock(previousBlock._id + 1)
-        //                 .then(() => {
-        //                     chain.recovering = false
-        //                     // Retry validation after recovery
-        //                     chain.isValidNewBlock(newBlock, verifyHashAndSignature, verifyTxValidity, cb)
-        //                 })
-        //                 .catch(() => {
-        //                     chain.recovering = false
-        //                     logr.error('Recovery failed, invalid index')
-        //                     cb(false)
-        //                 })
-        //         }, 3000) // Add 3 second delay between recovery attempts
-        //         return
-        //     } else {
-        //         if (chain.recoveryAttempts >= chain.maxRecoveryAttempts) {
-        //             logr.error('Max recovery attempts reached, invalid index')
-        //             chain.recoveryAttempts = 0 // Reset for next time
-        //         } else {
-        //             logr.error('invalid index')
-        //         }
-        //         cb(false); return
-        //     }
-        // }
-
-        if (newBlock.phash !== previousBlock.hash) {
-            if (steem.isSyncing()) {
-                logr.warn('Hash mismatch during sync, recalculating previous block hash')
-                const recalculatedHash = chain.calculateHashForBlock(previousBlock)
-                if (newBlock.phash === recalculatedHash) {
-                    previousBlock.hash = recalculatedHash
-                    logr.info('Hash recovered during sync')
-                } else {
-                    logr.error(`Invalid phash: expected ${recalculatedHash}, got ${newBlock.phash}`)
-                    cb(false); return
-                }
-            } else {
-                logr.error(`Invalid phash: expected ${previousBlock.hash}, got ${newBlock.phash}`)
-                cb(false); return
-            }
+        if (newBlock.phash !== chain.getLatestBlock().hash) {
+            logr.error('invalid previous hash')
+            cb(false)
+            return
         }
 
-        // check if miner is normal scheduled one
-        let minerPriority = 0
-        if (chain.schedule.shuffle[(newBlock._id - 1) % config.leaders].name === newBlock.miner)
-            minerPriority = 1
-        // allow miners of n blocks away
-        // to mine after (n+1)*blockTime as 'backups'
-        // so that the network can keep going even if 1,2,3...n node(s) have issues
-        else
-            for (let i = 1; i <= config.leaders; i++) {
-                if (!chain.recentBlocks[chain.recentBlocks.length - i])
-                    break
-                if (chain.recentBlocks[chain.recentBlocks.length - i].miner === newBlock.miner) {
-                    minerPriority = i + 1
-                    break
-                }
-            }
-
-
-        if (minerPriority === 0) {
-            logr.error('unauthorized miner')
-            cb(false); return
+        if (newBlock.steemblock !== chain.getLatestBlock().steemblock + 1) {
+            logr.error('invalid steem block')
+            cb(false)
+            return
         }
 
-        // check if new block isnt too early
-        if (steem.isSyncing()) {
-            if (newBlock.timestamp - previousBlock.timestamp < minerPriority * config.syncBlockTime) {
-                logr.error('block too early for miner with priority #' + minerPriority)
-                cb(false); return
-            }
-        } else if (newBlock.timestamp - previousBlock.timestamp < minerPriority * config.blockTime) {
-            logr.error('block too early for miner with priority #' + minerPriority)
-            cb(false); return
+        if (newBlock.txs.length > config.maxTxPerBlock) {
+            logr.error('too many transactions')
+            cb(false)
+            return
         }
-        // verify all block txs are legit
-        if (verifyTxValidity) {
-            chain.isValidBlockTxs(newBlock, function (isValid) {
-                if (!isValid) {
-                    logr.error('invalid block transactions')
-                    cb(false); return
-                }
-                if (verifyHashAndSignature)
-                    // and finally verify block hash
-                    chain.isValidHashAndSignature(newBlock, function (isValid) {
-                        if (!isValid) {
-                            logr.error('invalid block hash')
-                            cb(false); return
-                        }
-                        cb(true)
-                    })
-                else
-                    cb(true)
-            })
-        } else if (verifyHashAndSignature)
+
+        if (!skipSteem) {
             chain.isValidHashAndSignature(newBlock, function (isValid) {
                 if (!isValid) {
-                    logr.error('invalid block hash')
-                    cb(false); return
+                    cb(false)
+                    return
                 }
-                cb(true)
+                chain.isValidBlockTxs(newBlock, cb)
             })
-        else
-            cb(true)
+        } else {
+            chain.isValidBlockTxs(newBlock, cb)
+        }
     },
     isValidNewBlockPromise: (newBlock, verifyHashAndSig, verifyTxValidity) => new Promise((rs) => chain.isValidNewBlock(newBlock, verifyHashAndSig, verifyTxValidity, rs)),
     executeBlockTransactions: (block, revalidate, cb) => {
