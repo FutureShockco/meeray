@@ -301,7 +301,7 @@ const updateSteemBlock = async () => {
 
         currentSteemBlock = dynGlobalProps.head_block_number
         resetErrorState()
-        const newSyncState = (currentSteemBlock - nextSteemBlock) > 10
+        const newSyncState = (currentSteemBlock - nextSteemBlock) > 5
 
         if (newSyncState !== isSyncing) {
             isSyncing = newSyncState
