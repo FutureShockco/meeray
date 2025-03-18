@@ -103,8 +103,16 @@ let chain = {
             txs = txs.sort(function (a, b) { return a.ts - b.ts })
 
             transaction.removeFromPool(txs)
+            
+            // Create the initial block
             let newBlock = new Block(nextIndex, nextSteemBlock, previousBlock.hash, nextTimestamp, txs, process.env.NODE_OWNER)
-            // Hash and sign the block immediately
+            
+            // Set distribution amount based on leader rewards
+            if (config.leaderReward > 0) {
+                newBlock.dist = config.leaderReward
+            }
+            
+            // Hash and sign the block
             newBlock = chain.hashAndSignBlock(newBlock)
             cb(null, newBlock)
             return
