@@ -203,16 +203,19 @@ let chain = {
             
             // If block has transactions, verify they exist on Steem
             if (newBlock.txs.length > 0) {
-                steem.isOnSteemBlock(newBlock).then((result) => {
-                    if (!result) {
-                        logr.error('Block transactions not found on Steem')
-                        return cb(true, newBlock)
-                    }
-                    chain.executeValidatedBlock(newBlock, revalidate, cb)
-                }).catch(err => {
-                    logr.error('Error verifying block on Steem:', err)
-                    return cb(true, newBlock)
-                })
+                steem.isOnSteemBlock(newBlock)
+                    .then((result) => {
+                        if (!result) {
+                            logr.error('Block transactions not found on Steem')
+                            cb(true, newBlock)
+                        } else {
+                            chain.executeValidatedBlock(newBlock, revalidate, cb)
+                        }
+                    })
+                    .catch(err => {
+                        logr.error('Error verifying block on Steem:', err)
+                        cb(true, newBlock)
+                    })
             } else {
                 chain.executeValidatedBlock(newBlock, revalidate, cb)
             }

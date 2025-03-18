@@ -128,6 +128,9 @@ const processBlock = async (blockNum) => {
             return blockNum
         }
 
+        // Cache the block for future reference
+        blockCache.set(blockNum, steemBlock)
+        
         const txs = await processTransactions(steemBlock, blockNum)
         if (txs.length > 0) {
             transaction.addToPool(txs)
@@ -420,46 +423,54 @@ module.exports = {
         return isSyncing
     },
     isOnSteemBlock: (block) => {
-        return new Promise((resolve) => {
-            const steemBlock = blockCache.get(block.steemblock)
-            if (!steemBlock) {
-                logr.warn(`Steem block ${block.steemblock} not found in cache`)
-                resolve(false)
-                return
-            }
-
-            // Check each transaction in our block against Steem block
-            for (let tx of block.txs) {
-                if (tx.type !== 'custom_json')
-                    continue
-
-                // Find matching custom_json operation in Steem block
-                let found = false
-                for (let steemTx of steemBlock.transactions) {
-                    for (let op of steemTx.operations) {
-                        if (op[0] !== 'custom_json')
-                            continue
-
-                        if (op[1].id === 'sidechain' &&
-                            op[1].json === JSON.stringify({
-                                contract: tx.data.contract,
-                                payload: tx.data.payload
-                            })) {
-                            found = true
-                            break
+        return new Promise((resolve, reject) => {
+            try {
+                const steemBlock = blockCache.get(block.steemblock)
+                if (!steemBlock) {
+                    logr.warn(`Steem block ${block.steemblock} not found in cache`)
+                    return resolve(false)
+                }
+    
+                // Check each transaction in our block against Steem block
+                for (let tx of block.txs) {
+                    if (tx.type !== 'custom_json')
+                        continue
+    
+                    // Find matching custom_json operation in Steem block
+                    let found = false
+                    for (let steemTx of steemBlock.transactions) {
+                        try {
+                            for (let op of steemTx.operations) {
+                                if (op[0] !== 'custom_json')
+                                    continue
+    
+                                if (op[1].id === 'sidechain' &&
+                                    op[1].json === JSON.stringify({
+                                        contract: tx.data.contract,
+                                        payload: tx.data.payload
+                                    })) {
+                                    found = true
+                                    break
+                                }
+                            }
+                            if (found) break
+                        } catch (txErr) {
+                            logr.error('Error processing transaction in Steem block:', txErr)
+                            // Continue processing other transactions
                         }
                     }
-                    if (found) break
+    
+                    if (!found) {
+                        logr.warn(`Transaction not found in Steem block ${block.steemblock}`)
+                        return resolve(false)
+                    }
                 }
-
-                if (!found) {
-                    logr.warn(`Transaction not found in Steem block ${block.steemblock}`)
-                    resolve(false)
-                    return
-                }
+    
+                return resolve(true)
+            } catch (err) {
+                logr.error('Error in isOnSteemBlock:', err)
+                return resolve(false) // Resolve with false instead of rejecting to prevent unhandled rejections
             }
-
-            resolve(true)
         })
     },
     processBlock: processBlock,
