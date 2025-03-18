@@ -29,7 +29,7 @@ const create = async () => {
                     required_posting_auths: [node], // Or [] if using active authority
                     id: 'sidechain', // Use the correct ID for your system
                     json: JSON.stringify({
-                        contract: 'approvenode',  // Based on what we saw in your codebase
+                        contract: 'enablenode',  // Based on what we saw in your codebase
                         contractPayload: {
                             pub: pubkey  // Or whatever properties your contract needs
                         }
