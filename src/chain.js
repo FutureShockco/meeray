@@ -538,14 +538,14 @@ let chain = {
                         .then(() => {
                             chain.recovering = false
                             // Retry validation after recovery
-                            // chain.isValidNewBlock(newBlock, verifyHashAndSignature, verifyTxValidity, cb)
+                            chain.isValidNewBlock(newBlock, verifyHashAndSignature, verifyTxValidity, cb)
                         })
                         .catch(() => {
                             chain.recovering = false
                             logr.error('Recovery failed, invalid index')
                             cb(false)
                         })
-                }, 1500) // Add 1.5 second delay between recovery attempts
+                }, 3000) // Add 3 second delay between recovery attempts
                 return
             } else {
                 if (chain.recoveryAttempts >= chain.maxRecoveryAttempts) {
