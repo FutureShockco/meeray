@@ -11,12 +11,15 @@ let isSyncing = false
 let syncInterval = null
 let syncGracePeriod = false
 let syncGraceTimeout = null
+let behindBlocks = 0
 const MAX_CONSECUTIVE_ERRORS = 20
 const MIN_RETRY_DELAY = 1000
 const MAX_RETRY_DELAY = 15000
 const CIRCUIT_BREAKER_THRESHOLD = 30
 const CIRCUIT_BREAKER_RESET_TIMEOUT = 30000
 const MAX_PREFETCH_BLOCKS = 10  // Maximum number of blocks to prefetch at once
+const SYNC_THRESHOLD = 5  // Number of blocks behind before entering sync mode
+const SYNC_EXIT_THRESHOLD = 2  // Number of blocks behind before exiting sync mode
 
 let consecutiveErrors = 0
 let retryDelay = MIN_RETRY_DELAY
@@ -38,11 +41,16 @@ const prefetchBlocks = async () => {
     
     if (latestSteemBlock && currentBlock <= latestSteemBlock) {
         try {
-            // Determine how many blocks to prefetch
-            const prefetchCount = Math.min(MAX_PREFETCH_BLOCKS, latestSteemBlock - currentBlock + 1)
+            // Determine how many blocks to prefetch (prefetch more in sync mode)
+            const prefetchCount = isSyncing 
+                ? Math.min(MAX_PREFETCH_BLOCKS * 2, latestSteemBlock - currentBlock + 1)
+                : Math.min(MAX_PREFETCH_BLOCKS, latestSteemBlock - currentBlock + 1);
             
             if (prefetchCount > 0) {
-                logr.debug(`Prefetching ${prefetchCount} Steem blocks starting from ${currentBlock}`)
+                logr.debug(`Prefetching ${prefetchCount} Steem blocks starting from ${currentBlock}, sync mode: ${isSyncing}`);
+                
+                // Track successful prefetches
+                let successCount = 0;
                 
                 // Prefetch blocks one by one
                 for (let i = 0; i < prefetchCount; i++) {
@@ -57,14 +65,26 @@ const prefetchBlocks = async () => {
                     // Skip if already in cache
                     if (blockCache.get(blockNum)) {
                         logr.debug(`Block ${blockNum} already in cache, skipping prefetch`)
+                        successCount++;
                         continue
                     }
                     
-                    // Process the block to cache it
-                    await processBlock(blockNum)
+                    try {
+                        // Process the block to cache it
+                        await processBlock(blockNum)
+                        successCount++;
+                    } catch (err) {
+                        logr.error(`Error prefetching block ${blockNum}:`, err);
+                        // Continue with next block
+                    }
                 }
                 
-                logr.debug(`Prefetched ${prefetchCount} blocks successfully`)
+                logr.debug(`Prefetched ${successCount}/${prefetchCount} blocks successfully`);
+                
+                // Update currentSteemBlock if we've successfully cached blocks
+                if (successCount > 0) {
+                    currentSteemBlock = Math.max(currentSteemBlock, currentBlock + successCount - 1);
+                }
             }
         } catch (error) {
             logr.error('Error prefetching blocks:', error)
@@ -290,61 +310,32 @@ const processTransactions = async (steemBlock, blockNum) => {
 // Update current Steem block
 const updateSteemBlock = async () => {
     try {
-        if (isCircuitBreakerOpen()) {
-            return
-        }
-
         const dynGlobalProps = await client.database.getDynamicGlobalProperties()
-        if (!dynGlobalProps) {
-            throw new Error('Failed to get dynamic global properties')
-        }
+        const latestSteemBlock = dynGlobalProps.head_block_number
+        behindBlocks = latestSteemBlock - currentSteemBlock
 
-        currentSteemBlock = dynGlobalProps.head_block_number
-        resetErrorState()
-        const newSyncState = (currentSteemBlock - nextSteemBlock) > 5
-
-        if (newSyncState !== isSyncing) {
-            isSyncing = newSyncState
+        // Determine if we should be in sync mode
+        if (behindBlocks >= SYNC_THRESHOLD) {
+            if (!isSyncing) {
+                logr.info(`Entering sync mode, ${behindBlocks} blocks behind`)
+                isSyncing = true
+            }
+        } else if (behindBlocks <= SYNC_EXIT_THRESHOLD) {
             if (isSyncing) {
-                // Entering sync mode
-                logr.info(`Entering sync mode, ${currentSteemBlock - nextSteemBlock} blocks behind`)
-                if (syncInterval) clearInterval(syncInterval)
-                if (syncGraceTimeout) clearTimeout(syncGraceTimeout)
-                syncGracePeriod = false
-                syncInterval = setInterval(updateSteemBlock, 1000)
-                processBlock(nextSteemBlock)
-            } else {
-                // Exiting sync mode
-                logr.info('Exiting sync mode, caught up with Steem')
-                if (syncInterval) clearInterval(syncInterval)
-
-                // Set grace period
-                syncGracePeriod = true
-                if (syncGraceTimeout) clearTimeout(syncGraceTimeout)
-
-                // After grace period, resume normal operation
-                syncGraceTimeout = setTimeout(() => {
-                    logr.info('Grace period ended, resuming normal operation')
-                    syncGracePeriod = false
-                    syncInterval = setInterval(updateSteemBlock, 3000)
-                }, 5000) // 5 second grace period
+                logr.info('Exiting sync mode, caught up with Steem blockchain')
+                isSyncing = false
             }
         }
 
-        // During grace period, keep processing blocks but don't mine
-        if (syncGracePeriod) {
-            processBlock(nextSteemBlock)
+        // In sync mode, prefetch more aggressively
+        if (isSyncing && !prefetchInProgress) {
+            prefetchBlocks()
         }
-    } catch (err) {
-        logr.error(`Error getting current Steem block: ${err.message}\nStack: ${err.stack}`)
-        consecutiveErrors++
 
-        if (consecutiveErrors >= CIRCUIT_BREAKER_THRESHOLD) {
-            circuitBreakerOpen = true
-            lastCircuitBreakerTrip = Date.now()
-            logr.error('Circuit breaker tripped due to too many consecutive errors')
-            return
-        }
+        return latestSteemBlock
+    } catch (error) {
+        logr.error('Error updating Steem block state:', error)
+        return null
     }
 }
 
@@ -473,13 +464,34 @@ module.exports = {
     init: (blockNum) => {
         nextSteemBlock = blockNum
         currentSteemBlock = blockNum
-        isSyncing = false
+        
+        // Clear existing intervals if any
+        if (syncInterval) clearInterval(syncInterval)
+        
+        // Set up regular state updates
+        syncInterval = setInterval(updateSteemBlock, 3000)
+        
+        // Run an immediate state update
+        updateSteemBlock().then(() => {
+            // Start prefetching immediately
+            prefetchBlocks()
+        }).catch(err => {
+            logr.error('Error during initial Steem state update:', err)
+        })
+        
+        // Initialize the prefetch system
+        initPrefetch(blockNum)
+        
+        logr.info('Steem subsystem initialized at block', blockNum)
     },
     getCurrentBlock: () => {
         return currentSteemBlock
     },
     isSyncing: () => {
         return isSyncing
+    },
+    getBehindBlocks: () => {
+        return behindBlocks
     },
     isOnSteemBlock: (block) => {
         return new Promise(async (resolve, reject) => {
@@ -546,7 +558,7 @@ module.exports = {
             }
         })
     },
-    processBlock,
+    processBlock: processBlock,
     initPrefetch,
     fetchMissingBlock,
     prefetchBlocks
