@@ -29,7 +29,7 @@ let healthCheckFailures = 0
 let blockCache = new Map()
 let prefetchInProgress = false
 
-const prefetchBlocks = async (startBlock, count = 2) => {
+const prefetchBlocks = async (startBlock, count = 5) => {
     if (prefetchInProgress) return
     prefetchInProgress = true
     
