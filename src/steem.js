@@ -8,6 +8,7 @@ let nextSteemBlock = config.steemStartBlock || 0
 let currentSteemBlock = 0
 let processingBlocks = []
 let isSyncing = false
+let forceSyncUntilBlock = 0  // Force sync mode until this block height
 let syncInterval = null
 let syncGracePeriod = false
 let syncGraceTimeout = null
@@ -20,6 +21,7 @@ const CIRCUIT_BREAKER_RESET_TIMEOUT = 30000
 const MAX_PREFETCH_BLOCKS = 10  // Maximum number of blocks to prefetch at once
 const SYNC_THRESHOLD = 5  // Number of blocks behind before entering sync mode
 const SYNC_EXIT_THRESHOLD = 2  // Number of blocks behind before exiting sync mode
+const SYNC_FORCE_BLOCKS = 20   // Number of blocks to stay in sync mode after catching up
 
 let consecutiveErrors = 0
 let retryDelay = MIN_RETRY_DELAY
@@ -307,21 +309,33 @@ const processTransactions = async (steemBlock, blockNum) => {
     return txs
 }
 
-// Update current Steem block
+// Function to update our Steem block state and determine sync mode
 const updateSteemBlock = async () => {
     try {
         const dynGlobalProps = await client.database.getDynamicGlobalProperties()
         const latestSteemBlock = dynGlobalProps.head_block_number
         behindBlocks = latestSteemBlock - currentSteemBlock
 
+        // Don't change sync mode if we're in forced sync by the network
+        if (chain && chain.getLatestBlock() && chain.getLatestBlock()._id < forceSyncUntilBlock) {
+            return latestSteemBlock
+        }
+
         // Determine if we should be in sync mode
         if (behindBlocks >= SYNC_THRESHOLD) {
             if (!isSyncing) {
                 logr.info(`Entering sync mode, ${behindBlocks} blocks behind`)
                 isSyncing = true
+                
+                // If we fall significantly behind, notify other nodes by embedding in next block
+                if (behindBlocks >= SYNC_THRESHOLD * 2 && chain && process.env.NODE_OWNER) {
+                    // This node will be in sync mode for a while, so when it mines a block,
+                    // the network should also enter sync mode to stay coordinated
+                    forceSyncUntilBlock = chain.getLatestBlock()._id + SYNC_FORCE_BLOCKS
+                }
             }
         } else if (behindBlocks <= SYNC_EXIT_THRESHOLD) {
-            if (isSyncing) {
+            if (isSyncing && forceSyncUntilBlock === 0) {
                 logr.info('Exiting sync mode, caught up with Steem blockchain')
                 isSyncing = false
             }
@@ -488,10 +502,31 @@ module.exports = {
         return currentSteemBlock
     },
     isSyncing: () => {
+        // Check if we're forced into sync mode by a recent block
+        if (chain && chain.getLatestBlock() && chain.getLatestBlock()._id < forceSyncUntilBlock) {
+            return true
+        }
         return isSyncing
     },
     getBehindBlocks: () => {
         return behindBlocks
+    },
+    setSyncMode: (blockHeight) => {
+        // Force sync mode for the next SYNC_FORCE_BLOCKS blocks
+        if (blockHeight > 0) {
+            forceSyncUntilBlock = blockHeight + SYNC_FORCE_BLOCKS
+            if (!isSyncing) {
+                isSyncing = true
+                logr.info(`Network-enforced sync mode enabled until block ${forceSyncUntilBlock}`)
+            }
+        } else if (forceSyncUntilBlock > 0) {
+            // Exit forced sync mode
+            forceSyncUntilBlock = 0
+            if (behindBlocks <= SYNC_EXIT_THRESHOLD) {
+                isSyncing = false
+                logr.info('Network-enforced sync mode disabled')
+            }
+        }
     },
     isOnSteemBlock: (block) => {
         return new Promise(async (resolve, reject) => {

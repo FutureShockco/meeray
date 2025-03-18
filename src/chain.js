@@ -29,6 +29,11 @@ class Block {
         if (burn) this.burn = burn
         this.hash = hash
         this.signature = signature
+        
+        // Include sync mode in blocks if the chain is behind
+        if (steem && steem.getBehindBlocks && steem.getBehindBlocks() > 10) {
+            this.syncMode = true
+        }
     }
 }
 
@@ -359,6 +364,11 @@ let chain = {
         daoMaster.nextBlock()
         leaderStats.processBlock(block)
         txHistory.processBlock(block)
+
+        // Check if the block has sync mode flag and propagate it to the network
+        if (block.syncMode && steem && steem.setSyncMode) {
+            steem.setSyncMode(block._id)
+        }
 
         // if block id is mult of n leaders, reschedule next n blocks
         if (block._id % config.leaders === 0)
