@@ -328,14 +328,25 @@ const updateSteemBlock = async () => {
     try {
         const dynGlobalProps = await client.database.getDynamicGlobalProperties()
         const latestSteemBlock = dynGlobalProps.head_block_number
+        
+        // Sanity check - if currentSteemBlock is 0 or very low, initialize it properly
+        if (currentSteemBlock < 1) {
+            currentSteemBlock = latestSteemBlock - 5 // Start with a small reasonable offset
+            logr.info(`Initializing current Steem block to ${currentSteemBlock}`)
+        }
+        
         const localBehindBlocks = latestSteemBlock - currentSteemBlock
+        
+        // Sanity check for extreme values
+        const MAX_REASONABLE_BEHIND = 20000 // No node should be more than this behind
+        const calculatedBehind = Math.min(localBehindBlocks, MAX_REASONABLE_BEHIND)
         
         // Only update the network-wide behind blocks if our count is higher
         // This ensures the network always knows the furthest behind node
-        if (localBehindBlocks > behindBlocks) {
-            behindBlocks = localBehindBlocks
+        if (calculatedBehind > behindBlocks) {
+            behindBlocks = calculatedBehind
             // Broadcast to network in next message if we're significantly behind
-            if (p2p && p2p.broadcast && localBehindBlocks > SYNC_THRESHOLD * 1.5) {
+            if (p2p && p2p.broadcast && calculatedBehind > SYNC_THRESHOLD * 1.5) {
                 p2p.broadcast({
                     t: 'STEEM_BEHIND',
                     d: behindBlocks
@@ -508,6 +519,16 @@ module.exports = {
         
         // Clear existing intervals if any
         if (syncInterval) clearInterval(syncInterval)
+        
+        // Initialize behindBlocks properly
+        getLatestSteemBlockNum().then(latestBlock => {
+            if (latestBlock && currentSteemBlock) {
+                behindBlocks = Math.max(0, latestBlock - currentSteemBlock)
+                logr.info(`Initial blocks behind: ${behindBlocks} (Steem: ${latestBlock}, Current: ${currentSteemBlock})`)
+            }
+        }).catch(err => {
+            logr.error('Error initializing behind blocks count:', err)
+        })
         
         // Set up regular state updates
         syncInterval = setInterval(updateSteemBlock, 3000)
