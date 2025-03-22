@@ -411,6 +411,15 @@ let chain = {
             output += '  burn: ' + eco.round(chain.nextOutput.burn)
             output += '  delay: ' + (currentOutTime - block.timestamp)
             output += '  steem block: ' + block.steemblock
+            
+            // Add sync status information
+            if (steem && steem.isSyncing && steem.getBehindBlocks) {
+                output += '  sync: ' + (steem.isSyncing() ? 'YES' : 'NO')
+                const behind = steem.getBehindBlocks()
+                if (behind > 0)
+                    output += ' (' + behind + ' blocks behind)'
+            }
+            
             if (block.missedBy && !rebuilding)
                 output += '  MISS: ' + block.missedBy
             else if (rebuilding) {
