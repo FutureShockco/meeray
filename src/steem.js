@@ -34,6 +34,15 @@ let blockCache = new Map()
 let prefetchInProgress = false
 let prefetchTimer = null
 
+// Add at the top of the file with other initialization variables
+let readyToReceiveTransactions = false
+
+// Add a function to set readiness state
+const setReadyToReceiveTransactions = (ready) => {
+    readyToReceiveTransactions = ready
+    logr.info('Steem transaction processing ' + (ready ? 'ENABLED' : 'DISABLED'))
+}
+
 const prefetchBlocks = async () => {
     if (prefetchInProgress || circuitBreakerOpen) return
 
@@ -98,6 +107,11 @@ const prefetchBlocks = async () => {
 
 // Function declarations
 const processBlock = async (blockNum) => {
+    if (!readyToReceiveTransactions && !isSyncing()) {
+        logr.debug('Skipping Steem block processing - node not ready to receive transactions yet')
+        return Promise.resolve()
+    }
+    
     if (processingBlocks.includes(blockNum)) {
         logr.debug(`Block ${blockNum} is already being processed`)
         return blockNum
@@ -596,5 +610,6 @@ module.exports = {
     processBlock: processBlock,
     initPrefetch,
     fetchMissingBlock,
-    prefetchBlocks
+    prefetchBlocks,
+    setReadyToReceiveTransactions
 }

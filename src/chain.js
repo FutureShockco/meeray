@@ -340,6 +340,11 @@ let chain = {
                 logr.warn('Slow performance detected, will not try to mine next block')
                 return
             }
+            
+            // Make sure the node is marked as ready to receive transactions now that we're mining
+            if (steem && steem.setReadyToReceiveTransactions)
+                steem.setReadyToReceiveTransactions(true)
+                
             chain.worker = setTimeout(function () {
                 chain.mineBlock(function (error, finalBlock) {
                     if (error)

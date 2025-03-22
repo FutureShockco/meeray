@@ -17,6 +17,10 @@ blocks = require('./blocks')
 mongo = require('./mongo')
 http = require('./http')
 
+// Default to not processing Steem transactions until node is fully initialized
+if (steem && steem.setReadyToReceiveTransactions)
+    steem.setReadyToReceiveTransactions(false)
+
 // verify node version
 const allowNodeV = [14, 16, 18, 20]
 const currentNodeV = parseInt(process.versions.node.split('.')[0])
@@ -160,6 +164,12 @@ function startDaemon() {
     setInterval(function() {
         transaction.cleanPool()
     }, blockTime*0.9)
+    
+    // Now that the node is fully initialized, enable transaction processing
+    if (steem && steem.setReadyToReceiveTransactions)
+        steem.setReadyToReceiveTransactions(true)
+    
+    logr.info('🚀 Node startup complete - ready to process transactions and mine blocks')
 }
 
 process.on('SIGINT', function() {
