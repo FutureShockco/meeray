@@ -461,6 +461,18 @@ let p2p = {
             return
         }
 
+        // During sync mode, if we get invalid phash errors, we may need to recover from a bit earlier
+        // to ensure we catch the right fork
+        let recoverFromBlock = p2p.recovering
+        if (steem && steem.isSyncing && steem.isSyncing() && p2p.recoverAttempt > 0) {
+            // Go back a few blocks when in sync mode and previous recovery attempts failed
+            // This helps with fork detection and recovery
+            const backtrackBlocks = Math.min(3 * p2p.recoverAttempt, 10)
+            recoverFromBlock = Math.max(1, chain.getLatestBlock()._id - backtrackBlocks)
+            logr.info(`Sync mode recovery: going back ${backtrackBlocks} blocks to ${recoverFromBlock} for better fork detection`)
+            p2p.recovering = recoverFromBlock
+        }
+
         let champion = peersAhead[Math.floor(Math.random()*peersAhead.length)]
         if (p2p.recovering+1 <= champion.node_status.head_block) {
             p2p.recovering++
@@ -520,19 +532,36 @@ let p2p = {
     addRecursive: (block) => {
         chain.validateAndAddBlock(block, true, function(err, newBlock) {
             if (err) {
-                // try another peer if bad block
-                cache.rollback()
-                dao.resetID()
-                daoMaster.resetID()
-                p2p.recoveredBlocks = []
-                p2p.recoveringBlocks = []
-                p2p.recoverAttempt++
-                if (p2p.recoverAttempt > max_recover_attempts)
-                    logr.error('Error Replay', newBlock._id)
-                else {
-                    logr.warn('Recover attempt #'+p2p.recoverAttempt+' for block '+newBlock._id)
-                    p2p.recovering = chain.getLatestBlock()._id
+                // Check if this is a "invalid phash" error during sync mode
+                const isPhashError = chain.lastValidationError === 'invalid phash'
+                const isSyncMode = steem && steem.isSyncing && steem.isSyncing()
+                
+                if (isPhashError && isSyncMode && p2p.recoverAttempt < max_recover_attempts/2) {
+                    // During sync mode, phash errors are common due to nodes producing blocks at different rates
+                    // Instead of full rollback, try to recover from a specific point
+                    logr.warn(`Invalid phash detected during sync mode (attempt #${p2p.recoverAttempt+1}), trying targeted recovery`)
+                    p2p.recoveredBlocks = []
+                    p2p.recoveringBlocks = []
+                    p2p.recoverAttempt++
+                    
+                    // Try to recover from a few blocks back to get on the right fork
+                    p2p.recovering = Math.max(1, chain.getLatestBlock()._id - (3 * p2p.recoverAttempt))
                     p2p.recover()
+                } else {
+                    // Standard recovery for other errors or after several phash errors
+                    cache.rollback()
+                    dao.resetID()
+                    daoMaster.resetID()
+                    p2p.recoveredBlocks = []
+                    p2p.recoveringBlocks = []
+                    p2p.recoverAttempt++
+                    if (p2p.recoverAttempt > max_recover_attempts)
+                        logr.error('Error Replay', newBlock._id)
+                    else {
+                        logr.warn('Recover attempt #'+p2p.recoverAttempt+' for block '+newBlock._id)
+                        p2p.recovering = chain.getLatestBlock()._id
+                        p2p.recover()
+                    }
                 }
             } else {
                 p2p.recoverAttempt = 0

@@ -47,6 +47,7 @@ let chain = {
     recovering: false,
     recoveryAttempts: 0,
     maxRecoveryAttempts: 3,
+    lastValidationError: null,
     getNewKeyPair: () => {
         let privKey, pubKey
         do {
@@ -233,8 +234,16 @@ let chain = {
     validateAndAddBlock: (newBlock, revalidate, cb) => {
         // when we receive an outside block and check whether we should add it to our chain or not
         if (chain.shuttingDown) return
+        
+        // Reset validation error before starting
+        chain.lastValidationError = null
+        
         chain.isValidNewBlock(newBlock, revalidate, false, function (isValid) {
             if (!isValid) {
+                // Special handling for phash errors during sync mode
+                if (chain.lastValidationError === 'invalid phash' && steem && steem.isSyncing && steem.isSyncing()) {
+                    logr.warn(`Invalid phash during sync mode for block #${newBlock._id} by ${newBlock.miner} - this is normal during fast sync`)
+                }
                 return cb(true, newBlock)
             }
             
@@ -243,6 +252,7 @@ let chain = {
                 steem.isOnSteemBlock(newBlock)
                     .then((result) => {
                         if (!result) {
+                            chain.lastValidationError = 'transactions not found on Steem'
                             logr.error('Block transactions not found on Steem')
                             cb(true, newBlock)
                         } else {
@@ -250,6 +260,7 @@ let chain = {
                         }
                     })
                     .catch(err => {
+                        chain.lastValidationError = 'error verifying on Steem'
                         logr.error('Error verifying block on Steem:', err)
                         cb(true, newBlock)
                     })
@@ -570,6 +581,7 @@ let chain = {
         let theoreticalHash = chain.calculateHashForBlock(newBlock, true)
         if (theoreticalHash !== newBlock.hash) {
             logr.debug(typeof (newBlock.hash) + ' ' + typeof theoreticalHash)
+            chain.lastValidationError = 'invalid hash'
             logr.error('invalid hash: ' + theoreticalHash + ' ' + newBlock.hash)
             cb(false); return
         }
@@ -577,6 +589,7 @@ let chain = {
         // finally, verify the signature of the miner
         chain.isValidSignature(newBlock.miner, null, newBlock.hash, newBlock.signature, function (legitUser) {
             if (!legitUser) {
+                chain.lastValidationError = 'invalid miner signature'
                 logr.error('invalid miner signature')
                 cb(false); return
             }
@@ -589,17 +602,20 @@ let chain = {
             dao.resetID()
             daoMaster.resetID()
             if (validTxs.length !== newBlock.txs.length) {
+                chain.lastValidationError = 'invalid block transaction'
                 logr.error('invalid block transaction')
                 cb(false); return
             }
             let blockDist = newBlock.dist || 0
             if (blockDist !== dist) {
+                chain.lastValidationError = 'wrong dist amount'
                 logr.error('Wrong dist amount', blockDist, dist)
                 return cb(false)
             }
 
             let blockBurn = newBlock.burn || 0
             if (blockBurn !== burn) {
+                chain.lastValidationError = 'wrong burn amount'
                 logr.error('Wrong burn amount', blockBurn, burn)
                 return cb(false)
             }
@@ -608,6 +624,7 @@ let chain = {
     },
     isValidNewBlock: (newBlock, revalidate, skipSteem, cb) => {
         if (!newBlock || typeof newBlock !== 'object') {
+            chain.lastValidationError = 'block is null or invalid type'
             logr.error('block is null or invalid type')
             cb(false)
             return
@@ -615,21 +632,25 @@ let chain = {
 
         // Basic block validation
         if (!newBlock._id || typeof newBlock._id !== 'number') {
+            chain.lastValidationError = 'invalid block index'
             logr.error('invalid block index')
             cb(false)
             return
         }
         if (!newBlock.phash || typeof newBlock.phash !== 'string') {
+            chain.lastValidationError = 'invalid block phash'
             logr.error('invalid block phash')
             cb(false)
             return
         }
         if (!newBlock.timestamp || typeof newBlock.timestamp !== 'number') {
+            chain.lastValidationError = 'invalid block timestamp'
             logr.error('invalid block timestamp')
             cb(false)
             return
         }
         if (!newBlock.miner || typeof newBlock.miner !== 'string') {
+            chain.lastValidationError = 'invalid block miner'
             logr.error('invalid block miner')
             cb(false)
             return
@@ -638,6 +659,7 @@ let chain = {
         // Get previous block
         let previousBlock = chain.getLatestBlock()
         if (previousBlock._id + 1 !== newBlock._id) {
+            chain.lastValidationError = 'invalid index'
             logr.error('invalid index')
             cb(false)
             return
@@ -645,6 +667,7 @@ let chain = {
 
         // Check previous hash
         if (previousBlock.hash !== newBlock.phash) {
+            chain.lastValidationError = 'invalid phash'
             logr.error('invalid phash')
             cb(false)
             return
@@ -652,6 +675,7 @@ let chain = {
 
         // Check Steem block
         if (newBlock.steemblock !== previousBlock.steemblock + 1) {
+            chain.lastValidationError = 'invalid steem block'
             logr.error('invalid steem block')
             cb(false)
             return
@@ -659,6 +683,7 @@ let chain = {
 
         // Check transaction count
         if (newBlock.txs.length > config.maxTxPerBlock) {
+            chain.lastValidationError = 'too many transactions'
             logr.error('too many transactions')
             cb(false)
             return
@@ -676,6 +701,7 @@ let chain = {
             }
 
         if (minerPriority === 0) {
+            chain.lastValidationError = 'unauthorized miner'
             logr.error('unauthorized miner')
             cb(false)
             return
@@ -692,6 +718,7 @@ let chain = {
         const earlyBuffer = newBlock._id <= 10 ? maxDriftValue * 2 : maxDriftValue
         
         if (newBlock.timestamp < expectedTime - earlyBuffer) {
+            chain.lastValidationError = 'block too early'
             logr.error(`Block too early for miner with priority #${minerPriority}. Current time: ${currentTime}, Expected time: ${expectedTime}, Block time: ${newBlock.timestamp}, Difference: ${expectedTime - newBlock.timestamp}ms, Mode: ${steem.isSyncing() ? 'sync' : 'normal'}`)
             cb(false)
             return
@@ -699,15 +726,20 @@ let chain = {
 
         // Late blocks have a standard buffer
         if (newBlock.timestamp > currentTime + maxDriftValue) {
+            chain.lastValidationError = 'block too late'
             logr.error(`Block too late. Current time: ${currentTime}, Block time: ${newBlock.timestamp}, Difference: ${newBlock.timestamp - currentTime}ms, Mode: ${steem.isSyncing() ? 'sync' : 'normal'}`)
             cb(false)
             return
         }
 
+        // Reset validation error before further validation
+        chain.lastValidationError = null
+        
         // Validate transactions and signature if needed
         if (!skipSteem) {
             chain.isValidHashAndSignature(newBlock, function (isValid) {
                 if (!isValid) {
+                    chain.lastValidationError = 'invalid hash or signature'
                     cb(false)
                     return
                 }
