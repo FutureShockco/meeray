@@ -421,8 +421,31 @@ let chain = {
             if (steem && steem.isSyncing && steem.getBehindBlocks) {
                 output += '  sync: ' + (steem.isSyncing() ? 'YES' : 'NO')
                 const behind = steem.getBehindBlocks()
-                if (behind > 0)
+                if (behind > 0) {
                     output += ' (' + behind + ' blocks behind)'
+                    
+                    // Add estimated time to completion based on:
+                    // - Processing 1 block/second in sync mode
+                    // - Steem producing 1 block every 3 seconds
+                    // Formula: time = blocks_behind / (processing_rate - steem_production_rate)
+                    const processingRate = 1;  // blocks per second
+                    const steemProductionRate = 1/3;  // blocks per second
+                    const netCatchupRate = processingRate - steemProductionRate;  // net blocks per second
+                    
+                    // Only calculate if we're actually catching up
+                    if (netCatchupRate > 0) {
+                        const secondsToSync = Math.ceil(behind / netCatchupRate);
+                        const minutesToSync = Math.ceil(secondsToSync / 60);
+                        
+                        if (minutesToSync < 60) {
+                            output += ' (~' + minutesToSync + ' min to sync)';
+                        } else {
+                            const hoursToSync = Math.floor(minutesToSync / 60);
+                            const remainingMinutes = minutesToSync % 60;
+                            output += ' (~' + hoursToSync + 'h ' + remainingMinutes + 'm to sync)';
+                        }
+                    }
+                }
             }
             
             if (block.missedBy && !rebuilding)
