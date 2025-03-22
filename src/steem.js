@@ -328,7 +328,20 @@ const updateSteemBlock = async () => {
     try {
         const dynGlobalProps = await client.database.getDynamicGlobalProperties()
         const latestSteemBlock = dynGlobalProps.head_block_number
-        behindBlocks = latestSteemBlock - currentSteemBlock
+        const localBehindBlocks = latestSteemBlock - currentSteemBlock
+        
+        // Only update the network-wide behind blocks if our count is higher
+        // This ensures the network always knows the furthest behind node
+        if (localBehindBlocks > behindBlocks) {
+            behindBlocks = localBehindBlocks
+            // Broadcast to network in next message if we're significantly behind
+            if (p2p && p2p.broadcast && localBehindBlocks > SYNC_THRESHOLD * 1.5) {
+                p2p.broadcast({
+                    t: 'STEEM_BEHIND',
+                    d: behindBlocks
+                })
+            }
+        }
 
         // Don't change sync mode if we're in forced sync by the network
         if (chain && chain.getLatestBlock() && chain.getLatestBlock()._id < forceSyncUntilBlock) {
@@ -524,6 +537,21 @@ module.exports = {
     },
     getBehindBlocks: () => {
         return behindBlocks
+    },
+    updateNetworkBehindBlocks: (newValue) => {
+        if (typeof newValue === 'number' && newValue > behindBlocks) {
+            behindBlocks = newValue
+            // If we get an update that we're significantly behind, consider entering sync mode
+            if (behindBlocks >= SYNC_THRESHOLD && !isSyncing) {
+                logr.info(`Entering sync mode based on network report, ${behindBlocks} blocks behind`)
+                isSyncing = true
+                
+                // Force sync mode for all nodes for a while
+                if (chain && chain.getLatestBlock()) {
+                    forceSyncUntilBlock = chain.getLatestBlock()._id + SYNC_FORCE_BLOCKS
+                }
+            }
+        }
     },
     setSyncMode: (blockHeight) => {
         // Force sync mode for the next SYNC_FORCE_BLOCKS blocks

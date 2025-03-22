@@ -29,7 +29,8 @@ const MessageType = {
     NEW_TX: 5,
     BLOCK_CONF_ROUND: 6,
     SYNC_REQUIRED: 7,
-    SYNC_COMPLETE: 8
+    SYNC_COMPLETE: 8,
+    STEEM_BEHIND: 9
 }
 
 let p2p = {
@@ -416,6 +417,28 @@ let p2p = {
                 if (message.d.origin !== p2p.nodeId) {
                     message.d.origin = p2p.nodeId
                     p2p.broadcast({t: MessageType.SYNC_COMPLETE, d: message.d})
+                }
+                break
+
+            case MessageType.STEEM_BEHIND:
+                // Handle behind blocks count from other nodes
+                if (!message.d || typeof message.d !== 'number') {
+                    break
+                }
+                
+                // If another node is reporting larger behind blocks count, update our value
+                if (steem && steem.getBehindBlocks && typeof message.d === 'number') {
+                    const currentBehind = steem.getBehindBlocks()
+                    if (message.d > currentBehind) {
+                        logr.debug(`Updating behind blocks count from ${currentBehind} to ${message.d} based on network report`)
+                        steem.updateNetworkBehindBlocks(message.d)
+                        
+                        // Re-broadcast to ensure network-wide awareness
+                        p2p.broadcast({
+                            t: MessageType.STEEM_BEHIND,
+                            d: message.d
+                        })
+                    }
                 }
                 break
             }
