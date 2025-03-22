@@ -1,5 +1,5 @@
 const dsteem = require('dsteem')
-const client = new dsteem.Client([process.env.STEEM_API])
+const client = new dsteem.Client(process.env.STEEM_API ? process.env.STEEM_API.split(',') : ['https://api.steemit.com'])
 
 const transaction = require('./transaction.js')
 const Transaction = require('./transactions')
