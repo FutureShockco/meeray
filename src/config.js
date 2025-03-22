@@ -85,6 +85,8 @@ let config = {
             masterPubLeader: 'e27B66QHwRLjnjxi5KAa9G7fLSDajtoB6CxuZ87oTdfS',
             // the maximum time drift in ms before a block is invalid
             maxDrift: 200,
+            // the maximum time drift during sync mode
+            syncMaxDrift: 300,
             // the maximum number of transactions in a single block
             maxTxPerBlock: 20,
             // the max length of a transfer memo

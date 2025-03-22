@@ -96,7 +96,11 @@ let chain = {
         const minimumTimestamp = previousBlock.timestamp + (minerPriority * blockTime)
         
         // Add a small buffer to ensure the block is not too early for other nodes
-        const bufferTime = nextIndex <= 10 ? 50 : 25  // Extra buffer for early blocks
+        // Use a larger buffer during sync mode to accommodate faster block production
+        const maxDriftValue = steem.isSyncing() ? config.syncMaxDrift : config.maxDrift
+        const bufferTime = steem.isSyncing() 
+            ? (nextIndex <= 10 ? 80 : 50)  // Larger buffer in sync mode
+            : (nextIndex <= 10 ? 50 : 25)  // Standard buffer in normal mode
         
         const nextTimestamp = Math.max(
             new Date().getTime() + bufferTime,  // Current time plus buffer
@@ -646,17 +650,19 @@ let chain = {
         const expectedTime = previousBlock.timestamp + (minerPriority * blockTime)
         
         // Add a more flexible timing buffer, especially for the first block
-        const earlyBuffer = newBlock._id <= 10 ? config.maxDrift * 2 : config.maxDrift
+        // Use different maxDrift based on sync mode
+        const maxDriftValue = steem.isSyncing() ? config.syncMaxDrift : config.maxDrift
+        const earlyBuffer = newBlock._id <= 10 ? maxDriftValue * 2 : maxDriftValue
         
         if (newBlock.timestamp < expectedTime - earlyBuffer) {
-            logr.error(`Block too early for miner with priority #${minerPriority}. Current time: ${currentTime}, Expected time: ${expectedTime}, Block time: ${newBlock.timestamp}, Difference: ${expectedTime - newBlock.timestamp}ms`)
+            logr.error(`Block too early for miner with priority #${minerPriority}. Current time: ${currentTime}, Expected time: ${expectedTime}, Block time: ${newBlock.timestamp}, Difference: ${expectedTime - newBlock.timestamp}ms, Mode: ${steem.isSyncing() ? 'sync' : 'normal'}`)
             cb(false)
             return
         }
 
         // Late blocks have a standard buffer
-        if (newBlock.timestamp > currentTime + config.maxDrift) {
-            logr.error(`Block too late. Current time: ${currentTime}, Block time: ${newBlock.timestamp}, Difference: ${newBlock.timestamp - currentTime}ms`)
+        if (newBlock.timestamp > currentTime + maxDriftValue) {
+            logr.error(`Block too late. Current time: ${currentTime}, Block time: ${newBlock.timestamp}, Difference: ${newBlock.timestamp - currentTime}ms, Mode: ${steem.isSyncing() ? 'sync' : 'normal'}`)
             cb(false)
             return
         }
