@@ -178,7 +178,7 @@ const processBlock = async (blockNum) => {
         }
 
         // Process the transactions
-        const transactions = await processSteemBlock(blockNum, steemBlock)
+        const transactions = await processTransactions(steemBlock, blockNum)
         
         // Update currentSteemBlock
         currentSteemBlock = Math.max(currentSteemBlock, blockNum)
