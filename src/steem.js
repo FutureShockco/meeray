@@ -37,6 +37,15 @@ let prefetchTimer = null
 // Add at the top of the file with other initialization variables
 let readyToReceiveTransactions = false
 
+// Helper function to check sync status
+const isInSyncMode = () => {
+    // Check if we're forced into sync mode by a recent block
+    if (chain && chain.getLatestBlock() && chain.getLatestBlock()._id < forceSyncUntilBlock) {
+        return true
+    }
+    return isSyncing
+}
+
 // Add a function to set readiness state
 const setReadyToReceiveTransactions = (ready) => {
     readyToReceiveTransactions = ready
@@ -57,7 +66,7 @@ const prefetchBlocks = async () => {
 
     // Determine how many blocks to prefetch based on sync status
     let blocksToPrefetch = MAX_PREFETCH_BLOCKS
-    if (isSyncing()) {
+    if (isInSyncMode()) {
         // More aggressive prefetching during sync mode
         blocksToPrefetch = MAX_PREFETCH_BLOCKS * 3
     }
@@ -118,14 +127,14 @@ const prefetchBlocks = async () => {
         // Schedule next prefetch more aggressively if we're far behind
         if (prefetchTimer) clearTimeout(prefetchTimer)
         
-        const prefetchDelay = isSyncing() ? 100 : 1000 // Much faster prefetch during sync
+        const prefetchDelay = isInSyncMode() ? 100 : 1000 // Much faster prefetch during sync
         prefetchTimer = setTimeout(prefetchBlocks, prefetchDelay)
     }
 }
 
 // Function declarations
 const processBlock = async (blockNum) => {
-    if (!readyToReceiveTransactions && !isSyncing()) {
+    if (!readyToReceiveTransactions && !isInSyncMode()) {
         logr.debug('Skipping Steem block processing - node not ready to receive transactions yet')
         return Promise.resolve()
     }
@@ -175,7 +184,7 @@ const processBlock = async (blockNum) => {
         currentSteemBlock = Math.max(currentSteemBlock, blockNum)
         
         // Update behindBlocks after each successful block processing in sync mode
-        if (isSyncing()) {
+        if (isInSyncMode()) {
             getLatestSteemBlockNum().then(latestBlock => {
                 if (latestBlock) {
                     behindBlocks = Math.max(0, latestBlock - blockNum)
@@ -422,7 +431,7 @@ const updateSteemBlock = async () => {
         }
 
         // In sync mode, prefetch more aggressively
-        if (isSyncing && !prefetchInProgress) {
+        if (isInSyncMode() && !prefetchInProgress) {
             prefetchBlocks()
         }
 
