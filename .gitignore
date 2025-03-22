@@ -13,3 +13,4 @@ apidoc
 src/logs/output.log
 scripts/start copy - Copie.bat
 scripts/start copy.bat
+scripts/keys.json

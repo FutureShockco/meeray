@@ -72,7 +72,44 @@ let chain = {
     prepareBlock: (cb) => {
         let previousBlock = chain.getLatestBlock()
         let nextIndex = previousBlock._id + 1
-        let nextTimestamp = new Date().getTime()
+        
+        // Calculate the appropriate timestamp based on miner priority
+        let minerPriority = 1 // Default priority for the leader
+        
+        if (!chain.schedule) {
+            // No schedule yet, so we need to create one
+            chain.schedule = chain.minerSchedule(previousBlock)
+        }
+        
+        if (chain.schedule.shuffle[(nextIndex - 1) % config.leaders].name !== process.env.NODE_OWNER) {
+            // We're not the scheduled leader, calculate our priority
+            for (let i = 1; i < 2 * config.leaders; i++) {
+                if (chain.recentBlocks[chain.recentBlocks.length - i]
+                    && chain.recentBlocks[chain.recentBlocks.length - i].miner === process.env.NODE_OWNER) {
+                    minerPriority = i + 1
+                    break
+                }
+            }
+        }
+        
+        // Calculate timestamp with proper padding to ensure it passes validation
+        let newTimestamp = new Date().getTime()
+        
+        // In sync mode, add a smaller buffer to allow faster blocks
+        let buffer = 0
+        if (steem.isSyncing && steem.isSyncing()) {
+            // In sync mode, add a smaller buffer for all miners
+            buffer = 50 * minerPriority
+        } else {
+            // Normal mode, add the standard buffer based on priority
+            buffer = 200 * (minerPriority - 1)
+        }
+
+        // Add an appropriate buffer to ensure we don't create blocks too early
+        newTimestamp += buffer
+        
+        logr.debug(`Preparing block with timestamp ${newTimestamp}, min: ${newTimestamp - buffer}, priority: ${minerPriority}`)
+        
         let nextSteemBlock = previousBlock.steemblock + 1
         // Process Steem block first to get its transactions in the mempool
         steem.processBlock(nextSteemBlock).then(() => {
@@ -101,7 +138,7 @@ let chain = {
             }
             txs = txs.sort(function (a, b) { return a.ts - b.ts })
             transaction.removeFromPool(txs)
-            cb(null, new Block(nextIndex, nextSteemBlock, previousBlock.hash, nextTimestamp, txs, process.env.NODE_OWNER))
+            cb(null, new Block(nextIndex, nextSteemBlock, previousBlock.hash, newTimestamp, txs, process.env.NODE_OWNER))
             return
         })
     },
@@ -239,6 +276,16 @@ let chain = {
         if (p2p.recovering) return
         clearTimeout(chain.worker)
 
+        if (!chain.schedule) {
+            // If no schedule, create one
+            chain.schedule = chain.minerSchedule(block)
+            // If still no schedule after creating one, we have a problem
+            if (!chain.schedule || !chain.schedule.shuffle || chain.schedule.shuffle.length === 0) {
+                logr.fatal('No miner schedule could be generated, and no miners available')
+                process.exit(1)
+            }
+        }
+
         if (chain.schedule.shuffle.length === 0) {
             logr.fatal('All leaders gave up their stake? Chain is over')
             process.exit(1)
@@ -248,9 +295,15 @@ let chain = {
         // Get the appropriate block time based on sync state
         let blockTime = steem.isSyncing() ? config.syncBlockTime : config.blockTime
 
+        // Use safety checks to prevent errors when accessing shuffle
+        const shuffleIndex = (block._id) % config.leaders
+        
         // if we are the next scheduled witness, try to mine in time
-        if (chain.schedule.shuffle[(block._id) % config.leaders].name === process.env.NODE_OWNER)
+        if (shuffleIndex < chain.schedule.shuffle.length && 
+            chain.schedule.shuffle[shuffleIndex] && 
+            chain.schedule.shuffle[shuffleIndex].name === process.env.NODE_OWNER) {
             mineInMs = blockTime
+        }
         // else if the scheduled leaders miss blocks
         // backups witnesses are available after each block time intervals
         else for (let i = 1; i < 2 * config.leaders; i++)
