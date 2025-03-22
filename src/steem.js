@@ -1,5 +1,35 @@
 const dsteem = require('dsteem')
-const client = new dsteem.Client(process.env.STEEM_API ? process.env.STEEM_API.split(',') : ['https://api.steemit.com'])
+// Setup multiple endpoints with manual failover
+const apiUrls = process.env.STEEM_API ? process.env.STEEM_API.split(',').map(url => url.trim()) : ['https://api.steemit.com']
+console.log('Using Steem API URLs:', apiUrls)
+
+// Track current endpoint and create initial client
+let currentEndpointIndex = 0
+let client = new dsteem.Client(apiUrls[currentEndpointIndex], { 
+    failoverThreshold: 3, 
+    addressPrefix: 'STM', 
+    chainId: '0000000000000000000000000000000000000000000000000000000000000000' 
+})
+
+// Create a function to switch to the next endpoint when current one fails
+const switchToNextEndpoint = () => {
+    if (apiUrls.length <= 1) return false
+    
+    // Move to next endpoint in round-robin fashion
+    currentEndpointIndex = (currentEndpointIndex + 1) % apiUrls.length
+    const newEndpoint = apiUrls[currentEndpointIndex]
+    
+    logr.info(`Switching to next Steem API endpoint: ${newEndpoint}`)
+    
+    // Create a new client with the next endpoint
+    client = new dsteem.Client(newEndpoint, {
+        failoverThreshold: 3,
+        addressPrefix: 'STM',
+        chainId: '0000000000000000000000000000000000000000000000000000000000000000'
+    })
+    
+    return true
+}
 
 const transaction = require('./transaction.js')
 const Transaction = require('./transactions')
