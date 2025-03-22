@@ -498,6 +498,33 @@ const resetErrorState = () => {
     }
 }
 
+// Function to increment consecutive errors counter
+const incrementConsecutiveErrors = () => {
+    consecutiveErrors++
+    
+    // Check if we should trip the circuit breaker
+    if (consecutiveErrors >= CIRCUIT_BREAKER_THRESHOLD) {
+        circuitBreakerOpen = true
+        lastCircuitBreakerTrip = Date.now()
+        logr.error('Circuit breaker tripped due to too many consecutive errors')
+    }
+    
+    // Adjust retry delay if needed
+    if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+        retryDelay = calculateRetryDelay()
+        logr.warn(`Consecutive errors threshold reached: ${consecutiveErrors}, next retry in ${Math.round(retryDelay)}ms`)
+    }
+}
+
+// Function to reset consecutive errors
+const resetConsecutiveErrors = () => {
+    if (consecutiveErrors > 0) {
+        consecutiveErrors = 0
+        retryDelay = MIN_RETRY_DELAY
+        logr.debug('Reset consecutive errors counter')
+    }
+}
+
 // Initial interval
 syncInterval = setInterval(updateSteemBlock, 3000)
 
