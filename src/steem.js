@@ -329,13 +329,19 @@ const updateSteemBlock = async () => {
         const dynGlobalProps = await client.database.getDynamicGlobalProperties()
         const latestSteemBlock = dynGlobalProps.head_block_number
         
-        // Sanity check - if currentSteemBlock is 0 or very low, initialize it properly
-        if (currentSteemBlock < 1) {
-            currentSteemBlock = latestSteemBlock - 5 // Start with a small reasonable offset
-            logr.info(`Initializing current Steem block to ${currentSteemBlock}`)
+        // Get the Steem block from our last chain block instead of using currentSteemBlock
+        let lastProcessedSteemBlock = 0
+        if (chain && chain.getLatestBlock() && chain.getLatestBlock().steemblock) {
+            lastProcessedSteemBlock = chain.getLatestBlock().steemblock
+        } else if (config.steemStartBlock) {
+            lastProcessedSteemBlock = config.steemStartBlock
         }
         
-        const localBehindBlocks = latestSteemBlock - currentSteemBlock
+        // Update currentSteemBlock for transaction processing
+        currentSteemBlock = Math.max(currentSteemBlock, lastProcessedSteemBlock)
+        
+        // Calculate blocks behind using the Steem block from our last chain block
+        const localBehindBlocks = latestSteemBlock - lastProcessedSteemBlock
         
         // Sanity check for extreme values
         const MAX_REASONABLE_BEHIND = 20000 // No node should be more than this behind
@@ -522,9 +528,19 @@ module.exports = {
         
         // Initialize behindBlocks properly
         getLatestSteemBlockNum().then(latestBlock => {
-            if (latestBlock && currentSteemBlock) {
-                behindBlocks = Math.max(0, latestBlock - currentSteemBlock)
-                logr.info(`Initial blocks behind: ${behindBlocks} (Steem: ${latestBlock}, Current: ${currentSteemBlock})`)
+            if (latestBlock) {
+                // Get the Steem block from our last chain block
+                let lastProcessedSteemBlock = 0
+                if (chain && chain.getLatestBlock() && chain.getLatestBlock().steemblock) {
+                    lastProcessedSteemBlock = chain.getLatestBlock().steemblock
+                } else if (config.steemStartBlock) {
+                    lastProcessedSteemBlock = config.steemStartBlock
+                } else {
+                    lastProcessedSteemBlock = blockNum
+                }
+                
+                behindBlocks = Math.max(0, latestBlock - lastProcessedSteemBlock)
+                logr.info(`Initial blocks behind: ${behindBlocks} (Steem head: ${latestBlock}, Last processed: ${lastProcessedSteemBlock})`)
             }
         }).catch(err => {
             logr.error('Error initializing behind blocks count:', err)
