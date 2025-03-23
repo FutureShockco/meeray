@@ -49,7 +49,7 @@ const MAX_RETRY_DELAY = 15000
 const CIRCUIT_BREAKER_THRESHOLD = 30
 const CIRCUIT_BREAKER_RESET_TIMEOUT = 30000
 const MAX_PREFETCH_BLOCKS = 10  // Maximum number of blocks to prefetch at once
-const SYNC_THRESHOLD = 5  // Number of blocks behind before entering sync mode
+const SYNC_THRESHOLD = 10  // Number of blocks behind before entering sync mode
 const SYNC_EXIT_THRESHOLD = 0  // Number of blocks behind before exiting sync mode
 const SYNC_FORCE_BLOCKS = 5   // Number of blocks to stay in sync mode after catching up
 
@@ -450,7 +450,7 @@ const updateSteemBlock = async () => {
                 if (behindBlocks >= SYNC_THRESHOLD * 2 && chain && process.env.NODE_OWNER) {
                     // This node will be in sync mode for a while, so when it mines a block,
                     // the network should also enter sync mode to stay coordinated
-                    forceSyncUntilBlock = chain.getLatestBlock()._id + SYNC_FORCE_BLOCKS + 1
+                    forceSyncUntilBlock = chain.getLatestBlock()._id + SYNC_FORCE_BLOCKS
                 }
             }
         } else if (behindBlocks <= SYNC_EXIT_THRESHOLD) {
