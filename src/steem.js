@@ -67,7 +67,8 @@ const CIRCUIT_BREAKER_THRESHOLD = 30
 const CIRCUIT_BREAKER_RESET_TIMEOUT = 30000
 const MAX_PREFETCH_BLOCKS = 10  // Maximum number of blocks to prefetch at once
 const SYNC_THRESHOLD = 5  // Number of blocks behind before entering sync mode
-const SYNC_EXIT_COOLDOWN = 5000 // 10 seconds cooldown before exiting sync mode
+const SYNC_EXIT_COOLDOWN = 10000 // Increase to 10 seconds cooldown before exiting sync mode
+const SYNC_EXIT_BLOCKS_THRESHOLD = 3 // Must be caught up within this many blocks to exit sync
 
 let consecutiveErrors = 0
 let retryDelay = MIN_RETRY_DELAY
@@ -422,15 +423,13 @@ const updateSteemBlock = async () => {
         const MAX_REASONABLE_BEHIND = 20000
         const calculatedBehind = Math.min(localBehindBlocks, MAX_REASONABLE_BEHIND)
 
-        // Check if our behind count changed significantly
-        const behindBlocksChanged = Math.abs(calculatedBehind - behindBlocks) > 5
-
-        // Update behindBlocks if we're more behind or if there's significant change
-        if (calculatedBehind > behindBlocks || behindBlocksChanged) {
+        // Update behindBlocks more conservatively
+        if (calculatedBehind > behindBlocks || calculatedBehind > SYNC_THRESHOLD) {
             behindBlocks = calculatedBehind
-            if (behindBlocksChanged) {
-                logr.info(`Updated blocks behind: ${behindBlocks}`)
-            }
+            logr.debug(`Updated blocks behind: ${behindBlocks}`)
+        } else if (calculatedBehind < behindBlocks) {
+            // Gradually decrease behindBlocks count
+            behindBlocks = Math.max(calculatedBehind, behindBlocks - 1)
         }
 
         // Don't change sync mode if we're in forced sync
@@ -439,7 +438,7 @@ const updateSteemBlock = async () => {
         }
 
         // More conservative sync mode management
-        if (behindBlocks > 0) {
+        if (behindBlocks >= SYNC_THRESHOLD) {
             if (!isSyncing) {
                 logr.info(`Entering sync mode, ${behindBlocks} blocks behind`)
                 isSyncing = true
@@ -448,20 +447,21 @@ const updateSteemBlock = async () => {
         } else {
             // Only exit sync mode if:
             // 1. We're currently in sync mode
-            // 2. We've been caught up for the cooldown period
-            // 3. We haven't exited sync mode recently
+            // 2. We've been in sync mode for the minimum cooldown period
+            // 3. We're within the exit threshold for blocks behind
+            // 4. We haven't exited sync mode recently
             if (isSyncing && 
                 Date.now() - lastSyncModeChange > SYNC_EXIT_COOLDOWN &&
+                behindBlocks <= SYNC_EXIT_BLOCKS_THRESHOLD &&
                 (!lastSyncExitTime || Date.now() - lastSyncExitTime > SYNC_EXIT_COOLDOWN * 2)) {
                 
-                logr.info('Exiting sync mode - chain fully caught up')
+                logr.info(`Exiting sync mode - chain caught up (${behindBlocks} blocks behind)`)
                 isSyncing = false
                 lastSyncModeChange = Date.now()
                 lastSyncExitTime = Date.now()
             }
         }
 
-        // Remove the duplicate exitSyncMode call
         return latestSteemBlock
     } catch (error) {
         logr.error('Error updating Steem block state:', error)
