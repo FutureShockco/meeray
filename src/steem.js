@@ -102,6 +102,14 @@ const rpcHeightData = new Map() // Store both height and timestamp
 let networkSteemHeights = new Map() // Track each node's latest Steem block height
 const STEEM_HEIGHT_EXPIRY = 30000 // Expire Steem heights older than 30 seconds
 
+// Add RPC tracking variables
+let lastRpcCheck = 0
+let networkSyncStatus = new Map() // Track other nodes' sync status
+let lastNetworkSyncCheck = 0
+const NETWORK_SYNC_CHECK_INTERVAL = 15000 // Check network sync status every 15 seconds
+const SYNC_EXIT_QUORUM_PERCENT = 60 // Require 60% of nodes to be caught up before exiting sync mode
+const RPC_MAX_BLOCK_DIFF = 5 // Maximum allowed difference between RPCs
+
 // Helper function to check sync status
 const isInSyncMode = () => {
     // Check if we're forced into sync mode by a recent block
