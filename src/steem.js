@@ -675,11 +675,12 @@ module.exports = {
         return currentSteemBlock
     },
     isSyncing: () => {
-        logr.info(`Force until block: ${forceSyncUntilBlock}`)
         // Check if we're forced into sync mode by a recent block
         if (chain && chain.getLatestBlock() && chain.getLatestBlock()._id < forceSyncUntilBlock) {
-            return true
+            logr.info(`Force until block: ${forceSyncUntilBlock}`)
+            isSyncing = true
         }
+        isSyncing = false
         return isSyncing
     },
     getBehindBlocks: () => {
