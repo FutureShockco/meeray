@@ -15,19 +15,38 @@ let client = new dsteem.Client(apiUrls[currentEndpointIndex], {
 const switchToNextEndpoint = () => {
     if (apiUrls.length <= 1) return false
 
-    // Move to next endpoint in round-robin fashion
+    // Find the most up-to-date RPC
+    let bestEndpoint = apiUrls[0]
+    let highestBlock = 0
+
+    for (const [url, height] of rpcBlockHeights.entries()) {
+        if (apiUrls.includes(url) && height > highestBlock) {
+            highestBlock = height
+            bestEndpoint = url
+        }
+    }
+
+    // If we found a better endpoint, use it
+    if (bestEndpoint !== client.address) {
+        logr.info(`Switching to better Steem API endpoint: ${bestEndpoint}`)
+        client = new dsteem.Client(bestEndpoint, {
+            failoverThreshold: 3,
+            addressPrefix: 'STM',
+            chainId: '0000000000000000000000000000000000000000000000000000000000000000'
+        })
+        return true
+    }
+
+    // Otherwise, use round-robin as fallback
     currentEndpointIndex = (currentEndpointIndex + 1) % apiUrls.length
     const newEndpoint = apiUrls[currentEndpointIndex]
-
+    
     logr.info(`Switching to next Steem API endpoint: ${newEndpoint}`)
-
-    // Create a new client with the next endpoint
     client = new dsteem.Client(newEndpoint, {
         failoverThreshold: 3,
         addressPrefix: 'STM',
         chainId: '0000000000000000000000000000000000000000000000000000000000000000'
     })
-
     return true
 }
 
@@ -69,6 +88,12 @@ let lastSyncModeChange = 0
 
 // Add tracking for sync mode exit time
 let lastSyncExitTime = null
+
+// Add new tracking variables at the top with other initialization variables
+let rpcBlockHeights = new Map() // Track block heights for each RPC
+const RPC_MAX_BLOCK_DIFF = 5 // Maximum allowed difference between RPCs
+let lastRpcCheck = 0
+const RPC_CHECK_INTERVAL = 10000 // Check RPC sync every 10 seconds
 
 // Helper function to check sync status
 const isInSyncMode = () => {
@@ -373,10 +398,13 @@ const processTransactions = async (steemBlock, blockNum) => {
 // Function to update our Steem block state and determine sync mode
 const updateSteemBlock = async () => {
     try {
+        // Check RPC synchronization first
+        await checkRpcSync()
+        
         const dynGlobalProps = await client.database.getDynamicGlobalProperties()
         const latestSteemBlock = dynGlobalProps.head_block_number
 
-        // Get the Steem block from our last chain block instead of using currentSteemBlock
+        // Get the Steem block from our last chain block
         let lastProcessedSteemBlock = 0
         if (chain && chain.getLatestBlock() && chain.getLatestBlock().steemblock) {
             lastProcessedSteemBlock = chain.getLatestBlock().steemblock
@@ -384,86 +412,56 @@ const updateSteemBlock = async () => {
             lastProcessedSteemBlock = config.steemStartBlock
         }
 
-        // Update currentSteemBlock for transaction processing
+        // Update currentSteemBlock
         currentSteemBlock = Math.max(currentSteemBlock, lastProcessedSteemBlock)
 
         // Calculate blocks behind using the Steem block from our last chain block
         const localBehindBlocks = latestSteemBlock - lastProcessedSteemBlock
 
         // Sanity check for extreme values
-        const MAX_REASONABLE_BEHIND = 20000 // No node should be more than this behind
+        const MAX_REASONABLE_BEHIND = 20000
         const calculatedBehind = Math.min(localBehindBlocks, MAX_REASONABLE_BEHIND)
 
         // Check if our behind count changed significantly
-        const behindBlocksChanged = Math.abs(calculatedBehind - behindBlocks) > 5;
+        const behindBlocksChanged = Math.abs(calculatedBehind - behindBlocks) > 5
 
-        // Only update the network-wide behind blocks if our count is higher
-        // This ensures the network always knows the furthest behind node
+        // Update behindBlocks if we're more behind or if there's significant change
         if (calculatedBehind > behindBlocks || behindBlocksChanged) {
-            // Adjust update frequency based on how far behind we are
-            if (syncInterval) {
-                clearInterval(syncInterval);
-
-                if (calculatedBehind > SYNC_THRESHOLD * 2) {
-                    // Very behind - update very frequently
-                    syncInterval = setInterval(updateSteemBlock, 500);
-                    if (behindBlocksChanged) {
-                        logr.debug(`Setting very fast sync updates (every 0.5s) - ${calculatedBehind} blocks behind`);
-                    }
-                } else if (calculatedBehind > SYNC_THRESHOLD) {
-                    // Moderately behind - update frequently
-                    syncInterval = setInterval(updateSteemBlock, 1000);
-                    if (behindBlocksChanged) {
-                        logr.debug(`Setting fast sync updates (every 1s) - ${calculatedBehind} blocks behind`);
-                    }
-                } else {
-                    // Normal operation
-                    syncInterval = setInterval(updateSteemBlock, 3000);
-                    if (behindBlocksChanged) {
-                        logr.debug(`Setting normal sync updates (every 3s) - ${calculatedBehind} blocks behind`);
-                    }
-                }
-            }
-
             behindBlocks = calculatedBehind
             if (behindBlocksChanged) {
-                logr.info(`Updated blocks behind: ${behindBlocks}`);
-            }
-
-            // Broadcast to network in next message if we're significantly behind
-            if (p2p && p2p.broadcast && calculatedBehind > SYNC_THRESHOLD * 1.5) {
-                p2p.broadcast({
-                    t: 'STEEM_BEHIND',
-                    d: behindBlocks
-                })
+                logr.info(`Updated blocks behind: ${behindBlocks}`)
             }
         }
 
-        // Don't change sync mode if we're in forced sync by the network
+        // Don't change sync mode if we're in forced sync
         if (chain && chain.getLatestBlock() && chain.getLatestBlock()._id < forceSyncUntilBlock) {
             return latestSteemBlock
         }
 
-        // Determine if we should be in sync mode
-        if (behindBlocks > 0) {  // Any blocks behind means we need to sync
+        // More conservative sync mode management
+        if (behindBlocks > 0) {
             if (!isSyncing) {
                 logr.info(`Entering sync mode, ${behindBlocks} blocks behind`)
                 isSyncing = true
                 lastSyncModeChange = Date.now()
             }
-        } else {  // Only exit when fully caught up AND after cooldown
-            if (isSyncing && (Date.now() - lastSyncModeChange > SYNC_EXIT_COOLDOWN)) {
+        } else {
+            // Only exit sync mode if:
+            // 1. We're currently in sync mode
+            // 2. We've been caught up for the cooldown period
+            // 3. We haven't exited sync mode recently
+            if (isSyncing && 
+                Date.now() - lastSyncModeChange > SYNC_EXIT_COOLDOWN &&
+                (!lastSyncExitTime || Date.now() - lastSyncExitTime > SYNC_EXIT_COOLDOWN * 2)) {
+                
                 logr.info('Exiting sync mode - chain fully caught up')
                 isSyncing = false
                 lastSyncModeChange = Date.now()
+                lastSyncExitTime = Date.now()
             }
         }
 
-        // In sync mode, prefetch more aggressively
-        if (isInSyncMode() && !prefetchInProgress) {
-            prefetchBlocks()
-        }
-
+        // Remove the duplicate exitSyncMode call
         return latestSteemBlock
     } catch (error) {
         logr.error('Error updating Steem block state:', error)
@@ -620,10 +618,54 @@ const getLatestSteemBlockNum = async () => {
 }
 
 function exitSyncMode() {
-    if (isSyncing) {
-        lastSyncExitTime = new Date().getTime()
-        isSyncing = false
-        logr.info('Exiting sync mode - chain fully caught up')
+    // Do nothing - sync mode exit is handled in updateSteemBlock
+    logr.debug('Sync mode exit requested but ignored - handled by updateSteemBlock')
+}
+
+// Add this new function to check RPC synchronization
+const checkRpcSync = async () => {
+    const now = Date.now()
+    if (now - lastRpcCheck < RPC_CHECK_INTERVAL) return
+    lastRpcCheck = now
+
+    rpcBlockHeights.clear()
+    let maxHeight = 0
+    let minHeight = Infinity
+
+    // Check each RPC endpoint
+    for (let i = 0; i < apiUrls.length; i++) {
+        try {
+            const tempClient = new dsteem.Client(apiUrls[i], {
+                failoverThreshold: 3,
+                addressPrefix: 'STM',
+                chainId: '0000000000000000000000000000000000000000000000000000000000000000'
+            })
+            
+            const props = await tempClient.database.getDynamicGlobalProperties()
+            const height = props.head_block_number
+            rpcBlockHeights.set(apiUrls[i], height)
+            
+            maxHeight = Math.max(maxHeight, height)
+            minHeight = Math.min(minHeight, height)
+        } catch (error) {
+            logr.warn(`Failed to check RPC sync for ${apiUrls[i]}:`, error)
+        }
+    }
+
+    // If difference is too large, remove lagging RPCs
+    if (maxHeight - minHeight > RPC_MAX_BLOCK_DIFF) {
+        for (const [url, height] of rpcBlockHeights.entries()) {
+            if (maxHeight - height > RPC_MAX_BLOCK_DIFF) {
+                logr.warn(`RPC ${url} is ${maxHeight - height} blocks behind, temporarily removing from rotation`)
+                // Remove this RPC from the current rotation
+                apiUrls = apiUrls.filter(u => u !== url)
+            }
+        }
+        
+        // If we removed the current endpoint, switch to a better one
+        if (!apiUrls.includes(client.address)) {
+            switchToNextEndpoint()
+        }
     }
 }
 
@@ -783,3 +825,4 @@ module.exports = {
     exitSyncMode,
     lastSyncExitTime: lastSyncExitTime
 }
+
