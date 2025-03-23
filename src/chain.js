@@ -731,29 +731,34 @@ let chain = {
 
         // Check block timing with more flexibility
         const currentTime = new Date().getTime()
-        const blockTime = (steem.isSyncing() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 10000)) 
+        const blockTime = (steem.isSyncing() || (steem.lastSyncExitTime && currentTime - steem.lastSyncExitTime < 30000)) 
             ? config.syncBlockTime 
             : config.blockTime
         const expectedTime = previousBlock.timestamp + (minerPriority * blockTime)
         
         // Add a more flexible timing buffer, especially for the first block
-        // Use different maxDrift based on sync mode
-        const maxDriftValue = (steem.isSyncing() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 10000))
+        // Use different maxDrift based on sync mode and transition period
+        const maxDriftValue = (steem.isSyncing() || (steem.lastSyncExitTime && currentTime - steem.lastSyncExitTime < 30000))
             ? config.syncMaxDrift 
             : config.maxDrift
-        const earlyBuffer = newBlock._id <= 10 ? maxDriftValue * 2 : maxDriftValue
+        const earlyBuffer = (newBlock._id <= 10 || (steem.lastSyncExitTime && currentTime - steem.lastSyncExitTime < 15000)) 
+            ? maxDriftValue * 3 
+            : maxDriftValue
         
         if (newBlock.timestamp < expectedTime - earlyBuffer) {
             chain.lastValidationError = 'block too early'
-            logr.error(`Block too early for miner with priority #${minerPriority}. Current time: ${currentTime}, Expected time: ${expectedTime}, Block time: ${newBlock.timestamp}, Difference: ${expectedTime - newBlock.timestamp}ms, Mode: ${steem.isSyncing() ? 'sync' : 'normal'}`)
+            logr.error(`Block too early for miner with priority #${minerPriority}. Current time: ${currentTime}, Expected time: ${expectedTime}, Block time: ${newBlock.timestamp}, Difference: ${expectedTime - newBlock.timestamp}ms, Mode: ${(steem.lastSyncExitTime && currentTime - steem.lastSyncExitTime < 30000) ? 'transition' : (steem.isSyncing() ? 'sync' : 'normal')}`)
             cb(false)
             return
         }
 
-        // Late blocks have a standard buffer
-        if (newBlock.timestamp > currentTime + maxDriftValue) {
+        // Late blocks have a standard buffer, but more lenient during transition
+        const lateBuffer = (steem.lastSyncExitTime && currentTime - steem.lastSyncExitTime < 15000)
+            ? maxDriftValue * 2
+            : maxDriftValue
+        if (newBlock.timestamp > currentTime + lateBuffer) {
             chain.lastValidationError = 'block too late'
-            logr.error(`Block too late. Current time: ${currentTime}, Block time: ${newBlock.timestamp}, Difference: ${newBlock.timestamp - currentTime}ms, Mode: ${steem.isSyncing() ? 'sync' : 'normal'}`)
+            logr.error(`Block too late. Current time: ${currentTime}, Block time: ${newBlock.timestamp}, Difference: ${newBlock.timestamp - currentTime}ms, Mode: ${(steem.lastSyncExitTime && currentTime - steem.lastSyncExitTime < 30000) ? 'transition' : (steem.isSyncing() ? 'sync' : 'normal')}`)
             cb(false)
             return
         }
