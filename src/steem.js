@@ -680,7 +680,9 @@ module.exports = {
             logr.info(`Force until block: ${forceSyncUntilBlock}`)
             isSyncing = true
         }
-        isSyncing = false
+        else {
+            isSyncing = false
+        }
         return isSyncing
     },
     getBehindBlocks: () => {
