@@ -249,13 +249,15 @@ const processBlock = async (blockNum) => {
         if (!steemBlock) {
             try {
                 steemBlock = await client.database.getBlock(blockNum)
-                // Cache the block
-                blockCache.set(blockNum, steemBlock)
-                // Limit cache size
-                if (blockCache.size > MAX_PREFETCH_BLOCKS * 2) {
-                    // Delete oldest entries (approximate LRU)
-                    const keysToDelete = Array.from(blockCache.keys()).slice(0, MAX_PREFETCH_BLOCKS)
-                    keysToDelete.forEach(key => blockCache.delete(key))
+                if (steemBlock) {
+                    // Cache the block
+                    blockCache.set(blockNum, steemBlock)
+                    // Limit cache size
+                    if (blockCache.size > MAX_PREFETCH_BLOCKS * 2) {
+                        // Delete oldest entries (approximate LRU)
+                        const keysToDelete = Array.from(blockCache.keys()).slice(0, MAX_PREFETCH_BLOCKS)
+                        keysToDelete.forEach(key => blockCache.delete(key))
+                    }
                 }
             } catch (error) {
                 incrementConsecutiveErrors()
@@ -270,7 +272,7 @@ const processBlock = async (blockNum) => {
             logr.warn(`Steem block ${blockNum} not found`)
             // Remove from processing list
             processingBlocks = processingBlocks.filter(b => b !== blockNum)
-            return Promise.resolve()
+            return Promise.resolve(null)
         }
 
         // Process the transactions
@@ -675,20 +677,7 @@ const fetchMissingBlock = async (blockNum) => {
             logr.debug('Successfully fetched and cached missing block:', blockNum)
         } else {
             logr.error('Failed to fetch missing block after retries:', blockNum)
-            
-            // If we're in sync mode, we don't want to get stuck on a single missing block
-            // So return an empty block structure if we're unable to fetch it
-            if (isInSyncMode()) {
-                logr.warn(`Creating empty placeholder for block ${blockNum} to avoid sync stall`)
-                steemBlock = {
-                    previous: "0000000000000000000000000000000000000000",
-                    timestamp: new Date().toISOString().split('.')[0],
-                    witness: "missing",
-                    transactions: [],
-                    _placeholder: true // Mark as a placeholder block
-                }
-                blockCache.set(blockNum, steemBlock)
-            }
+            return null
         }
 
         prefetchInProgress = false

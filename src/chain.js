@@ -121,7 +121,13 @@ let chain = {
         let nextSteemBlock = previousBlock.steemblock + 1
         
         // Process Steem block first to get its transactions in the mempool
-        steem.processBlock(nextSteemBlock).then(() => {
+        steem.processBlock(nextSteemBlock).then((transactions) => {
+            if (!transactions) {
+                logr.warn(`Cannot prepare block - Steem block ${nextSteemBlock} not found`)
+                cb(true, null)
+                return
+            }
+            
             // Add mempool transactions
             let txs = []
             let mempool = transaction.pool.sort(function (a, b) { return a.ts - b.ts })
@@ -158,9 +164,13 @@ let chain = {
                 newBlock.dist = config.leaderReward
             }
             
-            // Hash and sign the block
+            // hash and sign the block with our private key
             newBlock = chain.hashAndSignBlock(newBlock)
             cb(null, newBlock)
+            return
+        }).catch((error) => {
+            logr.error(`Error processing Steem block ${nextSteemBlock}:`, error)
+            cb(true, null)
             return
         })
     },
