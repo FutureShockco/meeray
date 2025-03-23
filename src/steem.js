@@ -437,10 +437,8 @@ const processTransactions = async (steemBlock, blockNum) => {
 // Function to update our Steem block state and determine sync mode
 const updateSteemBlock = async () => {
     try {
-        // Only check RPC sync during sync mode or if we've had recent errors
-        if (isSyncing || consecutiveErrors > 0) {
-            await checkRpcSync()
-        }
+        // Always check RPC sync to get accurate network state
+        const maxRpcHeight = await checkRpcSync()
         
         // Check network sync status periodically
         const now = Date.now()
@@ -449,10 +447,7 @@ const updateSteemBlock = async () => {
             lastNetworkSyncCheck = now
         }
         
-        const dynGlobalProps = await client.database.getDynamicGlobalProperties()
-        const latestSteemBlock = dynGlobalProps.head_block_number
-
-        // Get the Steem block from our last chain block
+        // Get our last processed Steem block
         let lastProcessedSteemBlock = 0
         if (chain && chain.getLatestBlock() && chain.getLatestBlock().steemblock) {
             lastProcessedSteemBlock = chain.getLatestBlock().steemblock
@@ -463,7 +458,14 @@ const updateSteemBlock = async () => {
         // Update currentSteemBlock
         currentSteemBlock = Math.max(currentSteemBlock, lastProcessedSteemBlock)
 
-        // Calculate blocks behind using the Steem block from our last chain block
+        // Calculate blocks behind using RPC height if available, otherwise use dynGlobalProps
+        let latestSteemBlock = maxRpcHeight
+        if (!latestSteemBlock) {
+            const dynGlobalProps = await client.database.getDynamicGlobalProperties()
+            latestSteemBlock = dynGlobalProps.head_block_number
+        }
+
+        // Calculate blocks behind using the highest known block
         const localBehindBlocks = latestSteemBlock - lastProcessedSteemBlock
 
         // Sanity check for extreme values and ensure behindBlocks is never negative
@@ -473,7 +475,7 @@ const updateSteemBlock = async () => {
         // Update behindBlocks more conservatively
         if (calculatedBehind > behindBlocks || calculatedBehind > SYNC_THRESHOLD) {
             behindBlocks = calculatedBehind
-            logr.debug(`Updated blocks behind: ${behindBlocks}`)
+            logr.debug(`Updated blocks behind: ${behindBlocks} (Latest: ${latestSteemBlock}, Last processed: ${lastProcessedSteemBlock})`)
             
             // Update our sync status in shared state if we have a p2p connection
             if (p2p && p2p.sockets && p2p.sockets.length > 0) {
@@ -516,12 +518,9 @@ const updateSteemBlock = async () => {
             // Only exit sync mode if:
             // 1. We're currently in sync mode
             // 2. We've been in sync mode for the minimum cooldown period
-            // 3. We're nearly caught up (fewer than SYNC_EXIT_THRESHOLD blocks behind) 
-            // 4. We haven't exited sync mode recently
-            // 5. Most nodes in the network are also caught up
+            // 3. Network consensus agrees we should exit
             if (isSyncing && 
                 Date.now() - lastSyncModeChange > SYNC_EXIT_COOLDOWN &&
-                behindBlocks <= SYNC_EXIT_THRESHOLD &&
                 (!lastSyncExitTime || Date.now() - lastSyncExitTime > SYNC_EXIT_COOLDOWN * 2) &&
                 isNetworkReadyToExitSyncMode()) {
                 
@@ -759,6 +758,9 @@ const checkRpcSync = async () => {
             
             maxHeight = Math.max(maxHeight, height)
             minHeight = Math.min(minHeight, height)
+
+            // Log RPC heights for debugging
+            logr.debug(`RPC ${apiUrls[i]} at height ${height}`)
         } catch (error) {
             logr.warn(`Failed to check RPC sync for ${apiUrls[i]}:`, error)
         }
@@ -779,6 +781,8 @@ const checkRpcSync = async () => {
             switchToNextEndpoint()
         }
     }
+
+    return maxHeight
 }
 
 // Add this new function to check network sync status
@@ -829,48 +833,78 @@ const checkNetworkSyncStatus = async () => {
 
 // Add this function to determine if network is ready to exit sync mode
 const isNetworkReadyToExitSyncMode = () => {
-    // If no network data, use local decision but be more conservative
-    if (networkSyncStatus.size === 0) {
-        // Only exit if we're completely caught up or almost caught up (at most 1 block behind)
-        return behindBlocks <= 1
+    // First check RPC heights to get the true network state
+    let maxRpcHeight = 0
+    for (const height of rpcBlockHeights.values()) {
+        maxRpcHeight = Math.max(maxRpcHeight, height)
     }
-    
-    // Count how many nodes are caught up 
+
+    // If we can't get RPC heights, be conservative
+    if (maxRpcHeight === 0) {
+        logr.warn('Cannot determine RPC heights, staying in sync mode')
+        return false
+    }
+
+    // Calculate how far we are behind the most up-to-date RPC
+    const lastProcessedSteemBlock = chain.getLatestBlock().steemblock
+    const actualBehindBlocks = maxRpcHeight - lastProcessedSteemBlock
+
+    // Update our behindBlocks to match reality
+    if (actualBehindBlocks !== behindBlocks) {
+        logr.debug(`Adjusting behindBlocks from ${behindBlocks} to ${actualBehindBlocks} based on RPC height ${maxRpcHeight}`)
+        behindBlocks = actualBehindBlocks
+        // Broadcast our updated status
+        if (p2p && p2p.sockets && p2p.sockets.length > 0) {
+            p2p.broadcastSyncStatus(behindBlocks)
+        }
+    }
+
+    // If we're more than 1 block behind the most up-to-date RPC, stay in sync
+    if (actualBehindBlocks > 1) {
+        logr.debug(`Still ${actualBehindBlocks} blocks behind most up-to-date RPC (${maxRpcHeight}), staying in sync`)
+        return false
+    }
+
+    // Now check network consensus
+    if (networkSyncStatus.size === 0) {
+        // If no network data, only exit if we're at most 1 block behind
+        return actualBehindBlocks <= 1
+    }
+
     let caughtUpCount = 0
-    let totalNodes = networkSyncStatus.size
-    let anyFarBehind = false
-    
-    // Include ourselves in the count
-    if (behindBlocks <= SYNC_EXIT_THRESHOLD) {
+    let totalNodes = networkSyncStatus.size + 1 // Include ourselves
+    let maxPeerBehind = 0
+
+    // Include ourselves in the count if we're caught up
+    if (actualBehindBlocks <= 1) {
         caughtUpCount++
     }
-    totalNodes++
-    
-    // Count other nodes
+
+    // Check other nodes
     for (const status of networkSyncStatus.values()) {
-        if (status.behindBlocks <= SYNC_EXIT_THRESHOLD) {
+        if (status.behindBlocks <= 1) {
             caughtUpCount++
         }
-        
-        // Check if any node is far behind (more than 10 blocks)
-        if (status.behindBlocks > 10) {
-            anyFarBehind = true
-        }
+        maxPeerBehind = Math.max(maxPeerBehind, status.behindBlocks)
     }
-    
-    // Calculate percentage
+
+    // Calculate percentage of nodes that are caught up
     const caughtUpPercent = (caughtUpCount / totalNodes) * 100
-    
-    // Log network sync status
-    logr.debug(`Network sync exit check: ${caughtUpCount}/${totalNodes} nodes caught up (${caughtUpPercent.toFixed(1)}%)`)
-    
-    // Return true if:
-    // 1. Enough nodes are caught up (meet quorum percentage)
-    // 2. No nodes are far behind
-    // 3. We are not showing a negative behindBlocks count
-    return caughtUpPercent >= SYNC_EXIT_QUORUM_PERCENT && 
-           !anyFarBehind && 
-           behindBlocks >= 0
+
+    // Log detailed sync status
+    logr.debug(`Network sync status:
+        - Our behind blocks: ${actualBehindBlocks}
+        - RPC height: ${maxRpcHeight}
+        - Nodes caught up: ${caughtUpCount}/${totalNodes} (${caughtUpPercent.toFixed(1)}%)
+        - Max peer behind: ${maxPeerBehind}`)
+
+    // Only exit sync if:
+    // 1. We're at most 1 block behind the most up-to-date RPC
+    // 2. At least 60% of nodes are also caught up
+    // 3. No node is more than 5 blocks behind (to prevent forking)
+    return actualBehindBlocks <= 1 && 
+           caughtUpPercent >= SYNC_EXIT_QUORUM_PERCENT && 
+           maxPeerBehind <= 5
 }
 
 module.exports = {
