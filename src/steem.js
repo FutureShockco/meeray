@@ -40,8 +40,6 @@ let processingBlocks = []
 let isSyncing = false
 let forceSyncUntilBlock = 0  // Force sync mode until this block height
 let syncInterval = null
-let syncGracePeriod = false
-let syncGraceTimeout = null
 let behindBlocks = 0
 const MAX_CONSECUTIVE_ERRORS = 20
 const MIN_RETRY_DELAY = 1000
@@ -50,8 +48,6 @@ const CIRCUIT_BREAKER_THRESHOLD = 30
 const CIRCUIT_BREAKER_RESET_TIMEOUT = 30000
 const MAX_PREFETCH_BLOCKS = 10  // Maximum number of blocks to prefetch at once
 const SYNC_THRESHOLD = 5  // Number of blocks behind before entering sync mode
-const SYNC_EXIT_THRESHOLD = 2  // Number of blocks behind before exiting sync mode
-const SYNC_FORCE_BLOCKS = 20   // Number of blocks to stay in sync mode after catching up
 
 let consecutiveErrors = 0
 let retryDelay = MIN_RETRY_DELAY
@@ -442,21 +438,14 @@ const updateSteemBlock = async () => {
         }
 
         // Determine if we should be in sync mode
-        if (behindBlocks >= SYNC_THRESHOLD) {
+        if (behindBlocks > 0) {  // Any blocks behind means we need to sync
             if (!isSyncing) {
                 logr.info(`Entering sync mode, ${behindBlocks} blocks behind`)
                 isSyncing = true
-
-                // If we fall significantly behind, notify other nodes by embedding in next block
-                if (behindBlocks >= SYNC_THRESHOLD * 2 && chain && process.env.NODE_OWNER) {
-                    // This node will be in sync mode for a while, so when it mines a block,
-                    // the network should also enter sync mode to stay coordinated
-                    forceSyncUntilBlock = chain.getLatestBlock()._id + SYNC_FORCE_BLOCKS
-                }
             }
-        } else if (behindBlocks <= SYNC_EXIT_THRESHOLD) {
-            if (isSyncing && forceSyncUntilBlock === 0) {
-                logr.info('Exiting sync mode, caught up with Steem blockchain')
+        } else {  // Only exit when fully caught up (behindBlocks === 0)
+            if (isSyncing) {
+                logr.info('Exiting sync mode, fully caught up with Steem blockchain')
                 isSyncing = false
             }
         }
@@ -692,28 +681,15 @@ module.exports = {
             if (behindBlocks >= SYNC_THRESHOLD && !isSyncing) {
                 logr.info(`Entering sync mode based on network report, ${behindBlocks} blocks behind`)
                 isSyncing = true
-
-                // Force sync mode for all nodes for a while
-                if (chain && chain.getLatestBlock()) {
-                    forceSyncUntilBlock = chain.getLatestBlock()._id + SYNC_FORCE_BLOCKS
-                }
             }
         }
     },
     setSyncMode: (blockHeight) => {
-        // Force sync mode for the next SYNC_FORCE_BLOCKS blocks
-        if (blockHeight > 0) {
-            forceSyncUntilBlock = blockHeight + SYNC_FORCE_BLOCKS
+        // Only enter sync mode if we're actually behind
+        if (behindBlocks > 0) {
             if (!isSyncing) {
                 isSyncing = true
-                logr.info(`Network-enforced sync mode enabled until block ${forceSyncUntilBlock}`)
-            }
-        } else if (forceSyncUntilBlock > 0) {
-            // Exit forced sync mode
-            forceSyncUntilBlock = 0
-            if (behindBlocks <= SYNC_EXIT_THRESHOLD) {
-                isSyncing = false
-                logr.info('Network-enforced sync mode disabled')
+                logr.info('Network-enforced sync mode enabled')
             }
         }
     },
