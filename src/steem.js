@@ -48,7 +48,7 @@ const CIRCUIT_BREAKER_THRESHOLD = 30
 const CIRCUIT_BREAKER_RESET_TIMEOUT = 30000
 const MAX_PREFETCH_BLOCKS = 10  // Maximum number of blocks to prefetch at once
 const SYNC_THRESHOLD = 5  // Number of blocks behind before entering sync mode
-const SYNC_EXIT_COOLDOWN = 10000 // 10 seconds cooldown before exiting sync mode
+const SYNC_EXIT_COOLDOWN = 5000 // 10 seconds cooldown before exiting sync mode
 
 let consecutiveErrors = 0
 let retryDelay = MIN_RETRY_DELAY

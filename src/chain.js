@@ -348,9 +348,20 @@ let chain = {
             mineInMs += 20
             logr.debug('Trying to mine in ' + mineInMs + 'ms' + ' (sync: ' + steem.isSyncing() + ')')
             consensus.observer = false
-            if (mineInMs < blockTime / 3) {
-                logr.warn('Slow performance detected, will not try to mine next block')
-                return
+            
+            // More lenient performance check during sync mode
+            if (steem.isSyncing()) {
+                // During sync, only skip if extremely slow (less than 10% of block time)
+                if (mineInMs < blockTime / 10) {
+                    logr.warn('Extremely slow performance during sync, skipping block')
+                    return
+                }
+            } else {
+                // Normal mode - use standard performance check
+                if (mineInMs < blockTime / 3) {
+                    logr.warn('Slow performance detected, will not try to mine next block')
+                    return
+                }
             }
             
             // Make sure the node is marked as ready to receive transactions now that we're mining
