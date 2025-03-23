@@ -33,6 +33,9 @@ class Block {
         // Include sync mode in blocks if the chain is behind
         if (steem && steem.getBehindBlocks && steem.getBehindBlocks() > 10) {
             this.syncMode = true
+        } else {
+            // Explicitly set syncMode to false when we're caught up
+            this.syncMode = false
         }
     }
 }
@@ -385,9 +388,12 @@ let chain = {
         leaderStats.processBlock(block)
         txHistory.processBlock(block)
 
-        // Check if the block has sync mode flag and propagate it to the network
-        if (block.syncMode && steem && steem.setSyncMode) {
-            steem.setSyncMode(block._id)
+        // Check if we should exit sync mode
+        if (steem && steem.isSyncing && steem.isSyncing() && 
+            (!block.syncMode || steem.getBehindBlocks() <= 5)) {
+            // Exit sync mode if the block doesn't have sync flag or we're caught up
+            steem.exitSyncMode()
+            logr.info('Exiting sync mode - chain caught up')
         }
 
         // if block id is mult of n leaders, reschedule next n blocks
