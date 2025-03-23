@@ -103,6 +103,10 @@ const NETWORK_SYNC_CHECK_INTERVAL = 15000 // Check network sync status every 15 
 const SYNC_EXIT_QUORUM_PERCENT = 60 // Require 60% of nodes to be caught up before exiting sync mode
 const SYNC_EXIT_THRESHOLD = 3 // Maximum blocks behind to be considered "caught up"
 
+// Add new tracking variables at the top
+let networkSteemHeights = new Map() // Track each node's latest Steem block height
+const STEEM_HEIGHT_EXPIRY = 30000 // Expire Steem heights older than 30 seconds
+
 // Helper function to check sync status
 const isInSyncMode = () => {
     // Check if we're forced into sync mode by a recent block
@@ -434,6 +438,58 @@ const processTransactions = async (steemBlock, blockNum) => {
     return txs
 }
 
+// Function to get network's view of sync status
+const getNetworkSyncStatus = () => {
+    const now = Date.now()
+    let highestNode = null
+    let highestBlock = 0
+    let referenceNodeId = null
+
+    // Clean up expired entries
+    for (const [nodeId, data] of networkSteemHeights.entries()) {
+        if (now - data.timestamp > STEEM_HEIGHT_EXPIRY) {
+            networkSteemHeights.delete(nodeId)
+            networkSyncStatus.delete(nodeId)
+        }
+    }
+
+    // Find the node with highest Steem block
+    for (const [nodeId, data] of networkSteemHeights.entries()) {
+        if (data.steemBlock > highestBlock) {
+            highestBlock = data.steemBlock
+            highestNode = data
+            referenceNodeId = nodeId
+        }
+    }
+
+    // If we have a higher block, we become the reference
+    const ourSteemBlock = currentSteemBlock
+    if (ourSteemBlock > highestBlock) {
+        highestBlock = ourSteemBlock
+        highestNode = {
+            steemBlock: ourSteemBlock,
+            behindBlocks: behindBlocks
+        }
+        referenceNodeId = 'self'
+    }
+
+    if (!highestNode) {
+        return {
+            referenceExists: false,
+            referenceBehind: behindBlocks,
+            referenceNodeId: 'self',
+            highestBlock: currentSteemBlock
+        }
+    }
+
+    return {
+        referenceExists: true,
+        referenceBehind: highestNode.behindBlocks,
+        referenceNodeId: referenceNodeId,
+        highestBlock: highestBlock
+    }
+}
+
 // Function to update our Steem block state and determine sync mode
 const updateSteemBlock = async () => {
     try {
@@ -465,15 +521,32 @@ const updateSteemBlock = async () => {
             latestSteemBlock = dynGlobalProps.head_block_number
         }
 
-        // Calculate blocks behind using the highest known block
-        const localBehindBlocks = latestSteemBlock - lastProcessedSteemBlock
+        // Calculate our local view of blocks behind
+        const localBehindBlocks = Math.max(0, latestSteemBlock - lastProcessedSteemBlock)
 
-        // Ensure behindBlocks is never negative
-        behindBlocks = Math.max(0, localBehindBlocks)
+        // Get network's view of sync status
+        const networkStatus = getNetworkSyncStatus()
         
+        // Update our behind blocks based on network status
+        if (networkStatus.referenceExists && networkStatus.referenceNodeId !== 'self') {
+            // Use reference node's behind blocks if it has a higher block
+            if (networkStatus.highestBlock > currentSteemBlock) {
+                behindBlocks = Math.max(networkStatus.referenceBehind, localBehindBlocks)
+                logr.debug(`Using reference node ${networkStatus.referenceNodeId} behind blocks: ${behindBlocks} (local: ${localBehindBlocks})`)
+            } else {
+                behindBlocks = localBehindBlocks
+            }
+        } else {
+            behindBlocks = localBehindBlocks
+        }
+
         // Update our sync status in shared state if we have a p2p connection
         if (p2p && p2p.sockets && p2p.sockets.length > 0) {
-            p2p.broadcastSyncStatus(behindBlocks)
+            p2p.broadcastSyncStatus({
+                behindBlocks: behindBlocks,
+                steemBlock: currentSteemBlock,
+                isSyncing: isSyncing
+            })
         }
 
         // Don't change sync mode if we're in forced sync
@@ -484,35 +557,24 @@ const updateSteemBlock = async () => {
         // More consensus-based sync mode management
         if (behindBlocks >= SYNC_THRESHOLD || !readyToReceiveTransactions) {
             if (!isSyncing) {
-                logr.info(`Entering sync mode, ${behindBlocks} blocks behind`)
+                logr.info(`Entering sync mode, ${behindBlocks} blocks behind (reference: ${networkStatus.referenceNodeId})`)
                 isSyncing = true
                 lastSyncModeChange = Date.now()
-                
-                // Broadcast our sync mode change
-                if (p2p && p2p.sockets && p2p.sockets.length > 0) {
-                    p2p.broadcastSyncStatus(behindBlocks)
-                }
             }
         } else {
             // Only exit sync mode if:
             // 1. We're currently in sync mode
             // 2. We've been in sync mode for the minimum cooldown period
             // 3. Network consensus agrees we should exit
-            // 4. We can fetch the next block
             if (isSyncing && 
                 Date.now() - lastSyncModeChange > SYNC_EXIT_COOLDOWN &&
                 (!lastSyncExitTime || Date.now() - lastSyncExitTime > SYNC_EXIT_COOLDOWN * 2) &&
                 isNetworkReadyToExitSyncMode()) {
                 
-                logr.info(`Exiting sync mode - network consensus reached (${behindBlocks} blocks behind)`)
+                logr.info(`Exiting sync mode - network consensus reached (${behindBlocks} blocks behind, reference: ${networkStatus.referenceNodeId})`)
                 isSyncing = false
                 lastSyncModeChange = Date.now()
                 lastSyncExitTime = Date.now()
-                
-                // Broadcast our sync mode change
-                if (p2p && p2p.sockets && p2p.sockets.length > 0) {
-                    p2p.broadcastSyncStatus(behindBlocks)
-                }
             }
         }
 
@@ -811,84 +873,101 @@ const checkNetworkSyncStatus = async () => {
     }
 }
 
-// Add this function to determine if network is ready to exit sync mode
+// Update the receivePeerSyncStatus function to track Steem heights
+const receivePeerSyncStatus = (nodeId, status) => {
+    // Store peer sync status
+    if (nodeId && status) {
+        if (typeof status.behindBlocks === 'number') {
+            networkSyncStatus.set(nodeId, {
+                behindBlocks: status.behindBlocks,
+                isSyncing: status.isSyncing,
+                timestamp: Date.now()
+            })
+        }
+        if (typeof status.steemBlock === 'number') {
+            networkSteemHeights.set(nodeId, {
+                steemBlock: status.steemBlock,
+                behindBlocks: status.behindBlocks,
+                timestamp: Date.now()
+            })
+        }
+    }
+}
+
+// Update the getSyncStatus function to include Steem block
+const getSyncStatus = () => {
+    // Return our current sync status for broadcasting to peers
+    return {
+        behindBlocks: behindBlocks,
+        steemBlock: currentSteemBlock,
+        isSyncing: isSyncing
+    }
+}
+
+// Update isNetworkReadyToExitSyncMode to use reference node
 const isNetworkReadyToExitSyncMode = () => {
-    // First check RPC heights to get the true network state
-    let maxRpcHeight = 0
-    for (const height of rpcBlockHeights.values()) {
-        maxRpcHeight = Math.max(maxRpcHeight, height)
+    const networkStatus = getNetworkSyncStatus()
+    
+    // If we're the reference node (or no reference exists)
+    if (!networkStatus.referenceExists || networkStatus.referenceNodeId === 'self') {
+        // Be more conservative when we're the reference
+        if (behindBlocks > 0) {
+            logr.debug('As reference node, staying in sync mode with behindBlocks > 0')
+            return false
+        }
+        
+        // Verify we can fetch the next block
+        const nextBlock = chain.getLatestBlock().steemblock + 1
+        const canFetchNextBlock = blockCache.has(nextBlock) || client.database.getBlock(nextBlock)
+            .then(block => !!block)
+            .catch(() => false)
+
+        if (!canFetchNextBlock) {
+            logr.debug(`As reference node, cannot fetch next Steem block ${nextBlock}`)
+            return false
+        }
+    } else {
+        // If we're not the reference, use reference node's status
+        if (networkStatus.referenceBehind > 0) {
+            logr.debug(`Reference node ${networkStatus.referenceNodeId} reports ${networkStatus.referenceBehind} blocks behind`)
+            return false
+        }
     }
 
-    // If we can't get RPC heights, stay in sync mode
-    if (maxRpcHeight === 0) {
-        logr.warn('Cannot determine RPC heights, staying in sync mode')
-        return false
-    }
-
-    // Calculate how far we are behind the most up-to-date RPC
-    const lastProcessedSteemBlock = chain.getLatestBlock().steemblock
-    const actualBehindBlocks = maxRpcHeight - lastProcessedSteemBlock
-
-    // If we're more than 0 blocks behind the most up-to-date RPC, stay in sync
-    if (actualBehindBlocks > 0) {
-        logr.debug(`Still ${actualBehindBlocks} blocks behind most up-to-date RPC (${maxRpcHeight}), staying in sync`)
-        return false
-    }
-
-    // Verify we can fetch the next block before exiting sync mode
-    const nextBlock = lastProcessedSteemBlock + 1
-    const canFetchNextBlock = blockCache.has(nextBlock) || client.database.getBlock(nextBlock)
-        .then(block => !!block)
-        .catch(() => false)
-
-    if (!canFetchNextBlock) {
-        logr.debug(`Cannot fetch next Steem block ${nextBlock}, staying in sync`)
-        return false
-    }
-
-    // Now check network consensus
-    if (networkSyncStatus.size === 0) {
-        // If no network data, only exit if we're exactly caught up and can fetch next block
-        return actualBehindBlocks === 0 && canFetchNextBlock
-    }
-
-    let caughtUpCount = 0
+    // Count how many nodes are in sync with reference
+    let syncedCount = 0
     let totalNodes = networkSyncStatus.size + 1 // Include ourselves
-    let maxPeerBehind = 0
+    let maxBehind = 0
 
-    // Include ourselves in the count if we're caught up
-    if (actualBehindBlocks === 0) {
-        caughtUpCount++
+    // Check if we're synced with reference
+    if (Math.abs(currentSteemBlock - networkStatus.highestBlock) <= 1) {
+        syncedCount++
     }
 
     // Check other nodes
-    for (const status of networkSyncStatus.values()) {
-        if (status.behindBlocks === 0) {
-            caughtUpCount++
+    for (const [nodeId, status] of networkSteemHeights.entries()) {
+        if (Math.abs(status.steemBlock - networkStatus.highestBlock) <= 1) {
+            syncedCount++
         }
-        maxPeerBehind = Math.max(maxPeerBehind, status.behindBlocks)
+        maxBehind = Math.max(maxBehind, status.behindBlocks)
     }
 
-    // Calculate percentage of nodes that are caught up
-    const caughtUpPercent = (caughtUpCount / totalNodes) * 100
+    const syncedPercent = (syncedCount / totalNodes) * 100
 
-    // Log detailed sync status
     logr.debug(`Network sync status:
-        - Our behind blocks: ${actualBehindBlocks}
-        - RPC height: ${maxRpcHeight}
-        - Nodes caught up: ${caughtUpCount}/${totalNodes} (${caughtUpPercent.toFixed(1)}%)
-        - Max peer behind: ${maxPeerBehind}
-        - Can fetch next block: ${canFetchNextBlock}`)
+        - Reference node: ${networkStatus.referenceNodeId}
+        - Reference behind: ${networkStatus.referenceBehind}
+        - Highest block: ${networkStatus.highestBlock}
+        - Nodes synced: ${syncedCount}/${totalNodes} (${syncedPercent.toFixed(1)}%)
+        - Max behind: ${maxBehind}`)
 
     // Only exit sync if:
-    // 1. We're exactly caught up with the most up-to-date RPC
-    // 2. We can fetch the next block
-    // 3. At least 60% of nodes are also caught up
-    // 4. No node is more than 2 blocks behind
-    return actualBehindBlocks === 0 && 
-           canFetchNextBlock &&
-           caughtUpPercent >= SYNC_EXIT_QUORUM_PERCENT && 
-           maxPeerBehind <= 2
+    // 1. Reference node reports 0 blocks behind
+    // 2. At least 60% of nodes are synced with reference
+    // 3. No node is more than 2 blocks behind
+    return networkStatus.referenceBehind === 0 && 
+           syncedPercent >= SYNC_EXIT_QUORUM_PERCENT && 
+           maxBehind <= 2
 }
 
 module.exports = {
@@ -988,23 +1067,8 @@ module.exports = {
             }
         }
     },
-    receivePeerSyncStatus: (nodeId, status) => {
-        // Store peer sync status
-        if (nodeId && status && typeof status.behindBlocks === 'number') {
-            networkSyncStatus.set(nodeId, {
-                behindBlocks: status.behindBlocks,
-                isSyncing: status.isSyncing,
-                timestamp: Date.now()
-            })
-        }
-    },
-    getSyncStatus: () => {
-        // Return our current sync status for broadcasting to peers
-        return {
-            behindBlocks: behindBlocks,
-            isSyncing: isSyncing
-        }
-    },
+    receivePeerSyncStatus: receivePeerSyncStatus,
+    getSyncStatus: getSyncStatus,
     isOnSteemBlock: (block) => {
         return new Promise(async (resolve, reject) => {
             try {
