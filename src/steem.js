@@ -514,19 +514,23 @@ const updateSteemBlock = async () => {
         // Update currentSteemBlock
         currentSteemBlock = Math.max(currentSteemBlock, lastProcessedSteemBlock)
 
+        // Get latest Steem block from RPC or dynamic global properties
+        const latestSteemBlock = maxRpcHeight || (await client.database.getDynamicGlobalProperties()).head_block_number
+        
+        // Calculate local behind blocks first
+        const localBehindBlocks = Math.max(0, latestSteemBlock - lastProcessedSteemBlock)
+        
         // Get network's view of sync status
         const networkStatus = getNetworkSyncStatus()
         
-        // Calculate blocks behind using reference node's value
+        // Update behindBlocks based on both local and network status
         if (networkStatus.referenceExists) {
-            // Always use reference node's behind blocks value
-            behindBlocks = networkStatus.referenceBehind
-            logr.debug(`Using reference node ${networkStatus.referenceNodeId} behind blocks: ${behindBlocks}`)
+            // Use the maximum of reference node's behind blocks and our local calculation
+            behindBlocks = Math.max(networkStatus.referenceBehind, localBehindBlocks)
+            logr.debug(`Behind blocks: ${behindBlocks} (reference: ${networkStatus.referenceNodeId}, local: ${localBehindBlocks})`)
         } else {
-            // If we're the reference (or no reference exists), calculate based on RPC height
-            const latestSteemBlock = maxRpcHeight || (await client.database.getDynamicGlobalProperties()).head_block_number
-            behindBlocks = Math.max(0, latestSteemBlock - lastProcessedSteemBlock)
-            logr.debug(`No reference node, calculated behind blocks: ${behindBlocks}`)
+            behindBlocks = localBehindBlocks
+            logr.debug(`Behind blocks: ${behindBlocks} (local calculation)`)
         }
 
         // Update our sync status in shared state if we have a p2p connection
@@ -540,30 +544,35 @@ const updateSteemBlock = async () => {
 
         // Don't change sync mode if we're in forced sync
         if (chain && chain.getLatestBlock() && chain.getLatestBlock()._id < forceSyncUntilBlock) {
-            return maxRpcHeight || (await client.database.getDynamicGlobalProperties()).head_block_number
+            return latestSteemBlock
         }
 
-        // Sync mode management based on network consensus
-        if (behindBlocks > 0 || !readyToReceiveTransactions) {
+        // Enter sync mode if:
+        // 1. We're behind by any blocks
+        // 2. Reference node is in sync mode
+        // 3. We're not ready to receive transactions
+        const shouldSync = behindBlocks > 0 || 
+                         (networkStatus.referenceExists && networkSyncStatus.get(networkStatus.referenceNodeId)?.isSyncing) ||
+                         !readyToReceiveTransactions
+
+        if (shouldSync) {
             if (!isSyncing) {
-                logr.info(`Entering sync mode, ${behindBlocks} blocks behind (reference: ${networkStatus.referenceNodeId})`)
+                logr.info(`Entering sync mode: ${behindBlocks} blocks behind, reference: ${networkStatus.referenceNodeId}`)
                 isSyncing = true
                 lastSyncModeChange = Date.now()
             }
-        } else {
-            if (isSyncing && 
-                Date.now() - lastSyncModeChange > SYNC_EXIT_COOLDOWN &&
-                (!lastSyncExitTime || Date.now() - lastSyncExitTime > SYNC_EXIT_COOLDOWN * 2) &&
-                isNetworkReadyToExitSyncMode()) {
-                
-                logr.info(`Exiting sync mode - network consensus reached (${behindBlocks} blocks behind, reference: ${networkStatus.referenceNodeId})`)
-                isSyncing = false
-                lastSyncModeChange = Date.now()
-                lastSyncExitTime = Date.now()
-            }
+        } else if (isSyncing && 
+            Date.now() - lastSyncModeChange > SYNC_EXIT_COOLDOWN &&
+            (!lastSyncExitTime || Date.now() - lastSyncExitTime > SYNC_EXIT_COOLDOWN * 2) &&
+            isNetworkReadyToExitSyncMode()) {
+            
+            logr.info(`Exiting sync mode - caught up (${behindBlocks} blocks behind)`)
+            isSyncing = false
+            lastSyncModeChange = Date.now()
+            lastSyncExitTime = Date.now()
         }
 
-        return maxRpcHeight || (await client.database.getDynamicGlobalProperties()).head_block_number
+        return latestSteemBlock
     } catch (error) {
         logr.error('Error updating Steem block state:', error)
         return null
