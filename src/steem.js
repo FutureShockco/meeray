@@ -443,7 +443,7 @@ const updateSteemBlock = async () => {
             logr.debug(`Updated blocks behind: ${behindBlocks}`)
             
             // Update our sync status in shared state if we have a p2p connection
-            if (p2p && p2p.isNodeConnected()) {
+            if (p2p && p2p.sockets && p2p.sockets.length > 0) {
                 p2p.broadcastSyncStatus(behindBlocks)
             }
         } else if (calculatedBehind < behindBlocks) {
@@ -451,7 +451,7 @@ const updateSteemBlock = async () => {
             behindBlocks = Math.max(calculatedBehind, behindBlocks - 1)
             
             // Update our sync status in shared state if significantly changed
-            if (p2p && p2p.isNodeConnected() && Math.abs(calculatedBehind - behindBlocks) > 5) {
+            if (p2p && p2p.sockets && p2p.sockets.length > 0 && Math.abs(calculatedBehind - behindBlocks) > 5) {
                 p2p.broadcastSyncStatus(behindBlocks)
             }
         }
@@ -469,7 +469,7 @@ const updateSteemBlock = async () => {
                 lastSyncModeChange = Date.now()
                 
                 // Broadcast our sync mode change
-                if (p2p && p2p.isNodeConnected()) {
+                if (p2p && p2p.sockets && p2p.sockets.length > 0) {
                     p2p.broadcastSyncStatus(behindBlocks)
                 }
             }
@@ -492,7 +492,7 @@ const updateSteemBlock = async () => {
                 lastSyncExitTime = Date.now()
                 
                 // Broadcast our sync mode change
-                if (p2p && p2p.isNodeConnected()) {
+                if (p2p && p2p.sockets && p2p.sockets.length > 0) {
                     p2p.broadcastSyncStatus(behindBlocks)
                 }
             }
@@ -707,7 +707,8 @@ const checkRpcSync = async () => {
 
 // Add this new function to check network sync status
 const checkNetworkSyncStatus = async () => {
-    if (!p2p || !p2p.isNodeConnected()) return
+    // Check if p2p exists and has connected sockets
+    if (!p2p || !p2p.sockets || p2p.sockets.length === 0) return
     
     try {
         // Get sync status from peers via p2p
@@ -860,7 +861,7 @@ module.exports = {
                 isSyncing = true
                 
                 // Broadcast our sync mode change
-                if (p2p && p2p.isNodeConnected()) {
+                if (p2p && p2p.sockets && p2p.sockets.length > 0) {
                     p2p.broadcastSyncStatus(behindBlocks)
                 }
             }
@@ -874,7 +875,7 @@ module.exports = {
                 logr.info('Network-enforced sync mode enabled')
                 
                 // Broadcast our sync mode change
-                if (p2p && p2p.isNodeConnected()) {
+                if (p2p && p2p.sockets && p2p.sockets.length > 0) {
                     p2p.broadcastSyncStatus(behindBlocks)
                 }
             }

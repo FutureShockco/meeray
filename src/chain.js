@@ -398,7 +398,6 @@ let chain = {
 
         // update the config if an update was scheduled
         config = require('./config.js').read(block._id)
-        chain.applyHardforkPostBlock(block._id)
         eco.appendHistory(block)
         eco.nextBlock()
         dao.nextBlock()
@@ -1087,11 +1086,7 @@ let chain = {
         else
             cb(null, { executed: false, distributed: 0, burned: 0 })
     },
-    applyHardforkPostBlock: (blockNum) => {
-        // Do something after executing hardfork block
-        if (blockNum === 4860000)
-            eco.loadHistory() // reset previous votes
-    },
+
     batchLoadBlocks: (blockNum, cb) => {
         if (chain.blocksToRebuild.length === 0)
             if (blocks.isOpen) {
@@ -1150,7 +1145,6 @@ let chain = {
                 // update the config if an update was scheduled
                 chain.addRecentTxsInBlock(blockToRebuild.txs)
                 config = require('./config.js').read(blockToRebuild._id)
-                chain.applyHardforkPostBlock(blockToRebuild._id)
                 dao.nextBlock()
                 daoMaster.nextBlock()
                 eco.nextBlock()

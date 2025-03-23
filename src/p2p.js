@@ -19,6 +19,7 @@ const bs58 = require('base-x')(config.b58Alphabet)
 const blocks = require('./blocks')
 const dao = require('./dao')
 const daoMaster = require('./daoMaster')
+let steem // Will be initialized after being exported
 
 const MessageType = {
     QUERY_NODE_STATUS: 0,
@@ -30,7 +31,8 @@ const MessageType = {
     BLOCK_CONF_ROUND: 6,
     SYNC_REQUIRED: 7,
     SYNC_COMPLETE: 8,
-    STEEM_BEHIND: 9
+    STEEM_BEHIND: 9,
+    STEEM_SYNC_STATUS: 10
 }
 
 let p2p = {
@@ -441,6 +443,27 @@ let p2p = {
                     }
                 }
                 break
+                
+            case MessageType.STEEM_SYNC_STATUS:
+                // Handle sync status information from peers
+                if (!message.d || !message.d.nodeId || typeof message.d.behindBlocks !== 'number') {
+                    break
+                }
+                
+                // Store the sync status for this peer
+                p2p.sockets[p2p.sockets.indexOf(ws)].steemSyncStatus = message.d
+                
+                // Update our steem module if available
+                if (steem && steem.receivePeerSyncStatus) {
+                    steem.receivePeerSyncStatus(message.d.nodeId, {
+                        behindBlocks: message.d.behindBlocks,
+                        isSyncing: message.d.isSyncing,
+                        timestamp: message.d.timestamp || Date.now()
+                    })
+                }
+                
+                logr.debug(`Received sync status from ${message.d.nodeId}: ${message.d.behindBlocks} blocks behind, isSyncing: ${message.d.isSyncing}`)
+                break
             }
         })
     },
@@ -529,6 +552,51 @@ let p2p = {
     broadcastBlock: (block) => {
         p2p.broadcast({t:4,d:block})
     },
+    broadcastSyncStatus: (behindBlocks) => {
+        // Broadcast steem sync status to all connected peers
+        if (!steem) return
+        
+        const syncStatus = {
+            nodeId: p2p.nodeId.pub,
+            behindBlocks: behindBlocks,
+            isSyncing: steem.isSyncing ? steem.isSyncing() : (behindBlocks > 0),
+            timestamp: Date.now()
+        }
+        
+        p2p.broadcast({
+            t: MessageType.STEEM_SYNC_STATUS,
+            d: syncStatus
+        })
+        
+        logr.debug(`Broadcasting sync status: ${behindBlocks} blocks behind, isSyncing: ${syncStatus.isSyncing}`)
+    },
+    getSyncStatus: async () => {
+        // Request sync status from peers
+        try {
+            const statuses = []
+            
+            // If we have a steem module, add our status first
+            if (steem) {
+                statuses.push({
+                    nodeId: p2p.nodeId.pub,
+                    behindBlocks: steem.getBehindBlocks ? steem.getBehindBlocks() : 0,
+                    isSyncing: steem.isSyncing ? steem.isSyncing() : false
+                })
+            }
+            
+            // Add statuses from connected peers that reported them
+            for (let i = 0; i < p2p.sockets.length; i++) {
+                if (p2p.sockets[i].steemSyncStatus) {
+                    statuses.push(p2p.sockets[i].steemSyncStatus)
+                }
+            }
+            
+            return statuses
+        } catch (error) {
+            logr.error('Error getting sync status from peers:', error)
+            return []
+        }
+    },
     addRecursive: (block) => {
         chain.validateAndAddBlock(block, true, function(err, newBlock) {
             if (err) {
@@ -590,3 +658,8 @@ let p2p = {
 }
 
 module.exports = p2p
+
+// Initialize steem reference after export to avoid circular dependency issues
+setTimeout(() => {
+    steem = require('./steem')
+}, 1000)
