@@ -5,29 +5,29 @@ console.log('Using Steem API URLs:', apiUrls)
 
 // Track current endpoint and create initial client
 let currentEndpointIndex = 0
-let client = new dsteem.Client(apiUrls[currentEndpointIndex], { 
-    failoverThreshold: 3, 
-    addressPrefix: 'STM', 
-    chainId: '0000000000000000000000000000000000000000000000000000000000000000' 
+let client = new dsteem.Client(apiUrls[currentEndpointIndex], {
+    failoverThreshold: 3,
+    addressPrefix: 'STM',
+    chainId: '0000000000000000000000000000000000000000000000000000000000000000'
 })
 
 // Create a function to switch to the next endpoint when current one fails
 const switchToNextEndpoint = () => {
     if (apiUrls.length <= 1) return false
-    
+
     // Move to next endpoint in round-robin fashion
     currentEndpointIndex = (currentEndpointIndex + 1) % apiUrls.length
     const newEndpoint = apiUrls[currentEndpointIndex]
-    
+
     logr.info(`Switching to next Steem API endpoint: ${newEndpoint}`)
-    
+
     // Create a new client with the next endpoint
     client = new dsteem.Client(newEndpoint, {
         failoverThreshold: 3,
         addressPrefix: 'STM',
         chainId: '0000000000000000000000000000000000000000000000000000000000000000'
     })
-    
+
     return true
 }
 
@@ -79,7 +79,8 @@ const isInSyncMode = () => {
 // Add a function to set readiness state
 const setReadyToReceiveTransactions = (ready) => {
     readyToReceiveTransactions = ready
-    logr.info('Steem transaction processing ' + (ready ? 'ENABLED' : 'DISABLED'))
+    if (ready !== readyToReceiveTransactions)
+        logr.info('Steem transaction processing ' + (ready ? 'ENABLED' : 'DISABLED'))
 }
 
 const prefetchBlocks = async () => {
@@ -88,7 +89,7 @@ const prefetchBlocks = async () => {
     prefetchInProgress = true
     const currentBlock = nextSteemBlock
     const latestSteemBlock = await getLatestSteemBlockNum()
-    
+
     if (!latestSteemBlock) {
         prefetchInProgress = false
         return
@@ -100,17 +101,17 @@ const prefetchBlocks = async () => {
         // More aggressive prefetching during sync mode
         blocksToPrefetch = MAX_PREFETCH_BLOCKS * 3
     }
-    
+
     // Additional prefetching when we're very far behind
     const localBehindBlocks = latestSteemBlock - currentBlock
     if (localBehindBlocks > SYNC_THRESHOLD * 5) {
         blocksToPrefetch = MAX_PREFETCH_BLOCKS * 5
         logr.debug(`Very far behind (${localBehindBlocks} blocks) - aggressive prefetching ${blocksToPrefetch} blocks`)
     }
-    
+
     // Limit prefetch to the number of blocks we're behind
     blocksToPrefetch = Math.min(blocksToPrefetch, latestSteemBlock - currentBlock)
-    
+
     if (blocksToPrefetch <= 0) {
         prefetchInProgress = false
         return
@@ -128,7 +129,7 @@ const prefetchBlocks = async () => {
                 if (steemBlock) {
                     blockCache.set(blockToFetch, steemBlock)
                     logr.debug(`Prefetched block ${blockToFetch}`)
-                    
+
                     // Process this block immediately since we have it
                     if (i === 0) {
                         await processBlock(blockToFetch)
@@ -153,10 +154,10 @@ const prefetchBlocks = async () => {
         }
     } finally {
         prefetchInProgress = false
-        
+
         // Schedule next prefetch more aggressively if we're far behind
         if (prefetchTimer) clearTimeout(prefetchTimer)
-        
+
         const prefetchDelay = isInSyncMode() ? 100 : 1000 // Much faster prefetch during sync
         prefetchTimer = setTimeout(prefetchBlocks, prefetchDelay)
     }
@@ -168,7 +169,7 @@ const processBlock = async (blockNum) => {
         logr.debug('Skipping Steem block processing - node not ready to receive transactions yet')
         return Promise.resolve()
     }
-    
+
     if (processingBlocks.includes(blockNum)) {
         logr.debug(`Block ${blockNum} is already being processed`)
         return Promise.resolve()
@@ -209,10 +210,10 @@ const processBlock = async (blockNum) => {
 
         // Process the transactions
         const transactions = await processTransactions(steemBlock, blockNum)
-        
+
         // Update currentSteemBlock
         currentSteemBlock = Math.max(currentSteemBlock, blockNum)
-        
+
         // Update behindBlocks after each successful block processing in sync mode
         if (isInSyncMode()) {
             getLatestSteemBlockNum().then(latestBlock => {
@@ -224,7 +225,7 @@ const processBlock = async (blockNum) => {
                 logr.trace('Error updating behind blocks after processing:', err)
             })
         }
-        
+
         // Reset consecutive errors on success
         resetConsecutiveErrors()
 
@@ -371,7 +372,7 @@ const updateSteemBlock = async () => {
     try {
         const dynGlobalProps = await client.database.getDynamicGlobalProperties()
         const latestSteemBlock = dynGlobalProps.head_block_number
-        
+
         // Get the Steem block from our last chain block instead of using currentSteemBlock
         let lastProcessedSteemBlock = 0
         if (chain && chain.getLatestBlock() && chain.getLatestBlock().steemblock) {
@@ -379,27 +380,27 @@ const updateSteemBlock = async () => {
         } else if (config.steemStartBlock) {
             lastProcessedSteemBlock = config.steemStartBlock
         }
-        
+
         // Update currentSteemBlock for transaction processing
         currentSteemBlock = Math.max(currentSteemBlock, lastProcessedSteemBlock)
-        
+
         // Calculate blocks behind using the Steem block from our last chain block
         const localBehindBlocks = latestSteemBlock - lastProcessedSteemBlock
-        
+
         // Sanity check for extreme values
         const MAX_REASONABLE_BEHIND = 20000 // No node should be more than this behind
         const calculatedBehind = Math.min(localBehindBlocks, MAX_REASONABLE_BEHIND)
-        
+
         // Check if our behind count changed significantly
         const behindBlocksChanged = Math.abs(calculatedBehind - behindBlocks) > 5;
-        
+
         // Only update the network-wide behind blocks if our count is higher
         // This ensures the network always knows the furthest behind node
         if (calculatedBehind > behindBlocks || behindBlocksChanged) {
             // Adjust update frequency based on how far behind we are
             if (syncInterval) {
                 clearInterval(syncInterval);
-                
+
                 if (calculatedBehind > SYNC_THRESHOLD * 2) {
                     // Very behind - update very frequently
                     syncInterval = setInterval(updateSteemBlock, 500);
@@ -420,12 +421,12 @@ const updateSteemBlock = async () => {
                     }
                 }
             }
-            
+
             behindBlocks = calculatedBehind
             if (behindBlocksChanged) {
                 logr.info(`Updated blocks behind: ${behindBlocks}`);
             }
-            
+
             // Broadcast to network in next message if we're significantly behind
             if (p2p && p2p.broadcast && calculatedBehind > SYNC_THRESHOLD * 1.5) {
                 p2p.broadcast({
@@ -445,7 +446,7 @@ const updateSteemBlock = async () => {
             if (!isSyncing) {
                 logr.info(`Entering sync mode, ${behindBlocks} blocks behind`)
                 isSyncing = true
-                
+
                 // If we fall significantly behind, notify other nodes by embedding in next block
                 if (behindBlocks >= SYNC_THRESHOLD * 2 && chain && process.env.NODE_OWNER) {
                     // This node will be in sync mode for a while, so when it mines a block,
@@ -498,7 +499,7 @@ const checkApiHealth = async () => {
 // Circuit breaker check
 const isCircuitBreakerOpen = () => {
     if (!circuitBreakerOpen) return false
-    
+
     // Check if we should reset the circuit breaker
     if (Date.now() - lastCircuitBreakerTrip > CIRCUIT_BREAKER_RESET_TIMEOUT) {
         circuitBreakerOpen = false
@@ -531,14 +532,14 @@ const resetErrorState = () => {
 // Function to increment consecutive errors counter
 const incrementConsecutiveErrors = () => {
     consecutiveErrors++
-    
+
     // Check if we should trip the circuit breaker
     if (consecutiveErrors >= CIRCUIT_BREAKER_THRESHOLD) {
         circuitBreakerOpen = true
         lastCircuitBreakerTrip = Date.now()
         logr.error('Circuit breaker tripped due to too many consecutive errors')
     }
-    
+
     // Adjust retry delay if needed
     if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
         retryDelay = calculateRetryDelay()
@@ -561,13 +562,13 @@ syncInterval = setInterval(updateSteemBlock, 3000)
 const initPrefetch = (startBlock) => {
     // Initialize prefetching
     nextSteemBlock = startBlock
-    
+
     // Start prefetch process
     prefetchTimer = setInterval(() => {
         if (prefetchInProgress) return
         prefetchBlocks()
     }, 1000)
-    
+
     // Run first prefetch immediately
     prefetchBlocks()
 }
@@ -576,11 +577,11 @@ const fetchMissingBlock = async (blockNum) => {
     // Function to fetch a specific Steem block that's missing from cache
     logr.info('Fetching missing Steem block:', blockNum)
     prefetchInProgress = true
-    
+
     try {
         let retries = 3
         let steemBlock = null
-        
+
         while (retries > 0) {
             try {
                 steemBlock = await client.database.getBlock(blockNum)
@@ -591,7 +592,7 @@ const fetchMissingBlock = async (blockNum) => {
                 await new Promise(resolve => setTimeout(resolve, 1000))
             }
         }
-        
+
         if (steemBlock) {
             // Cache the block for future reference
             blockCache.set(blockNum, steemBlock)
@@ -599,7 +600,7 @@ const fetchMissingBlock = async (blockNum) => {
         } else {
             logr.error('Failed to fetch missing block after retries:', blockNum)
         }
-        
+
         prefetchInProgress = false
         return steemBlock
     } catch (err) {
@@ -624,10 +625,10 @@ module.exports = {
     init: (blockNum) => {
         nextSteemBlock = blockNum
         currentSteemBlock = blockNum
-        
+
         // Clear existing intervals if any
         if (syncInterval) clearInterval(syncInterval)
-        
+
         // Initialize behindBlocks properly
         getLatestSteemBlockNum().then(latestBlock => {
             if (latestBlock) {
@@ -640,10 +641,10 @@ module.exports = {
                 } else {
                     lastProcessedSteemBlock = blockNum
                 }
-                
+
                 behindBlocks = Math.max(0, latestBlock - lastProcessedSteemBlock)
                 logr.info(`Initial blocks behind: ${behindBlocks} (Steem head: ${latestBlock}, Last processed: ${lastProcessedSteemBlock})`)
-                
+
                 // Set more frequent updates if we're behind
                 if (behindBlocks > SYNC_THRESHOLD) {
                     syncInterval = setInterval(updateSteemBlock, 1000); // Update more frequently during sync
@@ -657,7 +658,7 @@ module.exports = {
             // Set default interval as fallback
             syncInterval = setInterval(updateSteemBlock, 3000)
         })
-        
+
         // Run an immediate state update
         updateSteemBlock().then(() => {
             // Start prefetching immediately
@@ -665,10 +666,10 @@ module.exports = {
         }).catch(err => {
             logr.error('Error during initial Steem state update:', err)
         })
-        
+
         // Initialize the prefetch system
         initPrefetch(blockNum)
-        
+
         logr.info('Steem subsystem initialized at block', blockNum)
     },
     getCurrentBlock: () => {
@@ -691,7 +692,7 @@ module.exports = {
             if (behindBlocks >= SYNC_THRESHOLD && !isSyncing) {
                 logr.info(`Entering sync mode based on network report, ${behindBlocks} blocks behind`)
                 isSyncing = true
-                
+
                 // Force sync mode for all nodes for a while
                 if (chain && chain.getLatestBlock()) {
                     forceSyncUntilBlock = chain.getLatestBlock()._id + SYNC_FORCE_BLOCKS
@@ -721,29 +722,29 @@ module.exports = {
             try {
                 // Try to get the block from cache
                 let steemBlock = blockCache.get(block.steemblock)
-                
+
                 // If block not in cache, try to fetch it
                 if (!steemBlock) {
                     logr.warn(`Steem block ${block.steemblock} not found in cache, attempting to fetch it`)
                     steemBlock = await module.exports.fetchMissingBlock(block.steemblock)
-                    
+
                     // If still can't get the block, resolve with false
                     if (!steemBlock) {
                         logr.error(`Could not fetch Steem block ${block.steemblock} after attempts`)
                         return resolve(false)
                     }
                 }
-    
+
                 // If we have no transactions to validate, return true
                 if (!block.txs || block.txs.length === 0) {
                     return resolve(true)
                 }
-                
+
                 // Check each transaction in our block against Steem block
                 for (let tx of block.txs) {
                     if (tx.type !== 'custom_json')
                         continue
-    
+
                     // Find matching custom_json operation in Steem block
                     let found = false
                     for (let steemTx of steemBlock.transactions) {
@@ -751,7 +752,7 @@ module.exports = {
                             for (let op of steemTx.operations) {
                                 if (op[0] !== 'custom_json')
                                     continue
-    
+
                                 if (op[1].id === 'sidechain' &&
                                     op[1].json === JSON.stringify({
                                         contract: tx.data.contract,
@@ -767,13 +768,13 @@ module.exports = {
                             // Continue processing other transactions
                         }
                     }
-    
+
                     if (!found) {
                         logr.warn(`Transaction not found in Steem block ${block.steemblock}`)
                         return resolve(false)
                     }
                 }
-    
+
                 return resolve(true)
             } catch (err) {
                 logr.error('Error in isOnSteemBlock:', err)
