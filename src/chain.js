@@ -30,11 +30,14 @@ class Block {
         this.hash = hash
         this.signature = signature
         
-        // Only set syncMode if we're significantly behind
-        if (steem && steem.getBehindBlocks && steem.getBehindBlocks() > 20) {
-            this.syncMode = true
+        // Set syncMode if we're behind OR in transition period
+        if (steem && steem.getBehindBlocks) {
+            const behindBlocks = steem.getBehindBlocks()
+            // Stay in sync mode if significantly behind or recently caught up
+            if (behindBlocks > 5 || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 10000)) {
+                this.syncMode = true
+            }
         }
-        // Don't set syncMode to false explicitly - let it be undefined when not syncing
     }
 }
 
@@ -94,13 +97,17 @@ let chain = {
         }
         
         // Calculate timestamp with proper padding to ensure it passes validation
-        const blockTime = steem.isSyncing() ? config.syncBlockTime : config.blockTime
+        const blockTime = (steem.isSyncing() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 10000))
+            ? config.syncBlockTime 
+            : config.blockTime
         const minimumTimestamp = previousBlock.timestamp + (minerPriority * blockTime)
         
         // Add a small buffer to ensure the block is not too early for other nodes
         // Use a larger buffer during sync mode to accommodate faster block production
-        const maxDriftValue = steem.isSyncing() ? config.syncMaxDrift : config.maxDrift
-        const bufferTime = steem.isSyncing() 
+        const maxDriftValue = (steem.isSyncing() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 10000))
+            ? config.syncMaxDrift 
+            : config.maxDrift
+        const bufferTime = (steem.isSyncing() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 10000)) 
             ? (nextIndex <= 10 ? 80 : 50)  // Larger buffer in sync mode
             : (nextIndex <= 10 ? 50 : 25)  // Standard buffer in normal mode
         
@@ -329,7 +336,9 @@ let chain = {
 
         let mineInMs = null
         // Get the appropriate block time based on sync state
-        let blockTime = steem.isSyncing() ? config.syncBlockTime : config.blockTime
+        let blockTime = (steem.isSyncing() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 10000))
+            ? config.syncBlockTime 
+            : config.blockTime
 
         // if we are the next scheduled witness, try to mine in time
         if (chain.schedule.shuffle[(block._id) % config.leaders].name === process.env.NODE_OWNER)
@@ -723,12 +732,16 @@ let chain = {
 
         // Check block timing with more flexibility
         const currentTime = new Date().getTime()
-        const blockTime = steem.isSyncing() ? config.syncBlockTime : config.blockTime
+        const blockTime = (steem.isSyncing() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 10000)) 
+            ? config.syncBlockTime 
+            : config.blockTime
         const expectedTime = previousBlock.timestamp + (minerPriority * blockTime)
         
         // Add a more flexible timing buffer, especially for the first block
         // Use different maxDrift based on sync mode
-        const maxDriftValue = steem.isSyncing() ? config.syncMaxDrift : config.maxDrift
+        const maxDriftValue = (steem.isSyncing() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 10000))
+            ? config.syncMaxDrift 
+            : config.maxDrift
         const earlyBuffer = newBlock._id <= 10 ? maxDriftValue * 2 : maxDriftValue
         
         if (newBlock.timestamp < expectedTime - earlyBuffer) {

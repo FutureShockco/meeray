@@ -67,6 +67,9 @@ let readyToReceiveTransactions = false
 // Add at the top with other constants
 let lastSyncModeChange = 0
 
+// Add tracking for sync mode exit time
+let lastSyncExitTime = null
+
 // Helper function to check sync status
 const isInSyncMode = () => {
     // Check if we're forced into sync mode by a recent block
@@ -616,6 +619,14 @@ const getLatestSteemBlockNum = async () => {
     }
 }
 
+function exitSyncMode() {
+    if (isSyncing()) {
+        lastSyncExitTime = new Date().getTime()
+        syncMode = false
+        logr.info('Exiting sync mode - chain fully caught up')
+    }
+}
+
 module.exports = {
     init: (blockNum) => {
         nextSteemBlock = blockNum
@@ -769,11 +780,6 @@ module.exports = {
     fetchMissingBlock,
     prefetchBlocks,
     setReadyToReceiveTransactions,
-    exitSyncMode: () => {
-        if (isSyncing) {
-            isSyncing = false
-            behindBlocks = 0
-            logr.info('Sync mode disabled')
-        }
-    }
+    exitSyncMode,
+    lastSyncExitTime: lastSyncExitTime
 }
