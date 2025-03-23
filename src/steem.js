@@ -437,8 +437,10 @@ const processTransactions = async (steemBlock, blockNum) => {
 // Function to update our Steem block state and determine sync mode
 const updateSteemBlock = async () => {
     try {
-        // Check RPC synchronization first
-        await checkRpcSync()
+        // Only check RPC sync during sync mode or if we've had recent errors
+        if (isSyncing || consecutiveErrors > 0) {
+            await checkRpcSync()
+        }
         
         // Check network sync status periodically
         const now = Date.now()
