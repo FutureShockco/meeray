@@ -88,7 +88,7 @@ let consensus = {
         }
 
         for (let i = 0; i < consensus.possBlocks.length; i++) {
-            const possBlock = consensus.possBlocks[i]
+            let possBlock = consensus.possBlocks[i]
             logr.cons('T'+Math.ceil(threshold)+' R0-'+possBlock[0].length+' R1-'+possBlock[1].length)
             // if 2/3+ of the final round and not already finalizing another block
             if (possBlock[config.consensusRounds-1].length > threshold 
@@ -106,7 +106,7 @@ let consensus = {
                     
                     logr.info('Block collision detected at height '+possBlock.block._id+', the leaders are:',collisions)
                     
-                    // Sort by timestamp and always take the earliest block
+                    // Sort by timestamp and take the earliest block
                     collisions.sort((a,b) => a[1] - b[1])
                     const winningMiner = collisions[0][0]
                     
