@@ -1173,7 +1173,7 @@ let chain = {
             }
             
             if (account) {
-                // Account already exists, just return it without logging
+                // Account already exists, silently return it
                 callback(null, account)
                 return
             }
@@ -1182,10 +1182,8 @@ let chain = {
             let newAccount = {
                 name: name,
                 pub: pub,
-                balance: 0,
-                bw: {v:0,t:0},
-                vt: {v:0,t:0},
-                // ... other account properties
+                balance: 0
+
             }
 
             cache.insertOne('accounts', newAccount, function(err) {
@@ -1194,7 +1192,7 @@ let chain = {
                     return
                 }
                 
-                // Log only once when actually creating the account
+                // Log only once when actually creating a new account
                 logr.info('Created account:', name)
                 callback(null, newAccount)
             })
