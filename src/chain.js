@@ -30,13 +30,11 @@ class Block {
         this.hash = hash
         this.signature = signature
         
-        // Include sync mode in blocks if the chain is behind
-        if (steem && steem.getBehindBlocks && steem.getBehindBlocks() > 10) {
+        // Only set syncMode if we're significantly behind
+        if (steem && steem.getBehindBlocks && steem.getBehindBlocks() > 20) {
             this.syncMode = true
-        } else {
-            // Explicitly set syncMode to false when we're caught up
-            this.syncMode = false
         }
+        // Don't set syncMode to false explicitly - let it be undefined when not syncing
     }
 }
 
@@ -388,12 +386,11 @@ let chain = {
         leaderStats.processBlock(block)
         txHistory.processBlock(block)
 
-        // Check if we should exit sync mode
+        // Check if we should exit sync mode - only when fully caught up
         if (steem && steem.isSyncing && steem.isSyncing() && 
-            (!block.syncMode || steem.getBehindBlocks() <= 5)) {
-            // Exit sync mode if the block doesn't have sync flag or we're caught up
+            steem.getBehindBlocks() === 0) {
             steem.exitSyncMode()
-            logr.info('Exiting sync mode - chain caught up')
+            logr.info('Exiting sync mode - chain fully caught up')
         }
 
         // if block id is mult of n leaders, reschedule next n blocks
@@ -1166,6 +1163,42 @@ let chain = {
         let signature = secp256k1.ecdsaSign(Buffer.from(nextHash, 'hex'), bs58.decode(process.env.NODE_OWNER_PRIV))
         signature = bs58.encode(signature.signature)
         return new Block(block._id, block.steemblock, block.phash, block.timestamp, block.txs, block.miner, block.missedBy, block.dist, block.burn, signature, nextHash)
+    },
+    createAccount: (name, pub, callback) => {
+        // First check if account already exists to avoid duplicate creation
+        cache.findOne('accounts', { name: name }, function (err, account) {
+            if (err) {
+                callback(err)
+                return
+            }
+            
+            if (account) {
+                // Account already exists, just return it without logging
+                callback(null, account)
+                return
+            }
+
+            // Only create and log if account doesn't exist
+            let newAccount = {
+                name: name,
+                pub: pub,
+                balance: 0,
+                bw: {v:0,t:0},
+                vt: {v:0,t:0},
+                // ... other account properties
+            }
+
+            cache.insertOne('accounts', newAccount, function(err) {
+                if (err) {
+                    callback(err)
+                    return
+                }
+                
+                // Log only once when actually creating the account
+                logr.info('Created account:', name)
+                callback(null, newAccount)
+            })
+        })
     },
 }
 
