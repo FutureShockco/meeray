@@ -19,7 +19,7 @@ const switchToNextEndpoint = () => {
     let bestEndpoint = apiUrls[0]
     let highestBlock = 0
 
-    for (const [url, height] of rpcBlockHeights.entries()) {
+    for (const [url, height] of rpcHeightData.entries()) {
         if (apiUrls.includes(url) && height > highestBlock) {
             highestBlock = height
             bestEndpoint = url
@@ -90,18 +90,13 @@ let lastSyncModeChange = 0
 // Add tracking for sync mode exit time
 let lastSyncExitTime = null
 
-// Add new tracking variables at the top with other initialization variables
-let rpcBlockHeights = new Map() // Track block heights for each RPC
-const RPC_MAX_BLOCK_DIFF = 5 // Maximum allowed difference between RPCs
-let lastRpcCheck = 0
-const RPC_CHECK_INTERVAL = 10000 // Check RPC sync every 10 seconds
+// Constants for RPC checks
+const RPC_CHECK_INTERVAL_NORMAL = 10000  // 10 seconds in normal mode
+const RPC_CHECK_INTERVAL_SYNC = 3000     // 3 seconds in sync mode
+const RPC_HEIGHT_EXPIRY = 30000          // Expire RPC heights after 30 seconds
 
-// Add new variables for network consensus based sync mode
-let networkSyncStatus = new Map() // Track other nodes' sync status
-let lastNetworkSyncCheck = 0
-const NETWORK_SYNC_CHECK_INTERVAL = 15000 // Check network sync status every 15 seconds
-const SYNC_EXIT_QUORUM_PERCENT = 60 // Require 60% of nodes to be caught up before exiting sync mode
-const SYNC_EXIT_THRESHOLD = 3 // Maximum blocks behind to be considered "caught up"
+// Track RPC heights with timestamps
+const rpcHeightData = new Map() // Store both height and timestamp
 
 // Add new tracking variables at the top
 let networkSteemHeights = new Map() // Track each node's latest Steem block height
@@ -490,11 +485,106 @@ const getNetworkSyncStatus = () => {
     }
 }
 
-// Function to update our Steem block state and determine sync mode
+const getMedian = (numbers) => {
+    const sorted = Array.from(numbers).sort((a, b) => a - b)
+    const middle = Math.floor(sorted.length / 2)
+    if (sorted.length % 2 === 0) {
+        return (sorted[middle - 1] + sorted[middle]) / 2
+    }
+    return sorted[middle]
+}
+
+const getValidRpcHeights = () => {
+    const now = Date.now()
+    const validHeights = []
+    
+    // Clean up expired entries and collect valid heights
+    for (const [url, data] of rpcHeightData.entries()) {
+        if (now - data.timestamp > RPC_HEIGHT_EXPIRY) {
+            rpcHeightData.delete(url)
+            logr.debug(`Expired RPC height data for ${url}`)
+        } else {
+            validHeights.push(data.height)
+        }
+    }
+    
+    return validHeights
+}
+
+const checkRpcSync = async () => {
+    const now = Date.now()
+    const checkInterval = isSyncing ? RPC_CHECK_INTERVAL_SYNC : RPC_CHECK_INTERVAL_NORMAL
+    
+    // If it's not time to check RPCs, return current median from valid heights
+    if (now - lastRpcCheck < checkInterval) {
+        const validHeights = getValidRpcHeights()
+        if (validHeights.length > 0) {
+            const currentMedian = getMedian(validHeights)
+            logr.debug(`Using cached median height: ${currentMedian} (from ${validHeights.length} RPCs)`)
+            return currentMedian
+        }
+        return null
+    }
+    
+    lastRpcCheck = now
+    let lowestHeight = Infinity
+    let highestHeight = 0
+
+    // Check each RPC endpoint
+    for (let i = 0; i < apiUrls.length; i++) {
+        try {
+            const tempClient = new dsteem.Client(apiUrls[i], {
+                failoverThreshold: 3,
+                addressPrefix: 'STM',
+                chainId: '0000000000000000000000000000000000000000000000000000000000000000'
+            })
+            
+            const props = await tempClient.database.getDynamicGlobalProperties()
+            const height = props.head_block_number
+            
+            // Store height with timestamp
+            rpcHeightData.set(apiUrls[i], {
+                height: height,
+                timestamp: now
+            })
+            
+            lowestHeight = Math.min(lowestHeight, height)
+            highestHeight = Math.max(highestHeight, height)
+
+            logr.debug(`RPC ${apiUrls[i]} at height ${height}`)
+        } catch (error) {
+            logr.warn(`Failed to check RPC sync for ${apiUrls[i]}:`, error)
+        }
+    }
+
+    // Get valid heights after updating
+    const validHeights = getValidRpcHeights()
+    
+    // If we have no valid RPCs, return null
+    if (validHeights.length === 0) {
+        logr.error('No valid RPC responses received')
+        return null
+    }
+
+    // Calculate median height
+    const medianHeight = getMedian(validHeights)
+
+    // Log height distribution
+    logr.debug(`RPC heights - Lowest: ${lowestHeight}, Median: ${medianHeight}, Highest: ${highestHeight}, Valid RPCs: ${validHeights.length}`)
+
+    // If difference between highest and lowest is too large, log a warning
+    if (highestHeight - lowestHeight > RPC_MAX_BLOCK_DIFF) {
+        logr.warn(`Large block height difference between RPCs: ${highestHeight - lowestHeight} blocks`)
+        logr.warn(`Using median height: ${medianHeight} for sync decisions`)
+    }
+
+    return medianHeight
+}
+
 const updateSteemBlock = async () => {
     try {
-        // Get the lowest RPC height to ensure we're working from a consistent base
-        const lowestRpcHeight = await checkRpcSync()
+        // Get the median RPC height for sync decisions
+        const medianRpcHeight = await checkRpcSync()
         
         // Check network sync status periodically
         const now = Date.now()
@@ -514,8 +604,8 @@ const updateSteemBlock = async () => {
         // Update currentSteemBlock
         currentSteemBlock = Math.max(currentSteemBlock, lastProcessedSteemBlock)
 
-        // Calculate local behind blocks using lowest RPC height
-        const latestSteemBlock = lowestRpcHeight || (await client.database.getDynamicGlobalProperties()).head_block_number
+        // Calculate local behind blocks using median RPC height
+        const latestSteemBlock = medianRpcHeight || (await client.database.getDynamicGlobalProperties()).head_block_number
         const localBehindBlocks = Math.max(0, latestSteemBlock - lastProcessedSteemBlock)
         
         // Get network's view of sync status
@@ -525,10 +615,10 @@ const updateSteemBlock = async () => {
         if (networkStatus.referenceExists) {
             // Use the maximum of reference node's behind blocks and our local calculation
             behindBlocks = Math.max(networkStatus.referenceBehind, localBehindBlocks)
-            logr.debug(`Behind blocks: ${behindBlocks} (reference: ${networkStatus.referenceNodeId}, local: ${localBehindBlocks}, lowest RPC height: ${latestSteemBlock})`)
+            logr.debug(`Behind blocks: ${behindBlocks} (reference: ${networkStatus.referenceNodeId}, local: ${localBehindBlocks}, median RPC height: ${latestSteemBlock}, valid RPCs: ${getValidRpcHeights().length})`)
         } else {
             behindBlocks = localBehindBlocks
-            logr.debug(`Behind blocks: ${behindBlocks} (local calculation, lowest RPC height: ${latestSteemBlock})`)
+            logr.debug(`Behind blocks: ${behindBlocks} (local calculation, median RPC height: ${latestSteemBlock}, valid RPCs: ${getValidRpcHeights().length})`)
         }
 
         // Update our sync status in shared state
@@ -545,14 +635,14 @@ const updateSteemBlock = async () => {
             return latestSteemBlock
         }
 
-        // Enter sync mode if we're behind based on the lowest RPC height
+        // Enter sync mode if we're behind based on the median RPC height
         const shouldSync = behindBlocks > 0 || 
                          (networkStatus.referenceExists && networkSyncStatus.get(networkStatus.referenceNodeId)?.isSyncing) ||
                          !readyToReceiveTransactions
 
         if (shouldSync) {
             if (!isSyncing) {
-                logr.info(`Entering sync mode: ${behindBlocks} blocks behind (lowest RPC height: ${latestSteemBlock})`)
+                logr.info(`Entering sync mode: ${behindBlocks} blocks behind (median RPC height: ${latestSteemBlock}, valid RPCs: ${getValidRpcHeights().length})`)
                 isSyncing = true
                 lastSyncModeChange = Date.now()
             }
@@ -561,7 +651,7 @@ const updateSteemBlock = async () => {
             (!lastSyncExitTime || Date.now() - lastSyncExitTime > SYNC_EXIT_COOLDOWN * 2) &&
             isNetworkReadyToExitSyncMode()) {
             
-            logr.info(`Exiting sync mode - caught up with lowest RPC height ${latestSteemBlock} (${behindBlocks} blocks behind)`)
+            logr.info(`Exiting sync mode - caught up with median RPC height ${latestSteemBlock} (${behindBlocks} blocks behind, valid RPCs: ${getValidRpcHeights().length})`)
             isSyncing = false
             lastSyncModeChange = Date.now()
             lastSyncExitTime = Date.now()
@@ -747,8 +837,8 @@ const getLatestSteemBlockNum = async () => {
         }
         
         // If we have cached RPC heights, use the highest one
-        if (rpcBlockHeights.size > 0) {
-            const highestBlockHeight = Math.max(...rpcBlockHeights.values())
+        if (rpcHeightData.size > 0) {
+            const highestBlockHeight = Math.max(...rpcHeightData.values())
             if (highestBlockHeight > 0) {
                 logr.info(`Using cached highest RPC block height: ${highestBlockHeight}`)
                 return highestBlockHeight
@@ -762,62 +852,6 @@ const getLatestSteemBlockNum = async () => {
 function exitSyncMode() {
     // Do nothing - sync mode exit is handled in updateSteemBlock
     logr.debug('Sync mode exit requested but ignored - handled by updateSteemBlock')
-}
-
-// Add this new function to check RPC synchronization
-const checkRpcSync = async () => {
-    const now = Date.now()
-    if (now - lastRpcCheck < RPC_CHECK_INTERVAL) {
-        // Return the lowest height from our cached values if we have any
-        if (rpcBlockHeights.size > 0) {
-            return Math.min(...rpcBlockHeights.values())
-        }
-        return null
-    }
-    lastRpcCheck = now
-
-    rpcBlockHeights.clear()
-    let lowestHeight = Infinity
-    let highestHeight = 0
-    let validRpcCount = 0
-
-    // Check each RPC endpoint
-    for (let i = 0; i < apiUrls.length; i++) {
-        try {
-            const tempClient = new dsteem.Client(apiUrls[i], {
-                failoverThreshold: 3,
-                addressPrefix: 'STM',
-                chainId: '0000000000000000000000000000000000000000000000000000000000000000'
-            })
-            
-            const props = await tempClient.database.getDynamicGlobalProperties()
-            const height = props.head_block_number
-            rpcBlockHeights.set(apiUrls[i], height)
-            
-            lowestHeight = Math.min(lowestHeight, height)
-            highestHeight = Math.max(highestHeight, height)
-            validRpcCount++
-
-            // Log RPC heights for debugging
-            logr.debug(`RPC ${apiUrls[i]} at height ${height}`)
-        } catch (error) {
-            logr.warn(`Failed to check RPC sync for ${apiUrls[i]}:`, error)
-        }
-    }
-
-    // If we have no valid RPCs, return null
-    if (validRpcCount === 0) {
-        logr.error('No valid RPC responses received')
-        return null
-    }
-
-    // If difference between highest and lowest is too large, log a warning
-    if (highestHeight - lowestHeight > RPC_MAX_BLOCK_DIFF) {
-        logr.warn(`Large block height difference between RPCs: ${highestHeight - lowestHeight} blocks`)
-    }
-
-    // Always return the lowest height - this ensures all nodes work from the same base
-    return lowestHeight
 }
 
 // Add this new function to check network sync status
