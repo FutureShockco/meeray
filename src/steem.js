@@ -620,9 +620,9 @@ const getLatestSteemBlockNum = async () => {
 }
 
 function exitSyncMode() {
-    if (isSyncing()) {
+    if (isSyncing) {
         lastSyncExitTime = new Date().getTime()
-        syncMode = false
+        isSyncing = false
         logr.info('Exiting sync mode - chain fully caught up')
     }
 }
