@@ -109,16 +109,25 @@ let consensus = {
                     // Sort by timestamp and take the earliest block
                     collisions.sort((a,b) => a[1] - b[1])
                     const winningMiner = collisions[0][0]
+                    let winningBlock = null
                     
                     // Find the block by the winning miner
                     for (let j in possBlocksById[possBlock.block._id]) {
                         if (possBlocksById[possBlock.block._id][j].block.miner === winningMiner) {
-                            possBlock = possBlocksById[possBlock.block._id][j]
+                            winningBlock = possBlocksById[possBlock.block._id][j]
                             break
                         }
                     }
                     
-                    logr.info('Applying block '+possBlock.block._id+'#'+possBlock.block.hash.substr(0,4)+' by '+possBlock.block.miner+' with timestamp '+possBlock.block.timestamp)
+                    if (winningBlock) {
+                        possBlock = winningBlock
+                        // Clear other possible blocks for this height to prevent confusion
+                        consensus.possBlocks = consensus.possBlocks.filter(pb => 
+                            pb.block._id !== possBlock.block._id || pb.block.hash === possBlock.block.hash
+                        )
+                        
+                        logr.info('Applying block '+possBlock.block._id+'#'+possBlock.block.hash.substr(0,4)+' by '+possBlock.block.miner+' with timestamp '+possBlock.block.timestamp)
+                    }
                 } else
                     logr.cons('block '+possBlock.block._id+'#'+possBlock.block.hash.substr(0,4)+' got finalized')
 
@@ -155,6 +164,15 @@ let consensus = {
         }
 
         if (round === 0) {
+            // Skip if we already have a block at this height
+            if (consensus.possBlocks.some(pb => 
+                pb.block._id === block._id && 
+                pb[0].length > 0 && 
+                pb.block.timestamp < block.timestamp)) {
+                if (cb) cb(-1)
+                return
+            }
+
             // precommit stage
 
             // skip whatever we already validated
