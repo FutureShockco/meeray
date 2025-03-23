@@ -51,7 +51,7 @@ const CIRCUIT_BREAKER_RESET_TIMEOUT = 30000
 const MAX_PREFETCH_BLOCKS = 10  // Maximum number of blocks to prefetch at once
 const SYNC_THRESHOLD = 5  // Number of blocks behind before entering sync mode
 const SYNC_EXIT_THRESHOLD = 2  // Number of blocks behind before exiting sync mode
-const SYNC_FORCE_BLOCKS = 0   // Number of blocks to stay in sync mode after catching up
+const SYNC_FORCE_BLOCKS = 1   // Number of blocks to stay in sync mode after catching up
 
 let consecutiveErrors = 0
 let retryDelay = MIN_RETRY_DELAY
@@ -676,7 +676,7 @@ module.exports = {
     },
     isSyncing: () => {
         // Check if we're forced into sync mode by a recent block
-        if (chain && chain.getLatestBlock() && chain.getLatestBlock()._id < forceSyncUntilBlock) {
+        if (chain && chain.getLatestBlock() && chain.getLatestBlock()._id < forceSyncUntilBlock -1) {
             logr.info(`Force until block: ${forceSyncUntilBlock}`)
             isSyncing = true
         }
