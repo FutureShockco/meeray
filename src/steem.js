@@ -78,9 +78,9 @@ const isInSyncMode = () => {
 
 // Add a function to set readiness state
 const setReadyToReceiveTransactions = (ready) => {
-    readyToReceiveTransactions = ready
     if (ready !== readyToReceiveTransactions)
         logr.info('Steem transaction processing ' + (ready ? 'ENABLED' : 'DISABLED'))
+    readyToReceiveTransactions = ready
 }
 
 const prefetchBlocks = async () => {
