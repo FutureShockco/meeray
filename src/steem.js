@@ -787,7 +787,7 @@ module.exports = {
     prefetchBlocks,
     setReadyToReceiveTransactions,
     exitSyncMode: () => {
-        if (isSyncing()) {
+        if (isSyncing) {
             isSyncing = false
             behindBlocks = 0
             logr.info('Sync mode disabled')
