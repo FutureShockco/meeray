@@ -438,14 +438,14 @@ const updateSteemBlock = async () => {
         }
 
         // Determine if we should be in sync mode
-        if (behindBlocks > 0) {  // Any blocks behind means we need to sync
+        if (behindBlocks > 1) {  // More than 1 block behind means we need to sync
             if (!isSyncing) {
                 logr.info(`Entering sync mode, ${behindBlocks} blocks behind`)
                 isSyncing = true
             }
-        } else {  // Only exit when fully caught up (behindBlocks === 0)
+        } else {  // Exit when we're 1 or fewer blocks behind
             if (isSyncing) {
-                logr.info('Exiting sync mode, fully caught up with Steem blockchain')
+                logr.info('Exiting sync mode - chain nearly caught up (1 or fewer blocks behind)')
                 isSyncing = false
             }
         }

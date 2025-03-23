@@ -103,8 +103,21 @@ let consensus = {
                     let collisions = []
                     for (let j in possBlocksById[possBlock.block._id])
                         collisions.push([possBlocksById[possBlock.block._id][j].block.miner,possBlocksById[possBlock.block._id][j].block.timestamp])
+                    
                     logr.info('Block collision detected at height '+possBlock.block._id+', the leaders are:',collisions)
-                    logr.cons('Poss blocks',possBlocksById[possBlock.block._id])
+                    
+                    // Sort by timestamp and always take the earliest block
+                    collisions.sort((a,b) => a[1] - b[1])
+                    const winningMiner = collisions[0][0]
+                    
+                    // Find the block by the winning miner
+                    for (let j in possBlocksById[possBlock.block._id]) {
+                        if (possBlocksById[possBlock.block._id][j].block.miner === winningMiner) {
+                            possBlock = possBlocksById[possBlock.block._id][j]
+                            break
+                        }
+                    }
+                    
                     logr.info('Applying block '+possBlock.block._id+'#'+possBlock.block.hash.substr(0,4)+' by '+possBlock.block.miner+' with timestamp '+possBlock.block.timestamp)
                 } else
                     logr.cons('block '+possBlock.block._id+'#'+possBlock.block.hash.substr(0,4)+' got finalized')
