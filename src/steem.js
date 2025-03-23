@@ -493,8 +493,8 @@ const getNetworkSyncStatus = () => {
 // Function to update our Steem block state and determine sync mode
 const updateSteemBlock = async () => {
     try {
-        // Always check RPC sync to get accurate network state
-        const maxRpcHeight = await checkRpcSync()
+        // Get the lowest RPC height to ensure we're working from a consistent base
+        const lowestRpcHeight = await checkRpcSync()
         
         // Check network sync status periodically
         const now = Date.now()
@@ -514,10 +514,8 @@ const updateSteemBlock = async () => {
         // Update currentSteemBlock
         currentSteemBlock = Math.max(currentSteemBlock, lastProcessedSteemBlock)
 
-        // Get latest Steem block from RPC or dynamic global properties
-        const latestSteemBlock = maxRpcHeight || (await client.database.getDynamicGlobalProperties()).head_block_number
-        
-        // Calculate local behind blocks first
+        // Calculate local behind blocks using lowest RPC height
+        const latestSteemBlock = lowestRpcHeight || (await client.database.getDynamicGlobalProperties()).head_block_number
         const localBehindBlocks = Math.max(0, latestSteemBlock - lastProcessedSteemBlock)
         
         // Get network's view of sync status
@@ -527,13 +525,13 @@ const updateSteemBlock = async () => {
         if (networkStatus.referenceExists) {
             // Use the maximum of reference node's behind blocks and our local calculation
             behindBlocks = Math.max(networkStatus.referenceBehind, localBehindBlocks)
-            logr.debug(`Behind blocks: ${behindBlocks} (reference: ${networkStatus.referenceNodeId}, local: ${localBehindBlocks})`)
+            logr.debug(`Behind blocks: ${behindBlocks} (reference: ${networkStatus.referenceNodeId}, local: ${localBehindBlocks}, lowest RPC height: ${latestSteemBlock})`)
         } else {
             behindBlocks = localBehindBlocks
-            logr.debug(`Behind blocks: ${behindBlocks} (local calculation)`)
+            logr.debug(`Behind blocks: ${behindBlocks} (local calculation, lowest RPC height: ${latestSteemBlock})`)
         }
 
-        // Update our sync status in shared state if we have a p2p connection
+        // Update our sync status in shared state
         if (p2p && p2p.sockets && p2p.sockets.length > 0) {
             p2p.broadcastSyncStatus({
                 behindBlocks: behindBlocks,
@@ -547,17 +545,14 @@ const updateSteemBlock = async () => {
             return latestSteemBlock
         }
 
-        // Enter sync mode if:
-        // 1. We're behind by any blocks
-        // 2. Reference node is in sync mode
-        // 3. We're not ready to receive transactions
+        // Enter sync mode if we're behind based on the lowest RPC height
         const shouldSync = behindBlocks > 0 || 
                          (networkStatus.referenceExists && networkSyncStatus.get(networkStatus.referenceNodeId)?.isSyncing) ||
                          !readyToReceiveTransactions
 
         if (shouldSync) {
             if (!isSyncing) {
-                logr.info(`Entering sync mode: ${behindBlocks} blocks behind, reference: ${networkStatus.referenceNodeId}`)
+                logr.info(`Entering sync mode: ${behindBlocks} blocks behind (lowest RPC height: ${latestSteemBlock})`)
                 isSyncing = true
                 lastSyncModeChange = Date.now()
             }
@@ -566,7 +561,7 @@ const updateSteemBlock = async () => {
             (!lastSyncExitTime || Date.now() - lastSyncExitTime > SYNC_EXIT_COOLDOWN * 2) &&
             isNetworkReadyToExitSyncMode()) {
             
-            logr.info(`Exiting sync mode - caught up (${behindBlocks} blocks behind)`)
+            logr.info(`Exiting sync mode - caught up with lowest RPC height ${latestSteemBlock} (${behindBlocks} blocks behind)`)
             isSyncing = false
             lastSyncModeChange = Date.now()
             lastSyncExitTime = Date.now()
@@ -772,12 +767,19 @@ function exitSyncMode() {
 // Add this new function to check RPC synchronization
 const checkRpcSync = async () => {
     const now = Date.now()
-    if (now - lastRpcCheck < RPC_CHECK_INTERVAL) return
+    if (now - lastRpcCheck < RPC_CHECK_INTERVAL) {
+        // Return the lowest height from our cached values if we have any
+        if (rpcBlockHeights.size > 0) {
+            return Math.min(...rpcBlockHeights.values())
+        }
+        return null
+    }
     lastRpcCheck = now
 
     rpcBlockHeights.clear()
-    let maxHeight = 0
-    let minHeight = Infinity
+    let lowestHeight = Infinity
+    let highestHeight = 0
+    let validRpcCount = 0
 
     // Check each RPC endpoint
     for (let i = 0; i < apiUrls.length; i++) {
@@ -792,8 +794,9 @@ const checkRpcSync = async () => {
             const height = props.head_block_number
             rpcBlockHeights.set(apiUrls[i], height)
             
-            maxHeight = Math.max(maxHeight, height)
-            minHeight = Math.min(minHeight, height)
+            lowestHeight = Math.min(lowestHeight, height)
+            highestHeight = Math.max(highestHeight, height)
+            validRpcCount++
 
             // Log RPC heights for debugging
             logr.debug(`RPC ${apiUrls[i]} at height ${height}`)
@@ -802,23 +805,19 @@ const checkRpcSync = async () => {
         }
     }
 
-    // If difference is too large, remove lagging RPCs
-    if (maxHeight - minHeight > RPC_MAX_BLOCK_DIFF) {
-        for (const [url, height] of rpcBlockHeights.entries()) {
-            if (maxHeight - height > RPC_MAX_BLOCK_DIFF) {
-                logr.warn(`RPC ${url} is ${maxHeight - height} blocks behind, temporarily removing from rotation`)
-                // Remove this RPC from the current rotation
-                apiUrls = apiUrls.filter(u => u !== url)
-            }
-        }
-        
-        // If we removed the current endpoint, switch to a better one
-        if (!apiUrls.includes(client.address)) {
-            switchToNextEndpoint()
-        }
+    // If we have no valid RPCs, return null
+    if (validRpcCount === 0) {
+        logr.error('No valid RPC responses received')
+        return null
     }
 
-    return maxHeight
+    // If difference between highest and lowest is too large, log a warning
+    if (highestHeight - lowestHeight > RPC_MAX_BLOCK_DIFF) {
+        logr.warn(`Large block height difference between RPCs: ${highestHeight - lowestHeight} blocks`)
+    }
+
+    // Always return the lowest height - this ensures all nodes work from the same base
+    return lowestHeight
 }
 
 // Add this new function to check network sync status
