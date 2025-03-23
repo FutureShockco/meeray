@@ -96,6 +96,13 @@ const RPC_MAX_BLOCK_DIFF = 5 // Maximum allowed difference between RPCs
 let lastRpcCheck = 0
 const RPC_CHECK_INTERVAL = 10000 // Check RPC sync every 10 seconds
 
+// Add new variables for network consensus based sync mode
+let networkSyncStatus = new Map() // Track other nodes' sync status
+let lastNetworkSyncCheck = 0
+const NETWORK_SYNC_CHECK_INTERVAL = 15000 // Check network sync status every 15 seconds
+const SYNC_EXIT_QUORUM_PERCENT = 60 // Require 60% of nodes to be caught up before exiting sync mode
+const SYNC_EXIT_THRESHOLD = 3 // Maximum blocks behind to be considered "caught up"
+
 // Helper function to check sync status
 const isInSyncMode = () => {
     // Check if we're forced into sync mode by a recent block
@@ -402,6 +409,13 @@ const updateSteemBlock = async () => {
         // Check RPC synchronization first
         await checkRpcSync()
         
+        // Check network sync status periodically
+        const now = Date.now()
+        if (now - lastNetworkSyncCheck > NETWORK_SYNC_CHECK_INTERVAL) {
+            await checkNetworkSyncStatus()
+            lastNetworkSyncCheck = now
+        }
+        
         const dynGlobalProps = await client.database.getDynamicGlobalProperties()
         const latestSteemBlock = dynGlobalProps.head_block_number
 
@@ -427,9 +441,19 @@ const updateSteemBlock = async () => {
         if (calculatedBehind > behindBlocks || calculatedBehind > SYNC_THRESHOLD) {
             behindBlocks = calculatedBehind
             logr.debug(`Updated blocks behind: ${behindBlocks}`)
+            
+            // Update our sync status in shared state if we have a p2p connection
+            if (p2p && p2p.isNodeConnected()) {
+                p2p.broadcastSyncStatus(behindBlocks)
+            }
         } else if (calculatedBehind < behindBlocks) {
             // Gradually decrease behindBlocks count
             behindBlocks = Math.max(calculatedBehind, behindBlocks - 1)
+            
+            // Update our sync status in shared state if significantly changed
+            if (p2p && p2p.isNodeConnected() && Math.abs(calculatedBehind - behindBlocks) > 5) {
+                p2p.broadcastSyncStatus(behindBlocks)
+            }
         }
 
         // Don't change sync mode if we're in forced sync
@@ -437,28 +461,40 @@ const updateSteemBlock = async () => {
             return latestSteemBlock
         }
 
-        // More conservative sync mode management
+        // More consensus-based sync mode management
         if (behindBlocks >= SYNC_THRESHOLD) {
             if (!isSyncing) {
                 logr.info(`Entering sync mode, ${behindBlocks} blocks behind`)
                 isSyncing = true
                 lastSyncModeChange = Date.now()
+                
+                // Broadcast our sync mode change
+                if (p2p && p2p.isNodeConnected()) {
+                    p2p.broadcastSyncStatus(behindBlocks)
+                }
             }
         } else {
             // Only exit sync mode if:
             // 1. We're currently in sync mode
             // 2. We've been in sync mode for the minimum cooldown period
-            // 3. We're COMPLETELY caught up (0 blocks behind)
+            // 3. We're nearly caught up (fewer than SYNC_EXIT_THRESHOLD blocks behind) 
             // 4. We haven't exited sync mode recently
+            // 5. Most nodes in the network are also caught up
             if (isSyncing && 
                 Date.now() - lastSyncModeChange > SYNC_EXIT_COOLDOWN &&
-                behindBlocks === 0 &&  // Strict requirement - must be completely caught up
-                (!lastSyncExitTime || Date.now() - lastSyncExitTime > SYNC_EXIT_COOLDOWN * 2)) {
+                behindBlocks <= SYNC_EXIT_THRESHOLD &&
+                (!lastSyncExitTime || Date.now() - lastSyncExitTime > SYNC_EXIT_COOLDOWN * 2) &&
+                isNetworkReadyToExitSyncMode()) {
                 
-                logr.info(`Exiting sync mode - chain fully caught up (${behindBlocks} blocks behind)`)
+                logr.info(`Exiting sync mode - network consensus reached (${behindBlocks} blocks behind)`)
                 isSyncing = false
                 lastSyncModeChange = Date.now()
                 lastSyncExitTime = Date.now()
+                
+                // Broadcast our sync mode change
+                if (p2p && p2p.isNodeConnected()) {
+                    p2p.broadcastSyncStatus(behindBlocks)
+                }
             }
         }
 
@@ -669,6 +705,84 @@ const checkRpcSync = async () => {
     }
 }
 
+// Add this new function to check network sync status
+const checkNetworkSyncStatus = async () => {
+    if (!p2p || !p2p.isNodeConnected()) return
+    
+    try {
+        // Get sync status from peers via p2p
+        const peerStatuses = await p2p.getSyncStatus()
+        
+        // Update our network sync status map
+        if (peerStatuses && Array.isArray(peerStatuses)) {
+            for (const status of peerStatuses) {
+                if (status && status.nodeId && typeof status.behindBlocks === 'number') {
+                    networkSyncStatus.set(status.nodeId, {
+                        behindBlocks: status.behindBlocks,
+                        isSyncing: status.isSyncing,
+                        timestamp: Date.now()
+                    })
+                }
+            }
+        }
+        
+        // Clean up old statuses (older than 2 minutes)
+        const twoMinutesAgo = Date.now() - 120000
+        for (const [nodeId, status] of networkSyncStatus.entries()) {
+            if (status.timestamp < twoMinutesAgo) {
+                networkSyncStatus.delete(nodeId)
+            }
+        }
+        
+        // Log current network sync status
+        logr.debug(`Network sync status: ${networkSyncStatus.size} nodes reporting`)
+        let syncCount = 0
+        let caughtUpCount = 0
+        
+        for (const status of networkSyncStatus.values()) {
+            if (status.isSyncing) syncCount++
+            if (status.behindBlocks <= SYNC_EXIT_THRESHOLD) caughtUpCount++
+        }
+        
+        logr.debug(`Nodes in sync mode: ${syncCount}, Nodes caught up: ${caughtUpCount}`)
+    } catch (error) {
+        logr.error('Error checking network sync status:', error)
+    }
+}
+
+// Add this function to determine if network is ready to exit sync mode
+const isNetworkReadyToExitSyncMode = () => {
+    // If no network data, use local decision
+    if (networkSyncStatus.size === 0) {
+        return behindBlocks <= SYNC_EXIT_THRESHOLD
+    }
+    
+    // Count how many nodes are caught up 
+    let caughtUpCount = 0
+    let totalNodes = networkSyncStatus.size
+    
+    // Include ourselves in the count
+    if (behindBlocks <= SYNC_EXIT_THRESHOLD) {
+        caughtUpCount++
+    }
+    totalNodes++
+    
+    // Count other nodes
+    for (const status of networkSyncStatus.values()) {
+        if (status.behindBlocks <= SYNC_EXIT_THRESHOLD) {
+            caughtUpCount++
+        }
+    }
+    
+    // Calculate percentage
+    const caughtUpPercent = (caughtUpCount / totalNodes) * 100
+    
+    logr.debug(`Network sync exit check: ${caughtUpCount}/${totalNodes} nodes caught up (${caughtUpPercent.toFixed(1)}%)`)
+    
+    // Return true if enough nodes are caught up
+    return caughtUpPercent >= SYNC_EXIT_QUORUM_PERCENT
+}
+
 module.exports = {
     init: (blockNum) => {
         nextSteemBlock = blockNum
@@ -700,6 +814,10 @@ module.exports = {
                 } else {
                     syncInterval = setInterval(updateSteemBlock, 3000); // Normal update interval
                 }
+                
+                // Initialize network sync status check
+                lastNetworkSyncCheck = Date.now()
+                checkNetworkSyncStatus()
             }
         }).catch(err => {
             logr.error('Error initializing behind blocks count:', err)
@@ -740,6 +858,11 @@ module.exports = {
             if (behindBlocks >= SYNC_THRESHOLD && !isSyncing) {
                 logr.info(`Entering sync mode based on network report, ${behindBlocks} blocks behind`)
                 isSyncing = true
+                
+                // Broadcast our sync mode change
+                if (p2p && p2p.isNodeConnected()) {
+                    p2p.broadcastSyncStatus(behindBlocks)
+                }
             }
         }
     },
@@ -749,7 +872,29 @@ module.exports = {
             if (!isSyncing) {
                 isSyncing = true
                 logr.info('Network-enforced sync mode enabled')
+                
+                // Broadcast our sync mode change
+                if (p2p && p2p.isNodeConnected()) {
+                    p2p.broadcastSyncStatus(behindBlocks)
+                }
             }
+        }
+    },
+    receivePeerSyncStatus: (nodeId, status) => {
+        // Store peer sync status
+        if (nodeId && status && typeof status.behindBlocks === 'number') {
+            networkSyncStatus.set(nodeId, {
+                behindBlocks: status.behindBlocks,
+                isSyncing: status.isSyncing,
+                timestamp: Date.now()
+            })
+        }
+    },
+    getSyncStatus: () => {
+        // Return our current sync status for broadcasting to peers
+        return {
+            behindBlocks: behindBlocks,
+            isSyncing: isSyncing
         }
     },
     isOnSteemBlock: (block) => {
@@ -823,6 +968,19 @@ module.exports = {
     prefetchBlocks,
     setReadyToReceiveTransactions,
     exitSyncMode,
-    lastSyncExitTime: lastSyncExitTime
+    lastSyncExitTime: lastSyncExitTime,
+    getNetworkSyncStatus: () => {
+        // Return array of nodes and their sync status
+        const result = []
+        for (const [nodeId, status] of networkSyncStatus.entries()) {
+            result.push({
+                nodeId,
+                behindBlocks: status.behindBlocks,
+                isSyncing: status.isSyncing,
+                lastUpdate: new Date(status.timestamp).toISOString()
+            })
+        }
+        return result
+    }
 }
 
