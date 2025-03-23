@@ -514,30 +514,19 @@ const updateSteemBlock = async () => {
         // Update currentSteemBlock
         currentSteemBlock = Math.max(currentSteemBlock, lastProcessedSteemBlock)
 
-        // Calculate blocks behind using RPC height if available, otherwise use dynGlobalProps
-        let latestSteemBlock = maxRpcHeight
-        if (!latestSteemBlock) {
-            const dynGlobalProps = await client.database.getDynamicGlobalProperties()
-            latestSteemBlock = dynGlobalProps.head_block_number
-        }
-
-        // Calculate our local view of blocks behind
-        const localBehindBlocks = Math.max(0, latestSteemBlock - lastProcessedSteemBlock)
-
         // Get network's view of sync status
         const networkStatus = getNetworkSyncStatus()
         
-        // Update our behind blocks based on network status
-        if (networkStatus.referenceExists && networkStatus.referenceNodeId !== 'self') {
-            // Use reference node's behind blocks if it has a higher block
-            if (networkStatus.highestBlock > currentSteemBlock) {
-                behindBlocks = Math.max(networkStatus.referenceBehind, localBehindBlocks)
-                logr.debug(`Using reference node ${networkStatus.referenceNodeId} behind blocks: ${behindBlocks} (local: ${localBehindBlocks})`)
-            } else {
-                behindBlocks = localBehindBlocks
-            }
+        // Calculate blocks behind using reference node's value
+        if (networkStatus.referenceExists) {
+            // Always use reference node's behind blocks value
+            behindBlocks = networkStatus.referenceBehind
+            logr.debug(`Using reference node ${networkStatus.referenceNodeId} behind blocks: ${behindBlocks}`)
         } else {
-            behindBlocks = localBehindBlocks
+            // If we're the reference (or no reference exists), calculate based on RPC height
+            const latestSteemBlock = maxRpcHeight || (await client.database.getDynamicGlobalProperties()).head_block_number
+            behindBlocks = Math.max(0, latestSteemBlock - lastProcessedSteemBlock)
+            logr.debug(`No reference node, calculated behind blocks: ${behindBlocks}`)
         }
 
         // Update our sync status in shared state if we have a p2p connection
@@ -551,21 +540,17 @@ const updateSteemBlock = async () => {
 
         // Don't change sync mode if we're in forced sync
         if (chain && chain.getLatestBlock() && chain.getLatestBlock()._id < forceSyncUntilBlock) {
-            return latestSteemBlock
+            return maxRpcHeight || (await client.database.getDynamicGlobalProperties()).head_block_number
         }
 
-        // More consensus-based sync mode management
-        if (behindBlocks >= SYNC_THRESHOLD || !readyToReceiveTransactions) {
+        // Sync mode management based on network consensus
+        if (behindBlocks > 0 || !readyToReceiveTransactions) {
             if (!isSyncing) {
                 logr.info(`Entering sync mode, ${behindBlocks} blocks behind (reference: ${networkStatus.referenceNodeId})`)
                 isSyncing = true
                 lastSyncModeChange = Date.now()
             }
         } else {
-            // Only exit sync mode if:
-            // 1. We're currently in sync mode
-            // 2. We've been in sync mode for the minimum cooldown period
-            // 3. Network consensus agrees we should exit
             if (isSyncing && 
                 Date.now() - lastSyncModeChange > SYNC_EXIT_COOLDOWN &&
                 (!lastSyncExitTime || Date.now() - lastSyncExitTime > SYNC_EXIT_COOLDOWN * 2) &&
@@ -578,7 +563,7 @@ const updateSteemBlock = async () => {
             }
         }
 
-        return latestSteemBlock
+        return maxRpcHeight || (await client.database.getDynamicGlobalProperties()).head_block_number
     } catch (error) {
         logr.error('Error updating Steem block state:', error)
         return null
@@ -908,45 +893,43 @@ const getSyncStatus = () => {
 const isNetworkReadyToExitSyncMode = () => {
     const networkStatus = getNetworkSyncStatus()
     
-    // If we're the reference node (or no reference exists)
-    if (!networkStatus.referenceExists || networkStatus.referenceNodeId === 'self') {
-        // Be more conservative when we're the reference
-        if (behindBlocks > 0) {
-            logr.debug('As reference node, staying in sync mode with behindBlocks > 0')
-            return false
+    // If we're not the reference node, we ONLY exit when the reference node exits
+    if (networkStatus.referenceExists && networkStatus.referenceNodeId !== 'self') {
+        // Find reference node's sync status
+        const referenceStatus = networkSyncStatus.get(networkStatus.referenceNodeId)
+        if (referenceStatus) {
+            // Only exit if reference node is not in sync mode
+            if (referenceStatus.isSyncing) {
+                logr.debug(`Staying in sync mode - reference node ${networkStatus.referenceNodeId} is still syncing`)
+                return false
+            }
+            // Exit only if reference node has exited recently (within last 5 seconds)
+            const timeSinceReferenceExit = Date.now() - referenceStatus.timestamp
+            if (timeSinceReferenceExit > 5000) {
+                logr.debug(`Reference node sync status too old (${timeSinceReferenceExit}ms), staying in sync mode`)
+                return false
+            }
+            logr.debug(`Following reference node ${networkStatus.referenceNodeId} to exit sync mode`)
+            return true
         }
-        
-        // Verify we can fetch the next block
-        const nextBlock = chain.getLatestBlock().steemblock + 1
-        const canFetchNextBlock = blockCache.has(nextBlock) || client.database.getBlock(nextBlock)
-            .then(block => !!block)
-            .catch(() => false)
-
-        if (!canFetchNextBlock) {
-            logr.debug(`As reference node, cannot fetch next Steem block ${nextBlock}`)
-            return false
-        }
-    } else {
-        // If we're not the reference, use reference node's status
-        if (networkStatus.referenceBehind > 0) {
-            logr.debug(`Reference node ${networkStatus.referenceNodeId} reports ${networkStatus.referenceBehind} blocks behind`)
-            return false
-        }
+        logr.debug('Reference node status not found, staying in sync mode')
+        return false
     }
 
-    // Count how many nodes are in sync with reference
-    let syncedCount = 0
-    let totalNodes = networkSyncStatus.size + 1 // Include ourselves
+    // If we're the reference node (or no reference exists), we make the decision
+    if (behindBlocks > 0) {
+        logr.debug('As reference node, staying in sync mode with behindBlocks > 0')
+        return false
+    }
+
+    // Count how many nodes are caught up
+    let syncedCount = 1 // Include ourselves
+    let totalNodes = networkSyncStatus.size + 1
     let maxBehind = 0
-
-    // Check if we're synced with reference
-    if (Math.abs(currentSteemBlock - networkStatus.highestBlock) <= 1) {
-        syncedCount++
-    }
 
     // Check other nodes
     for (const [nodeId, status] of networkSteemHeights.entries()) {
-        if (Math.abs(status.steemBlock - networkStatus.highestBlock) <= 1) {
+        if (Math.abs(status.steemBlock - currentSteemBlock) <= 1) {
             syncedCount++
         }
         maxBehind = Math.max(maxBehind, status.behindBlocks)
@@ -954,20 +937,21 @@ const isNetworkReadyToExitSyncMode = () => {
 
     const syncedPercent = (syncedCount / totalNodes) * 100
 
-    logr.debug(`Network sync status:
-        - Reference node: ${networkStatus.referenceNodeId}
-        - Reference behind: ${networkStatus.referenceBehind}
-        - Highest block: ${networkStatus.highestBlock}
+    logr.debug(`Reference node sync status check:
         - Nodes synced: ${syncedCount}/${totalNodes} (${syncedPercent.toFixed(1)}%)
-        - Max behind: ${maxBehind}`)
+        - Max behind: ${maxBehind}
+        - Current block: ${currentSteemBlock}`)
 
-    // Only exit sync if:
-    // 1. Reference node reports 0 blocks behind
-    // 2. At least 60% of nodes are synced with reference
-    // 3. No node is more than 2 blocks behind
-    return networkStatus.referenceBehind === 0 && 
-           syncedPercent >= SYNC_EXIT_QUORUM_PERCENT && 
-           maxBehind <= 2
+    // As reference node, require stricter conditions
+    const readyToExit = syncedPercent >= SYNC_EXIT_QUORUM_PERCENT && 
+                       maxBehind <= 1 && // More strict: require nodes to be at most 1 block behind
+                       behindBlocks === 0;
+
+    if (readyToExit) {
+        logr.info('As reference node, signaling network to exit sync mode')
+    }
+
+    return readyToExit
 }
 
 module.exports = {
