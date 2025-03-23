@@ -48,6 +48,7 @@ const CIRCUIT_BREAKER_THRESHOLD = 30
 const CIRCUIT_BREAKER_RESET_TIMEOUT = 30000
 const MAX_PREFETCH_BLOCKS = 10  // Maximum number of blocks to prefetch at once
 const SYNC_THRESHOLD = 5  // Number of blocks behind before entering sync mode
+const SYNC_EXIT_COOLDOWN = 10000 // 10 seconds cooldown before exiting sync mode
 
 let consecutiveErrors = 0
 let retryDelay = MIN_RETRY_DELAY
@@ -62,6 +63,9 @@ let prefetchTimer = null
 
 // Add at the top of the file with other initialization variables
 let readyToReceiveTransactions = false
+
+// Add at the top with other constants
+let lastSyncModeChange = 0
 
 // Helper function to check sync status
 const isInSyncMode = () => {
@@ -438,15 +442,17 @@ const updateSteemBlock = async () => {
         }
 
         // Determine if we should be in sync mode
-        if (behindBlocks > 1) {  // More than 1 block behind means we need to sync
+        if (behindBlocks > 0) {  // Any blocks behind means we need to sync
             if (!isSyncing) {
                 logr.info(`Entering sync mode, ${behindBlocks} blocks behind`)
                 isSyncing = true
+                lastSyncModeChange = Date.now()
             }
-        } else {  // Exit when we're 1 or fewer blocks behind
-            if (isSyncing) {
-                logr.info('Exiting sync mode - chain nearly caught up (1 or fewer blocks behind)')
+        } else {  // Only exit when fully caught up AND after cooldown
+            if (isSyncing && (Date.now() - lastSyncModeChange > SYNC_EXIT_COOLDOWN)) {
+                logr.info('Exiting sync mode - chain fully caught up')
                 isSyncing = false
+                lastSyncModeChange = Date.now()
             }
         }
 
