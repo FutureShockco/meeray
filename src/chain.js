@@ -739,38 +739,113 @@ let chain = {
             return
         }
 
-        // Check block timing with more flexibility
-        const currentTime = new Date().getTime()
-        const blockTime = (steem.isSyncing() || (steem.lastSyncExitTime && currentTime - steem.lastSyncExitTime < 30000)) 
-            ? config.syncBlockTime 
-            : config.blockTime
-        const expectedTime = previousBlock.timestamp + (minerPriority * blockTime)
-        
-        // Add a more flexible timing buffer, especially for the first block
-        // Use different maxDrift based on sync mode and transition period
-        const maxDriftValue = (steem.isSyncing() || (steem.lastSyncExitTime && currentTime - steem.lastSyncExitTime < 30000))
-            ? config.syncMaxDrift 
-            : config.maxDrift
-        const earlyBuffer = (newBlock._id <= 10 || (steem.lastSyncExitTime && currentTime - steem.lastSyncExitTime < 15000)) 
-            ? maxDriftValue * 3 
-            : maxDriftValue
-        
-        if (newBlock.timestamp < expectedTime - earlyBuffer) {
-            chain.lastValidationError = 'block too early'
-            logr.error(`Block too early for miner with priority #${minerPriority}. Current time: ${currentTime}, Expected time: ${expectedTime}, Block time: ${newBlock.timestamp}, Difference: ${expectedTime - newBlock.timestamp}ms, Mode: ${(steem.lastSyncExitTime && currentTime - steem.lastSyncExitTime < 30000) ? 'transition' : (steem.isSyncing() ? 'sync' : 'normal')}`)
-            cb(false)
-            return
-        }
+        // Skip timestamp checks in any of these conditions:
+        // 1. Node is recovering (p2p.recovering)
+        // 2. Node is in sync mode (steem.isSyncing())
+        // 3. Node is an observer
+        const isCatchingUp = p2p.recovering || 
+                          (steem && steem.isSyncing && steem.isSyncing()) ||
+                          (consensus && consensus.observer === true)
 
-        // Late blocks have a standard buffer, but more lenient during transition
-        const lateBuffer = (steem.lastSyncExitTime && currentTime - steem.lastSyncExitTime < 15000)
-            ? maxDriftValue * 2
-            : maxDriftValue
-        if (newBlock.timestamp > currentTime + lateBuffer) {
-            chain.lastValidationError = 'block too late'
-            logr.error(`Block too late. Current time: ${currentTime}, Block time: ${newBlock.timestamp}, Difference: ${newBlock.timestamp - currentTime}ms, Mode: ${(steem.lastSyncExitTime && currentTime - steem.lastSyncExitTime < 30000) ? 'transition' : (steem.isSyncing() ? 'sync' : 'normal')}`)
-            cb(false)
-            return
+        if (isCatchingUp) {
+            logr.debug(`Skipping timestamp validation for block ${newBlock._id} during catch-up/sync`)
+        } else {
+            // Check block timing with more flexibility
+            const currentTime = new Date().getTime()
+            
+            // For timestamp validation, use a more relaxed drift buffer for:
+            // - Nodes that recently exited sync mode
+            // - Nodes processing blocks near their own head block
+            // - General recovery situations
+            let maxDriftBuffer = config.maxDrift
+            
+            // Increase buffer for blocks near the head
+            const latestBlock = chain.getLatestBlock()
+            const isNearHead = Math.abs(newBlock._id - latestBlock._id) < 10
+            
+            // Recently exited sync mode (within last 2 minutes)
+            const recentlySynced = steem && steem.lastSyncExitTime && 
+                                (currentTime - steem.lastSyncExitTime < 120000)
+            
+            // Determine if we need extended buffer
+            if (isNearHead || recentlySynced || chain.recoveryAttempts > 0) {
+                maxDriftBuffer = config.maxDrift * 3
+                logr.debug(`Using extended timestamp drift buffer (${maxDriftBuffer}ms) for block ${newBlock._id}`)
+            }
+            
+            const blockTime = (steem && steem.isSyncing && steem.isSyncing()) ? config.syncBlockTime : config.blockTime
+            const expectedTime = previousBlock.timestamp + (minerPriority * blockTime)
+            
+            if (newBlock.timestamp < expectedTime - maxDriftBuffer) {
+                chain.lastValidationError = 'block too early'
+                logr.error(`Block too early for miner with priority #${minerPriority}. Current time: ${currentTime}, Expected time: ${expectedTime}, Block time: ${newBlock.timestamp}, Difference: ${expectedTime - newBlock.timestamp}ms, Mode: ${isCatchingUp ? 'sync' : 'normal'}`)
+                
+                // For observer nodes and recovery situations, try to be more lenient
+                if (consensus && consensus.observer === true) {
+                    logr.warn(`Observer node accepting early block despite timestamp drift`)
+                    // Skip timestamp validation for observers
+                    chain.lastValidationError = null
+                    
+                    // Validate transactions and signature if needed
+                    if (!skipSteem) {
+                        chain.isValidHashAndSignature(newBlock, function (isValid) {
+                            if (!isValid) {
+                                chain.lastValidationError = 'invalid hash or signature'
+                                cb(false)
+                                return
+                            }
+                            chain.isValidBlockTxs(newBlock, cb)
+                        })
+                    } else {
+                        chain.isValidBlockTxs(newBlock, cb)
+                    }
+                    return
+                }
+                
+                // Initiate recovery attempt tracking
+                if (!chain.recoveryAttempts) chain.recoveryAttempts = 0
+                chain.recoveryAttempts++;
+                logr.warn(`Recover attempt #${chain.recoveryAttempts} for block ${newBlock._id}`)
+                
+                // After multiple recovery attempts, accept the block anyway
+                if (chain.recoveryAttempts >= 3) {
+                    logr.warn(`Accepting block ${newBlock._id} after ${chain.recoveryAttempts} recovery attempts despite timestamp drift`)
+                    chain.lastValidationError = null
+                    
+                    // Reset recovery counter after accepting
+                    setTimeout(() => { chain.recoveryAttempts = 0 }, 5000)
+                    
+                    // Validate transactions and signature if needed
+                    if (!skipSteem) {
+                        chain.isValidHashAndSignature(newBlock, function (isValid) {
+                            if (!isValid) {
+                                chain.lastValidationError = 'invalid hash or signature'
+                                cb(false)
+                                return
+                            }
+                            chain.isValidBlockTxs(newBlock, cb)
+                        })
+                    } else {
+                        chain.isValidBlockTxs(newBlock, cb)
+                    }
+                    return
+                }
+                
+                cb(false)
+                return
+            }
+
+            if (newBlock.timestamp > currentTime + maxDriftBuffer) {
+                chain.lastValidationError = 'block too late'
+                logr.error(`Block too late. Current time: ${currentTime}, Block time: ${newBlock.timestamp}, Difference: ${newBlock.timestamp - currentTime}ms`)
+                cb(false)
+                return
+            }
+            
+            // Reset recovery counter on successful validation
+            if (chain.recoveryAttempts > 0) {
+                chain.recoveryAttempts = 0
+            }
         }
 
         // Reset validation error before further validation
