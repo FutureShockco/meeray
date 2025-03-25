@@ -415,6 +415,16 @@ let chain = {
         leaderStats.processBlock(block)
         txHistory.processBlock(block)
 
+        // Update behindBlocks count every 5 blocks
+        if (steem && steem.getBehindBlocks && block._id % 5 === 0) {
+            const latestSteemBlock = await steem.getLatestSteemBlockNum()
+            if (latestSteemBlock) {
+                const behindBlocks = Math.max(0, latestSteemBlock - block.steemblock)
+                steem.updateNetworkBehindBlocks(behindBlocks)
+                logr.debug(`Updated behind blocks count: ${behindBlocks} (Steem: ${latestSteemBlock}, Local: ${block.steemblock})`)
+            }
+        }
+
         // Check if we should exit sync mode - only when fully caught up
         if (steem && steem.isSyncing && steem.isSyncing() && 
             steem.getBehindBlocks() === 0) {

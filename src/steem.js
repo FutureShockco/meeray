@@ -661,37 +661,40 @@ const updateSteemBlock = async () => {
         // Update currentSteemBlock
         currentSteemBlock = Math.max(currentSteemBlock, lastProcessedSteemBlock)
 
-        // Get network's view of sync status first
+        // Calculate local behind blocks using median RPC height
+        const latestSteemBlock = medianRpcHeight || (await client.database.getDynamicGlobalProperties()).head_block_number
+        const localBehindBlocks = Math.max(0, latestSteemBlock - lastProcessedSteemBlock)
+        
+        // Get network's view of sync status
         const networkStatus = getNetworkSyncStatus()
-        
-        // Use network's highest block as reference for behind blocks calculation
-        const referenceSteemBlock = networkStatus.highestBlock || medianRpcHeight
-        const localBehindBlocks = Math.max(0, referenceSteemBlock - currentSteemBlock)
-        
+
         // Calculate network consensus on behind blocks
         const consensusBehindBlocks = calculateNetworkBehindBlocksConsensus()
         
-        // Update behindBlocks based on network consensus and reference block
+        // Update behindBlocks based on network consensus, reference node, or local calculation
         if (isInWarmup) {
-            // During warmup, use the maximum of consensus or local
+            // During warmup, use the maximum of consensus, reference, or local
             if (consensusBehindBlocks !== null) {
                 behindBlocks = Math.max(consensusBehindBlocks, localBehindBlocks)
-                logr.debug(`Warmup: Using consensus behind blocks: ${behindBlocks} (consensus: ${consensusBehindBlocks}, local: ${localBehindBlocks}, reference block: ${referenceSteemBlock})`)
+                logr.debug(`Warmup: Using consensus behind blocks: ${behindBlocks} (consensus: ${consensusBehindBlocks}, local: ${localBehindBlocks})`)
+            } else if (networkStatus.referenceExists) {
+                behindBlocks = Math.max(networkStatus.referenceBehind, localBehindBlocks)
+                logr.debug(`Warmup: Using reference behind blocks: ${behindBlocks} (reference: ${networkStatus.referenceNodeId}, local: ${localBehindBlocks})`)
             } else {
                 behindBlocks = localBehindBlocks
-                logr.debug(`Warmup: Using local behind blocks: ${behindBlocks} (reference block: ${referenceSteemBlock})`)
+                logr.debug(`Warmup: Using local behind blocks: ${behindBlocks}`)
             }
         } else {
             // After warmup, prioritize consensus > reference node > local calculation
             if (consensusBehindBlocks !== null) {
                 behindBlocks = consensusBehindBlocks
-                logr.debug(`Using network consensus behind blocks: ${behindBlocks} (consensus from ${networkSteemHeights.size} nodes, reference block: ${referenceSteemBlock})`)
+                logr.debug(`Using network consensus behind blocks: ${behindBlocks} (consensus from ${networkSteemHeights.size} nodes)`)
             } else if (networkStatus.referenceExists) {
                 behindBlocks = networkStatus.referenceBehind
-                logr.debug(`Using reference behind blocks: ${behindBlocks} (reference: ${networkStatus.referenceNodeId}, reference block: ${referenceSteemBlock})`)
+                logr.debug(`Using reference behind blocks: ${behindBlocks} (reference: ${networkStatus.referenceNodeId})`)
             } else {
                 behindBlocks = localBehindBlocks
-                logr.debug(`Using local behind blocks: ${behindBlocks} (reference block: ${referenceSteemBlock})`)
+                logr.debug(`Using local behind blocks: ${behindBlocks} (no consensus or reference available)`)
             }
         }
 
@@ -708,26 +711,8 @@ const updateSteemBlock = async () => {
                 isSyncing: isSyncing,
                 blockId: currentBlockId,
                 consensusBlocks: consensusBehindBlocks,
-                isInWarmup: isInWarmup,
-                referenceBlock: referenceSteemBlock // Add reference block to broadcast
+                isInWarmup: isInWarmup
             })
-        }
-
-        // Update behindBlocks before processing blocks on our sidechain
-        let latestSteemBlock = referenceSteemBlock // Initialize with reference block
-        if (currentBlockId % SYNC_BROADCAST_MODULO === 0) {
-            // Get latest Steem block height
-            const newLatestSteemBlock = await getLatestSteemBlockNum()
-            if (newLatestSteemBlock) {
-                latestSteemBlock = newLatestSteemBlock // Update with latest from Steem
-                // Use network's highest block as reference
-                const newReferenceBlock = Math.max(latestSteemBlock, referenceSteemBlock)
-                const newBehindBlocks = Math.max(0, newReferenceBlock - currentSteemBlock)
-                if (newBehindBlocks !== behindBlocks) {
-                    logr.info(`Updating behind blocks from ${behindBlocks} to ${newBehindBlocks} (Reference block: ${newReferenceBlock}, Current: ${currentSteemBlock})`)
-                    behindBlocks = newBehindBlocks
-                }
-            }
         }
 
         // Don't change sync mode if we're in forced sync
