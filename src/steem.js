@@ -112,6 +112,10 @@ const NETWORK_SYNC_CHECK_INTERVAL = 15000 // Check network sync status every 15 
 const SYNC_EXIT_QUORUM_PERCENT = 60 // Require 60% of nodes to be caught up before exiting sync mode
 const RPC_MAX_BLOCK_DIFF = 5 // Maximum allowed difference between RPCs
 
+// Add new constants at the top with other constants
+const MAX_BEHIND_BLOCKS_DIFF = 1  // Maximum allowed difference in behind blocks between nodes
+const MIN_CONSENSUS_NODES = 2     // Minimum nodes needed for behind blocks consensus
+
 // Helper function to check sync status
 const isInSyncMode = () => {
     // Check if we're forced into sync mode by a recent block
@@ -591,6 +595,47 @@ const checkRpcSync = async () => {
     return medianHeight
 }
 
+// Add new function to get network consensus on behind blocks
+const getNetworkBehindBlocksConsensus = () => {
+    const behindBlocksCounts = new Map() // Map to track counts of each behind blocks value
+    let totalNodes = 0
+
+    // Count occurrences of each behind blocks value
+    for (const [nodeId, status] of networkSteemHeights.entries()) {
+        if (Date.now() - status.timestamp < STEEM_HEIGHT_EXPIRY) {
+            const count = behindBlocksCounts.get(status.behindBlocks) || 0
+            behindBlocksCounts.set(status.behindBlocks, count + 1)
+            totalNodes++
+        }
+    }
+
+    // Add our own behind blocks count
+    const count = behindBlocksCounts.get(behindBlocks) || 0
+    behindBlocksCounts.set(behindBlocks, count + 1)
+    totalNodes++
+
+    // Find the most common behind blocks value
+    let consensusValue = behindBlocks // Default to our value
+    let maxCount = 0
+
+    for (const [value, count] of behindBlocksCounts.entries()) {
+        if (count > maxCount) {
+            maxCount = count
+            consensusValue = value
+        }
+    }
+
+    // Calculate percentage of nodes agreeing
+    const consensusPercent = (maxCount / totalNodes) * 100
+
+    return {
+        consensusValue,
+        consensusPercent,
+        totalNodes
+    }
+}
+
+// Modify updateSteemBlock to use consensus
 const updateSteemBlock = async () => {
     try {
         // Get the median RPC height for sync decisions
@@ -621,6 +666,9 @@ const updateSteemBlock = async () => {
         // Get network's view of sync status
         const networkStatus = getNetworkSyncStatus()
         
+        // Get network consensus on behind blocks
+        const consensus = getNetworkBehindBlocksConsensus()
+        
         // Update behindBlocks based on both local and network status
         if (networkStatus.referenceExists) {
             behindBlocks = Math.max(networkStatus.referenceBehind, localBehindBlocks)
@@ -630,24 +678,48 @@ const updateSteemBlock = async () => {
             logr.debug(`Behind blocks: ${behindBlocks} (local calculation, target: ${TARGET_BEHIND_BLOCKS})`)
         }
 
+        // If we have enough nodes and strong consensus, adjust our behind blocks
+        if (consensus.totalNodes >= MIN_CONSENSUS_NODES && 
+            consensus.consensusPercent >= SYNC_EXIT_QUORUM_PERCENT) {
+            
+            // If our behind blocks differs significantly from consensus, adjust it
+            const diff = Math.abs(behindBlocks - consensus.consensusValue)
+            if (diff > MAX_BEHIND_BLOCKS_DIFF) {
+                logr.info(`Adjusting behind blocks from ${behindBlocks} to ${consensus.consensusValue} based on network consensus (${consensus.consensusPercent.toFixed(1)}% agreement)`)
+                behindBlocks = consensus.consensusValue
+            }
+        }
+
         // Only broadcast sync status on specific block intervals
         const currentBlockId = chain?.getLatestBlock()?._id || 0
         const shouldBroadcast = currentBlockId % SYNC_BROADCAST_MODULO === 0
 
         // Update our sync status in shared state
         if (p2p && p2p.sockets && p2p.sockets.length > 0 && shouldBroadcast) {
-            logr.debug(`Broadcasting sync status on block ${currentBlockId} (modulo ${SYNC_BROADCAST_MODULO})`)
+            logr.debug(`Broadcasting sync status on block ${currentBlockId} (modulo ${SYNC_BROADCAST_MODULO}, behind: ${behindBlocks}, consensus: ${consensus.consensusValue})`)
             p2p.broadcastSyncStatus({
                 behindBlocks: behindBlocks,
                 steemBlock: currentSteemBlock,
                 isSyncing: isSyncing,
-                blockId: currentBlockId
+                blockId: currentBlockId,
+                consensusValue: consensus.consensusValue
             })
         }
 
         // Don't change sync mode if we're in forced sync
         if (chain && chain.getLatestBlock() && chain.getLatestBlock()._id < forceSyncUntilBlock) {
             return latestSteemBlock
+        }
+
+        // Prevent processing if we're too far ahead of consensus
+        const referenceNode = networkStatus.referenceNodeId
+        if (referenceNode && referenceNode !== 'self') {
+            const referenceStatus = networkSteemHeights.get(referenceNode)
+            if (referenceStatus && behindBlocks < referenceStatus.behindBlocks - MAX_BEHIND_BLOCKS_DIFF) {
+                logr.warn(`Too far ahead of reference node (${behindBlocks} vs ${referenceStatus.behindBlocks}), slowing down`)
+                await new Promise(resolve => setTimeout(resolve, 2000))
+                return latestSteemBlock
+            }
         }
 
         // Enter sync mode if we're more than MAX_BEHIND_BLOCKS behind
@@ -924,14 +996,14 @@ const checkNetworkSyncStatus = async () => {
 
 // Update the receivePeerSyncStatus function to track Steem heights
 const receivePeerSyncStatus = (nodeId, status) => {
-    // Store peer sync status
     if (nodeId && status) {
         if (typeof status.behindBlocks === 'number') {
             networkSyncStatus.set(nodeId, {
                 behindBlocks: status.behindBlocks,
                 isSyncing: status.isSyncing,
                 timestamp: Date.now(),
-                blockId: status.blockId
+                blockId: status.blockId,
+                consensusValue: status.consensusValue
             })
         }
         if (typeof status.steemBlock === 'number') {
@@ -939,7 +1011,8 @@ const receivePeerSyncStatus = (nodeId, status) => {
                 steemBlock: status.steemBlock,
                 behindBlocks: status.behindBlocks,
                 timestamp: Date.now(),
-                blockId: status.blockId
+                blockId: status.blockId,
+                consensusValue: status.consensusValue
             })
         }
     }
