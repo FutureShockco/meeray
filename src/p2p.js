@@ -552,23 +552,33 @@ let p2p = {
     broadcastBlock: (block) => {
         p2p.broadcast({t:4,d:block})
     },
-    broadcastSyncStatus: (behindBlocks) => {
+    broadcastSyncStatus: (syncStatus) => {
         // Broadcast steem sync status to all connected peers
         if (!steem) return
         
-        const syncStatus = {
+        // If syncStatus is a number, it's just the behindBlocks count
+        const status = typeof syncStatus === 'number' ? {
             nodeId: p2p.nodeId.pub,
-            behindBlocks: behindBlocks,
-            isSyncing: steem.isSyncing ? steem.isSyncing() : (behindBlocks > 0),
+            behindBlocks: syncStatus,
+            isSyncing: steem.isSyncing ? steem.isSyncing() : (syncStatus > 0),
             timestamp: Date.now()
+        } : {
+            nodeId: p2p.nodeId.pub,
+            behindBlocks: syncStatus.behindBlocks,
+            isSyncing: syncStatus.isSyncing,
+            timestamp: Date.now(),
+            steemBlock: syncStatus.steemBlock,
+            blockId: syncStatus.blockId,
+            consensusBlocks: syncStatus.consensusBlocks,
+            isInWarmup: syncStatus.isInWarmup
         }
         
         p2p.broadcast({
             t: MessageType.STEEM_SYNC_STATUS,
-            d: syncStatus
+            d: status
         })
         
-        logr.info(`Broadcasting sync status: ${behindBlocks} blocks behind, isSyncing: ${syncStatus.isSyncing}`)
+        logr.info(`Broadcasting sync status: ${status.behindBlocks} blocks behind, Steem block: ${status.steemBlock || 'N/A'}, isSyncing: ${status.isSyncing}, blockId: ${status.blockId || 'N/A'}`)
     },
     getSyncStatus: async () => {
         // Request sync status from peers
