@@ -1,7 +1,7 @@
 const dsteem = require('dsteem')
 // Setup multiple endpoints with manual failover
 const apiUrls = process.env.STEEM_API ? process.env.STEEM_API.split(',').map(url => url.trim()) : ['https://api.steemit.com']
-console.log('Using Steem API URLs:', apiUrls)
+logr.info('Using Steem API URLs:', apiUrls)
 
 // Track current endpoint and create initial client
 let currentEndpointIndex = 0
@@ -120,6 +120,28 @@ const MIN_NODES_FOR_CONSENSUS = 2 // Minimum nodes needed for consensus
 // Add new state variables
 let nodeStartTime = Date.now()
 let networkConsensusBlocks = null
+
+// Define updateNetworkBehindBlocks function before it's used
+const updateNetworkBehindBlocks = (newValue) => {
+    if (typeof newValue === 'number') {
+        const oldValue = behindBlocks
+        behindBlocks = newValue
+        
+        // Log the change
+        logr.debug(`Behind blocks updated: ${oldValue} -> ${newValue}`)
+        
+        // If we get an update that we're significantly behind, consider entering sync mode
+        if (behindBlocks >= TARGET_BEHIND_BLOCKS && !isSyncing) {
+            logr.info(`Entering sync mode based on network report, ${behindBlocks} blocks behind`)
+            isSyncing = true
+            
+            // Broadcast our sync mode change
+            if (p2p && p2p.sockets && p2p.sockets.length > 0) {
+                p2p.broadcastSyncStatus(behindBlocks)
+            }
+        }
+    }
+}
 
 // Helper function to check sync status
 const isInSyncMode = () => {
@@ -663,25 +685,25 @@ const updateSteemBlock = async () => {
         if (isInWarmup) {
             // During warmup, use the maximum of consensus, reference, or local
             if (consensusBehindBlocks !== null) {
-                behindBlocks = Math.max(consensusBehindBlocks, localBehindBlocks)
+                updateNetworkBehindBlocks(Math.max(consensusBehindBlocks, localBehindBlocks))
                 logr.debug(`Warmup: Using consensus behind blocks: ${behindBlocks} (consensus: ${consensusBehindBlocks}, local: ${localBehindBlocks})`)
             } else if (networkStatus.referenceExists) {
-                behindBlocks = Math.max(networkStatus.referenceBehind, localBehindBlocks)
+                updateNetworkBehindBlocks(Math.max(networkStatus.referenceBehind, localBehindBlocks))
                 logr.debug(`Warmup: Using reference behind blocks: ${behindBlocks} (reference: ${networkStatus.referenceNodeId}, local: ${localBehindBlocks})`)
             } else {
-                behindBlocks = localBehindBlocks
+                updateNetworkBehindBlocks(localBehindBlocks)
                 logr.debug(`Warmup: Using local behind blocks: ${behindBlocks}`)
             }
         } else {
             // After warmup, prioritize consensus > reference node > local calculation
             if (consensusBehindBlocks !== null) {
-                behindBlocks = consensusBehindBlocks
+                updateNetworkBehindBlocks(consensusBehindBlocks)
                 logr.debug(`Using network consensus behind blocks: ${behindBlocks} (consensus from ${networkSteemHeights.size} nodes)`)
             } else if (networkStatus.referenceExists) {
-                behindBlocks = networkStatus.referenceBehind
+                updateNetworkBehindBlocks(networkStatus.referenceBehind)
                 logr.debug(`Using reference behind blocks: ${behindBlocks} (reference: ${networkStatus.referenceNodeId})`)
             } else {
-                behindBlocks = localBehindBlocks
+                updateNetworkBehindBlocks(localBehindBlocks)
                 logr.debug(`Using local behind blocks: ${behindBlocks} (no consensus or reference available)`)
             }
         }
@@ -1172,35 +1194,7 @@ module.exports = {
     getBehindBlocks: () => {
         return behindBlocks
     },
-    updateNetworkBehindBlocks: (newValue) => {
-        if (typeof newValue === 'number' && newValue > behindBlocks) {
-            behindBlocks = newValue
-            // If we get an update that we're significantly behind, consider entering sync mode
-            if (behindBlocks >= TARGET_BEHIND_BLOCKS && !isSyncing) {
-                logr.info(`Entering sync mode based on network report, ${behindBlocks} blocks behind`)
-                isSyncing = true
-                
-                // Broadcast our sync mode change
-                if (p2p && p2p.sockets && p2p.sockets.length > 0) {
-                    p2p.broadcastSyncStatus(behindBlocks)
-                }
-            }
-        }
-    },
-    setSyncMode: (blockHeight) => {
-        // Only enter sync mode if we're actually behind
-        if (behindBlocks > 0) {
-            if (!isSyncing) {
-                isSyncing = true
-                logr.info('Network-enforced sync mode enabled')
-                
-                // Broadcast our sync mode change
-                if (p2p && p2p.sockets && p2p.sockets.length > 0) {
-                    p2p.broadcastSyncStatus(behindBlocks)
-                }
-            }
-        }
-    },
+    updateNetworkBehindBlocks,
     receivePeerSyncStatus: receivePeerSyncStatus,
     getSyncStatus: getSyncStatus,
     isOnSteemBlock: (block) => {
@@ -1288,7 +1282,8 @@ module.exports = {
         }
         return result
     },
-    getLatestSteemBlockNum
+    getLatestSteemBlockNum,
+    updateNetworkBehindBlocks
 }
 
 // Add new helper function for Steem sync initialization
@@ -1306,7 +1301,7 @@ const initSteemSync = (blockNum) => {
                 lastProcessedSteemBlock = blockNum
             }
 
-            behindBlocks = Math.max(0, latestBlock - lastProcessedSteemBlock)
+            updateNetworkBehindBlocks(Math.max(0, latestBlock - lastProcessedSteemBlock))
             logr.info(`Initial blocks behind: ${behindBlocks} (Steem head: ${latestBlock}, Last processed: ${lastProcessedSteemBlock})`)
 
             // Set more frequent updates if we're behind

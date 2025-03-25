@@ -568,7 +568,7 @@ let p2p = {
             d: syncStatus
         })
         
-        logr.debug(`Broadcasting sync status: ${behindBlocks} blocks behind, isSyncing: ${syncStatus.isSyncing}`)
+        logr.info(`Broadcasting sync status: ${behindBlocks} blocks behind, isSyncing: ${syncStatus.isSyncing}`)
     },
     getSyncStatus: async () => {
         // Request sync status from peers

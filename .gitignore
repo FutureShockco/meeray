@@ -19,3 +19,4 @@ scripts/keys.json
 src/logs/output.log
 src/logs/output.log.2.gz
 src/logs/output.log.3.gz
+scripts/start.bat

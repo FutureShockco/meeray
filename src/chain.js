@@ -416,18 +416,15 @@ let chain = {
         txHistory.processBlock(block)
 
         // Update behindBlocks count every 5 blocks
-        if (steem && block._id % 5 === 0) {
+        if (steem && block._id % 2 === 0) {
             try {
                 const latestSteemBlock = await steem.getLatestSteemBlockNum()
                 if (latestSteemBlock) {
                     const behindBlocks = Math.max(0, latestSteemBlock - block.steemblock)
-                    // Get current behind blocks count
-                    const currentBehindBlocks = steem.getBehindBlocks()
-                    
                     // Always update and broadcast if we're in sync mode or if there's a significant change
-                    if (steem.isSyncing() || Math.abs(behindBlocks - currentBehindBlocks) > 1) {
+                    if (steem.isSyncing() || behindBlocks > 1) {
                         steem.updateNetworkBehindBlocks(behindBlocks)
-                        logr.info(`Updated behind blocks count: ${behindBlocks} (Steem: ${latestSteemBlock}, Local: ${block.steemblock}, Previous: ${currentBehindBlocks})`)
+                        logr.info(`Updated behind blocks count: ${behindBlocks} (Steem: ${latestSteemBlock}, Local: ${block.steemblock})`)
                         
                         // Always broadcast sync status to peers
                         if (p2p && p2p.sockets && p2p.sockets.length > 0) {
