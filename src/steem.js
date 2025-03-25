@@ -299,18 +299,6 @@ const processBlock = async (blockNum) => {
         // Update currentSteemBlock
         currentSteemBlock = Math.max(currentSteemBlock, blockNum)
 
-        // Update behindBlocks after each successful block processing in sync mode
-        if (isInSyncMode()) {
-            getLatestSteemBlockNum().then(latestBlock => {
-                if (latestBlock) {
-                    behindBlocks = Math.max(0, latestBlock - blockNum)
-                    logr.debug(`Updated blocks behind: ${behindBlocks} after processing Steem block ${blockNum}`)
-                }
-            }).catch(err => {
-                logr.trace('Error updating behind blocks after processing:', err)
-            })
-        }
-
         // Reset consecutive errors on success
         resetConsecutiveErrors()
 
