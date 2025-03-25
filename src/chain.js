@@ -416,7 +416,7 @@ let chain = {
         txHistory.processBlock(block)
 
         // Update behindBlocks count every 5 blocks
-        if (steem && block._id % 5 === 0) {
+        if (steem && block._id % 5 === 0 || block._id === 1) {
             try {
                 const latestSteemBlock = await steem.getLatestSteemBlockNum()
                 if (latestSteemBlock) {
