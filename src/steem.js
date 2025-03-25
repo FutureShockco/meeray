@@ -655,7 +655,7 @@ const updateSteemBlock = async () => {
         if (!currentBlock) return
         
         const behindBlocks = Math.max(0, latestSteemBlock - currentBlock._id)
-        steem.updateNetworkBehindBlocks(behindBlocks)
+        //steem.updateNetworkBehindBlocks(behindBlocks)
         
         logr.debug(`Updated Steem block state: ${behindBlocks} blocks behind, Steem block: ${latestSteemBlock}, current block: ${currentBlock._id}`)
     }).catch(error => {
