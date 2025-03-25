@@ -1103,52 +1103,45 @@ module.exports = {
         // Clear existing intervals if any
         if (syncInterval) clearInterval(syncInterval)
 
-        // Initialize behindBlocks properly
-        getLatestSteemBlockNum().then(latestBlock => {
-            if (latestBlock) {
-                // Get the Steem block from our last chain block
-                let lastProcessedSteemBlock = 0
-                if (chain && chain.getLatestBlock() && chain.getLatestBlock().steemblock) {
-                    lastProcessedSteemBlock = chain.getLatestBlock().steemblock
-                } else if (config.steemStartBlock) {
-                    lastProcessedSteemBlock = config.steemStartBlock
-                } else {
-                    lastProcessedSteemBlock = blockNum
-                }
+        // Set initial state
+        setReadyToReceiveTransactions(false)
+        isSyncing = true
 
-                behindBlocks = Math.max(0, latestBlock - lastProcessedSteemBlock)
-                logr.info(`Initial blocks behind: ${behindBlocks} (Steem head: ${latestBlock}, Last processed: ${lastProcessedSteemBlock})`)
+        // First check network sync status
+        checkNetworkSyncStatus().then(async () => {
+            // Wait a bit to collect peer statuses
+            await new Promise(resolve => setTimeout(resolve, 5000))
 
-                // Set more frequent updates if we're behind
-                if (behindBlocks > TARGET_BEHIND_BLOCKS) {
-                    syncInterval = setInterval(updateSteemBlock, 1000); // Update more frequently during sync
-                    logr.info(`Setting faster sync status updates (every 1s) while catching up`);
-                } else {
-                    syncInterval = setInterval(updateSteemBlock, 3000); // Normal update interval
-                }
+            // Get network's view of sync status
+            const networkStatus = getNetworkSyncStatus()
+            
+            if (networkStatus.referenceExists && networkStatus.referenceNodeId !== 'self') {
+                // We have a reference node with higher blocks
+                const referenceBlock = networkStatus.highestBlock
+                logr.info(`Found reference node with higher block ${referenceBlock}, prioritizing network sync first`)
                 
-                // Initialize network sync status check
-                lastNetworkSyncCheck = Date.now()
-                checkNetworkSyncStatus()
+                // Don't start Steem sync until network sync is closer to completion
+                const waitForNetworkSync = setInterval(async () => {
+                    const currentBlock = chain?.getLatestBlock()?._id || 0
+                    const blocksBehind = referenceBlock - currentBlock
+                    
+                    if (blocksBehind <= 5) {
+                        logr.info('Network sync nearly complete, starting Steem sync')
+                        clearInterval(waitForNetworkSync)
+                        initSteemSync(blockNum)
+                    } else {
+                        logr.info(`Catching up with network, head block: ${currentBlock}, target: ${referenceBlock}, ${blocksBehind} blocks behind`)
+                    }
+                }, 3000)
+            } else {
+                // No reference node or we are the reference, proceed with Steem sync
+                initSteemSync(blockNum)
             }
         }).catch(err => {
-            logr.error('Error initializing behind blocks count:', err)
-            // Set default interval as fallback
-            syncInterval = setInterval(updateSteemBlock, 3000)
+            logr.error('Error checking network sync status:', err)
+            // Fallback to direct Steem sync
+            initSteemSync(blockNum)
         })
-
-        // Run an immediate state update
-        updateSteemBlock().then(() => {
-            // Start prefetching immediately
-            prefetchBlocks()
-        }).catch(err => {
-            logr.error('Error during initial Steem state update:', err)
-        })
-
-        // Initialize the prefetch system
-        initPrefetch(blockNum)
-
-        logr.info('Steem subsystem initialized at block', blockNum)
     },
     getCurrentBlock: () => {
         return currentSteemBlock
@@ -1279,5 +1272,55 @@ module.exports = {
         }
         return result
     }
+}
+
+// Add new helper function for Steem sync initialization
+const initSteemSync = (blockNum) => {
+    // Initialize behindBlocks properly
+    getLatestSteemBlockNum().then(latestBlock => {
+        if (latestBlock) {
+            // Get the Steem block from our last chain block
+            let lastProcessedSteemBlock = 0
+            if (chain && chain.getLatestBlock() && chain.getLatestBlock().steemblock) {
+                lastProcessedSteemBlock = chain.getLatestBlock().steemblock
+            } else if (config.steemStartBlock) {
+                lastProcessedSteemBlock = config.steemStartBlock
+            } else {
+                lastProcessedSteemBlock = blockNum
+            }
+
+            behindBlocks = Math.max(0, latestBlock - lastProcessedSteemBlock)
+            logr.info(`Initial blocks behind: ${behindBlocks} (Steem head: ${latestBlock}, Last processed: ${lastProcessedSteemBlock})`)
+
+            // Set more frequent updates if we're behind
+            if (behindBlocks > TARGET_BEHIND_BLOCKS) {
+                syncInterval = setInterval(updateSteemBlock, 1000) // Update more frequently during sync
+                logr.info(`Setting faster sync status updates (every 1s) while catching up`)
+            } else {
+                syncInterval = setInterval(updateSteemBlock, 3000) // Normal update interval
+            }
+            
+            // Initialize network sync status check
+            lastNetworkSyncCheck = Date.now()
+            checkNetworkSyncStatus()
+        }
+    }).catch(err => {
+        logr.error('Error initializing behind blocks count:', err)
+        // Set default interval as fallback
+        syncInterval = setInterval(updateSteemBlock, 3000)
+    })
+
+    // Run an immediate state update
+    updateSteemBlock().then(() => {
+        // Start prefetching immediately
+        prefetchBlocks()
+    }).catch(err => {
+        logr.error('Error during initial Steem state update:', err)
+    })
+
+    // Initialize the prefetch system
+    initPrefetch(blockNum)
+
+    logr.info('Steem subsystem initialized at block', blockNum)
 }
 
