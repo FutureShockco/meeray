@@ -1299,7 +1299,8 @@ module.exports = {
             })
         }
         return result
-    }
+    },
+    getLatestSteemBlockNum
 }
 
 // Add new helper function for Steem sync initialization
