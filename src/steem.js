@@ -708,23 +708,6 @@ const updateSteemBlock = async () => {
             }
         }
 
-        // Only broadcast sync status on specific block intervals
-        const currentBlockId = chain?.getLatestBlock()?._id || 0
-        const shouldBroadcast = currentBlockId % SYNC_BROADCAST_MODULO === 0
-
-        // Update our sync status in shared state
-        if (p2p && p2p.sockets && p2p.sockets.length > 0 && shouldBroadcast) {
-            const syncStatus = {
-                behindBlocks: behindBlocks,
-                steemBlock: currentSteemBlock,
-                isSyncing: isSyncing,
-                blockId: currentBlockId,
-                consensusBlocks: consensusBehindBlocks,
-                isInWarmup: isInWarmup
-            }
-            logr.info(`Broadcasting sync status: ${behindBlocks} blocks behind, Steem block: ${currentSteemBlock}, isSyncing: ${isSyncing}, blockId: ${currentBlockId}`)
-            p2p.broadcastSyncStatus(syncStatus)
-        }
 
         // Don't change sync mode if we're in forced sync
         if (chain && chain.getLatestBlock() && chain.getLatestBlock()._id < forceSyncUntilBlock) {
