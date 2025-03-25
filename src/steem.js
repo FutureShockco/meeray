@@ -113,8 +113,13 @@ const SYNC_EXIT_QUORUM_PERCENT = 60 // Require 60% of nodes to be caught up befo
 const RPC_MAX_BLOCK_DIFF = 5 // Maximum allowed difference between RPCs
 
 // Add new constants at the top with other constants
-const MAX_BEHIND_BLOCKS_DIFF = 1  // Maximum allowed difference in behind blocks between nodes
-const MIN_CONSENSUS_NODES = 2     // Minimum nodes needed for behind blocks consensus
+const WARMUP_PERIOD = 5000 // 5 seconds warmup for new nodes
+const BEHIND_BLOCKS_CONSENSUS_THRESHOLD = 0.66 // 66% of nodes must agree on behind blocks count
+const MIN_NODES_FOR_CONSENSUS = 2 // Minimum nodes needed for consensus
+
+// Add new state variables
+let nodeStartTime = Date.now()
+let networkConsensusBlocks = null
 
 // Helper function to check sync status
 const isInSyncMode = () => {
@@ -595,49 +600,46 @@ const checkRpcSync = async () => {
     return medianHeight
 }
 
-// Add new function to get network consensus on behind blocks
-const getNetworkBehindBlocksConsensus = () => {
-    const behindBlocksCounts = new Map() // Map to track counts of each behind blocks value
-    let totalNodes = 0
+// Add new function to calculate network consensus on behind blocks
+const calculateNetworkBehindBlocksConsensus = () => {
+    if (networkSteemHeights.size < MIN_NODES_FOR_CONSENSUS) {
+        return null
+    }
 
-    // Count occurrences of each behind blocks value
-    for (const [nodeId, status] of networkSteemHeights.entries()) {
-        if (Date.now() - status.timestamp < STEEM_HEIGHT_EXPIRY) {
-            const count = behindBlocksCounts.get(status.behindBlocks) || 0
-            behindBlocksCounts.set(status.behindBlocks, count + 1)
-            totalNodes++
+    // Get all behind blocks counts
+    const behindBlocksCounts = new Map()
+    for (const [nodeId, data] of networkSteemHeights.entries()) {
+        if (Date.now() - data.timestamp < STEEM_HEIGHT_EXPIRY) {
+            const count = data.behindBlocks
+            behindBlocksCounts.set(count, (behindBlocksCounts.get(count) || 0) + 1)
         }
     }
 
-    // Add our own behind blocks count
-    const count = behindBlocksCounts.get(behindBlocks) || 0
-    behindBlocksCounts.set(behindBlocks, count + 1)
-    totalNodes++
-
-    // Find the most common behind blocks value
-    let consensusValue = behindBlocks // Default to our value
+    // Find the most common behind blocks count
     let maxCount = 0
-
-    for (const [value, count] of behindBlocksCounts.entries()) {
+    let consensusValue = null
+    for (const [blocks, count] of behindBlocksCounts.entries()) {
         if (count > maxCount) {
             maxCount = count
-            consensusValue = value
+            consensusValue = blocks
         }
     }
 
-    // Calculate percentage of nodes agreeing
-    const consensusPercent = (maxCount / totalNodes) * 100
-
-    return {
-        consensusValue,
-        consensusPercent,
-        totalNodes
+    // Check if we have consensus
+    const consensusPercentage = maxCount / networkSteemHeights.size
+    if (consensusPercentage >= BEHIND_BLOCKS_CONSENSUS_THRESHOLD) {
+        return consensusValue
     }
+
+    return null
 }
 
-// Modify updateSteemBlock to use consensus
+// Modify updateSteemBlock to include warmup period and consensus
 const updateSteemBlock = async () => {
     try {
+        // Check if we're still in warmup period
+        const isInWarmup = Date.now() - nodeStartTime < WARMUP_PERIOD
+        
         // Get the median RPC height for sync decisions
         const medianRpcHeight = await checkRpcSync()
         
@@ -665,28 +667,34 @@ const updateSteemBlock = async () => {
         
         // Get network's view of sync status
         const networkStatus = getNetworkSyncStatus()
-        
-        // Get network consensus on behind blocks
-        const consensus = getNetworkBehindBlocksConsensus()
-        
-        // Update behindBlocks based on both local and network status
-        if (networkStatus.referenceExists) {
-            behindBlocks = Math.max(networkStatus.referenceBehind, localBehindBlocks)
-            logr.debug(`Behind blocks: ${behindBlocks} (reference: ${networkStatus.referenceNodeId}, local: ${localBehindBlocks}, target: ${TARGET_BEHIND_BLOCKS})`)
-        } else {
-            behindBlocks = localBehindBlocks
-            logr.debug(`Behind blocks: ${behindBlocks} (local calculation, target: ${TARGET_BEHIND_BLOCKS})`)
-        }
 
-        // If we have enough nodes and strong consensus, adjust our behind blocks
-        if (consensus.totalNodes >= MIN_CONSENSUS_NODES && 
-            consensus.consensusPercent >= SYNC_EXIT_QUORUM_PERCENT) {
-            
-            // If our behind blocks differs significantly from consensus, adjust it
-            const diff = Math.abs(behindBlocks - consensus.consensusValue)
-            if (diff > MAX_BEHIND_BLOCKS_DIFF) {
-                logr.info(`Adjusting behind blocks from ${behindBlocks} to ${consensus.consensusValue} based on network consensus (${consensus.consensusPercent.toFixed(1)}% agreement)`)
-                behindBlocks = consensus.consensusValue
+        // Calculate network consensus on behind blocks
+        const consensusBehindBlocks = calculateNetworkBehindBlocksConsensus()
+        
+        // Update behindBlocks based on network consensus, reference node, or local calculation
+        if (isInWarmup) {
+            // During warmup, use the maximum of consensus, reference, or local
+            if (consensusBehindBlocks !== null) {
+                behindBlocks = Math.max(consensusBehindBlocks, localBehindBlocks)
+                logr.debug(`Warmup: Using consensus behind blocks: ${behindBlocks} (consensus: ${consensusBehindBlocks}, local: ${localBehindBlocks})`)
+            } else if (networkStatus.referenceExists) {
+                behindBlocks = Math.max(networkStatus.referenceBehind, localBehindBlocks)
+                logr.debug(`Warmup: Using reference behind blocks: ${behindBlocks} (reference: ${networkStatus.referenceNodeId}, local: ${localBehindBlocks})`)
+            } else {
+                behindBlocks = localBehindBlocks
+                logr.debug(`Warmup: Using local behind blocks: ${behindBlocks}`)
+            }
+        } else {
+            // After warmup, prioritize consensus > reference node > local calculation
+            if (consensusBehindBlocks !== null) {
+                behindBlocks = consensusBehindBlocks
+                logr.debug(`Using network consensus behind blocks: ${behindBlocks} (consensus from ${networkSteemHeights.size} nodes)`)
+            } else if (networkStatus.referenceExists) {
+                behindBlocks = networkStatus.referenceBehind
+                logr.debug(`Using reference behind blocks: ${behindBlocks} (reference: ${networkStatus.referenceNodeId})`)
+            } else {
+                behindBlocks = localBehindBlocks
+                logr.debug(`Using local behind blocks: ${behindBlocks} (no consensus or reference available)`)
             }
         }
 
@@ -696,30 +704,20 @@ const updateSteemBlock = async () => {
 
         // Update our sync status in shared state
         if (p2p && p2p.sockets && p2p.sockets.length > 0 && shouldBroadcast) {
-            logr.debug(`Broadcasting sync status on block ${currentBlockId} (modulo ${SYNC_BROADCAST_MODULO}, behind: ${behindBlocks}, consensus: ${consensus.consensusValue})`)
+            logr.debug(`Broadcasting sync status on block ${currentBlockId} (modulo ${SYNC_BROADCAST_MODULO})`)
             p2p.broadcastSyncStatus({
                 behindBlocks: behindBlocks,
                 steemBlock: currentSteemBlock,
                 isSyncing: isSyncing,
                 blockId: currentBlockId,
-                consensusValue: consensus.consensusValue
+                consensusBlocks: consensusBehindBlocks,
+                isInWarmup: isInWarmup
             })
         }
 
         // Don't change sync mode if we're in forced sync
         if (chain && chain.getLatestBlock() && chain.getLatestBlock()._id < forceSyncUntilBlock) {
             return latestSteemBlock
-        }
-
-        // Prevent processing if we're too far ahead of consensus
-        const referenceNode = networkStatus.referenceNodeId
-        if (referenceNode && referenceNode !== 'self') {
-            const referenceStatus = networkSteemHeights.get(referenceNode)
-            if (referenceStatus && behindBlocks < referenceStatus.behindBlocks - MAX_BEHIND_BLOCKS_DIFF) {
-                logr.warn(`Too far ahead of reference node (${behindBlocks} vs ${referenceStatus.behindBlocks}), slowing down`)
-                await new Promise(resolve => setTimeout(resolve, 2000))
-                return latestSteemBlock
-            }
         }
 
         // Enter sync mode if we're more than MAX_BEHIND_BLOCKS behind
@@ -964,7 +962,9 @@ const checkNetworkSyncStatus = async () => {
                         behindBlocks: status.behindBlocks,
                         isSyncing: status.isSyncing,
                         timestamp: Date.now(),
-                        blockId: status.blockId
+                        blockId: status.blockId,
+                        consensusBlocks: status.consensusBlocks,
+                        isInWarmup: status.isInWarmup
                     })
                 }
             }
@@ -1003,7 +1003,8 @@ const receivePeerSyncStatus = (nodeId, status) => {
                 isSyncing: status.isSyncing,
                 timestamp: Date.now(),
                 blockId: status.blockId,
-                consensusValue: status.consensusValue
+                consensusBlocks: status.consensusBlocks,
+                isInWarmup: status.isInWarmup
             })
         }
         if (typeof status.steemBlock === 'number') {
@@ -1012,7 +1013,8 @@ const receivePeerSyncStatus = (nodeId, status) => {
                 behindBlocks: status.behindBlocks,
                 timestamp: Date.now(),
                 blockId: status.blockId,
-                consensusValue: status.consensusValue
+                consensusBlocks: status.consensusBlocks,
+                isInWarmup: status.isInWarmup
             })
         }
     }
