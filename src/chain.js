@@ -416,12 +416,32 @@ let chain = {
         txHistory.processBlock(block)
 
         // Update behindBlocks count every 5 blocks
-        if (steem && block._id % 5 === 2) {
-            const latestSteemBlock = await steem.getLatestSteemBlockNum()
-            if (latestSteemBlock) {
-                const behindBlocks = Math.max(0, latestSteemBlock - block.steemblock)
-                steem.updateNetworkBehindBlocks(behindBlocks)
-                logr.debug(`Updated behind blocks count: ${behindBlocks} (Steem: ${latestSteemBlock}, Local: ${block.steemblock})`)
+        if (steem && block._id % 2 === 0) {
+            try {
+                const latestSteemBlock = await steem.getLatestSteemBlockNum()
+                if (latestSteemBlock) {
+                    const behindBlocks = Math.max(0, latestSteemBlock - block.steemblock)
+                    // Get current behind blocks count
+                    const currentBehindBlocks = steem.getBehindBlocks()
+                    
+                    // Only update if there's a significant change (more than 1 block difference)
+                    if (Math.abs(behindBlocks - currentBehindBlocks) > 1) {
+                        steem.updateNetworkBehindBlocks(behindBlocks)
+                        logr.info(`Updated behind blocks count: ${behindBlocks} (Steem: ${latestSteemBlock}, Local: ${block.steemblock}, Previous: ${currentBehindBlocks})`)
+                        
+                        // Broadcast sync status to peers
+                        if (p2p && p2p.sockets && p2p.sockets.length > 0) {
+                            p2p.broadcastSyncStatus({
+                                behindBlocks: behindBlocks,
+                                steemBlock: block.steemblock,
+                                isSyncing: steem.isSyncing(),
+                                blockId: block._id
+                            })
+                        }
+                    }
+                }
+            } catch (error) {
+                logr.error('Error updating behind blocks count:', error)
             }
         }
 
