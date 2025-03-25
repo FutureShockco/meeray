@@ -715,6 +715,19 @@ const updateSteemBlock = async () => {
             })
         }
 
+        // Update behindBlocks before processing blocks on our sidechain
+        if (currentBlockId % SYNC_BROADCAST_MODULO === 0) {
+            // Get latest Steem block height
+            const latestSteemBlock = await getLatestSteemBlockNum()
+            if (latestSteemBlock) {
+                const newBehindBlocks = Math.max(0, latestSteemBlock - currentSteemBlock)
+                if (newBehindBlocks !== behindBlocks) {
+                    logr.info(`Updating behind blocks from ${behindBlocks} to ${newBehindBlocks} (Steem head: ${latestSteemBlock}, Current: ${currentSteemBlock})`)
+                    behindBlocks = newBehindBlocks
+                }
+            }
+        }
+
         // Don't change sync mode if we're in forced sync
         if (chain && chain.getLatestBlock() && chain.getLatestBlock()._id < forceSyncUntilBlock) {
             return latestSteemBlock
@@ -722,15 +735,14 @@ const updateSteemBlock = async () => {
 
         // Enter sync mode if we're more than MAX_BEHIND_BLOCKS behind
         const shouldSync = behindBlocks > MAX_BEHIND_BLOCKS || 
-                         !readyToReceiveTransactions
+                         !readyToReceiveTransactions ||
+                         (isSyncing && behindBlocks > SYNC_EXIT_THRESHOLD) // Stay in sync if we're still behind threshold
 
         if (shouldSync) {
             if (!isSyncing) {
                 logr.info(`Entering sync mode: ${behindBlocks} blocks behind (target: ${TARGET_BEHIND_BLOCKS}, max: ${MAX_BEHIND_BLOCKS})`)
                 isSyncing = true
                 lastSyncModeChange = Date.now()
-                // Reset lastSyncExitTime when re-entering sync mode
-                lastSyncExitTime = null
             }
         } else if (isSyncing && 
             Date.now() - lastSyncModeChange > SYNC_EXIT_COOLDOWN &&
