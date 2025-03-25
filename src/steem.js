@@ -1120,19 +1120,46 @@ module.exports = {
                 const referenceBlock = networkStatus.highestBlock
                 logr.info(`Found reference node with higher block ${referenceBlock}, prioritizing network sync first`)
                 
-                // Don't start Steem sync until network sync is closer to completion
-                const waitForNetworkSync = setInterval(async () => {
+                // Start actively requesting blocks from peers
+                let lastRequestedBlock = chain?.getLatestBlock()?._id || 0
+                const requestBlocks = async () => {
                     const currentBlock = chain?.getLatestBlock()?._id || 0
                     const blocksBehind = referenceBlock - currentBlock
                     
                     if (blocksBehind <= 5) {
                         logr.info('Network sync nearly complete, starting Steem sync')
                         clearInterval(waitForNetworkSync)
+                        clearInterval(blockRequestInterval)
                         initSteemSync(blockNum)
-                    } else {
-                        logr.info(`Catching up with network, head block: ${currentBlock}, target: ${referenceBlock}, ${blocksBehind} blocks behind`)
+                        return
                     }
-                }, 3000)
+
+                    // Request next batch of blocks if we haven't received previous ones
+                    if (currentBlock === lastRequestedBlock) {
+                        // Request a batch of blocks from peers
+                        if (p2p && p2p.sockets && p2p.sockets.length > 0) {
+                            const batchSize = Math.min(10, blocksBehind) // Request up to 10 blocks at a time
+                            for (let i = 0; i < batchSize; i++) {
+                                const blockToRequest = currentBlock + i + 1
+                                p2p.broadcast({
+                                    t: 2, // QUERY_BLOCK message type
+                                    d: blockToRequest
+                                })
+                            }
+                            lastRequestedBlock = currentBlock + batchSize
+                            logr.info(`Requested blocks ${currentBlock + 1} to ${lastRequestedBlock} from peers`)
+                        }
+                    }
+                    
+                    logr.info(`Catching up with network, head block: ${currentBlock}, target: ${referenceBlock}, ${blocksBehind} blocks behind`)
+                }
+
+                // Set up intervals for status check and block requests
+                const waitForNetworkSync = setInterval(requestBlocks, 3000)
+                const blockRequestInterval = setInterval(requestBlocks, 1000)
+
+                // Run first request immediately
+                requestBlocks()
             } else {
                 // No reference node or we are the reference, proceed with Steem sync
                 initSteemSync(blockNum)
