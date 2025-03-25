@@ -66,9 +66,10 @@ const MAX_RETRY_DELAY = 15000
 const CIRCUIT_BREAKER_THRESHOLD = 30
 const CIRCUIT_BREAKER_RESET_TIMEOUT = 30000
 const MAX_PREFETCH_BLOCKS = 10  // Maximum number of blocks to prefetch at once
-const SYNC_THRESHOLD = 10  // Number of blocks behind before entering sync mode
-const SYNC_EXIT_COOLDOWN = 6000 // Increase to 30 seconds cooldown before exiting sync mode
-const SYNC_EXIT_THRESHOLD = 2 // Must be completely caught up to exit sync mode
+const TARGET_BEHIND_BLOCKS = 2  // Target number of blocks to stay behind Steem
+const MAX_BEHIND_BLOCKS = 3     // Maximum blocks behind before entering sync mode
+const SYNC_EXIT_COOLDOWN = 6000 // Cooldown before exiting sync mode
+const SYNC_EXIT_THRESHOLD = 3   // Exit sync when we're at most this many blocks behind
 
 let consecutiveErrors = 0
 let retryDelay = MIN_RETRY_DELAY
@@ -147,7 +148,7 @@ const prefetchBlocks = async () => {
 
     // Additional prefetching when we're very far behind
     const localBehindBlocks = latestSteemBlock - currentBlock
-    if (localBehindBlocks > SYNC_THRESHOLD * 5) {
+    if (localBehindBlocks > TARGET_BEHIND_BLOCKS * 5) {
         blocksToPrefetch = MAX_PREFETCH_BLOCKS * 5
         logr.debug(`Very far behind (${localBehindBlocks} blocks) - aggressive prefetching ${blocksToPrefetch} blocks`)
     }
@@ -621,12 +622,11 @@ const updateSteemBlock = async () => {
         
         // Update behindBlocks based on both local and network status
         if (networkStatus.referenceExists) {
-            // Use the maximum of reference node's behind blocks and our local calculation
             behindBlocks = Math.max(networkStatus.referenceBehind, localBehindBlocks)
-            logr.debug(`Behind blocks: ${behindBlocks} (reference: ${networkStatus.referenceNodeId}, local: ${localBehindBlocks}, median RPC height: ${latestSteemBlock}, valid RPCs: ${getValidRpcHeights().length})`)
+            logr.debug(`Behind blocks: ${behindBlocks} (reference: ${networkStatus.referenceNodeId}, local: ${localBehindBlocks}, target: ${TARGET_BEHIND_BLOCKS})`)
         } else {
             behindBlocks = localBehindBlocks
-            logr.debug(`Behind blocks: ${behindBlocks} (local calculation, median RPC height: ${latestSteemBlock}, valid RPCs: ${getValidRpcHeights().length})`)
+            logr.debug(`Behind blocks: ${behindBlocks} (local calculation, target: ${TARGET_BEHIND_BLOCKS})`)
         }
 
         // Update our sync status in shared state
@@ -643,26 +643,31 @@ const updateSteemBlock = async () => {
             return latestSteemBlock
         }
 
-        // Enter sync mode if we're behind based on the median RPC height
-        const shouldSync = behindBlocks > 0 || 
-                         (networkStatus.referenceExists && networkSyncStatus.get(networkStatus.referenceNodeId)?.isSyncing) ||
+        // Enter sync mode if we're more than MAX_BEHIND_BLOCKS behind
+        const shouldSync = behindBlocks > MAX_BEHIND_BLOCKS || 
                          !readyToReceiveTransactions
 
         if (shouldSync) {
             if (!isSyncing) {
-                logr.info(`Entering sync mode: ${behindBlocks} blocks behind (median RPC height: ${latestSteemBlock}, valid RPCs: ${getValidRpcHeights().length})`)
+                logr.info(`Entering sync mode: ${behindBlocks} blocks behind (target: ${TARGET_BEHIND_BLOCKS}, max: ${MAX_BEHIND_BLOCKS})`)
                 isSyncing = true
                 lastSyncModeChange = Date.now()
             }
         } else if (isSyncing && 
             Date.now() - lastSyncModeChange > SYNC_EXIT_COOLDOWN &&
             (!lastSyncExitTime || Date.now() - lastSyncExitTime > SYNC_EXIT_COOLDOWN * 2) &&
-            isNetworkReadyToExitSyncMode()) {
+            behindBlocks <= SYNC_EXIT_THRESHOLD) {
             
-            logr.info(`Exiting sync mode - caught up with median RPC height ${latestSteemBlock} (${behindBlocks} blocks behind, valid RPCs: ${getValidRpcHeights().length})`)
+            logr.info(`Exiting sync mode - within target range (${behindBlocks} blocks behind, target: ${TARGET_BEHIND_BLOCKS})`)
             isSyncing = false
             lastSyncModeChange = Date.now()
             lastSyncExitTime = Date.now()
+        }
+
+        // If we're too close to head, slow down processing
+        if (behindBlocks < TARGET_BEHIND_BLOCKS) {
+            logr.debug(`Too close to Steem head (${behindBlocks} blocks), slowing down processing`)
+            await new Promise(resolve => setTimeout(resolve, 1000))
         }
 
         return latestSteemBlock
@@ -1029,7 +1034,7 @@ module.exports = {
                 logr.info(`Initial blocks behind: ${behindBlocks} (Steem head: ${latestBlock}, Last processed: ${lastProcessedSteemBlock})`)
 
                 // Set more frequent updates if we're behind
-                if (behindBlocks > SYNC_THRESHOLD) {
+                if (behindBlocks > TARGET_BEHIND_BLOCKS) {
                     syncInterval = setInterval(updateSteemBlock, 1000); // Update more frequently during sync
                     logr.info(`Setting faster sync status updates (every 1s) while catching up`);
                 } else {
@@ -1076,7 +1081,7 @@ module.exports = {
         if (typeof newValue === 'number' && newValue > behindBlocks) {
             behindBlocks = newValue
             // If we get an update that we're significantly behind, consider entering sync mode
-            if (behindBlocks >= SYNC_THRESHOLD && !isSyncing) {
+            if (behindBlocks >= TARGET_BEHIND_BLOCKS && !isSyncing) {
                 logr.info(`Entering sync mode based on network report, ${behindBlocks} blocks behind`)
                 isSyncing = true
                 
