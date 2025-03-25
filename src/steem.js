@@ -729,6 +729,8 @@ const updateSteemBlock = async () => {
                 logr.info(`Entering sync mode: ${behindBlocks} blocks behind (target: ${TARGET_BEHIND_BLOCKS}, max: ${MAX_BEHIND_BLOCKS})`)
                 isSyncing = true
                 lastSyncModeChange = Date.now()
+                // Reset lastSyncExitTime when re-entering sync mode
+                lastSyncExitTime = null
             }
         } else if (isSyncing && 
             Date.now() - lastSyncModeChange > SYNC_EXIT_COOLDOWN &&
