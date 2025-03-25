@@ -714,15 +714,16 @@ const updateSteemBlock = async () => {
 
         // Update our sync status in shared state
         if (p2p && p2p.sockets && p2p.sockets.length > 0 && shouldBroadcast) {
-            logr.debug(`Broadcasting sync status on block ${currentBlockId} (modulo ${SYNC_BROADCAST_MODULO})`)
-            p2p.broadcastSyncStatus({
+            const syncStatus = {
                 behindBlocks: behindBlocks,
                 steemBlock: currentSteemBlock,
                 isSyncing: isSyncing,
                 blockId: currentBlockId,
                 consensusBlocks: consensusBehindBlocks,
                 isInWarmup: isInWarmup
-            })
+            }
+            logr.info(`Broadcasting sync status: ${behindBlocks} blocks behind, Steem block: ${currentSteemBlock}, isSyncing: ${isSyncing}, blockId: ${currentBlockId}`)
+            p2p.broadcastSyncStatus(syncStatus)
         }
 
         // Don't change sync mode if we're in forced sync
