@@ -70,6 +70,7 @@ const TARGET_BEHIND_BLOCKS = 2  // Target number of blocks to stay behind Steem
 const MAX_BEHIND_BLOCKS = 3     // Maximum blocks behind before entering sync mode
 const SYNC_EXIT_COOLDOWN = 6000 // Cooldown before exiting sync mode
 const SYNC_EXIT_THRESHOLD = 3   // Exit sync when we're at most this many blocks behind
+const SYNC_BROADCAST_MODULO = 5 // Only broadcast sync status every N sidechain blocks
 
 let consecutiveErrors = 0
 let retryDelay = MIN_RETRY_DELAY
@@ -629,12 +630,18 @@ const updateSteemBlock = async () => {
             logr.debug(`Behind blocks: ${behindBlocks} (local calculation, target: ${TARGET_BEHIND_BLOCKS})`)
         }
 
+        // Only broadcast sync status on specific block intervals
+        const currentBlockId = chain?.getLatestBlock()?._id || 0
+        const shouldBroadcast = currentBlockId % SYNC_BROADCAST_MODULO === 0
+
         // Update our sync status in shared state
-        if (p2p && p2p.sockets && p2p.sockets.length > 0) {
+        if (p2p && p2p.sockets && p2p.sockets.length > 0 && shouldBroadcast) {
+            logr.debug(`Broadcasting sync status on block ${currentBlockId} (modulo ${SYNC_BROADCAST_MODULO})`)
             p2p.broadcastSyncStatus({
                 behindBlocks: behindBlocks,
                 steemBlock: currentSteemBlock,
-                isSyncing: isSyncing
+                isSyncing: isSyncing,
+                blockId: currentBlockId
             })
         }
 
@@ -656,9 +663,10 @@ const updateSteemBlock = async () => {
         } else if (isSyncing && 
             Date.now() - lastSyncModeChange > SYNC_EXIT_COOLDOWN &&
             (!lastSyncExitTime || Date.now() - lastSyncExitTime > SYNC_EXIT_COOLDOWN * 2) &&
-            behindBlocks <= SYNC_EXIT_THRESHOLD) {
+            behindBlocks <= SYNC_EXIT_THRESHOLD &&
+            shouldBroadcast) { // Only exit sync mode on broadcast blocks
             
-            logr.info(`Exiting sync mode - within target range (${behindBlocks} blocks behind, target: ${TARGET_BEHIND_BLOCKS})`)
+            logr.info(`Exiting sync mode - within target range (${behindBlocks} blocks behind, target: ${TARGET_BEHIND_BLOCKS}, block: ${currentBlockId})`)
             isSyncing = false
             lastSyncModeChange = Date.now()
             lastSyncExitTime = Date.now()
@@ -883,7 +891,8 @@ const checkNetworkSyncStatus = async () => {
                     networkSyncStatus.set(status.nodeId, {
                         behindBlocks: status.behindBlocks,
                         isSyncing: status.isSyncing,
-                        timestamp: Date.now()
+                        timestamp: Date.now(),
+                        blockId: status.blockId
                     })
                 }
             }
@@ -921,14 +930,16 @@ const receivePeerSyncStatus = (nodeId, status) => {
             networkSyncStatus.set(nodeId, {
                 behindBlocks: status.behindBlocks,
                 isSyncing: status.isSyncing,
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                blockId: status.blockId
             })
         }
         if (typeof status.steemBlock === 'number') {
             networkSteemHeights.set(nodeId, {
                 steemBlock: status.steemBlock,
                 behindBlocks: status.behindBlocks,
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                blockId: status.blockId
             })
         }
     }
