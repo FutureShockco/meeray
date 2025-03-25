@@ -67,10 +67,10 @@ const CIRCUIT_BREAKER_THRESHOLD = 30
 const CIRCUIT_BREAKER_RESET_TIMEOUT = 30000
 const MAX_PREFETCH_BLOCKS = 10  // Maximum number of blocks to prefetch at once
 const TARGET_BEHIND_BLOCKS = 2  // Target number of blocks to stay behind Steem
-const MAX_BEHIND_BLOCKS = 3     // Maximum blocks behind before entering sync mode
+const MAX_BEHIND_BLOCKS = 5     // Maximum blocks behind before entering sync mode
 const SYNC_EXIT_COOLDOWN = 6000 // Cooldown before exiting sync mode
 const SYNC_EXIT_THRESHOLD = 3   // Exit sync when we're at most this many blocks behind
-const SYNC_BROADCAST_MODULO = 5 // Only broadcast sync status every N sidechain blocks
+const SYNC_BROADCAST_MODULO = 3 // Only broadcast sync status every N sidechain blocks
 
 let consecutiveErrors = 0
 let retryDelay = MIN_RETRY_DELAY
@@ -153,7 +153,7 @@ const prefetchBlocks = async () => {
     let blocksToPrefetch = MAX_PREFETCH_BLOCKS
     if (isInSyncMode()) {
         // More aggressive prefetching during sync mode
-        blocksToPrefetch = MAX_PREFETCH_BLOCKS * 3
+        blocksToPrefetch = MAX_PREFETCH_BLOCKS * 8
     }
 
     // Additional prefetching when we're very far behind
