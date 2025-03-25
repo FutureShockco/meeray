@@ -714,10 +714,12 @@ const updateSteemBlock = async () => {
         }
 
         // Update behindBlocks before processing blocks on our sidechain
+        let latestSteemBlock = referenceSteemBlock // Initialize with reference block
         if (currentBlockId % SYNC_BROADCAST_MODULO === 0) {
             // Get latest Steem block height
-            const latestSteemBlock = await getLatestSteemBlockNum()
-            if (latestSteemBlock) {
+            const newLatestSteemBlock = await getLatestSteemBlockNum()
+            if (newLatestSteemBlock) {
+                latestSteemBlock = newLatestSteemBlock // Update with latest from Steem
                 // Use network's highest block as reference
                 const newReferenceBlock = Math.max(latestSteemBlock, referenceSteemBlock)
                 const newBehindBlocks = Math.max(0, newReferenceBlock - currentSteemBlock)
