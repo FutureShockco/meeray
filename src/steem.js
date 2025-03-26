@@ -721,7 +721,7 @@ const updateSteemBlock = async () => {
 
         if (shouldSync) {
             if (!isSyncing) {
-                logr.info(`Entering sync mode: ${behindBlocks} blocks behind (target: ${TARGET_BEHIND_BLOCKS}, max: ${MAX_BEHIND_BLOCKS})`)
+                logr.info(`Entering sync mode: ${behindBlocks} blocks behind (target: ${TARGET_BEHIND_BLOCKS}, max: ${latestSteemBlock})`)
                 isSyncing = true
                 lastSyncModeChange = Date.now()
             }
