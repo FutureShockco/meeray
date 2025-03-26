@@ -29,7 +29,7 @@ class Block {
         if (burn) this.burn = burn
         this.hash = hash
         this.signature = signature
-        
+
         // Set syncMode if we're behind OR in transition period
         if (steem && steem.getBehindBlocks) {
             const behindBlocks = steem.getBehindBlocks()
@@ -82,7 +82,7 @@ let chain = {
     prepareBlock: (cb) => {
         let previousBlock = chain.getLatestBlock()
         let nextIndex = previousBlock._id + 1
-        
+
         // Calculate the appropriate timestamp based on miner priority
         let minerPriority = 1 // Default priority for the leader
         if (chain.schedule.shuffle[(nextIndex - 1) % config.leaders].name !== process.env.NODE_OWNER) {
@@ -95,31 +95,31 @@ let chain = {
                 }
             }
         }
-        
+
         // Calculate timestamp with proper padding to ensure it passes validation
         const blockTime = (steem.isSyncing() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 10000))
-            ? config.syncBlockTime 
+            ? config.syncBlockTime
             : config.blockTime
         const minimumTimestamp = previousBlock.timestamp + (minerPriority * blockTime)
-        
+
         // Add a small buffer to ensure the block is not too early for other nodes
         // Use a larger buffer during sync mode to accommodate faster block production
         const maxDriftValue = (steem.isSyncing() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 10000))
-            ? config.syncMaxDrift 
+            ? config.syncMaxDrift
             : config.maxDrift
-        const bufferTime = (steem.isSyncing() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 10000)) 
+        const bufferTime = (steem.isSyncing() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 10000))
             ? (nextIndex <= 10 ? 80 : 50)  // Larger buffer in sync mode
             : (nextIndex <= 10 ? 50 : 25)  // Standard buffer in normal mode
-        
+
         const nextTimestamp = Math.max(
             new Date().getTime() + bufferTime,  // Current time plus buffer
             minimumTimestamp + bufferTime       // Minimum time plus buffer
         )
-        
+
         logr.debug(`Preparing block with timestamp ${nextTimestamp}, min: ${minimumTimestamp}, priority: ${minerPriority}`)
-        
+
         let nextSteemBlock = previousBlock.steemblock + 1
-        
+
         // Process Steem block first to get its transactions in the mempool
         steem.processBlock(nextSteemBlock).then((transactions) => {
             if (!transactions) {
@@ -127,7 +127,7 @@ let chain = {
                 cb(true, null)
                 return
             }
-            
+
             // Add mempool transactions
             let txs = []
             let mempool = transaction.pool.sort(function (a, b) { return a.ts - b.ts })
@@ -155,15 +155,15 @@ let chain = {
             txs = txs.sort(function (a, b) { return a.ts - b.ts })
 
             transaction.removeFromPool(txs)
-            
+
             // Create the initial block
             let newBlock = new Block(nextIndex, nextSteemBlock, previousBlock.hash, nextTimestamp, txs, process.env.NODE_OWNER)
-            
+
             // Set distribution amount based on leader rewards
             if (config.leaderReward > 0) {
                 newBlock.dist = config.leaderReward
             }
-            
+
             // hash and sign the block with our private key
             newBlock = chain.hashAndSignBlock(newBlock)
             cb(null, newBlock)
@@ -252,10 +252,10 @@ let chain = {
     validateAndAddBlock: (newBlock, revalidate, cb) => {
         // when we receive an outside block and check whether we should add it to our chain or not
         if (chain.shuttingDown) return
-        
+
         // Reset validation error before starting
         chain.lastValidationError = null
-        
+
         chain.isValidNewBlock(newBlock, revalidate, false, function (isValid) {
             if (!isValid) {
                 // Special handling for phash errors during sync mode
@@ -264,7 +264,7 @@ let chain = {
                 }
                 return cb(true, newBlock)
             }
-            
+
             // If block has transactions, verify they exist on Steem
             if (newBlock.txs.length > 0) {
                 steem.isOnSteemBlock(newBlock)
@@ -347,7 +347,7 @@ let chain = {
         let mineInMs = null
         // Get the appropriate block time based on sync state
         let blockTime = (steem.isSyncing() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 10000))
-            ? config.syncBlockTime 
+            ? config.syncBlockTime
             : config.blockTime
 
         // if we are the next scheduled witness, try to mine in time
@@ -367,7 +367,7 @@ let chain = {
             mineInMs += 20
             logr.debug('Trying to mine in ' + mineInMs + 'ms' + ' (sync: ' + steem.isSyncing() + ')')
             consensus.observer = false
-            
+
             // More lenient performance check during sync mode
             if (steem.isSyncing()) {
                 // During sync, only skip if extremely slow (less than 10% of block time)
@@ -382,11 +382,11 @@ let chain = {
                     return
                 }
             }
-            
+
             // Make sure the node is marked as ready to receive transactions now that we're mining
             if (steem && steem.setReadyToReceiveTransactions)
                 steem.setReadyToReceiveTransactions(true)
-                
+
             chain.worker = setTimeout(function () {
                 chain.mineBlock(function (error, finalBlock) {
                     if (error)
@@ -414,18 +414,18 @@ let chain = {
         daoMaster.nextBlock()
         leaderStats.processBlock(block)
         txHistory.processBlock(block)
-
+        const latestSteemBlock = await steem.getLatestSteemBlockNum()
+        const behindBlocks = Math.max(0, latestSteemBlock - block.steemblock)
         // Update behindBlocks count every 5 blocks
         if (steem && block._id % 2 === 0) {
             try {
-                const latestSteemBlock = await steem.getLatestSteemBlockNum()
+
                 if (latestSteemBlock) {
-                    const behindBlocks = Math.max(0, latestSteemBlock - block.steemblock)
                     // Always update and broadcast if we're in sync mode or if there's a significant change
                     if (steem.isSyncing() || behindBlocks > 1) {
                         steem.updateNetworkBehindBlocks(behindBlocks)
                         logr.info(`Updated behind blocks count: ${behindBlocks} (Steem: ${latestSteemBlock}, Local: ${block.steemblock})`)
-                        
+
                         // Always broadcast sync status to peers
                         if (p2p && p2p.sockets && p2p.sockets.length > 0) {
                             p2p.broadcastSyncStatus({
@@ -444,9 +444,8 @@ let chain = {
         }
 
         // Check if we should exit sync mode - only when fully caught up
-        if (steem && steem.isSyncing && steem.isSyncing() && 
-            steem.getBehindBlocks() < 3) {
-            steem.exitSyncMode()
+        if (steem && steem.isSyncing && steem.isSyncing() &&
+            behindBlocks < 3) {
             logr.info('Exiting sync mode - chain fully caught up')
         }
 
@@ -487,27 +486,27 @@ let chain = {
             output += '  burn: ' + eco.round(chain.nextOutput.burn)
             output += '  delay: ' + (currentOutTime - block.timestamp)
             output += '  steem block: ' + block.steemblock
-            
+
             // Add sync status information
             if (steem && steem.isSyncing && steem.getBehindBlocks) {
                 output += '  sync: ' + (steem.isSyncing() ? 'YES' : 'NO')
                 const behind = steem.getBehindBlocks()
                 if (behind > 0) {
                     output += ' (' + behind + ' blocks behind)'
-                    
+
                     // Add estimated time to completion based on:
                     // - Processing 1 block/second in sync mode
                     // - Steem producing 1 block every 3 seconds
                     // Formula: time = blocks_behind / (processing_rate - steem_production_rate)
                     const processingRate = 1;  // blocks per second
-                    const steemProductionRate = 1/3;  // blocks per second
+                    const steemProductionRate = 1 / 3;  // blocks per second
                     const netCatchupRate = processingRate - steemProductionRate;  // net blocks per second
-                    
+
                     // Only calculate if we're actually catching up
                     if (netCatchupRate > 0) {
                         const secondsToSync = Math.ceil(behind / netCatchupRate);
                         const minutesToSync = Math.ceil(secondsToSync / 60);
-                        
+
                         if (minutesToSync < 60) {
                             output += ' (~' + minutesToSync + ' min to sync)';
                         } else {
@@ -518,7 +517,7 @@ let chain = {
                     }
                 }
             }
-            
+
             if (block.missedBy && !rebuilding)
                 output += '  MISS: ' + block.missedBy
             else if (rebuilding) {
@@ -771,49 +770,49 @@ let chain = {
         // 1. Node is recovering (p2p.recovering)
         // 2. Node is in sync mode (steem.isSyncing())
         // 3. Node is an observer
-        const isCatchingUp = p2p.recovering || 
-                          (steem && steem.isSyncing && steem.isSyncing()) ||
-                          (consensus && consensus.observer === true)
+        const isCatchingUp = p2p.recovering ||
+            (steem && steem.isSyncing && steem.isSyncing()) ||
+            (consensus && consensus.observer === true)
 
         if (isCatchingUp) {
             logr.debug(`Skipping timestamp validation for block ${newBlock._id} during catch-up/sync`)
         } else {
             // Check block timing with more flexibility
             const currentTime = new Date().getTime()
-            
+
             // For timestamp validation, use a more relaxed drift buffer for:
             // - Nodes that recently exited sync mode
             // - Nodes processing blocks near their own head block
             // - General recovery situations
             let maxDriftBuffer = config.maxDrift
-            
+
             // Increase buffer for blocks near the head
             const latestBlock = chain.getLatestBlock()
             const isNearHead = Math.abs(newBlock._id - latestBlock._id) < 10
-            
+
             // Recently exited sync mode (within last 2 minutes)
-            const recentlySynced = steem && steem.lastSyncExitTime && 
-                                (currentTime - steem.lastSyncExitTime < 120000)
-            
+            const recentlySynced = steem && steem.lastSyncExitTime &&
+                (currentTime - steem.lastSyncExitTime < 120000)
+
             // Determine if we need extended buffer
             if (isNearHead || recentlySynced || chain.recoveryAttempts > 0) {
                 maxDriftBuffer = config.maxDrift * 3
                 logr.debug(`Using extended timestamp drift buffer (${maxDriftBuffer}ms) for block ${newBlock._id}`)
             }
-            
+
             const blockTime = (steem && steem.isSyncing && steem.isSyncing()) ? config.syncBlockTime : config.blockTime
             const expectedTime = previousBlock.timestamp + (minerPriority * blockTime)
-            
+
             if (newBlock.timestamp < expectedTime - maxDriftBuffer) {
                 chain.lastValidationError = 'block too early'
                 logr.error(`Block too early for miner with priority #${minerPriority}. Current time: ${currentTime}, Expected time: ${expectedTime}, Block time: ${newBlock.timestamp}, Difference: ${expectedTime - newBlock.timestamp}ms, Mode: ${isCatchingUp ? 'sync' : 'normal'}`)
-                
+
                 // For observer nodes and recovery situations, try to be more lenient
                 if (consensus && consensus.observer === true) {
                     logr.warn(`Observer node accepting early block despite timestamp drift`)
                     // Skip timestamp validation for observers
                     chain.lastValidationError = null
-                    
+
                     // Validate transactions and signature if needed
                     if (!skipSteem) {
                         chain.isValidHashAndSignature(newBlock, function (isValid) {
@@ -829,20 +828,20 @@ let chain = {
                     }
                     return
                 }
-                
+
                 // Initiate recovery attempt tracking
                 if (!chain.recoveryAttempts) chain.recoveryAttempts = 0
                 chain.recoveryAttempts++;
                 logr.warn(`Recover attempt #${chain.recoveryAttempts} for block ${newBlock._id}`)
-                
+
                 // After multiple recovery attempts, accept the block anyway
                 if (chain.recoveryAttempts >= 3) {
                     logr.warn(`Accepting block ${newBlock._id} after ${chain.recoveryAttempts} recovery attempts despite timestamp drift`)
                     chain.lastValidationError = null
-                    
+
                     // Reset recovery counter after accepting
                     setTimeout(() => { chain.recoveryAttempts = 0 }, 5000)
-                    
+
                     // Validate transactions and signature if needed
                     if (!skipSteem) {
                         chain.isValidHashAndSignature(newBlock, function (isValid) {
@@ -858,7 +857,7 @@ let chain = {
                     }
                     return
                 }
-                
+
                 cb(false)
                 return
             }
@@ -869,7 +868,7 @@ let chain = {
                 cb(false)
                 return
             }
-            
+
             // Reset recovery counter on successful validation
             if (chain.recoveryAttempts > 0) {
                 chain.recoveryAttempts = 0
@@ -878,7 +877,7 @@ let chain = {
 
         // Reset validation error before further validation
         chain.lastValidationError = null
-        
+
         // Validate transactions and signature if needed
         if (!skipSteem) {
             chain.isValidHashAndSignature(newBlock, function (isValid) {
@@ -1307,7 +1306,7 @@ let chain = {
                 callback(err)
                 return
             }
-            
+
             if (account) {
                 // Account already exists, silently return it
                 callback(null, account)
@@ -1322,12 +1321,12 @@ let chain = {
 
             }
 
-            cache.insertOne('accounts', newAccount, function(err) {
+            cache.insertOne('accounts', newAccount, function (err) {
                 if (err) {
                     callback(err)
                     return
                 }
-                
+
                 // Log only once when actually creating a new account
                 logr.info('Created account:', name)
                 callback(null, newAccount)

@@ -66,11 +66,10 @@ const MAX_RETRY_DELAY = 15000
 const CIRCUIT_BREAKER_THRESHOLD = 30
 const CIRCUIT_BREAKER_RESET_TIMEOUT = 30000
 const MAX_PREFETCH_BLOCKS = 10  // Maximum number of blocks to prefetch at once
-const TARGET_BEHIND_BLOCKS = 2  // Target number of blocks to stay behind Steem
+const TARGET_BEHIND_BLOCKS = 3  // Target number of blocks to stay behind Steem
 const MAX_BEHIND_BLOCKS = 5     // Maximum blocks behind before entering sync mode
 const SYNC_EXIT_COOLDOWN = 6000 // Cooldown before exiting sync mode
 const SYNC_EXIT_THRESHOLD = 3   // Exit sync when we're at most this many blocks behind
-const SYNC_BROADCAST_MODULO = 3 // Only broadcast sync status every N sidechain blocks
 
 let consecutiveErrors = 0
 let retryDelay = MIN_RETRY_DELAY
@@ -739,7 +738,7 @@ const updateSteemBlock = async () => {
         // If we're too close to head, slow down processing
         if (behindBlocks < TARGET_BEHIND_BLOCKS) {
             logr.debug(`Too close to Steem head (${behindBlocks} blocks), slowing down processing`)
-            await new Promise(resolve => setTimeout(resolve, 1000))
+            await new Promise(resolve => setTimeout(resolve, 3000))
         }
 
         return latestSteemBlock
