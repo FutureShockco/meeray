@@ -480,9 +480,10 @@ let p2p = {
 
         if (peersAhead.length === 0) {
             p2p.recovering = false
-            return
-        }
+            steem.setReadyToReceiveTransactions(true)
+            logr.info('🚀 Node startup complete - ready to process transactions and mine blocks')
 
+        //TODO
         // During sync mode, if we get invalid phash errors, we may need to recover from a bit earlier
         // to ensure we catch the right fork
         let recoverFromBlock = p2p.recovering
@@ -493,6 +494,7 @@ let p2p = {
             recoverFromBlock = Math.max(1, chain.getLatestBlock()._id - backtrackBlocks)
             logr.info(`Sync mode recovery: going back ${backtrackBlocks} blocks to ${recoverFromBlock} for better fork detection`)
             p2p.recovering = recoverFromBlock
+            return
         }
 
         let champion = peersAhead[Math.floor(Math.random()*peersAhead.length)]
@@ -553,7 +555,7 @@ let p2p = {
     },
     broadcastSyncStatus: (syncStatus) => {
         // Broadcast steem sync status to all connected peers
-        if (!steem) return
+        if (p2p.recovering || !steem) return
         
         // If syncStatus is a number, it's just the behindBlocks count
         const status = typeof syncStatus === 'number' ? {

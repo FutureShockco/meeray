@@ -1113,7 +1113,7 @@ module.exports = {
             // Get network's view of sync status
             const networkStatus = getNetworkSyncStatus()
             
-            if (networkStatus.referenceExists && networkStatus.referenceNodeId !== 'self') {
+            if (!p2p.recovering && networkStatus.referenceExists && networkStatus.referenceNodeId !== 'self') {
                 // We have a reference node with higher blocks
                 const referenceBlock = networkStatus.highestBlock
                 logr.info(`Found reference node with higher block ${referenceBlock}, prioritizing network sync first`)
