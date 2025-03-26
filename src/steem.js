@@ -707,38 +707,22 @@ const updateSteemBlock = async () => {
             }
         }
 
-
         // Don't change sync mode if we're in forced sync
         if (chain && chain.getLatestBlock() && chain.getLatestBlock()._id < forceSyncUntilBlock) {
             return latestSteemBlock
         }
 
-        // Enter sync mode if we're more than MAX_BEHIND_BLOCKS behind
-        const shouldSync = behindBlocks > MAX_BEHIND_BLOCKS || 
-                         !readyToReceiveTransactions ||
-                         (isSyncing && behindBlocks > SYNC_EXIT_THRESHOLD) // Stay in sync if we're still behind threshold
-
-        if (shouldSync) {
-            if (!isSyncing) {
-                logr.info(`Entering sync mode: ${behindBlocks} blocks behind (target: ${TARGET_BEHIND_BLOCKS}, max: ${latestSteemBlock})`)
-                isSyncing = true
-                lastSyncModeChange = Date.now()
-            }
-        } else if (isSyncing && 
-            Date.now() - lastSyncModeChange > SYNC_EXIT_COOLDOWN &&
-            (!lastSyncExitTime || Date.now() - lastSyncExitTime > SYNC_EXIT_COOLDOWN * 2) &&
-            behindBlocks <= SYNC_EXIT_THRESHOLD) { // Only exit sync mode on broadcast blocks
-            
-            logr.info(`Exiting sync mode - within target range (${behindBlocks} blocks behind, target: ${TARGET_BEHIND_BLOCKS}, block: ${latestSteemBlock})`)
-            isSyncing = false
-            lastSyncModeChange = Date.now()
-            lastSyncExitTime = Date.now()
+        // Check if we should enter or exit sync mode
+        if (behindBlocks > MAX_BEHIND_BLOCKS || !readyToReceiveTransactions) {
+            enterSyncMode()
+        } else {
+            exitSyncMode()
         }
 
         // If we're too close to head, slow down processing
         if (behindBlocks < TARGET_BEHIND_BLOCKS) {
             logr.debug(`Too close to Steem head (${behindBlocks} blocks), slowing down processing`)
-            await new Promise(resolve => setTimeout(resolve, 3000))
+            await new Promise(resolve => setTimeout(resolve, 1000))
         }
 
         return latestSteemBlock
@@ -832,7 +816,7 @@ const resetConsecutiveErrors = () => {
 }
 
 // Initial interval
-syncInterval = setInterval(updateSteemBlock, 3000)
+// syncInterval = setInterval(updateSteemBlock, 3000)
 
 const initPrefetch = (startBlock) => {
     // Initialize prefetching
@@ -933,9 +917,33 @@ const getLatestSteemBlockNum = async () => {
     }
 }
 
+function enterSyncMode() {
+    if (!isSyncing) {
+        logr.info(`Entering sync mode: ${behindBlocks} blocks behind (target: ${TARGET_BEHIND_BLOCKS}, max: ${MAX_BEHIND_BLOCKS})`)
+        isSyncing = true
+        lastSyncModeChange = Date.now()
+        
+        // If we're too far behind, we might need to recover from earlier
+        if (behindBlocks > MAX_BEHIND_BLOCKS * 2) {
+            const backtrackBlocks = Math.min(3, Math.floor(behindBlocks / MAX_BEHIND_BLOCKS))
+            const recoverFromBlock = Math.max(1, chain.getLatestBlock()._id - backtrackBlocks)
+            logr.info(`Sync mode recovery: going back ${backtrackBlocks} blocks to ${recoverFromBlock} for better fork detection`)
+            chain.recoverFromBlock(recoverFromBlock)
+        }
+    }
+}
+
 function exitSyncMode() {
-    // Do nothing - sync mode exit is handled in updateSteemBlock
-    logr.debug('Sync mode exit requested but ignored - handled by updateSteemBlock')
+    if (isSyncing && 
+        Date.now() - lastSyncModeChange > SYNC_EXIT_COOLDOWN &&
+        (!lastSyncExitTime || Date.now() - lastSyncExitTime > SYNC_EXIT_COOLDOWN * 2) &&
+        behindBlocks <= SYNC_EXIT_THRESHOLD) {
+        
+        logr.info(`Exiting sync mode - within target range (${behindBlocks} blocks behind, target: ${TARGET_BEHIND_BLOCKS})`)
+        isSyncing = false
+        lastSyncModeChange = Date.now()
+        lastSyncExitTime = Date.now()
+    }
 }
 
 // Add this new function to check network sync status
@@ -1249,6 +1257,7 @@ module.exports = {
     fetchMissingBlock,
     prefetchBlocks,
     setReadyToReceiveTransactions,
+    enterSyncMode,
     exitSyncMode,
     lastSyncExitTime: lastSyncExitTime,
     getNetworkSyncStatus: () => {

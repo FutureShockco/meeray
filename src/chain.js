@@ -446,7 +446,12 @@ let chain = {
         // Check if we should exit sync mode - only when fully caught up
         if (steem && steem.isSyncing && steem.isSyncing() &&
             behindBlocks < 3) {
+            steem.exitSyncMode()
             logr.info('Exiting sync mode - chain fully caught up')
+        }
+        else {
+            steem.enterSyncMode()
+            logr.info('Entering sync mode - chain is behind')
         }
 
         // if block id is mult of n leaders, reschedule next n blocks
