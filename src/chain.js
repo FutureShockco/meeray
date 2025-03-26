@@ -397,108 +397,71 @@ let chain = {
 
     },
     addBlock: async (block, cb) => {
-        try {
-            // Check if block already exists in database
-            const existingBlock = await db.collection('blocks').findOne({ _id: block._id })
-            if (existingBlock) {
-                logr.debug(`Block ${block._id} already exists in database, skipping insertion`)
-                // Still process the block for other operations
-                chain.cleanMemory()
-                config = require('./config.js').read(block._id)
-                eco.appendHistory(block)
-                eco.nextBlock()
-                dao.nextBlock()
-                daoMaster.nextBlock()
-                leaderStats.processBlock(block)
-                txHistory.processBlock(block)
-                cb(true)
-                return
-            }
+        // add the block in our own db
+        if (blocks.isOpen)
+            blocks.appendBlock(block)
+        else
+            await db.collection('blocks').insertOne(block)
 
-            // add the block in our own db
-            if (blocks.isOpen)
-                blocks.appendBlock(block)
-            else
-                await db.collection('blocks').insertOne(block)
+        // push cached accounts and contents to mongodb
+        chain.cleanMemory()
 
-            // push cached accounts and contents to mongodb
-            chain.cleanMemory()
-            config = require('./config.js').read(block._id)
-            eco.appendHistory(block)
-            eco.nextBlock()
-            dao.nextBlock()
-            daoMaster.nextBlock()
-            leaderStats.processBlock(block)
-            txHistory.processBlock(block)
+        // update the config if an update was scheduled
+        config = require('./config.js').read(block._id)
+        eco.appendHistory(block)
+        eco.nextBlock()
+        dao.nextBlock()
+        daoMaster.nextBlock()
+        leaderStats.processBlock(block)
+        txHistory.processBlock(block)
+        const latestSteemBlock = await steem.getLatestSteemBlockNum()
+        const behindBlocks = Math.max(0, latestSteemBlock - block.steemblock)
+        // Update behindBlocks count every 5 blocks
+        if (steem && block._id % 2 === 0 && !p2p.recovering && behindBlocks > 3) {
+            try {
 
-            // First check if we need to catch up with network
-            const latestBlock = await p2p.getLatestBlock()
-            if (latestBlock && latestBlock._id > block._id) {
-                logr.info(`Catching up with network, head block: ${latestBlock._id}`)
-                // If we're more than 3 blocks behind, go back 3 blocks for better fork detection
-                if (latestBlock._id - block._id > 3) {
-                    const recoveryBlock = Math.max(0, block._id - 3)
-                    // Only proceed if we're not already at a very low block number
-                    if (recoveryBlock > 10) {
-                        logr.info(`Sync mode recovery: going back 3 blocks to ${recoveryBlock} for better fork detection`)
-                        // Request blocks from peers
-                        for (let i = recoveryBlock; i <= latestBlock._id; i++) {
-                            p2p.broadcast({
-                                t: MessageType.QUERY_BLOCK,
-                                d: i
+                if (latestSteemBlock) {
+                    // Always update and broadcast if we're in sync mode or if there's a significant change
+                    if (steem.isSyncing() || behindBlocks > 1) {
+                        steem.updateNetworkBehindBlocks(behindBlocks)
+                        logr.info(`Updated behind blocks count: ${behindBlocks} (Steem: ${latestSteemBlock}, Local: ${block.steemblock})`)
+
+                        // Always broadcast sync status to peers
+                        if (p2p && p2p.sockets && p2p.sockets.length > 0) {
+                            p2p.broadcastSyncStatus({
+                                behindBlocks: behindBlocks,
+                                steemBlock: block.steemblock,
+                                isSyncing: steem.isSyncing(),
+                                blockId: block._id,
+                                consensusBlocks: behindBlocks // Add consensus blocks to broadcast
                             })
                         }
                     }
                 }
+            } catch (error) {
+                logr.error('Error updating behind blocks count:', error)
             }
-
-            // Update behindBlocks count every 5 blocks
-            let behindBlocks = 0
-            if (steem && block._id % 5 === 0 || block._id === 1) {
-                try {
-                    const latestSteemBlock = await steem.getLatestSteemBlockNum()
-                    if (latestSteemBlock) {
-                        behindBlocks = Math.max(0, latestSteemBlock - block.steemblock)
-                        // Always update and broadcast if we're in sync mode or if there's a significant change
-                        if (steem.isSyncing() || behindBlocks > 1) {
-                            steem.updateNetworkBehindBlocks(behindBlocks)
-                            logr.info(`Updated behind blocks count: ${behindBlocks} (Steem: ${latestSteemBlock}, Local: ${block.steemblock})`)
-                            
-                            // Always broadcast sync status to peers
-                            if (p2p && p2p.sockets && p2p.sockets.length > 0) {
-                                p2p.broadcastSyncStatus({
-                                    behindBlocks: behindBlocks,
-                                    steemBlock: block.steemblock,
-                                    isSyncing: steem.isSyncing(),
-                                    blockId: block._id,
-                                    consensusBlocks: behindBlocks
-                                })
-                            }
-                        }
-                    }
-                } catch (error) {
-                    logr.error('Error updating behind blocks count:', error)
-                }
-            }
-            
-            // Check if we should exit sync mode
-            if (steem && steem.isSyncing && steem.isSyncing() && behindBlocks <= SYNC_EXIT_THRESHOLD) {
-                logr.info(`Exiting sync mode - caught up (${behindBlocks} blocks behind)`)
-                steem.exitSyncMode()
-            }
-
-            // if block id is mult of n leaders, reschedule next n blocks
-            if (block._id % config.leaders === 0)
-                chain.schedule = chain.minerSchedule(block)
-            chain.recentBlocks.push(block)
-            chain.minerWorker(block)
-            chain.output(block)
-            cache.writeToDisk(false)
-            cb(true)
-        } catch (error) {
-            logr.error('Error in addBlock:', error)
-            cb(false)
         }
+
+        // Check if we should exit sync mode - only when fully caught up
+        if (steem && steem.isSyncing && steem.isSyncing() &&
+            behindBlocks < 3) {
+            steem.exitSyncMode()
+            logr.info('Exiting sync mode - chain fully caught up')
+        }
+        else if(!steem.isSyncing && behindBlocks > 3) {
+            steem.enterSyncMode()
+            logr.info('Entering sync mode - chain is behind')
+        }
+
+        // if block id is mult of n leaders, reschedule next n blocks
+        if (block._id % config.leaders === 0)
+            chain.schedule = chain.minerSchedule(block)
+        chain.recentBlocks.push(block)
+        chain.minerWorker(block)
+        chain.output(block)
+        cache.writeToDisk(false)
+        cb(true)
     },
     output: (block, rebuilding) => {
         chain.nextOutput.txs += block.txs.length
