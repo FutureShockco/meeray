@@ -19,7 +19,6 @@ const bs58 = require('base-x')(config.b58Alphabet)
 const blocks = require('./blocks')
 const dao = require('./dao')
 const daoMaster = require('./daoMaster')
-let steem // Will be initialized after being exported
 
 const MessageType = {
     QUERY_NODE_STATUS: 0,
