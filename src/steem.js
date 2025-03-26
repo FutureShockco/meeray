@@ -1253,6 +1253,7 @@ module.exports = {
     fetchMissingBlock,
     prefetchBlocks,
     setReadyToReceiveTransactions,
+    isSyncing,
     enterSyncMode,
     exitSyncMode,
     lastSyncExitTime: lastSyncExitTime,
