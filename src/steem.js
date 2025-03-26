@@ -130,7 +130,7 @@ const updateNetworkBehindBlocks = (newValue) => {
         logr.debug(`Behind blocks updated: ${oldValue} -> ${newValue}`)
         
         // If we get an update that we're significantly behind, consider entering sync mode
-        if (behindBlocks >= TARGET_BEHIND_BLOCKS && !isSyncing) {
+        if (!p2p.recovering && behindBlocks >= TARGET_BEHIND_BLOCKS && !isSyncing) {
             logr.info(`Entering sync mode based on network report, ${behindBlocks} blocks behind`)
             isSyncing = true
             
@@ -918,7 +918,7 @@ const getLatestSteemBlockNum = async () => {
 }
 
 function enterSyncMode() {
-    if (!isSyncing) {
+    if (!isSyncing && !p2p.recovering) {
         logr.info(`Entering sync mode: ${behindBlocks} blocks behind (target: ${TARGET_BEHIND_BLOCKS}, max: ${MAX_BEHIND_BLOCKS})`)
         isSyncing = true
         lastSyncModeChange = Date.now()
