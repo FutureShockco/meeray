@@ -449,7 +449,7 @@ let chain = {
             steem.exitSyncMode()
             logr.info('Exiting sync mode - chain fully caught up')
         }
-        else {
+        else if(!steem.isSyncing && behindBlocks > 3) {
             steem.enterSyncMode()
             logr.info('Entering sync mode - chain is behind')
         }
