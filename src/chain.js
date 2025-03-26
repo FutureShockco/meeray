@@ -442,17 +442,19 @@ let chain = {
                 logr.error('Error updating behind blocks count:', error)
             }
         }
+        if (!p2p.recovering) {
+            // Check if we should exit sync mode - only when fully caught up
+            if (steem && steem.isSyncing && steem.isInSyncMode() &&
+                behindBlocks <= config.steemBlockDrift) {
+                steem.exitSyncMode()
+                logr.info('Exiting sync mode - chain fully caught up')
+            }
+            else if (!steem.isSyncing && behindBlocks > config.steemBlockDrift) {
+                steem.enterSyncMode()
+                logr.info('Entering sync mode - chain is behind')
+            }
+        }
 
-        // Check if we should exit sync mode - only when fully caught up
-        if (steem && steem.isSyncing && steem.isInSyncMode() &&
-            behindBlocks <= config.steemBlockDrift) {
-            steem.exitSyncMode()
-            logr.info('Exiting sync mode - chain fully caught up')
-        }
-        else if(!steem.isSyncing && behindBlocks > config.steemBlockDrift) {
-            steem.enterSyncMode()
-            logr.info('Entering sync mode - chain is behind')
-        }
 
         // if block id is mult of n leaders, reschedule next n blocks
         if (block._id % config.leaders === 0)
