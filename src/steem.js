@@ -144,10 +144,7 @@ const updateNetworkBehindBlocks = (newValue) => {
 
 // Helper function to check sync status
 const isInSyncMode = () => {
-    // Check if we're forced into sync mode by a recent block
-    if (chain && chain.getLatestBlock() && chain.getLatestBlock()._id < forceSyncUntilBlock) {
-        return true
-    }
+
     return isSyncing
 }
 
@@ -1253,9 +1250,9 @@ module.exports = {
     fetchMissingBlock,
     prefetchBlocks,
     setReadyToReceiveTransactions,
-    isSyncing,
     enterSyncMode,
     exitSyncMode,
+    isInSyncMode,
     lastSyncExitTime: lastSyncExitTime,
     getNetworkSyncStatus: () => {
         // Return array of nodes and their sync status

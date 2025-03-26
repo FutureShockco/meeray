@@ -97,17 +97,17 @@ let chain = {
         }
 
         // Calculate timestamp with proper padding to ensure it passes validation
-        const blockTime = (steem.isSyncing() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 10000))
+        const blockTime = (steem.isInSyncMode() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 10000))
             ? config.syncBlockTime
             : config.blockTime
         const minimumTimestamp = previousBlock.timestamp + (minerPriority * blockTime)
 
         // Add a small buffer to ensure the block is not too early for other nodes
         // Use a larger buffer during sync mode to accommodate faster block production
-        const maxDriftValue = (steem.isSyncing() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 10000))
+        const maxDriftValue = (steem.isInSyncMode() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 10000))
             ? config.syncMaxDrift
             : config.maxDrift
-        const bufferTime = (steem.isSyncing() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 10000))
+        const bufferTime = (steem.isInSyncMode() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 10000))
             ? (nextIndex <= 10 ? 80 : 50)  // Larger buffer in sync mode
             : (nextIndex <= 10 ? 50 : 25)  // Standard buffer in normal mode
 
@@ -259,7 +259,7 @@ let chain = {
         chain.isValidNewBlock(newBlock, revalidate, false, function (isValid) {
             if (!isValid) {
                 // Special handling for phash errors during sync mode
-                if (chain.lastValidationError === 'invalid phash' && steem && steem.isSyncing && steem.isSyncing()) {
+                if (chain.lastValidationError === 'invalid phash' && steem && steem.isSyncing && steem.isInSyncMode()) {
                     logr.warn(`Invalid phash during sync mode for block #${newBlock._id} by ${newBlock.miner} - this is normal during fast sync`)
                 }
                 return cb(true, newBlock)
@@ -346,7 +346,7 @@ let chain = {
 
         let mineInMs = null
         // Get the appropriate block time based on sync state
-        let blockTime = (steem.isSyncing() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 10000))
+        let blockTime = (steem.isInSyncMode() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 10000))
             ? config.syncBlockTime
             : config.blockTime
 
@@ -365,11 +365,11 @@ let chain = {
         if (mineInMs) {
             mineInMs -= (new Date().getTime() - block.timestamp)
             mineInMs += 20
-            logr.debug('Trying to mine in ' + mineInMs + 'ms' + ' (sync: ' + steem.isSyncing() + ')')
+            logr.debug('Trying to mine in ' + mineInMs + 'ms' + ' (sync: ' + steem.isInSyncMode() + ')')
             consensus.observer = false
 
             // More lenient performance check during sync mode
-            if (steem.isSyncing()) {
+            if (steem.isInSyncMode()) {
                 // During sync, only skip if extremely slow (less than 10% of block time)
                 if (mineInMs < blockTime / 10) {
                     logr.warn('Extremely slow performance during sync, skipping block')
@@ -422,7 +422,7 @@ let chain = {
 
                 if (latestSteemBlock) {
                     // Always update and broadcast if we're in sync mode or if there's a significant change
-                    if (steem.isSyncing() || behindBlocks > 1) {
+                    if (steem.isInSyncMode() || behindBlocks > 1) {
                         steem.updateNetworkBehindBlocks(behindBlocks)
                         logr.info(`Updated behind blocks count: ${behindBlocks} (Steem: ${latestSteemBlock}, Local: ${block.steemblock})`)
 
@@ -431,7 +431,7 @@ let chain = {
                             p2p.broadcastSyncStatus({
                                 behindBlocks: behindBlocks,
                                 steemBlock: block.steemblock,
-                                isSyncing: steem.isSyncing(),
+                                isSyncing: steem.isInSyncMode(),
                                 blockId: block._id,
                                 consensusBlocks: behindBlocks // Add consensus blocks to broadcast
                             })
@@ -444,7 +444,7 @@ let chain = {
         }
 
         // Check if we should exit sync mode - only when fully caught up
-        if (steem && steem.isSyncing && steem.isSyncing() &&
+        if (steem && steem.isSyncing && steem.isInSyncMode() &&
             behindBlocks < 3) {
             steem.exitSyncMode()
             logr.info('Exiting sync mode - chain fully caught up')
@@ -494,7 +494,7 @@ let chain = {
 
             // Add sync status information
             if (steem && steem.isSyncing && steem.getBehindBlocks) {
-                output += '  sync: ' + (steem.isSyncing() ? 'YES' : 'NO')
+                output += '  sync: ' + (steem.isInSyncMode() ? 'YES' : 'NO')
                 const behind = steem.getBehindBlocks()
                 if (behind > 0) {
                     output += ' (' + behind + ' blocks behind)'
@@ -773,10 +773,10 @@ let chain = {
 
         // Skip timestamp checks in any of these conditions:
         // 1. Node is recovering (p2p.recovering)
-        // 2. Node is in sync mode (steem.isSyncing())
+        // 2. Node is in sync mode (steem.isInSyncMode())
         // 3. Node is an observer
         const isCatchingUp = p2p.recovering ||
-            (steem && steem.isSyncing && steem.isSyncing()) ||
+            (steem && steem.isSyncing && steem.isInSyncMode()) ||
             (consensus && consensus.observer === true)
 
         if (isCatchingUp) {
@@ -805,7 +805,7 @@ let chain = {
                 logr.debug(`Using extended timestamp drift buffer (${maxDriftBuffer}ms) for block ${newBlock._id}`)
             }
 
-            const blockTime = (steem && steem.isSyncing && steem.isSyncing()) ? config.syncBlockTime : config.blockTime
+            const blockTime = (steem && steem.isSyncing && steem.isInSyncMode()) ? config.syncBlockTime : config.blockTime
             const expectedTime = previousBlock.timestamp + (minerPriority * blockTime)
 
             if (newBlock.timestamp < expectedTime - maxDriftBuffer) {

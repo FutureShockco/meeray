@@ -159,7 +159,7 @@ function startDaemon() {
     p2p.connect(process.env.PEERS ? process.env.PEERS.split(',') : [], true)
     // keep peer connection alive
     setTimeout(p2p.keepAlive,3000)
-    let blockTime = steem.isSyncing() ? config.syncBlockTime : config.blockTime
+    let blockTime = steem.isInSyncMode() ? config.syncBlockTime : config.blockTime
     // regularly clean up old txs from mempool
     setInterval(function() {
         transaction.cleanPool()
