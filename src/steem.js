@@ -66,10 +66,10 @@ const MAX_RETRY_DELAY = 15000
 const CIRCUIT_BREAKER_THRESHOLD = 30
 const CIRCUIT_BREAKER_RESET_TIMEOUT = 30000
 const MAX_PREFETCH_BLOCKS = 10  // Maximum number of blocks to prefetch at once
-const TARGET_BEHIND_BLOCKS = 3  // Target number of blocks to stay behind Steem
-const MAX_BEHIND_BLOCKS = 5     // Maximum blocks behind before entering sync mode
+const TARGET_BEHIND_BLOCKS = 2  // Target number of blocks to stay behind Steem
+const MAX_BEHIND_BLOCKS = 3    // Maximum blocks behind before entering sync mode
 const SYNC_EXIT_COOLDOWN = 6000 // Cooldown before exiting sync mode
-const SYNC_EXIT_THRESHOLD = 3   // Exit sync when we're at most this many blocks behind
+const SYNC_EXIT_THRESHOLD = 2   // Exit sync when we're at most this many blocks behind
 
 let consecutiveErrors = 0
 let retryDelay = MIN_RETRY_DELAY
