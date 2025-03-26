@@ -728,8 +728,7 @@ const updateSteemBlock = async () => {
         } else if (isSyncing && 
             Date.now() - lastSyncModeChange > SYNC_EXIT_COOLDOWN &&
             (!lastSyncExitTime || Date.now() - lastSyncExitTime > SYNC_EXIT_COOLDOWN * 2) &&
-            behindBlocks <= SYNC_EXIT_THRESHOLD &&
-            shouldBroadcast) { // Only exit sync mode on broadcast blocks
+            behindBlocks <= SYNC_EXIT_THRESHOLD) { // Only exit sync mode on broadcast blocks
             
             logr.info(`Exiting sync mode - within target range (${behindBlocks} blocks behind, target: ${TARGET_BEHIND_BLOCKS}, block: ${currentBlockId})`)
             isSyncing = false

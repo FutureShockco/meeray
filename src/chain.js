@@ -445,7 +445,7 @@ let chain = {
 
         // Check if we should exit sync mode - only when fully caught up
         if (steem && steem.isSyncing && steem.isSyncing() && 
-            steem.getBehindBlocks() === 0) {
+            steem.getBehindBlocks() < 3) {
             steem.exitSyncMode()
             logr.info('Exiting sync mode - chain fully caught up')
         }
