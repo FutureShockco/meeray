@@ -417,7 +417,7 @@ let chain = {
         const latestSteemBlock = await steem.getLatestSteemBlockNum()
         const behindBlocks = Math.max(0, latestSteemBlock - block.steemblock)
         // Update behindBlocks count every 5 blocks
-        if (steem && block._id % 2 === 0 && !p2p.recovering && behindBlocks > 3) {
+        if (steem && block._id % 2 === 0 && !p2p.recovering) {
             try {
 
                 if (latestSteemBlock) {
@@ -445,11 +445,11 @@ let chain = {
 
         // Check if we should exit sync mode - only when fully caught up
         if (steem && steem.isSyncing && steem.isInSyncMode() &&
-            behindBlocks < 3) {
+            behindBlocks <= config.steemBlockDrift) {
             steem.exitSyncMode()
             logr.info('Exiting sync mode - chain fully caught up')
         }
-        else if(!steem.isSyncing && behindBlocks > 3) {
+        else if(!steem.isSyncing && config.steemBlockDrift > 3) {
             steem.enterSyncMode()
             logr.info('Entering sync mode - chain is behind')
         }

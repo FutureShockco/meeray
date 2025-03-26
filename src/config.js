@@ -3,6 +3,7 @@ let config = {
         0: {
             // Steem block to start streaming from
             steemStartBlock: 94139895,
+            steemBlockDrift: 3,
             // this is the block 0 configuration for mainnet
             accountPriceBase: 20000,
             accountPriceCharMult: 4,
@@ -162,7 +163,7 @@ let config = {
 
             // master dao
             masterDao: true,
-            masterDaoTxs: [0,4,5,6,10,11,12,13,14,15,17,19,20,21,23,24,25,26,27,28,29,30,32],
+            masterDaoTxs: [0, 4, 5, 6, 10, 11, 12, 13, 14, 15, 17, 19, 20, 21, 23, 24, 25, 26, 27, 28, 29, 30, 32],
             masterDaoTxExp: 259200000,
 
             // block size increase
@@ -184,18 +185,18 @@ let config = {
     read: (blockNum) => {
         let finalConfig = {}
         let latestHf = 0
-        for (const key in config.history) 
+        for (const key in config.history)
             if (blockNum >= key) {
                 if (blockNum === parseInt(key) && blockNum !== 0)
-                    logr.info('Hard Fork #'+key)
+                    logr.info('Hard Fork #' + key)
                 Object.assign(finalConfig, config.history[key])
                 latestHf = parseInt(key)
             }
             else {
                 if (config.history[key].ecoBlocks > finalConfig.ecoBlocks
-                && config.history[key].ecoBlocks - finalConfig.ecoBlocks >= key-blockNum)
+                    && config.history[key].ecoBlocks - finalConfig.ecoBlocks >= key - blockNum)
                     finalConfig.ecoBlocksIncreasesSoon = config.history[key].ecoBlocks
-                
+
                 break
             }
         if (typeof cache !== 'undefined' && cache.state && cache.state[1]) {
@@ -204,9 +205,9 @@ let config = {
                 if (k !== '_id' && govConfig[k].effectiveBlock >= latestHf)
                     finalConfig[k] = govConfig[k].value
         }
-        
+
         return finalConfig
     }
-} 
+}
 
 module.exports = config
