@@ -316,14 +316,14 @@ let chain = {
 
             chain.addBlock(newBlock, function () {
                 // and broadcast to peers (if not replaying)
-                if (!p2p.recovering)
+                if (!p2p.recovering && steem && steem.setReadyToReceiveTransactions)
                     p2p.broadcastBlock(newBlock)
 
                 // process notifications and leader stats (non blocking)
                 notifications.processBlock(newBlock)
 
                 // emit event to confirm new transactions in the http api
-                if (!p2p.recovering)
+                if (!p2p.recovering && steem && steem.setReadyToReceiveTransactions)
                     for (let i = 0; i < newBlock.txs.length; i++)
                         transaction.eventConfirmation.emit(newBlock.txs[i].hash)
 
