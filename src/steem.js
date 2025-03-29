@@ -172,16 +172,12 @@ const prefetchBlocks = async () => {
     }
 
     // Determine how many blocks to prefetch based on sync status
-    let blocksToPrefetch = MAX_PREFETCH_BLOCKS * 5
-    if (isInSyncMode()) {
-        // More aggressive prefetching during sync mode
-        blocksToPrefetch = MAX_PREFETCH_BLOCKS * 8
-    }
+    let blocksToPrefetch = MAX_PREFETCH_BLOCKS 
 
     // Additional prefetching when we're very far behind
     const localBehindBlocks = latestSteemBlock - currentBlock
-    if (localBehindBlocks > TARGET_BEHIND_BLOCKS * 5) {
-        blocksToPrefetch = MAX_PREFETCH_BLOCKS * 5
+    if (localBehindBlocks > TARGET_BEHIND_BLOCKS ) {
+        blocksToPrefetch = MAX_PREFETCH_BLOCKS 
         logr.debug(`Very far behind (${localBehindBlocks} blocks) - aggressive prefetching ${blocksToPrefetch} blocks`)
     }
 
