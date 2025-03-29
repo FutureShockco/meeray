@@ -259,7 +259,7 @@ const prefetchBlocks = async () => {
         // Schedule next prefetch more aggressively if we're far behind
         if (prefetchTimer) clearTimeout(prefetchTimer)
 
-        const prefetchDelay = isInSyncMode() ? 100 : 1000 // Much faster prefetch during sync
+        const prefetchDelay = isInSyncMode() ? 1000 : 3000 // Much faster prefetch during sync
         prefetchTimer = setTimeout(prefetchBlocks, prefetchDelay)
     }
 }
