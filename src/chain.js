@@ -29,15 +29,6 @@ class Block {
         if (burn) this.burn = burn
         this.hash = hash
         this.signature = signature
-        
-        // Set syncMode if we're behind OR in transition period
-        if (steem && steem.getBehindBlocks) {
-            const behindBlocks = steem.getBehindBlocks()
-            // Stay in sync mode if significantly behind or recently caught up
-            if (behindBlocks > 5 || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 10000)) {
-                this.syncMode = true
-            }
-        }
     }
 }
 

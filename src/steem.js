@@ -993,7 +993,7 @@ const isNetworkReadyToExitSyncMode = () => {
 
     // As reference node, require stricter conditions
     const readyToExit = syncedPercent >= SYNC_EXIT_QUORUM_PERCENT && 
-                       maxBehind <= 1 && // More strict: require nodes to be at most 1 block behind
+                       maxBehind <= 2 && // More strict: require nodes to be at most 1 block behind
                        behindBlocks === 0;
 
     if (readyToExit) {
