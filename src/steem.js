@@ -1179,8 +1179,7 @@ module.exports = {
         }
         return result
     },
-    getLatestSteemBlockNum,
-    updateNetworkBehindBlocks
+    getLatestSteemBlockNum
 }
 
 // Add new helper function for Steem sync initialization
@@ -1197,9 +1196,11 @@ const initSteemSync = (blockNum) => {
             } else {
                 lastProcessedSteemBlock = blockNum
             }
-
-            updateNetworkBehindBlocks(Math.max(0, latestBlock - lastProcessedSteemBlock))
-            logr.info(`Initial blocks behind: ${behindBlocks} (Steem head: ${latestBlock}, Last processed: ${lastProcessedSteemBlock})`)
+            if(!readyToReceiveTransactions)
+            {
+                updateNetworkBehindBlocks(Math.max(0, latestBlock - lastProcessedSteemBlock))
+                logr.info(`Initial blocks behind: ${behindBlocks} (Steem head: ${latestBlock}, Last processed: ${lastProcessedSteemBlock})`)
+            }
 
             // Set more frequent updates if we're behind
             if (behindBlocks > TARGET_BEHIND_BLOCKS) {
