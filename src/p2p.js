@@ -428,123 +428,178 @@ let p2p = {
                     logr.debug(`Received sync status from ${message.d.nodeId}: ${message.d.behindBlocks} blocks behind, isSyncing: ${message.d.isSyncing}`)
                     break
             }
-       
+
         })
-},
-    recover: () => {
-        if(!p2p.sockets || p2p.sockets.length === 0) return
-if (Object.keys(p2p.recoveredBlocks).length + p2p.recoveringBlocks.length > max_blocks_buffer) return
-if (!p2p.recovering) p2p.recovering = chain.getLatestBlock()._id
-
-let peersAhead = []
-for (let i = 0; i < p2p.sockets.length; i++)
-    if (p2p.sockets[i].node_status
-        && p2p.sockets[i].node_status.head_block > chain.getLatestBlock()._id
-        && p2p.sockets[i].node_status.origin_block === config.originHash)
-        peersAhead.push(p2p.sockets[i])
-
-if (peersAhead.length === 0) {
-    p2p.recovering = false
-    return
-}
-
-let champion = peersAhead[Math.floor(Math.random() * peersAhead.length)]
-if (p2p.recovering + 1 <= champion.node_status.head_block) {
-    p2p.recovering++
-    p2p.sendJSON(champion, { t: MessageType.QUERY_BLOCK, d: p2p.recovering })
-    p2p.recoveringBlocks.push(p2p.recovering)
-    logr.debug('query block #' + p2p.recovering + ' -- head block: ' + champion.node_status.head_block)
-    if (p2p.recovering % 2) p2p.recover()
-}
     },
-refresh: (force = false) => {
-    if (p2p.recovering && !force) return
-    for (let i = 0; i < p2p.sockets.length; i++)
-        if (p2p.sockets[i].node_status
-            && p2p.sockets[i].node_status.head_block > chain.getLatestBlock()._id + 10
-            && p2p.sockets[i].node_status.origin_block === config.originHash) {
-            logr.info('Catching up with network, head block: ' + p2p.sockets[i].node_status.head_block)
-            p2p.recovering = chain.getLatestBlock()._id
-            p2p.recover()
-            break
+    broadcastSyncStatus: (syncStatus) => {
+        // Broadcast steem sync status to all connected peers
+        if (!steem) return
+
+        // If syncStatus is a number, it's just the behindBlocks count
+        const status = typeof syncStatus === 'number' ? {
+            nodeId: p2p.nodeId.pub,
+            behindBlocks: syncStatus,
+            isSyncing: steem.isSyncing ? steem.isSyncing() : (syncStatus > 0),
+            timestamp: Date.now()
+        } : {
+            nodeId: p2p.nodeId.pub,
+            behindBlocks: syncStatus.behindBlocks,
+            isSyncing: syncStatus.isSyncing,
+            timestamp: Date.now(),
+            steemBlock: syncStatus.steemBlock,
+            blockId: syncStatus.blockId,
+            consensusBlocks: syncStatus.consensusBlocks,
+            isInWarmup: syncStatus.isInWarmup
         }
-},
+
+        p2p.broadcast({
+            t: MessageType.STEEM_SYNC_STATUS,
+            d: status
+        })
+
+        logr.info(`Broadcasting sync status: ${status.behindBlocks} blocks behind, Steem block: ${status.steemBlock || 'N/A'}, isSyncing: ${status.isSyncing}, blockId: ${status.blockId || 'N/A'}`)
+    },
+    getSyncStatus: async () => {
+        // Request sync status from peers
+        try {
+            const statuses = []
+
+            // If we have a steem module, add our status first
+            if (steem) {
+                statuses.push({
+                    nodeId: p2p.nodeId.pub,
+                    behindBlocks: steem.getBehindBlocks ? steem.getBehindBlocks() : 0,
+                    isSyncing: steem.isSyncing ? steem.isSyncing() : false
+                })
+            }
+
+            // Add statuses from connected peers that reported them
+            for (let i = 0; i < p2p.sockets.length; i++) {
+                if (p2p.sockets[i].steemSyncStatus) {
+                    statuses.push(p2p.sockets[i].steemSyncStatus)
+                }
+            }
+
+            return statuses
+        } catch (error) {
+            logr.error('Error getting sync status from peers:', error)
+            return []
+        }
+    },
+    recover: () => {
+        if (!p2p.sockets || p2p.sockets.length === 0) return
+        if (Object.keys(p2p.recoveredBlocks).length + p2p.recoveringBlocks.length > max_blocks_buffer) return
+        if (!p2p.recovering) p2p.recovering = chain.getLatestBlock()._id
+
+        let peersAhead = []
+        for (let i = 0; i < p2p.sockets.length; i++)
+            if (p2p.sockets[i].node_status
+                && p2p.sockets[i].node_status.head_block > chain.getLatestBlock()._id
+                && p2p.sockets[i].node_status.origin_block === config.originHash)
+                peersAhead.push(p2p.sockets[i])
+
+        if (peersAhead.length === 0) {
+            p2p.recovering = false
+            return
+        }
+
+        let champion = peersAhead[Math.floor(Math.random() * peersAhead.length)]
+        if (p2p.recovering + 1 <= champion.node_status.head_block) {
+            p2p.recovering++
+            p2p.sendJSON(champion, { t: MessageType.QUERY_BLOCK, d: p2p.recovering })
+            p2p.recoveringBlocks.push(p2p.recovering)
+            logr.debug('query block #' + p2p.recovering + ' -- head block: ' + champion.node_status.head_block)
+            if (p2p.recovering % 2) p2p.recover()
+        }
+    },
+    refresh: (force = false) => {
+        if (p2p.recovering && !force) return
+        for (let i = 0; i < p2p.sockets.length; i++)
+            if (p2p.sockets[i].node_status
+                && p2p.sockets[i].node_status.head_block > chain.getLatestBlock()._id + 10
+                && p2p.sockets[i].node_status.origin_block === config.originHash) {
+                logr.info('Catching up with network, head block: ' + p2p.sockets[i].node_status.head_block)
+                p2p.recovering = chain.getLatestBlock()._id
+                p2p.recover()
+                break
+            }
+    },
     errorHandler: (ws) => {
         ws.on('close', () => p2p.closeConnection(ws))
         ws.on('error', () => p2p.closeConnection(ws))
     },
-        closeConnection: (ws) => {
-            p2p.sockets.splice(p2p.sockets.indexOf(ws), 1)
-            logr.debug('a peer disconnected, ' + p2p.sockets.length + ' peers left')
-        },
-            sendJSON: (ws, d) => {
-                try {
-                    let data = JSON.stringify(d)
-                    // logr.debug('P2P-OUT:', d.t)
-                    ws.send(data)
-                } catch (error) {
-                    logr.warn('Tried sending p2p message and failed')
-                }
+    closeConnection: (ws) => {
+        p2p.sockets.splice(p2p.sockets.indexOf(ws), 1)
+        logr.debug('a peer disconnected, ' + p2p.sockets.length + ' peers left')
+    },
+    sendJSON: (ws, d) => {
+        try {
+            let data = JSON.stringify(d)
+            // logr.debug('P2P-OUT:', d.t)
+            ws.send(data)
+        } catch (error) {
+            logr.warn('Tried sending p2p message and failed')
+        }
 
-            },
-                broadcastNotSent: (d) => {
-                    firstLoop:
-                    for (let i = 0; i < p2p.sockets.length; i++) {
-                        if (!p2p.sockets[i].sentUs) {
-                            p2p.sendJSON(p2p.sockets[i], d)
-                            continue
-                        }
-                        for (let y = 0; y < p2p.sockets[i].sentUs.length; y++)
-                            if (p2p.sockets[i].sentUs[y][0] === d.s.s)
-                                continue firstLoop
-                        p2p.sendJSON(p2p.sockets[i], d)
-                    }
-                },
-                    broadcast: (d) => p2p.sockets.forEach(ws => p2p.sendJSON(ws, d)),
-                        broadcastBlock: (block) => {
-                            p2p.broadcast({ t: 4, d: block })
-                        },
-                            addRecursive: (block) => {
-                                chain.validateAndAddBlock(block, true, function (err, newBlock) {
-                                    if (err) {
-                                        // try another peer if bad block
-                                        cache.rollback()
-                                        dao.resetID()
-                                        daoMaster.resetID()
-                                        p2p.recoveredBlocks = []
-                                        p2p.recoveringBlocks = []
-                                        p2p.recoverAttempt++
-                                        if (p2p.recoverAttempt > max_recover_attempts)
-                                            logr.error('Error Replay', newBlock._id)
-                                        else {
-                                            logr.warn('Recover attempt #' + p2p.recoverAttempt + ' for block ' + newBlock._id)
-                                            p2p.recovering = chain.getLatestBlock()._id
-                                            p2p.recover()
-                                        }
-                                    } else {
-                                        p2p.recoverAttempt = 0
-                                        delete p2p.recoveredBlocks[newBlock._id]
-                                        p2p.recover()
-                                        if (p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
-                                            setTimeout(function () {
-                                                if (p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
-                                                    p2p.addRecursive(p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
-                                            }, 1)
-                                    }
-                                })
-                            },
-                                cleanRoundConfHistory: () => {
-                                    logr.trace('Cleaning old p2p messages history')
-                                    for (let i = 0; i < p2p.sockets.length; i++) {
-                                        if (!p2p.sockets[i].sentUs)
-                                            continue
-                                        for (let y = 0; y < p2p.sockets[i].sentUs.length; y++)
-                                            if (new Date().getTime() - p2p.sockets[i].sentUs[y][1] > keep_history_for) {
-                                                p2p.sockets[i].sentUs.splice(y, 1)
-                                                y--
-                                            }
-                                    }
-                                }
+    },
+    broadcastNotSent: (d) => {
+        firstLoop:
+        for (let i = 0; i < p2p.sockets.length; i++) {
+            if (!p2p.sockets[i].sentUs) {
+                p2p.sendJSON(p2p.sockets[i], d)
+                continue
+            }
+            for (let y = 0; y < p2p.sockets[i].sentUs.length; y++)
+                if (p2p.sockets[i].sentUs[y][0] === d.s.s)
+                    continue firstLoop
+            p2p.sendJSON(p2p.sockets[i], d)
+        }
+    },
+    broadcast: (d) => p2p.sockets.forEach(ws => p2p.sendJSON(ws, d)),
+    broadcastBlock: (block) => {
+        p2p.broadcast({ t: 4, d: block })
+    },
+    addRecursive: (block) => {
+        chain.validateAndAddBlock(block, true, function (err, newBlock) {
+            if (err) {
+                // try another peer if bad block
+                cache.rollback()
+                dao.resetID()
+                daoMaster.resetID()
+                p2p.recoveredBlocks = []
+                p2p.recoveringBlocks = []
+                p2p.recoverAttempt++
+                if (p2p.recoverAttempt > max_recover_attempts)
+                    logr.error('Error Replay', newBlock._id)
+                else {
+                    logr.warn('Recover attempt #' + p2p.recoverAttempt + ' for block ' + newBlock._id)
+                    p2p.recovering = chain.getLatestBlock()._id
+                    p2p.recover()
+                }
+            } else {
+                p2p.recoverAttempt = 0
+                delete p2p.recoveredBlocks[newBlock._id]
+                p2p.recover()
+                if (p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
+                    setTimeout(function () {
+                        if (p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
+                            p2p.addRecursive(p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
+                    }, 1)
+            }
+        })
+    },
+    cleanRoundConfHistory: () => {
+        logr.trace('Cleaning old p2p messages history')
+        for (let i = 0; i < p2p.sockets.length; i++) {
+            if (!p2p.sockets[i].sentUs)
+                continue
+            for (let y = 0; y < p2p.sockets[i].sentUs.length; y++)
+                if (new Date().getTime() - p2p.sockets[i].sentUs[y][1] > keep_history_for) {
+                    p2p.sockets[i].sentUs.splice(y, 1)
+                    y--
+                }
+        }
+    }
 }
 
 module.exports = p2p
