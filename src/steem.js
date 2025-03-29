@@ -293,7 +293,7 @@ const processBlock = async (blockNum) => {
                     // Cache the block
                     blockCache.set(blockNum, steemBlock)
                     // Limit cache size
-                    if (blockCache.size > MAX_PREFETCH_BLOCKS * 2) {
+                    if (blockCache.size > MAX_PREFETCH_BLOCKS * 10) {
                         // Delete oldest entries (approximate LRU)
                         const keysToDelete = Array.from(blockCache.keys()).slice(0, MAX_PREFETCH_BLOCKS)
                         keysToDelete.forEach(key => blockCache.delete(key))
