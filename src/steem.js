@@ -270,7 +270,7 @@ const prefetchBlocks = async () => {
 
 // Function declarations
 const processBlock = async (blockNum) => {
-    if (!p2p.recovering && !isInSyncMode()) {
+    if (p2p.recovering && !isInSyncMode()) {
         logr.debug('Skipping Steem block processing - node not ready to receive transactions yet')
         return Promise.resolve()
     }
