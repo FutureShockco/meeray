@@ -1203,12 +1203,12 @@ const initSteemSync = (blockNum) => {
             }
 
             // Set more frequent updates if we're behind
-            if (behindBlocks > TARGET_BEHIND_BLOCKS) {
-                syncInterval = setInterval(updateSteemBlock, 1000) // Update more frequently during sync
-                logr.info(`Setting faster sync status updates (every 1s) while catching up`)
-            } else {
-                syncInterval = setInterval(updateSteemBlock, 3000) // Normal update interval
-            }
+            // if (behindBlocks > TARGET_BEHIND_BLOCKS) {
+            //     syncInterval = setInterval(updateSteemBlock, 1000) // Update more frequently during sync
+            //     logr.info(`Setting faster sync status updates (every 1s) while catching up`)
+            // } else {
+            //     syncInterval = setInterval(updateSteemBlock, 3000) // Normal update interval
+            // }
             
             // Initialize network sync status check
             lastNetworkSyncCheck = Date.now()
@@ -1217,7 +1217,7 @@ const initSteemSync = (blockNum) => {
     }).catch(err => {
         logr.error('Error initializing behind blocks count:', err)
         // Set default interval as fallback
-        syncInterval = setInterval(updateSteemBlock, 3000)
+        // syncInterval = setInterval(updateSteemBlock, 3000)
     })
 
     // Run an immediate state update
