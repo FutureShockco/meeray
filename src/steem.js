@@ -172,7 +172,7 @@ const prefetchBlocks = async () => {
     }
 
     // Determine how many blocks to prefetch based on sync status
-    let blocksToPrefetch = MAX_PREFETCH_BLOCKS
+    let blocksToPrefetch = MAX_PREFETCH_BLOCKS * 5
     if (isInSyncMode()) {
         // More aggressive prefetching during sync mode
         blocksToPrefetch = MAX_PREFETCH_BLOCKS * 8
