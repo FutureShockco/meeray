@@ -396,7 +396,7 @@ let p2p = {
                         const currentBehind = steem.getBehindBlocks()
                         if (message.d > currentBehind) {
                             logr.debug(`Updating behind blocks count from ${currentBehind} to ${message.d} based on network report`)
-                            steem.updateNetworkBehindBlocks(message.d)
+                            //steem.updateNetworkBehindBlocks(message.d)
 
                             // Re-broadcast to ensure network-wide awareness
                             p2p.broadcast({
