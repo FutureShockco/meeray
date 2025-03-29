@@ -95,9 +95,7 @@ let chain = {
         
         // Add a small buffer to ensure the block is not too early for other nodes
         // Use a larger buffer during sync mode to accommodate faster block production
-        const maxDriftValue = (steem.isSyncing() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 10000))
-            ? config.syncMaxDrift 
-            : config.maxDrift
+
         const bufferTime = (steem.isSyncing() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 10000)) 
             ? (nextIndex <= 10 ? 80 : 50)  // Larger buffer in sync mode
             : (nextIndex <= 10 ? 50 : 25)  // Standard buffer in normal mode
@@ -361,8 +359,8 @@ let chain = {
             
             // More lenient performance check during sync mode
             if (steem.isSyncing()) {
-                // During sync, only skip if extremely slow (less than 10% of block time)
-                if (mineInMs < blockTime / 10) {
+                // During sync, only skip if extremely slow (less than 20% of block time)
+                if (mineInMs < blockTime / 20) {
                     logr.warn('Extremely slow performance during sync, skipping block')
                     return
                 }
@@ -413,7 +411,7 @@ let chain = {
                 if (latestSteemBlock) {
                     const behindBlocks = Math.max(0, latestSteemBlock - block.steemblock)
                     // Always update and broadcast if we're in sync mode or if there's a significant change
-                    if (steem.isSyncing() || behindBlocks > 1) {
+                    if (behindBlocks > 2) {
                         steem.updateNetworkBehindBlocks(behindBlocks)
                         logr.info(`Updated behind blocks count: ${behindBlocks} (Steem: ${latestSteemBlock}, Local: ${block.steemblock})`)
                         

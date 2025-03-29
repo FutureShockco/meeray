@@ -8,16 +8,15 @@ cache = require('./cache.js')
 validate = require('./validate')
 eco = require('./economics.js')
 rankings = require('./rankings.js')
+steem = require('./steem.js')
+
 consensus = require('./consensus')
 leaderStats = require('./leaderStats')
-steem = require('./steem.js')
-dao = require('./dao')
-daoMaster = require('./daoMaster')
-blocks = require('./blocks')
-mongo = require('./mongo')
-http = require('./http')
-
-
+const dao = require('./dao')
+const daoMaster = require('./daoMaster')
+const blocks = require('./blocks')
+const mongo = require('./mongo')
+const http = require('./http')
 
 // verify node version
 const allowNodeV = [14, 16, 18, 20]
@@ -39,10 +38,10 @@ mongo.init(async function(state) {
     await cache.warmup('accounts', parseInt(process.env.WARMUP_ACCOUNTS))
     logr.info(Object.keys(cache.accounts).length+' acccounts loaded in RAM in '+(new Date().getTime()-timeStart)+' ms')
     
-    // Warmup tokens
+    // Warmup contents
     timeStart = new Date().getTime()
-    await cache.warmup('tokens', parseInt(process.env.WARMUP_TOKENS))
-    logr.info(Object.keys(cache.tokens).length+' tokens loaded in RAM in '+(new Date().getTime()-timeStart)+' ms')
+    await cache.warmup('contents', parseInt(process.env.WARMUP_CONTENTS))
+    logr.info(Object.keys(cache.contents).length+' contents loaded in RAM in '+(new Date().getTime()-timeStart)+' ms')
     
     // Warmup leaders
     timeStart = new Date().getTime()
@@ -162,9 +161,6 @@ function startDaemon() {
     setInterval(function() {
         transaction.cleanPool()
     }, blockTime*0.9)
-
-    
-    logr.info('🚀 Node startup complete - ready to process transactions and mine blocks')
 }
 
 process.on('SIGINT', function() {
@@ -177,7 +173,7 @@ process.on('SIGINT', function() {
     setInterval(() => {
         blocks.close()
         if (cache.writerQueue.queue.length === 0 && !cache.writerQueue.processing) {
-            logr.info('Echelon exitted safely')
+            logr.info('Avalon exitted safely')
             process.exit(0)
         }
     },1000)

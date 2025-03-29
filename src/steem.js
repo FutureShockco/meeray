@@ -1082,10 +1082,6 @@ module.exports = {
         return currentSteemBlock
     },
     isSyncing: () => {
-        // Check if we're forced into sync mode by a recent block
-        if (chain && chain.getLatestBlock() && chain.getLatestBlock()._id < forceSyncUntilBlock) {
-            return true
-        }
         return isSyncing
     },
     getBehindBlocks: () => {
