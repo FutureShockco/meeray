@@ -521,7 +521,7 @@ let chain = {
                 logr.warn('Exiting sync mode - chain fully caught up')
                 if (p2p && p2p.sockets && p2p.sockets.length > 0) {
                     p2p.broadcastSyncStatus({
-                        behindBlocks: behindBlocks,
+                        behindBlocks: steem.getBehindBlocks(),
                         steemBlock: block.steemblock,
                         isSyncing: steem.isInSyncMode(),
                         blockId: block._id,
@@ -740,7 +740,7 @@ let chain = {
         // Check Steem block
         if (newBlock.steemblock !== previousBlock.steemblock + 1) {
             chain.lastValidationError = 'invalid steem block'
-            logr.error('invalid steem block')
+            logr.error('invalid steem block', previousBlock.steemblock )
             cb(false)
             return
         }

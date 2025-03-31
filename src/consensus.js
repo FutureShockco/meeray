@@ -132,7 +132,10 @@ let consensus = {
                     logr.cons('block '+possBlock.block._id+'#'+possBlock.block.hash.substr(0,4)+' got finalized')
 
                 chain.validateAndAddBlock(possBlock.block, false, function(err) {
-                    if (err) throw err
+                    if (err){
+                        logr.error(err)
+                        throw err
+                    } 
 
                     // clean up old possible blocks
                     let newPossBlocks = []
