@@ -641,24 +641,6 @@ const calculateNetworkBehindBlocksConsensus = () => {
     return null
 }
 
-// Modify updateSteemBlock to include warmup period and consensus
-const updateSteemBlock = async () => {
-    if (!steem || !steem.isSyncing || !steem.isSyncing()) return
-
-    steem.getLatestSteemBlockNum().then(latestSteemBlock => {
-        if (!latestSteemBlock) return
-
-        const currentBlock = chain.getLatestBlock()
-        if (!currentBlock) return
-
-        const behindBlocks = Math.max(0, latestSteemBlock - currentBlock._id)
-        //steem.updateNetworkBehindBlocks(behindBlocks)
-
-        logr.debug(`Updated Steem block state: ${behindBlocks} blocks behind, Steem block: ${latestSteemBlock}, current block: ${currentBlock._id}`)
-    }).catch(error => {
-        logr.error('Error updating Steem block state:', error)
-    })
-}
 
 // Health monitoring
 const checkApiHealth = async () => {
@@ -1193,13 +1175,7 @@ const initSteemSync = (blockNum) => {
         // syncInterval = setInterval(updateSteemBlock, 3000)
     })
 
-    // Run an immediate state update
-    updateSteemBlock().then(() => {
-        // Start prefetching immediately
-        prefetchBlocks()
-    }).catch(err => {
-        logr.error('Error during initial Steem state update:', err)
-    })
+
 
     logr.info('Steem subsystem initialized at block', blockNum)
 }

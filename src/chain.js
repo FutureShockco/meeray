@@ -516,7 +516,7 @@ let chain = {
 
             // Check if we should exit sync mode - only when fully caught up
             if (steem.isInSyncMode() &&
-                steem.getBehindBlocks() === 0) {
+                steem.getBehindBlocks() <= config.steemBlockDelay) {
                 steem.exitSyncMode()
                 logr.info('Exiting sync mode - chain fully caught up')
             }
@@ -764,7 +764,7 @@ let chain = {
 
         // Skip timestamp checks in any of these conditions:
         // 1. Node is recovering (p2p.recovering)
-        // 2. Node is in sync mode (steem.isSyncing())
+        // 2. Node is in sync mode (steem.isInSyncMode())
         // 3. Node is an observer
         const isCatchingUp = p2p.recovering || steem.isInSyncMode() ||
             (consensus && consensus.observer === true)
@@ -795,7 +795,7 @@ let chain = {
                 logr.debug(`Using extended timestamp drift buffer (${maxDriftBuffer}ms) for block ${newBlock._id}`)
             }
 
-            const blockTime = (steem && steem.isSyncing && steem.isSyncing()) ? config.syncBlockTime : config.blockTime
+            const blockTime = (steem.isInSyncMode()) ? config.syncBlockTime : config.blockTime
             const expectedTime = previousBlock.timestamp + (minerPriority * blockTime)
 
             if (newBlock.timestamp < expectedTime - maxDriftBuffer) {

@@ -439,7 +439,7 @@ let p2p = {
         const status = typeof syncStatus === 'number' ? {
             nodeId: p2p.nodeId.pub,
             behindBlocks: syncStatus,
-            isSyncing: steem.isSyncing ? steem.isSyncing() : (syncStatus > 0),
+            isSyncing: steem.isSyncing ? steem.isInSyncMode() : (syncStatus > 0),
             timestamp: Date.now()
         } : {
             nodeId: p2p.nodeId.pub,
@@ -469,7 +469,7 @@ let p2p = {
                 statuses.push({
                     nodeId: p2p.nodeId.pub,
                     behindBlocks: steem.getBehindBlocks ? steem.getBehindBlocks() : 0,
-                    isSyncing: steem.isSyncing ? steem.isSyncing() : false
+                    isSyncing: steem.isSyncing ? steem.isInSyncMode() : false
                 })
             }
 
