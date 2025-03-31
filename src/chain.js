@@ -523,7 +523,7 @@ let chain = {
                     logr.error('Error updating behind blocks count:', error)
                 }
             }
-            if (block._id % 5 === 0) {
+            if (block._id % 5 === 0 && !p2p.recovering) {
                 steem.prefetchBlocks(block.steemblock)
             }
 
