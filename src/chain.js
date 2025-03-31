@@ -484,7 +484,7 @@ let chain = {
                 chain.lastRebuildOutput = currentOutTime
             }
             // Update behindBlocks count every 5 blocks
-            if (!p2p.recovering && steem && block._id % 5 === 0) {
+            if (!p2p.recovering && block._id % 5 === 0) {
                 try {
                     const latestSteemBlock = await steem.getLatestSteemBlockNum()
                     if (latestSteemBlock) {

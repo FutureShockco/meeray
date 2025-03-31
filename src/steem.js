@@ -142,6 +142,7 @@ const updateNetworkBehindBlocks = (newValue) => {
                 p2p.broadcastSyncStatus(behindBlocks)
             }
         }
+        
     }
 }
 
@@ -812,6 +813,7 @@ const getLatestSteemBlockNum = async () => {
 
 function exitSyncMode() {
     // Do nothing - sync mode exit is handled in updateSteemBlock
+    lastSyncExitTime = new Date().getTime()
     isSyncing = false
     logr.debug('Sync mode exit requested')
 }
