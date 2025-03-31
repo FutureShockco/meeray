@@ -339,7 +339,7 @@ let chain = {
 
         let mineInMs = null
         // Get the appropriate block time based on sync state
-        let blockTime = (steem.isInSyncMode() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 1500))
+        let blockTime = (steem.isInSyncMode() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 1500 && new Date().getTime() - steem.lastSyncExitTime > 0))
             ? config.syncBlockTime
             : config.blockTime
 
