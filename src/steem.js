@@ -142,7 +142,7 @@ const updateNetworkBehindBlocks = (newValue) => {
                 p2p.broadcastSyncStatus(behindBlocks)
             }
         }
-        else {
+        else if(isSyncing && behindBlocks < TARGET_BEHIND_BLOCKS) {
             lastSyncExitTime = new Date().getTime()
             isSyncing = false
         }
