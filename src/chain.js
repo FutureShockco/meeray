@@ -88,7 +88,7 @@ let chain = {
         }
 
         // Calculate timestamp with proper padding to ensure it passes validation
-        const blockTime = (steem.isInSyncMode() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 10000))
+        const blockTime = (steem.isInSyncMode() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 1500))
             ? config.syncBlockTime
             : config.blockTime
         const minimumTimestamp = previousBlock.timestamp + (minerPriority * blockTime)
@@ -96,7 +96,7 @@ let chain = {
         // Add a small buffer to ensure the block is not too early for other nodes
         // Use a larger buffer during sync mode to accommodate faster block production
 
-        const bufferTime = (steem.isInSyncMode() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 10000))
+        const bufferTime = (steem.isInSyncMode() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 1500))
             ? (nextIndex <= 10 ? 80 : 50)  // Larger buffer in sync mode
             : (nextIndex <= 10 ? 50 : 25)  // Standard buffer in normal mode
 
@@ -339,7 +339,7 @@ let chain = {
 
         let mineInMs = null
         // Get the appropriate block time based on sync state
-        let blockTime = (steem.isInSyncMode() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 10000))
+        let blockTime = (steem.isInSyncMode() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 1500))
             ? config.syncBlockTime
             : config.blockTime
 
@@ -793,15 +793,15 @@ let chain = {
             const isNearHead = Math.abs(newBlock._id - latestBlock._id) < 10
 
             // Recently exited sync mode (within last 2 minutes)
-            const recentlySynced = steem && steem.lastSyncExitTime &&
-                (currentTime - steem.lastSyncExitTime < 120000)
+            const recentlySynced = steem.lastSyncExitTime &&
+                (currentTime - steem.lastSyncExitTime < 1500)
 
             // Determine if we need extended buffer
             if (isNearHead || recentlySynced || chain.recoveryAttempts > 0) {
                 maxDriftBuffer = config.maxDrift * 3
                 logr.debug(`Using extended timestamp drift buffer (${maxDriftBuffer}ms) for block ${newBlock._id}`)
             }
-
+            console.log(steem.isInSyncMode())
             const blockTime = (steem.isInSyncMode()) ? config.syncBlockTime : config.blockTime
             const expectedTime = previousBlock.timestamp + (minerPriority * blockTime)
 
@@ -864,12 +864,12 @@ let chain = {
                 return
             }
 
-            if (newBlock.timestamp > currentTime + maxDriftBuffer) {
-                chain.lastValidationError = 'block too late'
-                logr.error(`Block too late. Current time: ${currentTime}, Block time: ${newBlock.timestamp}, Difference: ${newBlock.timestamp - currentTime}ms`)
-                cb(false)
-                return
-            }
+            // if (newBlock.timestamp > currentTime + maxDriftBuffer) {
+            //     chain.lastValidationError = 'block too late'
+            //     logr.error(`Block too late. Current time: ${currentTime}, Block time: ${newBlock.timestamp}, Difference: ${newBlock.timestamp - currentTime}ms`)
+            //     cb(false)
+            //     return
+            // }
 
             // Reset recovery counter on successful validation
             if (chain.recoveryAttempts > 0) {

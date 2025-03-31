@@ -143,7 +143,7 @@ const updateNetworkBehindBlocks = (newValue) => {
             }
         }
         else if(isSyncing && behindBlocks < TARGET_BEHIND_BLOCKS) {
-            lastSyncExitTime = new Date().getTime()
+            lastSyncExitTime = new Date().getTime() 
             isSyncing = false
         }
     }
