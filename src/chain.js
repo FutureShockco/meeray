@@ -490,10 +490,25 @@ let chain = {
                     if (latestSteemBlock) {
                         const behindBlocks = Math.max(0, latestSteemBlock - block.steemblock)
                         // Always update and broadcast if we're in sync mode or if there's a significant change
-                        if (behindBlocks > 2) {
+                        if (behindBlocks > config.steemBlockDelay) {
                             steem.updateNetworkBehindBlocks(behindBlocks)
                             logr.info(`Updated behind blocks count: ${behindBlocks} (Steem: ${latestSteemBlock}, Local: ${block.steemblock})`)
 
+                            if (p2p && p2p.sockets && p2p.sockets.length > 0) {
+                                p2p.broadcastSyncStatus({
+                                    behindBlocks: behindBlocks,
+                                    steemBlock: block.steemblock,
+                                    isSyncing: steem.isInSyncMode(),
+                                    blockId: block._id,
+                                    consensusBlocks: behindBlocks // Add consensus blocks to broadcast
+                                })
+                            }
+                        }
+                        else if (steem.isInSyncMode() &&  // Check if we should exit sync mode - only when fully caught up
+                            steem.getBehindBlocks() <= config.steemBlockDelay) {
+                            steem.exitSyncMode()
+                            steem.updateNetworkBehindBlocks(steem.getBehindBlocks())
+                            logr.warn('Exiting sync mode - chain fully caught up')
                             if (p2p && p2p.sockets && p2p.sockets.length > 0) {
                                 p2p.broadcastSyncStatus({
                                     behindBlocks: behindBlocks,
@@ -512,24 +527,7 @@ let chain = {
             if (block._id % 5 === 0) {
                 steem.prefetchBlocks(block.steemblock)
             }
-            console.log(steem.isInSyncMode(), steem.getBehindBlocks(), config.steemBlockDelay)
 
-            // Check if we should exit sync mode - only when fully caught up
-            if (steem.isInSyncMode() &&
-                steem.getBehindBlocks() <= config.steemBlockDelay) {
-                steem.exitSyncMode()
-                steem.updateNetworkBehindBlocks(steem.getBehindBlocks())
-                logr.warn('Exiting sync mode - chain fully caught up')
-                if (p2p && p2p.sockets && p2p.sockets.length > 0) {
-                    p2p.broadcastSyncStatus({
-                        behindBlocks: steem.getBehindBlocks(),
-                        steemBlock: block.steemblock,
-                        isSyncing: steem.isInSyncMode(),
-                        blockId: block._id,
-                        consensusBlocks: steem.getBehindBlocks() // Add consensus blocks to broadcast
-                    })
-                }
-            }
 
             logr.info(output)
             chain.nextOutput = {
@@ -741,7 +739,7 @@ let chain = {
         // Check Steem block
         if (newBlock.steemblock !== previousBlock.steemblock + 1) {
             chain.lastValidationError = 'invalid steem block'
-            logr.error('invalid steem block', previousBlock.steemblock )
+            logr.error('invalid steem block', previousBlock.steemblock)
             cb(false)
             return
         }
