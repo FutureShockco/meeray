@@ -518,6 +518,7 @@ let chain = {
             if (steem.isInSyncMode() &&
                 steem.getBehindBlocks() <= config.steemBlockDelay) {
                 steem.exitSyncMode()
+                steem.updateNetworkBehindBlocks(steem.getBehindBlocks())
                 logr.warn('Exiting sync mode - chain fully caught up')
                 if (p2p && p2p.sockets && p2p.sockets.length > 0) {
                     p2p.broadcastSyncStatus({
