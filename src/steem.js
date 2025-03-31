@@ -176,8 +176,10 @@ const prefetchBlocks = async (blockNum) => {
 
     // Additional prefetching when we're very far behind
     const localBehindBlocks = latestSteemBlock - currentBlock
-    console.log('we are behind', localBehindBlocks)
-    if (localBehindBlocks > TARGET_BEHIND_BLOCKS && localBehindBlocks > MAX_PREFETCH_BLOCKS) {
+    if (localBehindBlocks > TARGET_BEHIND_BLOCKS)
+        console.log('we are behind', localBehindBlocks)
+
+    if (localBehindBlocks > MAX_PREFETCH_BLOCKS) {
         blocksToPrefetch = MAX_PREFETCH_BLOCKS
         logr.debug(`Very far behind (${localBehindBlocks} blocks) - aggressive prefetching ${blocksToPrefetch} blocks`)
     }
@@ -249,7 +251,7 @@ const prefetchBlocks = async (blockNum) => {
         }
     } finally {
         prefetchInProgress = false
-        console.log( `finish prefetch for ${blockCache.size}`)
+        console.log(`finish prefetch for ${blockCache.size}`)
         // Schedule next prefetch more aggressively if we're far behind
         // if (prefetchTimer) clearTimeout(prefetchTimer)
 
