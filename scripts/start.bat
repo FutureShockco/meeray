@@ -26,12 +26,12 @@ setx WARN_SLOW_VALID "5"
 setx WARN_SLOW_EXEC "5"
 
 :: trace / perf / econ / cons / debug / info / warn
-setx LOG_LEVEL "info"
+setx LOG_LEVEL "debug"
+
+setx CONFIRM_REPLAY "1"
 
 :: groups blocks during replay output to lower screen spam
 setx REPLAY_OUTPUT "100"
-
-setx RESET_CHAIN "1"
 
 :: Rebuild chain state from dump, verifying every block and transactions
 :: Do not forget to comment this out after rebuild
@@ -39,7 +39,7 @@ setx RESET_CHAIN "1"
 ::setx REBUILD_RESUME_BLK=
 
 :: default peers to connect with on startup
-setx PEERS ""
+setx PEERS "ws://46.101.207.232:6001,ws://167.99.222.168:6001,ws://170.64.143.57:6001,ws://159.223.66.172:6001"
 setx MAX_PEERS "20"
 
 :: your user and keys (only useful for active node owners)
