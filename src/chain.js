@@ -447,7 +447,7 @@ let chain = {
             output += '  steem block: ' + block.steemblock
 
             // Add sync status information
-            if (steem.isInSyncMode() && steem.getBehindBlocks) {
+            if (steem.isInSyncMode() && steem.getBehindBlocks() > config.steemBlockDelay) {
                 output += '  sync: ' + (steem.isInSyncMode() ? 'YES' : 'NO')
                 const behind = steem.getBehindBlocks()
                 if (behind > 0) {
@@ -512,12 +512,13 @@ let chain = {
             if (block._id % 5 === 0) {
                 steem.prefetchBlocks(block.steemblock)
             }
+            console.log(steem.isInSyncMode(), steem.getBehindBlocks(), config.steemBlockDelay)
 
             // Check if we should exit sync mode - only when fully caught up
             if (steem.isInSyncMode() &&
                 steem.getBehindBlocks() <= config.steemBlockDelay) {
                 steem.exitSyncMode()
-                logr.info('Exiting sync mode - chain fully caught up')
+                logr.warn('Exiting sync mode - chain fully caught up')
                 if (p2p && p2p.sockets && p2p.sockets.length > 0) {
                     p2p.broadcastSyncStatus({
                         behindBlocks: behindBlocks,

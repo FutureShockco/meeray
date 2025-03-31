@@ -417,13 +417,12 @@ let p2p = {
                     p2p.sockets[p2p.sockets.indexOf(ws)].steemSyncStatus = message.d
 
                     // Update our steem module if available
-                    if (steem && steem.receivePeerSyncStatus) {
-                        steem.receivePeerSyncStatus(message.d.nodeId, {
-                            behindBlocks: message.d.behindBlocks,
-                            isSyncing: message.d.isSyncing,
-                            timestamp: message.d.timestamp || Date.now()
-                        })
-                    }
+                    steem.receivePeerSyncStatus(message.d.nodeId, {
+                        behindBlocks: message.d.behindBlocks,
+                        isSyncing: message.d.isSyncing,
+                        timestamp: message.d.timestamp || Date.now()
+                    })
+
 
                     logr.debug(`Received sync status from ${message.d.nodeId}: ${message.d.behindBlocks} blocks behind, isSyncing: ${message.d.isSyncing}`)
                     break

@@ -176,8 +176,6 @@ const prefetchBlocks = async (blockNum) => {
 
     // Additional prefetching when we're very far behind
     const localBehindBlocks = latestSteemBlock - currentBlock
-    if (localBehindBlocks > TARGET_BEHIND_BLOCKS)
-        console.log('we are behind', localBehindBlocks)
 
     if (localBehindBlocks > MAX_PREFETCH_BLOCKS) {
         blocksToPrefetch = MAX_PREFETCH_BLOCKS
@@ -1051,7 +1049,7 @@ module.exports = {
         return behindBlocks
     },
     updateNetworkBehindBlocks,
-    receivePeerSyncStatus: receivePeerSyncStatus,
+    receivePeerSyncStatus,
     getSyncStatus: getSyncStatus,
     isOnSteemBlock: (block) => {
         return new Promise(async (resolve, reject) => {
