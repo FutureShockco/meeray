@@ -53,11 +53,9 @@ const switchToNextEndpoint = () => {
 const transaction = require('./transaction.js')
 const Transaction = require('./transactions')
 
-let nextSteemBlock = config.steemStartBlock || 0
 let currentSteemBlock = 0
 let processingBlocks = []
 let isSyncing = false
-let forceSyncUntilBlock = 0  // Force sync mode until this block height
 let syncInterval = null
 let behindBlocks = 0
 const MAX_CONSECUTIVE_ERRORS = 20
@@ -69,11 +67,9 @@ const PREFETCH_BLOCKS = 1  // Maximum number of blocks to prefetch at once
 const MAX_PREFETCH_BLOCKS = 10  // Maximum number of blocks to prefetch at once
 
 const TARGET_BEHIND_BLOCKS = 2  // Target number of blocks to stay behind Steem
-const MAX_BEHIND_BLOCKS = 10     // Maximum blocks behind before entering sync mode
-const SYNC_EXIT_COOLDOWN = 6000 // Cooldown before exiting sync mode
 const SYNC_EXIT_THRESHOLD = 3   // Exit sync when we're at most this many blocks behind
-const SYNC_BROADCAST_MODULO = 3 // Only broadcast sync status every N sidechain blocks
 
+let exitCount = 0
 let consecutiveErrors = 0
 let retryDelay = MIN_RETRY_DELAY
 let circuitBreakerOpen = false
@@ -145,6 +141,8 @@ const updateNetworkBehindBlocks = (newValue) => {
         else if(isSyncing && behindBlocks < TARGET_BEHIND_BLOCKS) {
             lastSyncExitTime = new Date().getTime() 
             isSyncing = false
+            exitCount++
+            log.debug(`Exited sync ${exitCount} times`)
         }
     }
 }
@@ -174,7 +172,6 @@ const prefetchBlocks = async (blockNum) => {
         logr.warn(`Could not fetch latest steem block`)
         return
     }
-    console.log(currentBlock)
     // Determine how many blocks to prefetch based on sync status
     let blocksToPrefetch = PREFETCH_BLOCKS
 
@@ -253,7 +250,6 @@ const prefetchBlocks = async (blockNum) => {
         }
     } finally {
         prefetchInProgress = false
-        console.log(`finish prefetch for ${blockCache.size}`)
         // Schedule next prefetch more aggressively if we're far behind
         // if (prefetchTimer) clearTimeout(prefetchTimer)
 

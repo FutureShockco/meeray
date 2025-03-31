@@ -3,28 +3,24 @@ module.exports = {
     validate: (tx, ts, legitUser, cb) => {
         // Validate required fields
         if (!tx.data.payload) {
-            console.log('Missing contract payload')
             cb(false, 'missing contract payload')
             return
         }       
 
         const payload = tx.data.payload
         if (!payload.symbol || !payload.amount || !payload.to) {
-            console.log('Missing required fields:', { symbol: payload.symbol, amount: payload.amount, to: payload.to })
-            cb(false, 'missing required fields')
+            cb(false, 'missing required fields', { symbol: payload.symbol, amount: payload.amount, to: payload.to })
             return
         }
 
         // Validate amount
         if (!validate.integer(payload.amount, false, false)) {
-            console.log('Invalid amount:', payload.amount)
             cb(false, 'invalid amount')
             return
         }
 
         // Validate recipient
         if (!validate.string(payload.to, config.accountMaxLength, config.accountMinLength)) {
-            console.log('Invalid recipient:', payload.to)
             cb(false, 'invalid recipient')
             return
         }
@@ -32,24 +28,20 @@ module.exports = {
         // Check if token exists and validate creator
         cache.findOne('tokens', {symbol: payload.symbol}, function(err, token) {
             if (err) {
-                console.error('Database error finding token:', err)
                 cb(false, 'database error')
                 return
             }
             if (!token) {
-                console.log('Token does not exist:', payload.symbol)
                 cb(false, 'token does not exist')
                 return
             }
             if (token.creator !== tx.sender) {
-                console.log('Invalid token creator. Expected:', token.creator, 'Got:', tx.sender)
                 cb(false, 'only token creator can mint')
                 return
             }
 
             // Check if minting would exceed maxSupply
             if (token.currentSupply + parseInt(payload.amount) > token.maxSupply) {
-                console.log('Mint would exceed max supply. Current:', token.currentSupply, 'Max:', token.maxSupply, 'Requested:', payload.amount)
                 cb(false, 'mint would exceed max supply')
                 return
             }

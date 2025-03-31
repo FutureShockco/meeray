@@ -801,7 +801,6 @@ let chain = {
                 maxDriftBuffer = config.maxDrift * 3
                 logr.debug(`Using extended timestamp drift buffer (${maxDriftBuffer}ms) for block ${newBlock._id}`)
             }
-            console.log(steem.isInSyncMode())
             const blockTime = (steem.isInSyncMode()) ? config.syncBlockTime : config.blockTime
             const expectedTime = previousBlock.timestamp + (minerPriority * blockTime)
 
