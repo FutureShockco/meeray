@@ -392,7 +392,7 @@ let p2p = {
                     }
 
                     // If another node is reporting larger behind blocks count, update our value
-                    if (steem && steem.getBehindBlocks && typeof message.d === 'number') {
+                    if (!p2p.recovering && steem && steem.getBehindBlocks && typeof message.d === 'number') {
                         const currentBehind = steem.getBehindBlocks()
                         if (message.d > currentBehind) {
                             logr.debug(`Updating behind blocks count from ${currentBehind} to ${message.d} based on network report`)
@@ -417,6 +417,7 @@ let p2p = {
                     p2p.sockets[p2p.sockets.indexOf(ws)].steemSyncStatus = message.d
 
                     // Update our steem module if available
+                    if(!p2p.recovering)
                     steem.receivePeerSyncStatus(message.d.nodeId, {
                         behindBlocks: message.d.behindBlocks,
                         isSyncing: message.d.isSyncing,
