@@ -526,7 +526,7 @@ let chain = {
                         steemBlock: block.steemblock,
                         isSyncing: steem.isInSyncMode(),
                         blockId: block._id,
-                        consensusBlocks: behindBlocks // Add consensus blocks to broadcast
+                        consensusBlocks: steem.getBehindBlocks() // Add consensus blocks to broadcast
                     })
                 }
             }
