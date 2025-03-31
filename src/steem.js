@@ -142,7 +142,7 @@ const updateNetworkBehindBlocks = (newValue) => {
             lastSyncExitTime = new Date().getTime() 
             isSyncing = false
             exitCount++
-            log.debug(`Exited sync ${exitCount} times`)
+            logr.debug(`Exited sync ${exitCount} times`)
         }
     }
 }
