@@ -814,7 +814,8 @@ const getLatestSteemBlockNum = async () => {
 
 function exitSyncMode() {
     // Do nothing - sync mode exit is handled in updateSteemBlock
-    logr.debug('Sync mode exit requested but ignored - handled by updateSteemBlock')
+    isSyncing = false
+    logr.debug('Sync mode exit requested')
 }
 
 // Add this new function to check network sync status
