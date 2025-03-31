@@ -494,7 +494,6 @@ let chain = {
                             steem.updateNetworkBehindBlocks(behindBlocks)
                             logr.info(`Updated behind blocks count: ${behindBlocks} (Steem: ${latestSteemBlock}, Local: ${block.steemblock})`)
 
-                            // Always broadcast sync status to peers
                             if (p2p && p2p.sockets && p2p.sockets.length > 0) {
                                 p2p.broadcastSyncStatus({
                                     behindBlocks: behindBlocks,
@@ -519,6 +518,15 @@ let chain = {
                 steem.getBehindBlocks() <= config.steemBlockDelay) {
                 steem.exitSyncMode()
                 logr.info('Exiting sync mode - chain fully caught up')
+                if (p2p && p2p.sockets && p2p.sockets.length > 0) {
+                    p2p.broadcastSyncStatus({
+                        behindBlocks: behindBlocks,
+                        steemBlock: block.steemblock,
+                        isSyncing: steem.isInSyncMode(),
+                        blockId: block._id,
+                        consensusBlocks: behindBlocks // Add consensus blocks to broadcast
+                    })
+                }
             }
 
             logr.info(output)
