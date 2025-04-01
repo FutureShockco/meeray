@@ -797,10 +797,10 @@ let chain = {
                 (currentTime - steem.lastSyncExitTime < 1500)
 
             // Determine if we need extended buffer
-            if (isNearHead || recentlySynced || chain.recoveryAttempts > 0) {
-                maxDriftBuffer = config.maxDrift * 3
-                logr.debug(`Using extended timestamp drift buffer (${maxDriftBuffer}ms) for block ${newBlock._id}`)
-            }
+            // if (isNearHead || recentlySynced || chain.recoveryAttempts > 0) {
+            //     maxDriftBuffer = config.maxDrift * 3
+            //     logr.debug(`Using extended timestamp drift buffer (${maxDriftBuffer}ms) for block ${newBlock._id}`)
+            // }
             const blockTime = (steem.isInSyncMode()) ? config.syncBlockTime : config.blockTime
             const expectedTime = previousBlock.timestamp + (minerPriority * blockTime)
 
