@@ -26,7 +26,7 @@ setx WARN_SLOW_VALID "5"
 setx WARN_SLOW_EXEC "5"
 
 :: trace / perf / econ / cons / debug / info / warn
-setx LOG_LEVEL "debug"
+setx LOG_LEVEL "trace"
 
 setx CONFIRM_REPLAY "1"
 
