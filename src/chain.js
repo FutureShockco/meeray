@@ -88,7 +88,7 @@ let chain = {
         }
 
         // Calculate timestamp with proper padding to ensure it passes validation
-        const blockTime = (steem.isInSyncMode() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 1500))
+        const blockTime = (steem.isInSyncMode())
             ? config.syncBlockTime
             : config.blockTime
         const minimumTimestamp = previousBlock.timestamp + (minerPriority * blockTime)
@@ -96,7 +96,7 @@ let chain = {
         // Add a small buffer to ensure the block is not too early for other nodes
         // Use a larger buffer during sync mode to accommodate faster block production
 
-        const bufferTime = (steem.isInSyncMode() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 1500))
+        const bufferTime = (steem.isInSyncMode())
             ? (nextIndex <= 10 ? 80 : 50)  // Larger buffer in sync mode
             : (nextIndex <= 10 ? 50 : 25)  // Standard buffer in normal mode
 
