@@ -363,9 +363,30 @@ let chain = {
             }
 
         if (mineInMs) {
-            mineInMs -= (new Date().getTime() - block.timestamp)
-            mineInMs += 20
-            logr.debug('Trying to mine in ' + mineInMs + 'ms' + ' (sync: ' + steem.isInSyncMode() + ')')
+            // Calculate time since last block, accounting for possible clock drift
+            const currentTime = new Date().getTime()
+            const timeSinceLastBlock = currentTime - block.timestamp
+            
+            // Adjust mining time - add a small buffer to ensure we mine on time
+            mineInMs -= timeSinceLastBlock
+            
+            // Add a small buffer to avoid clock differences causing delays
+            mineInMs += 10
+            
+            // Never mine earlier than 100ms before scheduled time
+            if (mineInMs < 100) {
+                mineInMs = 100
+                logr.debug('Adjusted mineInMs to minimum 100ms to avoid too early mining')
+            }
+            
+            // Never mine late - if we're already beyond when we should mine, mine immediately
+            if (mineInMs < 0) {
+                mineInMs = 10
+                logr.warn(`Mining time already passed, mining immediately`)
+            }
+            
+            logr.debug('Trying to mine in ' + mineInMs + 'ms' + ' (sync: ' + steem.isInSyncMode() + 
+                '), time since last block: ' + timeSinceLastBlock + 'ms')
             consensus.observer = false
 
             // More lenient performance check during sync mode
@@ -376,8 +397,14 @@ let chain = {
                     return
                 }
             } else {
-                // Normal mode - use standard performance check
-                if (mineInMs < blockTime / 3) {
+                // Normal mode - use standard performance check, but be more lenient
+                // after sync transition to avoid network stopping
+                if (steem.lastSyncExitTime && (currentTime - steem.lastSyncExitTime < 120000)) {
+                    // More lenient after sync exit
+                    if (mineInMs < blockTime / 5) {
+                        logr.warn('Post-sync performance issue detected, continuing to mine but logging')
+                    }
+                } else if (mineInMs < blockTime / 3) {
                     logr.warn('Slow performance detected, will not try to mine next block')
                     return
                 }
@@ -842,6 +869,29 @@ let chain = {
 
                 // For recently synced nodes, be more lenient
                 if (recentlySynced) {
+                    // For the first 30 seconds after sync exit, accept all blocks regardless of timestamp
+                    // to ensure network stability during the transition period
+                    if (currentTime - steem.lastSyncExitTime < 30000) {
+                        logr.warn(`Very recent sync exit (within 30s) - accepting early block ${newBlock._id} despite timestamp drift of ${expectedTime - newBlock.timestamp}ms`)
+                        chain.lastValidationError = null
+
+                        // Validate transactions and signature if needed
+                        if (!skipSteem) {
+                            chain.isValidHashAndSignature(newBlock, function (isValid) {
+                                if (!isValid) {
+                                    chain.lastValidationError = 'invalid hash or signature'
+                                    cb(false)
+                                    return
+                                }
+                                chain.isValidBlockTxs(newBlock, cb)
+                            })
+                        } else {
+                            chain.isValidBlockTxs(newBlock, cb)
+                        }
+                        return
+                    }
+                    
+                    // Otherwise use standard recently synced leniency
                     logr.warn(`Recently synced node accepting early block despite timestamp drift: ${expectedTime - newBlock.timestamp}ms`)
                     chain.lastValidationError = null
 
