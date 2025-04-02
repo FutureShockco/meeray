@@ -907,13 +907,13 @@ const getLatestSteemBlockNum = async () => {
     }
 }
 
-function exitSyncMode() {
-    // Reset sync exit target
-    syncExitTargetBlock = null
-    lastSyncExitTime = new Date().getTime()
-    isSyncing = false
-    logr.debug('Sync mode exit requested')
-}
+// function exitSyncMode() {
+//     // Reset sync exit target
+//     syncExitTargetBlock = null
+//     lastSyncExitTime = new Date().getTime()
+//     isSyncing = false
+//     logr.debug('Sync mode exit requested')
+// }
 
 // Add this new function to check network sync status
 const checkNetworkSyncStatus = async () => {
@@ -1173,7 +1173,6 @@ module.exports = {
     receivePeerSyncStatus,
     getSyncStatus: getSyncStatus,
     shouldExitSyncMode,
-    exitSyncMode,
     getSyncExitTarget: () => syncExitTargetBlock,
     isOnSteemBlock: (block) => {
         return new Promise(async (resolve, reject) => {
