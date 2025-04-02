@@ -534,7 +534,7 @@ let chain = {
                     const latestSteemBlock = await steem.getLatestSteemBlockNum()
                     if (latestSteemBlock) {
                         const behindBlocks = Math.max(0, latestSteemBlock - block.steemblock)
-                        logr.debug(`Behind blocks count: ${behindBlocks} (Steem: ${latestSteemBlock}, Local: ${block.steemblock})`)
+                        output += ` (Steem: ${latestSteemBlock}, Local: ${block.steemblock})`;
                         // Always update and broadcast if we're in sync mode or if there's a significant change
                         if (behindBlocks > config.steemBlockDelay) {
                             steem.updateNetworkBehindBlocks(behindBlocks)
@@ -552,7 +552,7 @@ let chain = {
                             }
                         }
                         // Check if we're very close to or at Steem head and should immediately exit sync
-                        else if (steem.isInSyncMode() && behindBlocks <= 1) {
+                        else if (steem.isInSyncMode() && behindBlocks <= 2) {
                             // Almost caught up or at head - update and consider immediate exit
                             steem.updateNetworkBehindBlocks(behindBlocks)
                             
