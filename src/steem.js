@@ -811,7 +811,6 @@ const getLatestSteemBlockNum = async () => {
 }
 
 function exitSyncMode() {
-    // Do nothing - sync mode exit is handled in updateSteemBlock
     lastSyncExitTime = new Date().getTime()
     isSyncing = false
     logr.debug('Sync mode exit requested')
@@ -1153,19 +1152,7 @@ const initSteemSync = (blockNum) => {
             } else {
                 lastProcessedSteemBlock = blockNum
             }
-            // if(!readyToReceiveTransactions)
-            // {
-            //     updateNetworkBehindBlocks(Math.max(0, latestBlock - lastProcessedSteemBlock))
-            //     logr.info(`Initial blocks behind: ${behindBlocks} (Steem head: ${latestBlock}, Last processed: ${lastProcessedSteemBlock})`)
-            // }
 
-            // Set more frequent updates if we're behind
-            // if (behindBlocks > TARGET_BEHIND_BLOCKS) {
-            //     syncInterval = setInterval(updateSteemBlock, 1000) // Update more frequently during sync
-            //     logr.info(`Setting faster sync status updates (every 1s) while catching up`)
-            // } else {
-            //     syncInterval = setInterval(updateSteemBlock, 3000) // Normal update interval
-            // }
 
             // Initialize network sync status check
             lastNetworkSyncCheck = Date.now()
@@ -1173,8 +1160,7 @@ const initSteemSync = (blockNum) => {
         }
     }).catch(err => {
         logr.error('Error initializing behind blocks count:', err)
-        // Set default interval as fallback
-        // syncInterval = setInterval(updateSteemBlock, 3000)
+
     })
 
 
