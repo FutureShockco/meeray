@@ -43,6 +43,7 @@ let chain = {
     recoveryAttempts: 0,
     maxRecoveryAttempts: 3,
     lastValidationError: null,
+    latestSteemBlock: null,
     behindBlocks: 5,
     totalPostSyncBehind: 0,
     postSyncBehindCount: 0,
@@ -112,21 +113,23 @@ let chain = {
         logr.debug(`Preparing block with timestamp ${nextTimestamp}, min: ${minimumTimestamp}, priority: ${minerPriority}`)
 
         let nextSteemBlock = previousBlock.steemblock + 1
-
+        if (!chain.latestSteemBlock) {
+            chain.latestSteemBlock = nextSteemBlock
+        }
         // Process Steem block first to get its transactions in the mempool
         steem.processBlock(nextSteemBlock).then((transactions) => {
             if (!transactions) {
                 // Handle the case where the Steem block doesn't exist yet
                 if (steem.getBehindBlocks() <= 0) {
                     logr.warn(`Cannot prepare block - Steem block ${nextSteemBlock} not found, but we're caught up with Steem head. Retrying in 1 second...`)
-                    
+
                     // If we're at the head of Steem, wait a bit and let the caller retry
                     setTimeout(() => {
                         cb(true, null)
                     }, 1000)
                     return
                 }
-                
+
                 logr.warn(`Cannot prepare block - Steem block ${nextSteemBlock} not found`)
                 cb(true, null)
                 return
@@ -354,10 +357,10 @@ let chain = {
 
         let mineInMs = null
         // Get the appropriate block time based on sync state
-        let blockTime = steem.isInSyncMode() 
-            ? config.syncBlockTime 
+        let blockTime = steem.isInSyncMode()
+            ? config.syncBlockTime
             : config.blockTime
-        
+
         // Log which block time we're using for clarity
         if (steem.isInSyncMode()) {
             logr.debug(`Using sync block time: ${blockTime}ms`)
@@ -381,26 +384,26 @@ let chain = {
             // Calculate time since last block, accounting for possible clock drift
             const currentTime = new Date().getTime()
             const timeSinceLastBlock = currentTime - block.timestamp
-            
+
             // Adjust mining time - add a small buffer to ensure we mine on time
             mineInMs -= timeSinceLastBlock
-            
+
             // Add a small buffer to avoid clock differences causing delays
             mineInMs += 10
-            
+
             // Never mine earlier than 100ms before scheduled time
             if (mineInMs < 100) {
                 mineInMs = 100
                 logr.debug('Adjusted mineInMs to minimum 100ms to avoid too early mining')
             }
-            
+
             // Never mine late - if we're already beyond when we should mine, mine immediately
             if (mineInMs < 0) {
                 mineInMs = 10
                 logr.warn(`Mining time already passed, mining immediately`)
             }
-            
-            logr.debug('Trying to mine in ' + mineInMs + 'ms' + ' (sync: ' + steem.isInSyncMode() + 
+
+            logr.debug('Trying to mine in ' + mineInMs + 'ms' + ' (sync: ' + steem.isInSyncMode() +
                 '), time since last block: ' + timeSinceLastBlock + 'ms')
             consensus.observer = false
 
@@ -535,28 +538,26 @@ let chain = {
             // Update behindBlocks count every 5 blocks
             if (!p2p.recovering && block._id % 5 === 0) {
                 try {
-                    const latestSteemBlock = await steem.getLatestSteemBlockNum()
-                    if (latestSteemBlock) {
-                        chain.behindBlocks = Math.max(0, latestSteemBlock - block.steemblock)
-                        output += ` (Sidechain block delay: ${latestSteemBlock - block.steemblock})`;
-                        
+                    chain.latestSteemBlock = await steem.getLatestSteemBlockNum()
+                    if (chain.latestSteemBlock) {
+                        chain.behindBlocks = Math.max(0, chain.latestSteemBlock - block.steemblock)
+                        output += ` (Sidechain block delay: ${chain.latestSteemBlock - block.steemblock})`;
+
                         // Track post-sync averages when not in sync mode
-                        if (!steem.isInSyncMode() && steem.lastSyncExitTime) {
+                        if (!steem.isInSyncMode()) {
                             // Only track within a reasonable time after sync exit (15 minutes)
-                            const timeSinceSync = new Date().getTime() - steem.lastSyncExitTime
-                            if (timeSinceSync < 900000) { // 15 minutes in ms
-                                chain.totalPostSyncBehind += chain.behindBlocks
-                                chain.postSyncBehindCount++
-                                chain.avgPostSyncBehind = chain.totalPostSyncBehind / chain.postSyncBehindCount
-                                
-                                output += ` [Avg post-sync: ${chain.avgPostSyncBehind.toFixed(1)} blocks]`;
-                            }
+                            chain.totalPostSyncBehind += chain.behindBlocks
+                            chain.postSyncBehindCount++
+                            chain.avgPostSyncBehind = chain.totalPostSyncBehind / chain.postSyncBehindCount
+
+                            output += ` [Avg post-sync: ${chain.avgPostSyncBehind} blocks]`;
+
                         }
-                        
+
                         // Always update and broadcast if we're in sync mode or if there's a significant change
                         if (chain.behindBlocks > config.steemBlockDelay) {
                             steem.updateNetworkBehindBlocks(chain.behindBlocks)
-                            logr.info(`Updated behind blocks count: ${chain.behindBlocks} (Steem: ${latestSteemBlock}, Local: ${block.steemblock})`)
+                            logr.info(`Updated behind blocks count: ${chain.behindBlocks} (Steem: ${chain.latestSteemBlock}, Local: ${block.steemblock})`)
 
                             if (p2p && p2p.sockets && p2p.sockets.length > 0) {
                                 p2p.broadcastSyncStatus({
@@ -573,7 +574,7 @@ let chain = {
                         else if (steem.isInSyncMode() && chain.behindBlocks <= 2) {
                             // Almost caught up or at head - update and consider immediate exit
                             steem.updateNetworkBehindBlocks(chain.behindBlocks)
-                            
+
                             // If we're right at head or our exit target is far away, trigger exit now
                             const exitTarget = steem.getSyncExitTarget()
                             if (chain.behindBlocks === 0 || (exitTarget && exitTarget > block._id + 3)) {
@@ -867,18 +868,18 @@ let chain = {
             // Recently exited sync mode - extend to 120 seconds (2 minutes)
             const recentlySynced = steem.lastSyncExitTime &&
                 (currentTime - steem.lastSyncExitTime < 120000)
-                
+
             // Check if this is the first few blocks after a coordinated exit
-            const isPostCoordinatedExit = steem.lastSyncExitTime && 
+            const isPostCoordinatedExit = steem.lastSyncExitTime &&
                 (currentTime - steem.lastSyncExitTime < 30000); // Extra relaxed for first 30 seconds
-            
+
             // Determine if we need extended buffer
             if (isNearHead || recentlySynced || chain.recoveryAttempts > 0 || isPostCoordinatedExit) {
                 // Use even larger buffer for post-coordinated exit
                 maxDriftBuffer = isPostCoordinatedExit ? config.maxDrift * 10 : config.maxDrift * 5
                 logr.debug(`Using extended timestamp drift buffer (${maxDriftBuffer}ms) for block ${newBlock._id}: recentlySynced=${recentlySynced}, isNearHead=${isNearHead}, recoveryAttempts=${chain.recoveryAttempts}, isPostCoordinatedExit=${isPostCoordinatedExit}`)
             }
-            
+
             // Always use normal block time after exiting sync
             const blockTime = (steem.isInSyncMode()) ? config.syncBlockTime : config.blockTime
             const expectedTime = previousBlock.timestamp + (minerPriority * blockTime)
@@ -932,7 +933,7 @@ let chain = {
                         }
                         return
                     }
-                    
+
                     // Otherwise use standard recently synced leniency
                     logr.warn(`Recently synced node accepting early block despite timestamp drift: ${expectedTime - newBlock.timestamp}ms`)
                     chain.lastValidationError = null
