@@ -157,10 +157,16 @@ const updateNetworkBehindBlocks = (newValue) => {
             
             // Only set an exit target if we haven't set one yet
             if (!syncExitTargetBlock) {
-                // Schedule exit at current block + remaining behind blocks + 1 buffer block
-                syncExitTargetBlock = latestBlock._id + behindBlocks + 1
-                
-                logr.info(`Scheduling sync exit at block ${syncExitTargetBlock} (current: ${latestBlock._id}, ${behindBlocks} blocks behind)`)
+                // If we're very close to head (0-1 blocks behind), exit at the very next block
+                if (behindBlocks <= 1) {
+                    syncExitTargetBlock = latestBlock._id + 1
+                    logr.info(`Very close to Steem head! Scheduling immediate sync exit at next block ${syncExitTargetBlock}`)
+                } else {
+                    // For larger gaps, use a more conservative target that allows time to catch up
+                    // Schedule exit at current block + remaining behind blocks (no extra buffer)
+                    syncExitTargetBlock = latestBlock._id + behindBlocks
+                    logr.info(`Scheduling sync exit at block ${syncExitTargetBlock} (current: ${latestBlock._id}, ${behindBlocks} blocks behind)`)
+                }
                 
                 // Broadcast our sync exit target to help coordinate other nodes
                 if (p2p && p2p.sockets && p2p.sockets.length > 0) {
@@ -172,6 +178,26 @@ const updateNetworkBehindBlocks = (newValue) => {
                         consensusBlocks: behindBlocks,
                         exitTarget: syncExitTargetBlock
                     })
+                }
+            } else {
+                // If we already have a target but we're closer than expected to head, adjust target
+                // This can happen if Steem slows down block production
+                if (behindBlocks <= 1 && syncExitTargetBlock > latestBlock._id + 2) {
+                    const oldTarget = syncExitTargetBlock
+                    syncExitTargetBlock = latestBlock._id + 1
+                    logr.info(`Adjusting exit target from ${oldTarget} to ${syncExitTargetBlock} - now very close to Steem head`)
+                    
+                    // Broadcast updated target
+                    if (p2p && p2p.sockets && p2p.sockets.length > 0) {
+                        p2p.broadcastSyncStatus({
+                            behindBlocks: behindBlocks,
+                            steemBlock: latestBlock.steemblock,
+                            isSyncing: true,
+                            blockId: latestBlock._id,
+                            consensusBlocks: behindBlocks,
+                            exitTarget: syncExitTargetBlock
+                        })
+                    }
                 }
             }
         }
@@ -212,6 +238,13 @@ const shouldExitSyncMode = (currentBlockId) => {
     // If we have a target exit block and have reached it
     if (syncExitTargetBlock && currentBlockId >= syncExitTargetBlock) {
         logr.info(`Exiting sync mode at target block ${currentBlockId} (target was ${syncExitTargetBlock})`)
+        return true
+    }
+    
+    // Special case: if we're right at Steem head (behindBlocks = 0) and our target is too far away,
+    // we should exit now regardless of target to avoid trying to process non-existent blocks
+    if (behindBlocks === 0 && syncExitTargetBlock && syncExitTargetBlock > currentBlockId + 2) {
+        logr.info(`At Steem head with behindBlocks=0, exiting sync now at block ${currentBlockId} instead of waiting for ${syncExitTargetBlock}`)
         return true
     }
     

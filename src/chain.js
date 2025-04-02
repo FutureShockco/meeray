@@ -112,6 +112,17 @@ let chain = {
         // Process Steem block first to get its transactions in the mempool
         steem.processBlock(nextSteemBlock).then((transactions) => {
             if (!transactions) {
+                // Handle the case where the Steem block doesn't exist yet
+                if (steem.getBehindBlocks() <= 0) {
+                    logr.warn(`Cannot prepare block - Steem block ${nextSteemBlock} not found, but we're caught up with Steem head. Retrying in 1 second...`)
+                    
+                    // If we're at the head of Steem, wait a bit and let the caller retry
+                    setTimeout(() => {
+                        cb(true, null)
+                    }, 1000)
+                    return
+                }
+                
                 logr.warn(`Cannot prepare block - Steem block ${nextSteemBlock} not found`)
                 cb(true, null)
                 return
@@ -537,6 +548,18 @@ let chain = {
                                     consensusBlocks: behindBlocks, // Add consensus blocks to broadcast
                                     exitTarget: steem.getSyncExitTarget()
                                 })
+                            }
+                        }
+                        // Check if we're very close to or at Steem head and should immediately exit sync
+                        else if (steem.isInSyncMode() && behindBlocks <= 1) {
+                            // Almost caught up or at head - update and consider immediate exit
+                            steem.updateNetworkBehindBlocks(behindBlocks)
+                            
+                            // If we're right at head or our exit target is far away, trigger exit now
+                            const exitTarget = steem.getSyncExitTarget()
+                            if (behindBlocks === 0 || (exitTarget && exitTarget > block._id + 3)) {
+                                logr.warn(`Very close to Steem head (${behindBlocks} blocks behind) - exiting sync now at block ${block._id}`)
+                                steem.exitSyncMode(block._id, block.steemblock)
                             }
                         }
                         // Check if we should update our exit target when almost caught up
