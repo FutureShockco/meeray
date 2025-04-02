@@ -513,7 +513,7 @@ let chain = {
                             }
                         }
                         // Check if we should update our exit target when almost caught up
-                        else if (steem.isInSyncMode() && behindBlocks <= SYNC_EXIT_THRESHOLD) {
+                        else if (steem.isInSyncMode() && behindBlocks <= config.steemBlockDelay) {
                             // Update the behind blocks - this will also schedule exit if needed
                             steem.updateNetworkBehindBlocks(behindBlocks)
                         }
