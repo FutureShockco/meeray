@@ -534,6 +534,7 @@ let chain = {
                     const latestSteemBlock = await steem.getLatestSteemBlockNum()
                     if (latestSteemBlock) {
                         const behindBlocks = Math.max(0, latestSteemBlock - block.steemblock)
+                        logr.debug(`Behind blocks count: ${behindBlocks} (Steem: ${latestSteemBlock}, Local: ${block.steemblock})`)
                         // Always update and broadcast if we're in sync mode or if there's a significant change
                         if (behindBlocks > config.steemBlockDelay) {
                             steem.updateNetworkBehindBlocks(behindBlocks)
