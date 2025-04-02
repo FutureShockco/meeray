@@ -535,8 +535,8 @@ let chain = {
                 output += '  Performance: ' + Math.floor(replay_output / (currentOutTime - chain.lastRebuildOutput) * 1000) + 'b/s'
                 chain.lastRebuildOutput = currentOutTime
             }
-            // Update behindBlocks count every 5 blocks
-            if (!p2p.recovering && block._id % 5 === 0) {
+            // Update behindBlocks count every 6 blocks
+            if (!p2p.recovering && block._id % 6 === 0 || (steem.isInSyncMode() && block._id % 3 === 0)) {
                 try {
                     chain.latestSteemBlock = await steem.getLatestSteemBlockNum()
                     if (chain.latestSteemBlock) {
