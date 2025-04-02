@@ -43,6 +43,7 @@ let chain = {
     recoveryAttempts: 0,
     maxRecoveryAttempts: 3,
     lastValidationError: null,
+    behindBlocks: 5,
     getNewKeyPair: () => {
         let privKey, pubKey
         do {
@@ -494,9 +495,9 @@ let chain = {
             // Add sync status information
             if (steem.isInSyncMode() && steem.getBehindBlocks() > config.steemBlockDelay) {
                 output += '  sync: ' + (steem.isInSyncMode() ? 'YES' : 'NO')
-                const behind = steem.getBehindBlocks()
-                if (behind > 0) {
-                    output += ' (' + behind + ' blocks behind)'
+                chain.behindBlocks = steem.getBehindBlocks()
+                if (chain.behindBlocks > 0) {
+                    output += ' (' + chain.behindBlocks + ' blocks behind)'
 
                     // Add estimated time to completion based on:
                     // - Processing 1 block/second in sync mode
@@ -508,7 +509,7 @@ let chain = {
 
                     // Only calculate if we're actually catching up
                     if (netCatchupRate > 0) {
-                        const secondsToSync = Math.ceil(behind / netCatchupRate);
+                        const secondsToSync = Math.ceil(chain.behindBlocks / netCatchupRate);
                         const minutesToSync = Math.ceil(secondsToSync / 60);
 
                         if (minutesToSync < 60) {
@@ -533,40 +534,40 @@ let chain = {
                 try {
                     const latestSteemBlock = await steem.getLatestSteemBlockNum()
                     if (latestSteemBlock) {
-                        const behindBlocks = Math.max(0, latestSteemBlock - block.steemblock)
+                        chain.behindBlocks = Math.max(0, latestSteemBlock - block.steemblock)
                         output += ` (Sidechain block delay: ${latestSteemBlock - block.steemblock})`;
                         // Always update and broadcast if we're in sync mode or if there's a significant change
-                        if (behindBlocks > config.steemBlockDelay) {
-                            steem.updateNetworkBehindBlocks(behindBlocks)
-                            logr.info(`Updated behind blocks count: ${behindBlocks} (Steem: ${latestSteemBlock}, Local: ${block.steemblock})`)
+                        if (chain.behindBlocks > config.steemBlockDelay) {
+                            steem.updateNetworkBehindBlocks(chain.behindBlocks)
+                            logr.info(`Updated behind blocks count: ${chain.behindBlocks} (Steem: ${latestSteemBlock}, Local: ${block.steemblock})`)
 
                             if (p2p && p2p.sockets && p2p.sockets.length > 0) {
                                 p2p.broadcastSyncStatus({
-                                    behindBlocks: behindBlocks,
+                                    behindBlocks: chain.behindBlocks,
                                     steemBlock: block.steemblock,
                                     isSyncing: steem.isInSyncMode(),
                                     blockId: block._id,
-                                    consensusBlocks: behindBlocks, // Add consensus blocks to broadcast
+                                    consensusBlocks: chain.behindBlocks, // Add consensus blocks to broadcast
                                     exitTarget: steem.getSyncExitTarget()
                                 })
                             }
                         }
                         // Check if we're very close to or at Steem head and should immediately exit sync
-                        else if (steem.isInSyncMode() && behindBlocks <= 2) {
+                        else if (steem.isInSyncMode() && chain.behindBlocks <= 2) {
                             // Almost caught up or at head - update and consider immediate exit
-                            steem.updateNetworkBehindBlocks(behindBlocks)
+                            steem.updateNetworkBehindBlocks(chain.behindBlocks)
                             
                             // If we're right at head or our exit target is far away, trigger exit now
                             const exitTarget = steem.getSyncExitTarget()
-                            if (behindBlocks === 0 || (exitTarget && exitTarget > block._id + 3)) {
-                                logr.warn(`Very close to Steem head (${behindBlocks} blocks behind) - exiting sync now at block ${block._id}`)
+                            if (chain.behindBlocks === 0 || (exitTarget && exitTarget > block._id + 3)) {
+                                logr.warn(`Very close to Steem head (${chain.behindBlocks} blocks behind) - exiting sync now at block ${block._id}`)
                                 steem.exitSyncMode(block._id, block.steemblock)
                             }
                         }
                         // Check if we should update our exit target when almost caught up
-                        else if (steem.isInSyncMode() && behindBlocks <= config.steemBlockDelay) {
+                        else if (steem.isInSyncMode() && chain.behindBlocks <= config.steemBlockDelay) {
                             // Update the behind blocks - this will also schedule exit if needed
-                            steem.updateNetworkBehindBlocks(behindBlocks)
+                            steem.updateNetworkBehindBlocks(chain.behindBlocks)
                         }
                         // Check if we should exit sync mode at this block
                         if (steem.isInSyncMode() && steem.shouldExitSyncMode(block._id)) {
