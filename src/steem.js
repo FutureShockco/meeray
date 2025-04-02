@@ -66,7 +66,6 @@ const CIRCUIT_BREAKER_RESET_TIMEOUT = 30000
 const PREFETCH_BLOCKS = 1  // Maximum number of blocks to prefetch at once
 const MAX_PREFETCH_BLOCKS = 10  // Maximum number of blocks to prefetch at once
 
-const TARGET_BEHIND_BLOCKS = 2  // Target number of blocks to stay behind Steem
 const SYNC_EXIT_THRESHOLD = 3   // Exit sync when we're at most this many blocks behind
 
 // Track when to exit sync mode
@@ -131,7 +130,7 @@ const updateNetworkBehindBlocks = (newValue) => {
         logr.debug(`Behind blocks updated: ${oldValue} -> ${newValue}`)
 
         // If we get an update that we're significantly behind, consider entering sync mode
-        if (behindBlocks >= TARGET_BEHIND_BLOCKS && !isSyncing) {
+        if (behindBlocks >= config.steemBlockDelay && !isSyncing) {
             logr.info(`Entering sync mode based on network report, ${behindBlocks} blocks behind`)
             isSyncing = true
             // Reset exit target when entering sync mode
@@ -190,7 +189,7 @@ const updateNetworkBehindBlocks = (newValue) => {
             } else {
                 // If we already have a target but we're closer than expected to head, adjust target
                 // This can happen if Steem slows down block production
-                if (behindBlocks <= 1 && syncExitTargetBlock > latestBlock._id + 2) {
+                if (behindBlocks <= config.steemBlockDelay && syncExitTargetBlock > latestBlock._id + config.steemBlockDelay) {
                     const oldTarget = syncExitTargetBlock
                     syncExitTargetBlock = latestBlock._id + 1
                     logr.info(`Adjusting exit target from ${oldTarget} to ${syncExitTargetBlock} - now very close to Steem head`)
@@ -251,7 +250,7 @@ const shouldExitSyncMode = (currentBlockId) => {
     
     // Special case: if we're right at Steem head (behindBlocks = 0) and our target is too far away,
     // we should exit now regardless of target to avoid trying to process non-existent blocks
-    if (behindBlocks === 0 && syncExitTargetBlock && syncExitTargetBlock > currentBlockId + 2) {
+    if (behindBlocks === 0 && syncExitTargetBlock && syncExitTargetBlock > currentBlockId + config.steemBlockDelay) {
         logr.info(`At Steem head with behindBlocks=0, exiting sync now at block ${currentBlockId} instead of waiting for ${syncExitTargetBlock}`)
         return true
     }
@@ -396,18 +395,6 @@ const prefetchBlocks = async (blockNum) => {
         }
     } finally {
         prefetchInProgress = false
-        // Schedule next prefetch more aggressively if we're far behind
-        // if (prefetchTimer) clearTimeout(prefetchTimer)
-
-        // let prefetchDelay = isInSyncMode() ? 1000 : 3000
-
-        // if (localBehindBlocks > MAX_BEHIND_BLOCKS && p2p.recovering) {
-        //     prefetchBlocks()
-        //     if (prefetchTimer) clearTimeout(prefetchTimer)
-        // }
-        // else {
-        //     prefetchTimer = setTimeout(prefetchBlocks, prefetchDelay)
-        // }
     }
 }
 
