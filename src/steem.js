@@ -321,12 +321,13 @@ const exitSyncMode = (blockId, steemBlockNum) => {
     syncExitTargetBlock = null
     
     // Reset post-sync tracking to start fresh
-    // if (chain) {
-    //     chain.totalPostSyncBehind = 0;
-    //     chain.postSyncBehindCount = 0;
-    //     chain.avgPostSyncBehind = 0;
-    //     logr.debug('Reset post-sync behind block tracking statistics for new measurements');
-    // }
+        
+    if (chain && exitCount > 0) {
+        chain.totalPostSyncBehind = 0;
+        chain.postSyncBehindCount = 0;
+        chain.avgPostSyncBehind = 0;
+        logr.debug('Reset post-sync behind block tracking statistics for new measurements');
+    }
     
     // Force a block retime for immediate normal block production
     const normalBlockTime = config.blockTime
