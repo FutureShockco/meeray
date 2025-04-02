@@ -365,7 +365,7 @@ let chain = {
         if (steem.isInSyncMode()) {
             logr.debug(`Using sync block time: ${blockTime}ms`)
         } else if (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 5000) {
-            logr.debug(`Recently exited sync mode, using normal block time: ${blockTime}ms`)
+            logr.warn(`Recently exited sync mode, using normal block time: ${blockTime}ms`)
         }
 
         // if we are the next scheduled witness, try to mine in time

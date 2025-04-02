@@ -994,14 +994,6 @@ const getLatestSteemBlockNum = async () => {
     }
 }
 
-// function exitSyncMode() {
-//     // Reset sync exit target
-//     syncExitTargetBlock = null
-//     lastSyncExitTime = new Date().getTime()
-//     isSyncing = false
-//     logr.debug('Sync mode exit requested')
-// }
-
 // Add this new function to check network sync status
 const checkNetworkSyncStatus = async () => {
     // Check if p2p exists and has connected sockets
@@ -1331,7 +1323,7 @@ module.exports = {
     prefetchBlocks,
     setReadyToReceiveTransactions,
     exitSyncMode,
-    lastSyncExitTime: lastSyncExitTime,
+    lastSyncExitTime,
     getNetworkSyncStatus: () => {
         // Return array of nodes and their sync status
         const result = []
