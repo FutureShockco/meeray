@@ -500,23 +500,19 @@ let chain = {
                                     steemBlock: block.steemblock,
                                     isSyncing: steem.isInSyncMode(),
                                     blockId: block._id,
-                                    consensusBlocks: behindBlocks // Add consensus blocks to broadcast
+                                    consensusBlocks: behindBlocks, // Add consensus blocks to broadcast
+                                    exitTarget: steem.getSyncExitTarget()
                                 })
                             }
                         }
-                        else if (steem.isInSyncMode()  // Check if we should exit sync mode - only when fully caught up
-                            ) {
+                        // Check if we should update our exit target when almost caught up
+                        else if (steem.isInSyncMode() && behindBlocks <= SYNC_EXIT_THRESHOLD) {
+                            // Update the behind blocks - this will also schedule exit if needed
                             steem.updateNetworkBehindBlocks(behindBlocks)
-                            logr.warn('Exiting sync mode - chain fully caught up')
-                            if (p2p && p2p.sockets && p2p.sockets.length > 0) {
-                                p2p.broadcastSyncStatus({
-                                    behindBlocks: behindBlocks,
-                                    steemBlock: block.steemblock,
-                                    isSyncing: false,
-                                    blockId: block._id,
-                                    consensusBlocks: behindBlocks // Add consensus blocks to broadcast
-                                })
-                            }
+                        }
+                        // Check if we should exit sync mode at this block
+                        if (steem.isInSyncMode() && steem.shouldExitSyncMode(block._id)) {
+                            steem.exitSyncMode(block._id, block.steemblock)
                         }
                     }
                 } catch (error) {
@@ -792,26 +788,52 @@ let chain = {
             const latestBlock = chain.getLatestBlock()
             const isNearHead = Math.abs(newBlock._id - latestBlock._id) < 10
 
-            // Recently exited sync mode (within last 2 minutes)
+            // Recently exited sync mode - extend to 120 seconds (2 minutes)
             const recentlySynced = steem.lastSyncExitTime &&
-                (currentTime - steem.lastSyncExitTime < 1500)
+                (currentTime - steem.lastSyncExitTime < 120000)
+                
+            // Check if this is the first few blocks after a coordinated exit
+            const isPostCoordinatedExit = steem.lastSyncExitTime && 
+                (currentTime - steem.lastSyncExitTime < 30000); // Extra relaxed for first 30 seconds
 
             // Determine if we need extended buffer
-            // if (isNearHead || recentlySynced || chain.recoveryAttempts > 0) {
-            //     maxDriftBuffer = config.maxDrift * 3
-            //     logr.debug(`Using extended timestamp drift buffer (${maxDriftBuffer}ms) for block ${newBlock._id}`)
-            // }
+            if (isNearHead || recentlySynced || chain.recoveryAttempts > 0 || isPostCoordinatedExit) {
+                // Use even larger buffer for post-coordinated exit
+                maxDriftBuffer = isPostCoordinatedExit ? config.maxDrift * 10 : config.maxDrift * 5
+                logr.debug(`Using extended timestamp drift buffer (${maxDriftBuffer}ms) for block ${newBlock._id}: recentlySynced=${recentlySynced}, isNearHead=${isNearHead}, recoveryAttempts=${chain.recoveryAttempts}, isPostCoordinatedExit=${isPostCoordinatedExit}`)
+            }
             const blockTime = (steem.isInSyncMode()) ? config.syncBlockTime : config.blockTime
             const expectedTime = previousBlock.timestamp + (minerPriority * blockTime)
 
             if (newBlock.timestamp < expectedTime - maxDriftBuffer) {
                 chain.lastValidationError = 'block too early'
-                logr.error(`Block too early for miner with priority #${minerPriority}. Current time: ${currentTime}, Expected time: ${expectedTime}, Block time: ${newBlock.timestamp}, Difference: ${expectedTime - newBlock.timestamp}ms, Mode: ${isCatchingUp ? 'sync' : 'normal'}`)
+                logr.error(`Block too early for miner with priority #${minerPriority}. Current time: ${currentTime}, Expected time: ${expectedTime}, Block time: ${newBlock.timestamp}, Difference: ${expectedTime - newBlock.timestamp}ms, Mode: ${isCatchingUp ? 'sync' : 'normal'}, Recent sync exit: ${recentlySynced ? 'yes' : 'no'}, DriftBuffer: ${maxDriftBuffer}ms`)
 
                 // For observer nodes and recovery situations, try to be more lenient
                 if (consensus && consensus.observer === true) {
                     logr.warn(`Observer node accepting early block despite timestamp drift`)
                     // Skip timestamp validation for observers
+                    chain.lastValidationError = null
+
+                    // Validate transactions and signature if needed
+                    if (!skipSteem) {
+                        chain.isValidHashAndSignature(newBlock, function (isValid) {
+                            if (!isValid) {
+                                chain.lastValidationError = 'invalid hash or signature'
+                                cb(false)
+                                return
+                            }
+                            chain.isValidBlockTxs(newBlock, cb)
+                        })
+                    } else {
+                        chain.isValidBlockTxs(newBlock, cb)
+                    }
+                    return
+                }
+
+                // For recently synced nodes, be more lenient
+                if (recentlySynced) {
+                    logr.warn(`Recently synced node accepting early block despite timestamp drift: ${expectedTime - newBlock.timestamp}ms`)
                     chain.lastValidationError = null
 
                     // Validate transactions and signature if needed
@@ -862,13 +884,6 @@ let chain = {
                 cb(false)
                 return
             }
-
-            // if (newBlock.timestamp > currentTime + maxDriftBuffer) {
-            //     chain.lastValidationError = 'block too late'
-            //     logr.error(`Block too late. Current time: ${currentTime}, Block time: ${newBlock.timestamp}, Difference: ${newBlock.timestamp - currentTime}ms`)
-            //     cb(false)
-            //     return
-            // }
 
             // Reset recovery counter on successful validation
             if (chain.recoveryAttempts > 0) {

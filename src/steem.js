@@ -69,6 +69,8 @@ const MAX_PREFETCH_BLOCKS = 10  // Maximum number of blocks to prefetch at once
 const TARGET_BEHIND_BLOCKS = 2  // Target number of blocks to stay behind Steem
 const SYNC_EXIT_THRESHOLD = 3   // Exit sync when we're at most this many blocks behind
 
+// Track when to exit sync mode
+let syncExitTargetBlock = null  // Target block to exit sync mode
 let exitCount = 0
 let consecutiveErrors = 0
 let retryDelay = MIN_RETRY_DELAY
@@ -132,17 +134,68 @@ const updateNetworkBehindBlocks = (newValue) => {
         if (behindBlocks >= TARGET_BEHIND_BLOCKS && !isSyncing) {
             logr.info(`Entering sync mode based on network report, ${behindBlocks} blocks behind`)
             isSyncing = true
+            // Reset exit target when entering sync mode
+            syncExitTargetBlock = null
 
             // Broadcast our sync mode change
             if (p2p && p2p.sockets && p2p.sockets.length > 0) {
-                p2p.broadcastSyncStatus(behindBlocks)
+                p2p.broadcastSyncStatus({
+                    behindBlocks: behindBlocks,
+                    isSyncing: true,
+                    blockId: chain?.getLatestBlock()?._id || 0,
+                    steemBlock: currentSteemBlock,
+                    consensusBlocks: behindBlocks,
+                    exitTarget: null // Clear any previous exit target
+                })
             }
         }
-        else if(isSyncing && behindBlocks < TARGET_BEHIND_BLOCKS) {
-            lastSyncExitTime = new Date().getTime() 
-            isSyncing = false
-            exitCount++
-            logr.debug(`Exited sync ${exitCount} times`)
+        // Check if we should schedule exit from sync mode
+        else if (isSyncing && behindBlocks <= SYNC_EXIT_THRESHOLD && behindBlocks > 0) {
+            // If almost caught up, schedule exit at a specific future block
+            const latestBlock = chain?.getLatestBlock()
+            if (!latestBlock) return
+            
+            // Only set an exit target if we haven't set one yet
+            if (!syncExitTargetBlock) {
+                // Schedule exit at current block + remaining behind blocks + 1 buffer block
+                syncExitTargetBlock = latestBlock._id + behindBlocks + 1
+                
+                logr.info(`Scheduling sync exit at block ${syncExitTargetBlock} (current: ${latestBlock._id}, ${behindBlocks} blocks behind)`)
+                
+                // Broadcast our sync exit target to help coordinate other nodes
+                if (p2p && p2p.sockets && p2p.sockets.length > 0) {
+                    p2p.broadcastSyncStatus({
+                        behindBlocks: behindBlocks,
+                        steemBlock: latestBlock.steemblock,
+                        isSyncing: true,
+                        blockId: latestBlock._id,
+                        consensusBlocks: behindBlocks,
+                        exitTarget: syncExitTargetBlock
+                    })
+                }
+            }
+        }
+        // If we're caught up completely, update the exit target to next block if not already set
+        else if (isSyncing && behindBlocks === 0 && !syncExitTargetBlock) {
+            const latestBlock = chain?.getLatestBlock()
+            if (!latestBlock) return
+            
+            // Target the next block for immediate exit
+            syncExitTargetBlock = latestBlock._id + 1
+            
+            logr.info(`Fully caught up! Scheduling immediate sync exit at block ${syncExitTargetBlock}`)
+            
+            // Broadcast our sync exit target
+            if (p2p && p2p.sockets && p2p.sockets.length > 0) {
+                p2p.broadcastSyncStatus({
+                    behindBlocks: 0,
+                    steemBlock: latestBlock.steemblock,
+                    isSyncing: true,
+                    blockId: latestBlock._id,
+                    consensusBlocks: 0,
+                    exitTarget: syncExitTargetBlock
+                })
+            }
         }
     }
 }
@@ -150,6 +203,46 @@ const updateNetworkBehindBlocks = (newValue) => {
 // Helper function to check sync status
 const isInSyncMode = () => {
     return isSyncing
+}
+
+// Helper to check if we should exit sync mode based on target block
+const shouldExitSyncMode = (currentBlockId) => {
+    if (!isSyncing) return false
+    
+    // If we have a target exit block and have reached it
+    if (syncExitTargetBlock && currentBlockId >= syncExitTargetBlock) {
+        logr.info(`Exiting sync mode at target block ${currentBlockId} (target was ${syncExitTargetBlock})`)
+        return true
+    }
+    
+    return false
+}
+
+// Function to actually exit sync mode
+const exitSyncMode = (blockId, steemBlockNum) => {
+    if (!isSyncing) return false
+    
+    lastSyncExitTime = new Date().getTime()
+    isSyncing = false
+    exitCount++
+    
+    // Reset exit target
+    syncExitTargetBlock = null
+    
+    // Broadcast our sync status change
+    if (p2p && p2p.sockets && p2p.sockets.length > 0) {
+        p2p.broadcastSyncStatus({
+            behindBlocks: 0,
+            steemBlock: steemBlockNum,
+            isSyncing: false,
+            blockId: blockId,
+            consensusBlocks: 0,
+            exitTarget: null
+        })
+    }
+    
+    logr.info(`Exited sync mode at block ${blockId} (exit #${exitCount})`)
+    return true
 }
 
 // Add a function to set readiness state
@@ -811,6 +904,8 @@ const getLatestSteemBlockNum = async () => {
 }
 
 function exitSyncMode() {
+    // Reset sync exit target
+    syncExitTargetBlock = null
     lastSyncExitTime = new Date().getTime()
     isSyncing = false
     logr.debug('Sync mode exit requested')
@@ -835,7 +930,8 @@ const checkNetworkSyncStatus = async () => {
                         timestamp: Date.now(),
                         blockId: status.blockId,
                         consensusBlocks: status.consensusBlocks,
-                        isInWarmup: status.isInWarmup
+                        isInWarmup: status.isInWarmup,
+                        exitTarget: status.exitTarget
                     })
                 }
             }
@@ -865,7 +961,7 @@ const checkNetworkSyncStatus = async () => {
     }
 }
 
-// Update the receivePeerSyncStatus function to track Steem heights
+// Update the receivePeerSyncStatus function to track Steem heights and sync exit targets
 const receivePeerSyncStatus = (nodeId, status) => {
     if (nodeId && status) {
         if (typeof status.behindBlocks === 'number') {
@@ -875,8 +971,16 @@ const receivePeerSyncStatus = (nodeId, status) => {
                 timestamp: Date.now(),
                 blockId: status.blockId,
                 consensusBlocks: status.consensusBlocks,
-                isInWarmup: status.isInWarmup
+                isInWarmup: status.isInWarmup,
+                exitTarget: status.exitTarget
             })
+            
+            // If node is reference node and sends an exit target, consider adopting it
+            const networkStatus = getNetworkSyncStatus()
+            if (nodeId === networkStatus.referenceNodeId && status.exitTarget && isSyncing && !syncExitTargetBlock) {
+                syncExitTargetBlock = status.exitTarget
+                logr.info(`Adopting sync exit target block ${syncExitTargetBlock} from reference node ${nodeId}`)
+            }
         }
         if (typeof status.steemBlock === 'number') {
             networkSteemHeights.set(nodeId, {
@@ -885,19 +989,21 @@ const receivePeerSyncStatus = (nodeId, status) => {
                 timestamp: Date.now(),
                 blockId: status.blockId,
                 consensusBlocks: status.consensusBlocks,
-                isInWarmup: status.isInWarmup
+                isInWarmup: status.isInWarmup,
+                exitTarget: status.exitTarget
             })
         }
     }
 }
 
-// Update the getSyncStatus function to include Steem block
+// Update the getSyncStatus function to include Steem block and exit target
 const getSyncStatus = () => {
     // Return our current sync status for broadcasting to peers
     return {
         behindBlocks: behindBlocks,
         steemBlock: currentSteemBlock,
-        isSyncing: isSyncing
+        isSyncing: isSyncing,
+        exitTarget: syncExitTargetBlock
     }
 }
 
@@ -915,13 +1021,21 @@ const isNetworkReadyToExitSyncMode = () => {
                 logr.debug(`Staying in sync mode - reference node ${networkStatus.referenceNodeId} is still syncing`)
                 return false
             }
-            // Exit only if reference node has exited recently (within last 5 seconds)
+            // Exit only if reference node has exited recently (within last 60 seconds)
             const timeSinceReferenceExit = Date.now() - referenceStatus.timestamp
-            if (timeSinceReferenceExit > 5000) {
+            if (timeSinceReferenceExit > 60000) {
                 logr.debug(`Reference node sync status too old (${timeSinceReferenceExit}ms), staying in sync mode`)
                 return false
             }
-            logr.debug(`Following reference node ${networkStatus.referenceNodeId} to exit sync mode`)
+            
+            // Make sure we're at the same block as reference node or very close
+            const currentBlock = chain?.getLatestBlock()?._id || 0
+            if (Math.abs(currentBlock - referenceStatus.blockId) > 3) {
+                logr.debug(`We are at block ${currentBlock} but reference node exited at block ${referenceStatus.blockId}, staying in sync`)
+                return false
+            }
+            
+            logr.debug(`Following reference node ${networkStatus.referenceNodeId} to exit sync mode at block ${currentBlock}`)
             return true
         }
         logr.debug('Reference node status not found, staying in sync mode')
@@ -948,19 +1062,21 @@ const isNetworkReadyToExitSyncMode = () => {
     }
 
     const syncedPercent = (syncedCount / totalNodes) * 100
+    const currentBlock = chain?.getLatestBlock()?._id || 0
 
     logr.debug(`Reference node sync status check:
         - Nodes synced: ${syncedCount}/${totalNodes} (${syncedPercent.toFixed(1)}%)
         - Max behind: ${maxBehind}
-        - Current block: ${currentSteemBlock}`)
+        - Current block: ${currentSteemBlock}
+        - Block ID: ${currentBlock}`)
 
     // As reference node, require stricter conditions
     const readyToExit = syncedPercent >= SYNC_EXIT_QUORUM_PERCENT &&
-        maxBehind <= 2 && // More strict: require nodes to be at most 1 block behind
+        maxBehind <= 1 && // Stricter: ensure nodes are fully caught up
         behindBlocks === 0;
 
     if (readyToExit) {
-        logr.info('As reference node, signaling network to exit sync mode')
+        logr.info(`As reference node, signaling network to exit sync mode at block ${currentBlock}`)
     }
 
     return readyToExit
@@ -977,6 +1093,7 @@ module.exports = {
         // Set initial state
         setReadyToReceiveTransactions(false)
         isSyncing = true
+        syncExitTargetBlock = null // Reset sync exit target
 
         // First check network sync status
         checkNetworkSyncStatus().then(async () => {
@@ -1051,6 +1168,9 @@ module.exports = {
     updateNetworkBehindBlocks,
     receivePeerSyncStatus,
     getSyncStatus: getSyncStatus,
+    shouldExitSyncMode,
+    exitSyncMode,
+    getSyncExitTarget: () => syncExitTargetBlock,
     isOnSteemBlock: (block) => {
         return new Promise(async (resolve, reject) => {
             try {
