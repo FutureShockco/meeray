@@ -222,12 +222,16 @@ const shouldExitSyncMode = (currentBlockId) => {
 const exitSyncMode = (blockId, steemBlockNum) => {
     if (!isSyncing) return false
     
+    // Ensure we're completely exiting sync mode with immediate effect
     lastSyncExitTime = new Date().getTime()
     isSyncing = false
     exitCount++
     
     // Reset exit target
     syncExitTargetBlock = null
+    
+    // Force a block retime for immediate normal block production
+    const normalBlockTime = config.blockTime
     
     // Broadcast our sync status change
     if (p2p && p2p.sockets && p2p.sockets.length > 0) {
@@ -241,7 +245,7 @@ const exitSyncMode = (blockId, steemBlockNum) => {
         })
     }
     
-    logr.info(`Exited sync mode at block ${blockId} (exit #${exitCount})`)
+    logr.info(`Exited sync mode at block ${blockId} (exit #${exitCount}), switching to normal block time (${normalBlockTime}ms)`)
     return true
 }
 

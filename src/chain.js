@@ -339,9 +339,16 @@ let chain = {
 
         let mineInMs = null
         // Get the appropriate block time based on sync state
-        let blockTime = (steem.isInSyncMode() || (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 1500 && new Date().getTime() - steem.lastSyncExitTime > 0))
-            ? config.syncBlockTime
+        let blockTime = steem.isInSyncMode() 
+            ? config.syncBlockTime 
             : config.blockTime
+        
+        // Log which block time we're using for clarity
+        if (steem.isInSyncMode()) {
+            logr.debug(`Using sync block time: ${blockTime}ms`)
+        } else if (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 5000) {
+            logr.debug(`Recently exited sync mode, using normal block time: ${blockTime}ms`)
+        }
 
         // if we are the next scheduled witness, try to mine in time
         if (chain.schedule.shuffle[(block._id) % config.leaders].name === process.env.NODE_OWNER)
@@ -795,13 +802,15 @@ let chain = {
             // Check if this is the first few blocks after a coordinated exit
             const isPostCoordinatedExit = steem.lastSyncExitTime && 
                 (currentTime - steem.lastSyncExitTime < 30000); // Extra relaxed for first 30 seconds
-
+            
             // Determine if we need extended buffer
             if (isNearHead || recentlySynced || chain.recoveryAttempts > 0 || isPostCoordinatedExit) {
                 // Use even larger buffer for post-coordinated exit
                 maxDriftBuffer = isPostCoordinatedExit ? config.maxDrift * 10 : config.maxDrift * 5
                 logr.debug(`Using extended timestamp drift buffer (${maxDriftBuffer}ms) for block ${newBlock._id}: recentlySynced=${recentlySynced}, isNearHead=${isNearHead}, recoveryAttempts=${chain.recoveryAttempts}, isPostCoordinatedExit=${isPostCoordinatedExit}`)
             }
+            
+            // Always use normal block time after exiting sync
             const blockTime = (steem.isInSyncMode()) ? config.syncBlockTime : config.blockTime
             const expectedTime = previousBlock.timestamp + (minerPriority * blockTime)
 
