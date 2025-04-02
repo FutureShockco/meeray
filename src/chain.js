@@ -44,6 +44,9 @@ let chain = {
     maxRecoveryAttempts: 3,
     lastValidationError: null,
     behindBlocks: 5,
+    totalPostSyncBehind: 0,
+    postSyncBehindCount: 0,
+    avgPostSyncBehind: 0,
     getNewKeyPair: () => {
         let privKey, pubKey
         do {
@@ -536,6 +539,20 @@ let chain = {
                     if (latestSteemBlock) {
                         chain.behindBlocks = Math.max(0, latestSteemBlock - block.steemblock)
                         output += ` (Sidechain block delay: ${latestSteemBlock - block.steemblock})`;
+                        
+                        // Track post-sync averages when not in sync mode
+                        if (!steem.isInSyncMode() && steem.lastSyncExitTime) {
+                            // Only track within a reasonable time after sync exit (15 minutes)
+                            const timeSinceSync = new Date().getTime() - steem.lastSyncExitTime
+                            if (timeSinceSync < 900000) { // 15 minutes in ms
+                                chain.totalPostSyncBehind += chain.behindBlocks
+                                chain.postSyncBehindCount++
+                                chain.avgPostSyncBehind = chain.totalPostSyncBehind / chain.postSyncBehindCount
+                                
+                                output += ` [Avg post-sync: ${chain.avgPostSyncBehind.toFixed(1)} blocks]`;
+                            }
+                        }
+                        
                         // Always update and broadcast if we're in sync mode or if there's a significant change
                         if (chain.behindBlocks > config.steemBlockDelay) {
                             steem.updateNetworkBehindBlocks(chain.behindBlocks)

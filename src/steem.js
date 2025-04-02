@@ -136,6 +136,14 @@ const updateNetworkBehindBlocks = (newValue) => {
             isSyncing = true
             // Reset exit target when entering sync mode
             syncExitTargetBlock = null
+            
+            // Reset the post-sync behind blocks tracking
+            if (chain) {
+                chain.totalPostSyncBehind = 0;
+                chain.postSyncBehindCount = 0;
+                chain.avgPostSyncBehind = 0;
+                logr.debug('Reset post-sync behind block tracking statistics');
+            }
 
             // Broadcast our sync mode change
             if (p2p && p2p.sockets && p2p.sockets.length > 0) {
@@ -262,6 +270,14 @@ const exitSyncMode = (blockId, steemBlockNum) => {
     
     // Reset exit target
     syncExitTargetBlock = null
+    
+    // Reset post-sync tracking to start fresh
+    if (chain) {
+        chain.totalPostSyncBehind = 0;
+        chain.postSyncBehindCount = 0;
+        chain.avgPostSyncBehind = 0;
+        logr.debug('Reset post-sync behind block tracking statistics for new measurements');
+    }
     
     // Force a block retime for immediate normal block production
     const normalBlockTime = config.blockTime
