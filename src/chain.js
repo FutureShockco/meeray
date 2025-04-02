@@ -534,7 +534,7 @@ let chain = {
                     const latestSteemBlock = await steem.getLatestSteemBlockNum()
                     if (latestSteemBlock) {
                         const behindBlocks = Math.max(0, latestSteemBlock - block.steemblock)
-                        output += ` (Steem: ${latestSteemBlock}, Local: ${block.steemblock})`;
+                        output += ` (Sidechain block delay: ${latestSteemBlock - block.steemblock})`;
                         // Always update and broadcast if we're in sync mode or if there's a significant change
                         if (behindBlocks > config.steemBlockDelay) {
                             steem.updateNetworkBehindBlocks(behindBlocks)
