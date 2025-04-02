@@ -162,17 +162,46 @@ const updateNetworkBehindBlocks = (newValue) => {
             const latestBlock = chain?.getLatestBlock()
             if (!latestBlock) return
             
+            // Before making decisions, check network consensus on behind blocks
+            // to account for RPC differences between nodes
+            const networkStatus = getNetworkSyncStatus()
+            let consensusBehind = behindBlocks;
+            let highestBehind = behindBlocks;
+            let lowestBehind = behindBlocks;
+            let behindBlocksCounts = [behindBlocks];
+            
+            // Collect behind blocks counts from connected peers
+            for (const [nodeId, data] of networkSyncStatus.entries()) {
+                if (typeof data.behindBlocks === 'number') {
+                    behindBlocksCounts.push(data.behindBlocks);
+                    highestBehind = Math.max(highestBehind, data.behindBlocks);
+                    lowestBehind = Math.min(lowestBehind, data.behindBlocks);
+                }
+            }
+            
+            // Calculate median behind blocks count as consensus
+            if (behindBlocksCounts.length > 1) {
+                behindBlocksCounts.sort((a, b) => a - b);
+                const midIndex = Math.floor(behindBlocksCounts.length / 2);
+                consensusBehind = behindBlocksCounts.length % 2 === 0
+                    ? Math.round((behindBlocksCounts[midIndex - 1] + behindBlocksCounts[midIndex]) / 2)
+                    : behindBlocksCounts[midIndex];
+                    
+                logr.debug(`Network behind blocks: median=${consensusBehind}, range=${lowestBehind}-${highestBehind}, counts=${behindBlocksCounts.join(',')}`);
+            }
+            
             // Only set an exit target if we haven't set one yet
             if (!syncExitTargetBlock) {
-                // If we're very close to head (0-1 blocks behind), exit at the very next block
-                if (behindBlocks <= 1) {
+                // If we're very close to head (0-1 blocks behind) based on network consensus, 
+                // exit at the very next block
+                if (consensusBehind <= 1) {
                     syncExitTargetBlock = latestBlock._id + 1
-                    logr.info(`Very close to Steem head! Scheduling immediate sync exit at next block ${syncExitTargetBlock}`)
+                    logr.info(`Network consensus: Very close to Steem head! Scheduling immediate sync exit at next block ${syncExitTargetBlock}`)
                 } else {
                     // For larger gaps, use a more conservative target that allows time to catch up
-                    // Schedule exit at current block + remaining behind blocks (no extra buffer)
-                    syncExitTargetBlock = latestBlock._id + behindBlocks
-                    logr.info(`Scheduling sync exit at block ${syncExitTargetBlock} (current: ${latestBlock._id}, ${behindBlocks} blocks behind)`)
+                    // Schedule exit at current block + consensus behind blocks
+                    syncExitTargetBlock = latestBlock._id + consensusBehind
+                    logr.info(`Network consensus: Scheduling sync exit at block ${syncExitTargetBlock} (current: ${latestBlock._id}, ${consensusBehind} blocks behind)`)
                 }
                 
                 // Broadcast our sync exit target to help coordinate other nodes
@@ -182,17 +211,16 @@ const updateNetworkBehindBlocks = (newValue) => {
                         steemBlock: latestBlock.steemblock,
                         isSyncing: true,
                         blockId: latestBlock._id,
-                        consensusBlocks: behindBlocks,
+                        consensusBlocks: consensusBehind,
                         exitTarget: syncExitTargetBlock
                     })
                 }
             } else {
-                // If we already have a target but we're closer than expected to head, adjust target
-                // This can happen if Steem slows down block production
-                if (behindBlocks <= config.steemBlockDelay && syncExitTargetBlock > latestBlock._id + config.steemBlockDelay) {
+                // If we already have a target but network consensus shows we're closer than expected to head, adjust target
+                if (consensusBehind <= 1 && syncExitTargetBlock > latestBlock._id + 2) {
                     const oldTarget = syncExitTargetBlock
                     syncExitTargetBlock = latestBlock._id + 1
-                    logr.info(`Adjusting exit target from ${oldTarget} to ${syncExitTargetBlock} - now very close to Steem head`)
+                    logr.info(`Network consensus: Adjusting exit target from ${oldTarget} to ${syncExitTargetBlock} - now very close to Steem head`)
                     
                     // Broadcast updated target
                     if (p2p && p2p.sockets && p2p.sockets.length > 0) {
@@ -201,7 +229,7 @@ const updateNetworkBehindBlocks = (newValue) => {
                             steemBlock: latestBlock.steemblock,
                             isSyncing: true,
                             blockId: latestBlock._id,
-                            consensusBlocks: behindBlocks,
+                            consensusBlocks: consensusBehind,
                             exitTarget: syncExitTargetBlock
                         })
                     }
@@ -253,6 +281,28 @@ const shouldExitSyncMode = (currentBlockId) => {
     if (behindBlocks === 0 && syncExitTargetBlock && syncExitTargetBlock > currentBlockId + config.steemBlockDelay) {
         logr.info(`At Steem head with behindBlocks=0, exiting sync now at block ${currentBlockId} instead of waiting for ${syncExitTargetBlock}`)
         return true
+    }
+    
+    // Check if a significant percentage of nodes on the network have exited sync mode
+    // This helps handle cases where different nodes have different RPC states
+    let syncedNodeCount = 0;
+    let totalNodeCount = 0;
+    
+    // Check network sync status
+    for (const [nodeId, status] of networkSyncStatus.entries()) {
+        if (status && typeof status.isSyncing === 'boolean' && Date.now() - status.timestamp < 30000) {
+            totalNodeCount++;
+            if (!status.isSyncing) {
+                syncedNodeCount++;
+            }
+        }
+    }
+    
+    // If at least 40% of nodes have exited sync, consider exiting too
+    // This helps bring all nodes into alignment even with RPC differences
+    if (totalNodeCount > 2 && syncedNodeCount / totalNodeCount >= 0.4) {
+        logr.info(`Exiting sync mode because ${syncedNodeCount}/${totalNodeCount} network nodes have already exited sync`)
+        return true;
     }
     
     return false
