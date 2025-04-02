@@ -543,16 +543,6 @@ let chain = {
                         chain.behindBlocks = Math.max(0, chain.latestSteemBlock - block.steemblock)
                         output += ` (Sidechain block delay: ${chain.latestSteemBlock - block.steemblock})`;
 
-                        // Track post-sync averages when not in sync mode
-                        if (!steem.isInSyncMode()) {
-                            // Only track within a reasonable time after sync exit (15 minutes)
-                            chain.totalPostSyncBehind += chain.behindBlocks
-                            chain.postSyncBehindCount++
-                            chain.avgPostSyncBehind = chain.totalPostSyncBehind / chain.postSyncBehindCount
-
-                            output += ` [Avg post-sync: ${chain.avgPostSyncBehind} blocks]`;
-
-                        }
 
                         // Always update and broadcast if we're in sync mode or if there's a significant change
                         if (chain.behindBlocks > config.steemBlockDelay) {
@@ -598,6 +588,14 @@ let chain = {
             }
             if (block._id % 5 === 0 && !p2p.recovering) {
                 steem.prefetchBlocks(block.steemblock)
+            }
+            // Track post-sync averages when not in sync mode
+            if (!steem.isInSyncMode()) {
+                chain.totalPostSyncBehind += chain.behindBlocks
+                chain.postSyncBehindCount++
+                chain.avgPostSyncBehind = chain.totalPostSyncBehind / chain.postSyncBehindCount
+
+                output += ` [Avg post-sync: ${chain.avgPostSyncBehind} blocks]`;
             }
 
 
