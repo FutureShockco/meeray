@@ -595,7 +595,7 @@ let chain = {
                 chain.postSyncBehindCount++
                 chain.avgPostSyncBehind = chain.totalPostSyncBehind / chain.postSyncBehindCount
 
-                output += ` [Avg post-sync: ${chain.avgPostSyncBehind} blocks]`;
+                output += ` [Avg post-sync: ${chain.avgPostSyncBehind.toFixed(0)} blocks]`;
             }
 
 
