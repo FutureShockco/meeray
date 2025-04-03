@@ -2,7 +2,7 @@ let config = {
     history: {
         0: {
             // Steem block to start streaming from
-            steemStartBlock: 94370155,
+            steemStartBlock: 94370562,
             steemBlockDelay: 1,
             // this is the block 0 configuration for mainnet
             accountPriceBase: 20000,
@@ -23,7 +23,7 @@ let config = {
             // the block hash serialization revision
             blockHashSerialization: 1,
             // the block time in ms
-            blockTime: 2960,
+            blockTime: 2940,
             syncBlockTime: 1000,
             // the number of ms needed for 0.01 DTC to generate 1 byte of bw
             bwGrowth: 36000000, // +10 bytes per hour per DTC (3600 * 1000 * 100 / 10)
