@@ -561,7 +561,7 @@ let chain = {
                             }
                         }
                         // Check if we're very close to or at Steem head and should immediately exit sync
-                        else if (steem.isInSyncMode() && chain.behindBlocks <= 2) {
+                        else if (steem.isInSyncMode() && chain.behindBlocks <= config.steemBlockDelay) {
                             // Almost caught up or at head - update and consider immediate exit
                             steem.updateNetworkBehindBlocks(chain.behindBlocks)
 
