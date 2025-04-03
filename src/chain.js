@@ -541,7 +541,6 @@ let chain = {
                     chain.latestSteemBlock = await steem.getLatestSteemBlockNum()
                     if (chain.latestSteemBlock) {
                         chain.behindBlocks = Math.max(0, chain.latestSteemBlock - block.steemblock)
-                        output += ` (Sidechain block delay: ${chain.latestSteemBlock - block.steemblock})`;
 
 
                         // Always update and broadcast if we're in sync mode or if there's a significant change
@@ -589,6 +588,8 @@ let chain = {
             if (block._id % 5 === 0 && !p2p.recovering) {
                 steem.prefetchBlocks(block.steemblock)
             }
+            output += ` (Sidechain block delay: ${chain.latestSteemBlock - block.steemblock})`;
+
             // Track post-sync averages when not in sync mode
             if (!steem.isInSyncMode()) {
                 chain.totalPostSyncBehind += chain.behindBlocks
