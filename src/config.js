@@ -23,7 +23,7 @@ let config = {
             // the block hash serialization revision
             blockHashSerialization: 1,
             // the block time in ms
-            blockTime: 3000,
+            blockTime: 2960,
             syncBlockTime: 1000,
             // the number of ms needed for 0.01 DTC to generate 1 byte of bw
             bwGrowth: 36000000, // +10 bytes per hour per DTC (3600 * 1000 * 100 / 10)
