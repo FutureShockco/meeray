@@ -3,7 +3,7 @@ let config = {
         0: {
             // Steem block to start streaming from
             steemStartBlock: 94311775,
-            steemBlockDelay: 3,
+            steemBlockDelay: 2,
             // this is the block 0 configuration for mainnet
             accountPriceBase: 20000,
             accountPriceCharMult: 4,
