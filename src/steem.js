@@ -152,7 +152,7 @@ const updateNetworkBehindBlocks = (newValue) => {
         }
 
         // If consensus shows we're significantly behind, consider entering sync mode
-        if (consensusBehind >= 3 || consensusBehind >= config.steemBlockDelay * 2 && !isSyncing) {
+        if (consensusBehind >= config.steemBlockDelay * 5 && !isSyncing) {
             logr.info(`Entering sync mode based on network consensus, ${consensusBehind} blocks behind (local: ${behindBlocks})`)
             isSyncing = true
             // Reset exit target when entering sync mode
@@ -187,7 +187,7 @@ const updateNetworkBehindBlocks = (newValue) => {
             if (!latestBlock) return
             
             // Set exit target only when consensus says we're caught up
-            if (consensusBehind <= 1 && !syncExitTargetBlock) {
+            if (consensusBehind <= config.steemBlockDelay * 2 && !syncExitTargetBlock) {
                 // Set immediate exit at next block
                 syncExitTargetBlock = latestBlock._id + 1
                 logr.info(`Network consensus shows we're caught up (${consensusBehind} blocks behind). Setting exit target to next block ${syncExitTargetBlock}`)
