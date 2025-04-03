@@ -159,7 +159,7 @@ const updateNetworkBehindBlocks = (newValue) => {
             syncExitTargetBlock = null
             
             // Reset the post-sync behind blocks tracking
-            if (chain) {
+            if (chain && exitCount < 1) {
                 chain.totalPostSyncBehind = 0;
                 chain.postSyncBehindCount = 0;
                 chain.avgPostSyncBehind = 0;
@@ -292,12 +292,15 @@ const exitSyncMode = (blockId, steemBlockNum) => {
     
     // Calculate consensus behind blocks for logging
     const behindBlocksCounts = [behindBlocks]
+    
+    // Collect behind blocks counts from connected peers
     for (const [nodeId, data] of networkSyncStatus.entries()) {
         if (typeof data.behindBlocks === 'number' && Date.now() - data.timestamp < 30000) {
             behindBlocksCounts.push(data.behindBlocks)
         }
     }
     
+    // Calculate median behind blocks count as consensus
     let consensusBehind = behindBlocks
     if (behindBlocksCounts.length > 1) {
         behindBlocksCounts.sort((a, b) => a - b)
@@ -326,19 +329,27 @@ const exitSyncMode = (blockId, steemBlockNum) => {
         logr.debug('Reset post-sync behind block tracking statistics for new measurements');
     }
     
-    // Force a block retime for immediate normal block production
+    // Get the normal block time
     const normalBlockTime = config.blockTime
     
     // Broadcast our sync status change
     if (p2p && p2p.sockets && p2p.sockets.length > 0) {
         p2p.broadcastSyncStatus({
-            behindBlocks: 0,
+            behindBlocks: behindBlocks,
             steemBlock: steemBlockNum,
             isSyncing: false,
             blockId: blockId,
             consensusBlocks: consensusBehind,
             exitTarget: null
         })
+    }
+    
+    // Force immediate scheduling of the next block to avoid delay
+    if (chain && typeof chain.scheduleNextBlock === 'function') {
+        // Schedule next block with a small offset (100ms) to ensure clean transition
+        const nextBlockTime = new Date().getTime() + 100
+        logr.debug(`Forcing immediate block scheduling after sync exit at ${nextBlockTime}`)
+        chain.scheduleNextBlock(nextBlockTime)
     }
     
     logr.warn(`Exited sync mode at block ${blockId} (exit #${exitCount}), CONSENSUS: ${consensusBehind} blocks behind, current: ${currentBehind} blocks behind, switching to normal block time (${normalBlockTime}ms)`)
