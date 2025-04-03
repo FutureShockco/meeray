@@ -351,47 +351,47 @@ const exitSyncMode = (blockId, steemBlockNum) => {
         })
     }
     
-    // Fix post-sync block timing by completely resetting scheduling system
-    if (chain) {
-        try {
-            // Clear pending timeouts
-            if (typeof chain.cancelNextBlockSchedule === 'function') {
-                chain.cancelNextBlockSchedule()
-                logr.debug('Cleared block production timeouts')
-            }
+    // // Fix post-sync block timing by completely resetting scheduling system
+    // if (chain) {
+    //     try {
+    //         // Clear pending timeouts
+    //         if (typeof chain.cancelNextBlockSchedule === 'function') {
+    //             chain.cancelNextBlockSchedule()
+    //             logr.debug('Cleared block production timeouts')
+    //         }
             
-            // Update timing variables to ensure consistent block times after sync
-            if (chain.lastBlockTime) {
-                chain.lastBlockTime = lastSyncExitTime
-                logr.debug('Reset chain.lastBlockTime to sync exit time')
-            }
+    //         // Update timing variables to ensure consistent block times after sync
+    //         if (chain.lastBlockTime) {
+    //             chain.lastBlockTime = lastSyncExitTime
+    //             logr.debug('Reset chain.lastBlockTime to sync exit time')
+    //         }
             
-            // Force scheduling the next blocks with clean timing
-            if (typeof chain.scheduleNextBlock === 'function') {
-                // Schedule first block at 100ms from now
-                const firstBlockTime = lastSyncExitTime + 100
-                chain.scheduleNextBlock(firstBlockTime)
-                logr.debug(`Force scheduled first post-sync block at timestamp ${firstBlockTime}`)
+    //         // Force scheduling the next blocks with clean timing
+    //         if (typeof chain.scheduleNextBlock === 'function') {
+    //             // Schedule first block at 100ms from now
+    //             const firstBlockTime = lastSyncExitTime + 100
+    //             chain.scheduleNextBlock(firstBlockTime)
+    //             logr.debug(`Force scheduled first post-sync block at timestamp ${firstBlockTime}`)
                 
-                // Ensure next blocks are scheduled with proper intervals by setting reference time
-                if (chain.nextBlockTime) {
-                    const secondBlockTime = firstBlockTime + normalBlockTime
-                    logr.debug(`Pre-set second post-sync block for timestamp ${secondBlockTime}`)
-                }
-            } else {
-                logr.warn('No scheduleNextBlock function available - using fallback method')
-                // Fallback method - force next block immediately through worker
-                clearTimeout(chain.worker)
-                chain.worker = setTimeout(() => {
-                    chain.mineBlock((error, finalBlock) => {
-                        if (error) logr.warn('Post-sync block production error', error)
-                    })
-                }, 100)
-            }
-        } catch (err) {
-            logr.error('Error scheduling post-sync blocks:', err)
-        }
-    }
+    //             // Ensure next blocks are scheduled with proper intervals by setting reference time
+    //             if (chain.nextBlockTime) {
+    //                 const secondBlockTime = firstBlockTime + normalBlockTime
+    //                 logr.debug(`Pre-set second post-sync block for timestamp ${secondBlockTime}`)
+    //             }
+    //         } else {
+    //             logr.warn('No scheduleNextBlock function available - using fallback method')
+    //             // Fallback method - force next block immediately through worker
+    //             clearTimeout(chain.worker)
+    //             chain.worker = setTimeout(() => {
+    //                 chain.mineBlock((error, finalBlock) => {
+    //                     if (error) logr.warn('Post-sync block production error', error)
+    //                 })
+    //             }, 100)
+    //         }
+    //     } catch (err) {
+    //         logr.error('Error scheduling post-sync blocks:', err)
+    //     }
+    // }
     
     logr.warn(`Exited sync mode at block ${blockId} (exit #${exitCount}), CONSENSUS: ${consensusBehind} blocks behind, current: ${currentBehind} blocks behind, switching to normal block time (${normalBlockTime}ms)`)
     logr.warn(`BEGIN POST-SYNC MONITORING: Tracking how far behind Steem the chain falls after sync exit`)
