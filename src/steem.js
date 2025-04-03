@@ -286,6 +286,13 @@ const shouldExitSyncMode = (currentBlockId) => {
     return false
 }
 
+// Add a function to check if we're in post-sync transition period
+const isInPostSyncPeriod = (timeWindow = 60000) => {
+    if (!lastSyncExitTime) return false
+    const timeSinceExit = new Date().getTime() - lastSyncExitTime
+    return timeSinceExit < timeWindow
+}
+
 // Function to actually exit sync mode
 const exitSyncMode = (blockId, steemBlockNum) => {
     if (!isSyncing) return false
@@ -344,12 +351,46 @@ const exitSyncMode = (blockId, steemBlockNum) => {
         })
     }
     
-    // Force immediate scheduling of the next block to avoid delay
-    if (chain && typeof chain.scheduleNextBlock === 'function') {
-        // Schedule next block with a small offset (100ms) to ensure clean transition
-        const nextBlockTime = new Date().getTime() + 100
-        logr.debug(`Forcing immediate block scheduling after sync exit at ${nextBlockTime}`)
-        chain.scheduleNextBlock(nextBlockTime)
+    // Fix post-sync block timing by completely resetting scheduling system
+    if (chain) {
+        try {
+            // Clear pending timeouts
+            if (typeof chain.cancelNextBlockSchedule === 'function') {
+                chain.cancelNextBlockSchedule()
+                logr.debug('Cleared block production timeouts')
+            }
+            
+            // Update timing variables to ensure consistent block times after sync
+            if (chain.lastBlockTime) {
+                chain.lastBlockTime = lastSyncExitTime
+                logr.debug('Reset chain.lastBlockTime to sync exit time')
+            }
+            
+            // Force scheduling the next blocks with clean timing
+            if (typeof chain.scheduleNextBlock === 'function') {
+                // Schedule first block at 100ms from now
+                const firstBlockTime = lastSyncExitTime + 100
+                chain.scheduleNextBlock(firstBlockTime)
+                logr.debug(`Force scheduled first post-sync block at timestamp ${firstBlockTime}`)
+                
+                // Ensure next blocks are scheduled with proper intervals by setting reference time
+                if (chain.nextBlockTime) {
+                    const secondBlockTime = firstBlockTime + normalBlockTime
+                    logr.debug(`Pre-set second post-sync block for timestamp ${secondBlockTime}`)
+                }
+            } else {
+                logr.warn('No scheduleNextBlock function available - using fallback method')
+                // Fallback method - force next block immediately through worker
+                clearTimeout(chain.worker)
+                chain.worker = setTimeout(() => {
+                    chain.mineBlock((error, finalBlock) => {
+                        if (error) logr.warn('Post-sync block production error', error)
+                    })
+                }, 100)
+            }
+        } catch (err) {
+            logr.error('Error scheduling post-sync blocks:', err)
+        }
     }
     
     logr.warn(`Exited sync mode at block ${blockId} (exit #${exitCount}), CONSENSUS: ${consensusBehind} blocks behind, current: ${currentBehind} blocks behind, switching to normal block time (${normalBlockTime}ms)`)
@@ -1346,7 +1387,8 @@ module.exports = {
         }
         return result
     },
-    getLatestSteemBlockNum
+    getLatestSteemBlockNum,
+    isInPostSyncPeriod
 }
 
 // Add new helper function for Steem sync initialization

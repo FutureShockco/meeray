@@ -1452,6 +1452,47 @@ let chain = {
             })
         })
     },
+    cancelNextBlockSchedule: () => {
+        if (chain.nextBlockTimeout) {
+            clearTimeout(chain.nextBlockTimeout)
+            chain.nextBlockTimeout = null
+            logr.debug('Cleared chain.nextBlockTimeout')
+        }
+    },
+    resetBlockProductionTimer: () => {
+        chain.lastBlockTime = new Date().getTime()
+        chain.nextBlockTime = null
+        logr.debug('Reset block production timing variables')
+    },
+    scheduleNextBlock: (timestamp) => {
+        // Clear any existing block timeout
+        chain.cancelNextBlockSchedule()
+        
+        // Calculate time until next block
+        const now = new Date().getTime()
+        let timeUntilBlock = timestamp - now
+        
+        // Ensure we don't schedule in the past
+        if (timeUntilBlock < 0) {
+            timeUntilBlock = 0
+            logr.warn('Requested block time already passed, scheduling immediately')
+        }
+        
+        // Store next block time for reference
+        chain.nextBlockTime = timestamp
+        chain.lastBlockTime = now // Update lastBlockTime to ensure proper scheduling
+        
+        // Schedule the next block production
+        chain.nextBlockTimeout = setTimeout(() => {
+            // Use the existing mineBlock function
+            chain.mineBlock((error, finalBlock) => {
+                if (error)
+                    logr.warn('Scheduled block mining failed', error)
+            })
+        }, timeUntilBlock)
+        
+        logr.debug(`Next block scheduled in ${timeUntilBlock}ms at timestamp ${timestamp}`)
+    },
 }
 
 module.exports = chain
