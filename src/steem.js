@@ -187,7 +187,7 @@ const updateNetworkBehindBlocks = (newValue) => {
             if (!latestBlock) return
             
             // Set exit target only when consensus says we're caught up
-            if (consensusBehind <= config.steemBlockDelay * 2 && !syncExitTargetBlock) {
+            if (consensusBehind <= config.steemBlockDelay * 3 && !syncExitTargetBlock) {
                 // Set immediate exit at next block
                 syncExitTargetBlock = latestBlock._id + 1
                 logr.info(`Network consensus shows we're caught up (${consensusBehind} blocks behind). Setting exit target to next block ${syncExitTargetBlock}`)
