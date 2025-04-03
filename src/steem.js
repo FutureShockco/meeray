@@ -129,9 +129,31 @@ const updateNetworkBehindBlocks = (newValue) => {
         // Log the change
         logr.debug(`Behind blocks updated: ${oldValue} -> ${newValue}`)
 
-        // If we get an update that we're significantly behind, consider entering sync mode
-        if (behindBlocks >= config.steemBlockDelay && !isSyncing) {
-            logr.info(`Entering sync mode based on network report, ${behindBlocks} blocks behind`)
+        // Calculate consensus behind blocks value from network
+        const behindBlocksCounts = [behindBlocks]
+        
+        // Collect behind blocks counts from connected peers
+        for (const [nodeId, data] of networkSyncStatus.entries()) {
+            if (typeof data.behindBlocks === 'number' && Date.now() - data.timestamp < 30000) {
+                behindBlocksCounts.push(data.behindBlocks)
+            }
+        }
+        
+        // Calculate median behind blocks count as consensus
+        let consensusBehind = behindBlocks
+        if (behindBlocksCounts.length > 1) {
+            behindBlocksCounts.sort((a, b) => a - b)
+            const midIndex = Math.floor(behindBlocksCounts.length / 2)
+            consensusBehind = behindBlocksCounts.length % 2 === 0
+                ? Math.round((behindBlocksCounts[midIndex - 1] + behindBlocksCounts[midIndex]) / 2)
+                : behindBlocksCounts[midIndex]
+            
+            logr.debug(`Network consensus behind blocks: ${consensusBehind}, counts: ${behindBlocksCounts.join(',')}`)
+        }
+
+        // If consensus shows we're significantly behind, consider entering sync mode
+        if (consensusBehind >= config.steemBlockDelay && !isSyncing) {
+            logr.info(`Entering sync mode based on network consensus, ${consensusBehind} blocks behind (local: ${behindBlocks})`)
             isSyncing = true
             // Reset exit target when entering sync mode
             syncExitTargetBlock = null
@@ -144,43 +166,23 @@ const updateNetworkBehindBlocks = (newValue) => {
                 logr.debug('Reset post-sync behind block tracking statistics');
             }
 
-            // Broadcast our sync mode change
+            // Broadcast our sync mode change with consensus value
             if (p2p && p2p.sockets && p2p.sockets.length > 0) {
                 p2p.broadcastSyncStatus({
                     behindBlocks: behindBlocks,
                     isSyncing: true,
                     blockId: chain?.getLatestBlock()?._id || 0,
                     steemBlock: currentSteemBlock,
-                    consensusBlocks: behindBlocks,
+                    consensusBlocks: consensusBehind,
                     exitTarget: null // Clear any previous exit target
                 })
             }
         }
         // Check if we're caught up and in sync mode - possible exit condition
         else if (isSyncing) {
-            // Get the current consensus behind blocks value from network
-            const behindBlocksCounts = [behindBlocks]
+            // We already calculated consensus above, so just use it directly
             
-            // Collect behind blocks counts from connected peers
-            for (const [nodeId, data] of networkSyncStatus.entries()) {
-                if (typeof data.behindBlocks === 'number' && Date.now() - data.timestamp < 30000) {
-                    behindBlocksCounts.push(data.behindBlocks)
-                }
-            }
-            
-            // Calculate median behind blocks count as consensus
-            let consensusBehind = behindBlocks
-            if (behindBlocksCounts.length > 1) {
-                behindBlocksCounts.sort((a, b) => a - b)
-                const midIndex = Math.floor(behindBlocksCounts.length / 2)
-                consensusBehind = behindBlocksCounts.length % 2 === 0
-                    ? Math.round((behindBlocksCounts[midIndex - 1] + behindBlocksCounts[midIndex]) / 2)
-                    : behindBlocksCounts[midIndex]
-                
-                logr.debug(`Network consensus behind blocks: ${consensusBehind}, counts: ${behindBlocksCounts.join(',')}`)
-            }
-            
-            // Use consensus value for decisions
+            // Use consensus value for exit decisions
             const latestBlock = chain?.getLatestBlock()
             if (!latestBlock) return
             
