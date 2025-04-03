@@ -541,6 +541,7 @@ let chain = {
                     chain.latestSteemBlock = await steem.getLatestSteemBlockNum()
                     if (chain.latestSteemBlock) {
                         chain.behindBlocks = Math.max(0, chain.latestSteemBlock - block.steemblock)
+                        output += ` (Sidechain block delay: ${chain.latestSteemBlock - block.steemblock})`;
 
 
                         // Always update and broadcast if we're in sync mode or if there's a significant change
@@ -566,7 +567,7 @@ let chain = {
 
                             // If we're right at head or our exit target is far away, trigger exit now
                             const exitTarget = steem.getSyncExitTarget()
-                            if (chain.behindBlocks === 0 || (exitTarget && exitTarget > block._id + 3)) {
+                            if (chain.behindBlocks === 0 || (exitTarget && exitTarget > block._id + config.steemBlockDelay)) {
                                 logr.warn(`Very close to Steem head (${chain.behindBlocks} blocks behind) - exiting sync now at block ${block._id}`)
                                 steem.exitSyncMode(block._id, block.steemblock)
                             }
@@ -585,11 +586,12 @@ let chain = {
                     logr.error('Error updating behind blocks count:', error)
                 }
             }
+            else {
+                output += ` (Sidechain block delay: ${chain.behindBlocks})`;
+            }
             if (block._id % 5 === 0 && !p2p.recovering) {
                 steem.prefetchBlocks(block.steemblock)
             }
-            output += ` (Sidechain block delay: ${chain.latestSteemBlock - block.steemblock})`;
-
             // Track post-sync averages when not in sync mode
             if (!steem.isInSyncMode()) {
                 chain.totalPostSyncBehind += chain.behindBlocks
