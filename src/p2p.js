@@ -37,7 +37,7 @@ const MessageType = {
 let p2p = {
     sockets: [],
     recoveringBlocks: [],
-    recoveredBlocks: [],
+    recoveredBlocks: {},
     recovering: false,
     recoverAttempt: 0,
     nodeId: null,
@@ -489,7 +489,10 @@ let p2p = {
     },
     recover: () => {
         if (!p2p.sockets || p2p.sockets.length === 0) return
-        if (Object.keys(p2p.recoveredBlocks).length + p2p.recoveringBlocks.length > max_blocks_buffer) return
+        if (Object.keys(p2p.recoveredBlocks).length + p2p.recoveringBlocks.length > max_blocks_buffer) {
+            logr.debug(`Recovery paused: buffer full (${Object.keys(p2p.recoveredBlocks).length} recovered, ${p2p.recoveringBlocks.length} recovering)`)
+            return
+        }
         if (!p2p.recovering) p2p.recovering = chain.getLatestBlock()._id
 
         let peersAhead = []
@@ -567,7 +570,7 @@ let p2p = {
                 cache.rollback()
                 dao.resetID()
                 daoMaster.resetID()
-                p2p.recoveredBlocks = []
+                p2p.recoveredBlocks = {}
                 p2p.recoveringBlocks = []
                 p2p.recoverAttempt++
                 if (p2p.recoverAttempt > max_recover_attempts)
