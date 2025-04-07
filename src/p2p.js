@@ -524,6 +524,8 @@ let p2p = {
                 && p2p.sockets[i].node_status.origin_block === config.originHash) {
                 logr.info('Catching up with network, head block: ' + p2p.sockets[i].node_status.head_block)
                 p2p.recovering = chain.getLatestBlock()._id
+                p2p.recoveredBlocks = {}
+                p2p.recoveringBlocks = []
                 p2p.recover()
                 break
             }
@@ -573,9 +575,11 @@ let p2p = {
                 p2p.recoveredBlocks = {}
                 p2p.recoveringBlocks = []
                 p2p.recoverAttempt++
-                if (p2p.recoverAttempt > max_recover_attempts)
+                if (p2p.recoverAttempt > max_recover_attempts) {
                     logr.error('Error Replay', newBlock._id)
-                else {
+                    p2p.recoveredBlocks = {}
+                    p2p.recovering = false
+                } else {
                     logr.warn('Recover attempt #' + p2p.recoverAttempt + ' for block ' + newBlock._id)
                     p2p.recovering = chain.getLatestBlock()._id
                     p2p.recover()
