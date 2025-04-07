@@ -190,7 +190,7 @@ const updateNetworkBehindBlocks = (newValue) => {
             if (consensusBehind <= config.steemBlockDelay * 3 && !syncExitTargetBlock) {
                 // Set exit in two blocks
                 syncExitTargetBlock = latestBlock._id + 2
-                logr.info(`Network consensus shows we're caught up (${consensusBehind} blocks behind). Setting exit target to next block ${syncExitTargetBlock}`)
+                logr.warn(`Network consensus shows we're caught up (${consensusBehind} blocks behind). Setting exit target to next block ${syncExitTargetBlock}`)
                 
                 // Broadcast our target
                 if (p2p && p2p.sockets && p2p.sockets.length > 0) {
