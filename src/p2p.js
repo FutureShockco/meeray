@@ -489,19 +489,7 @@ let p2p = {
     },
     recover: () => {
         if (!p2p.sockets || p2p.sockets.length === 0) return
-        
-        // If buffer is full, try to process the next block immediately
-        if (Object.keys(p2p.recoveredBlocks).length + p2p.recoveringBlocks.length > max_blocks_buffer) {
-            const nextBlockId = chain.getLatestBlock()._id + 1
-            if (p2p.recoveredBlocks[nextBlockId]) {
-                logr.debug(`Processing next block ${nextBlockId} from recovered blocks (buffer full)`)
-                p2p.addRecursive(p2p.recoveredBlocks[nextBlockId])
-                return
-            }
-            logr.debug(`Recovery paused: buffer full (${Object.keys(p2p.recoveredBlocks).length} recovered, ${p2p.recoveringBlocks.length} recovering)`)
-            return
-        }
-        
+        if (Object.keys(p2p.recoveredBlocks).length + p2p.recoveringBlocks.length > max_blocks_buffer) return
         if (!p2p.recovering) p2p.recovering = chain.getLatestBlock()._id
 
         let peersAhead = []
@@ -545,7 +533,7 @@ let p2p = {
     },
     closeConnection: (ws) => {
         p2p.sockets.splice(p2p.sockets.indexOf(ws), 1)
-        logr.debug('a peer disconnected, '+p2p.sockets.length+' peers left')
+        logr.debug('a peer disconnected, ' + p2p.sockets.length + ' peers left')
     },
     sendJSON: (ws, d) => {
         try {
@@ -555,7 +543,7 @@ let p2p = {
         } catch (error) {
             logr.warn('Tried sending p2p message and failed')
         }
-        
+
     },
     broadcastNotSent: (d) => {
         firstLoop:
@@ -588,7 +576,7 @@ let p2p = {
                     p2p.recover()
                     return
                 }
-                
+
                 // try another peer if bad block
                 cache.rollback()
                 dao.resetID()
@@ -610,10 +598,10 @@ let p2p = {
                 delete p2p.recoveredBlocks[newBlock._id]
                 p2p.recover()
                 // Process next block immediately if available
-                if (p2p.recoveredBlocks[chain.getLatestBlock()._id+1]) 
-                    setTimeout(function() {
-                        if (p2p.recoveredBlocks[chain.getLatestBlock()._id+1])
-                            p2p.addRecursive(p2p.recoveredBlocks[chain.getLatestBlock()._id+1])
+                if (p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
+                    setTimeout(function () {
+                        if (p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
+                            p2p.addRecursive(p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
                     }, 100)
             }
         })
