@@ -575,34 +575,54 @@ let p2p = {
         p2p.broadcast({ t: 4, d: block })
     },
     addRecursive: (block) => {
-        chain.validateAndAddBlock(block, true, function (err, newBlock) {
+        // First check if block already exists
+        db.collection('blocks').findOne({ _id: block._id }, (err, existingBlock) => {
             if (err) {
-                // try another peer if bad block
-                cache.rollback()
-                dao.resetID()
-                daoMaster.resetID()
-                p2p.recoveredBlocks = {}
-                p2p.recoveringBlocks = []
-                p2p.recoverAttempt++
-                if (p2p.recoverAttempt > max_recover_attempts) {
-                    logr.error('Error Replay', newBlock._id)
-                    p2p.recoveredBlocks = {}
-                    p2p.recovering = false
-                } else {
-                    logr.warn('Recover attempt #' + p2p.recoverAttempt + ' for block ' + newBlock._id)
-                    p2p.recovering = chain.getLatestBlock()._id
-                    p2p.recover()
-                }
-            } else {
-                p2p.recoverAttempt = 0
-                delete p2p.recoveredBlocks[newBlock._id]
-                p2p.recover()
-                // Process next block immediately if available
-                const nextBlockId = chain.getLatestBlock()._id + 1
-                if (p2p.recoveredBlocks[nextBlockId]) {
-                    p2p.addRecursive(p2p.recoveredBlocks[nextBlockId])
-                }
+                logr.error('Error checking for existing block:', err)
+                return
             }
+            
+            if (existingBlock) {
+                logr.debug(`Block ${block._id} already exists, skipping`)
+                delete p2p.recoveredBlocks[block._id]
+                const index = p2p.recoveringBlocks.indexOf(block._id)
+                if (index > -1) {
+                    p2p.recoveringBlocks.splice(index, 1)
+                }
+                p2p.recover()
+                return
+            }
+            
+            // If block doesn't exist, proceed with validation and addition
+            chain.validateAndAddBlock(block, true, function (err, newBlock) {
+                if (err) {
+                    // try another peer if bad block
+                    cache.rollback()
+                    dao.resetID()
+                    daoMaster.resetID()
+                    p2p.recoveredBlocks = {}
+                    p2p.recoveringBlocks = []
+                    p2p.recoverAttempt++
+                    if (p2p.recoverAttempt > max_recover_attempts) {
+                        logr.error('Error Replay', newBlock._id)
+                        p2p.recoveredBlocks = {}
+                        p2p.recovering = false
+                    } else {
+                        logr.warn('Recover attempt #' + p2p.recoverAttempt + ' for block ' + newBlock._id)
+                        p2p.recovering = chain.getLatestBlock()._id
+                        p2p.recover()
+                    }
+                } else {
+                    p2p.recoverAttempt = 0
+                    delete p2p.recoveredBlocks[newBlock._id]
+                    p2p.recover()
+                    // Process next block immediately if available
+                    const nextBlockId = chain.getLatestBlock()._id + 1
+                    if (p2p.recoveredBlocks[nextBlockId]) {
+                        p2p.addRecursive(p2p.recoveredBlocks[nextBlockId])
+                    }
+                }
+            })
         })
     },
     cleanRoundConfHistory: () => {
