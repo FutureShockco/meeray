@@ -602,7 +602,7 @@ let p2p = {
                     setTimeout(function () {
                         if (p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
                             p2p.addRecursive(p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
-                    }, 100)
+                    }, 200)
             }
         })
     },
