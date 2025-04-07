@@ -488,7 +488,10 @@ let p2p = {
     },
     recover: () => {
         if (!p2p.sockets || p2p.sockets.length === 0) return
-        if (Object.keys(p2p.recoveredBlocks).length + p2p.recoveringBlocks.length > max_blocks_buffer) return
+        if (Object.keys(p2p.recoveredBlocks).length + p2p.recoveringBlocks.length > max_blocks_buffer) {
+            logr.debug('Recovery paused: buffer full')
+            return
+        }
         if (!p2p.recovering) p2p.recovering = chain.getLatestBlock()._id
 
         let peersAhead = []
@@ -499,6 +502,7 @@ let p2p = {
                 peersAhead.push(p2p.sockets[i])
 
         if (peersAhead.length === 0) {
+            logr.debug('No peers ahead, recovery paused')
             p2p.recovering = false
             return
         }
@@ -509,7 +513,9 @@ let p2p = {
             p2p.sendJSON(champion, { t: MessageType.QUERY_BLOCK, d: p2p.recovering })
             p2p.recoveringBlocks.push(p2p.recovering)
             logr.debug('query block #' + p2p.recovering + ' -- head block: ' + champion.node_status.head_block)
-            if (p2p.recovering % 2) p2p.recover()
+            
+            // Continue recovery process for every block
+            setTimeout(() => p2p.recover(), 100) // Add small delay to prevent overwhelming the network
         }
     },
     refresh: (force = false) => {
