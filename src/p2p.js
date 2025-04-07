@@ -568,6 +568,7 @@ let p2p = {
                 // Check if it's a duplicate key error
                 if (err.code === 11000 || (err.message && err.message.includes('duplicate key'))) {
                     logr.debug(`Block ${block._id} already exists, skipping`)
+                    p2p.recovering = false
                     delete p2p.recoveredBlocks[block._id]
                     const index = p2p.recoveringBlocks.indexOf(block._id)
                     if (index > -1) {
@@ -595,6 +596,7 @@ let p2p = {
                 }
             } else {
                 p2p.recoverAttempt = 0
+                p2p.recovering = false
                 delete p2p.recoveredBlocks[newBlock._id]
                 p2p.recover()
                 // Process next block immediately if available
