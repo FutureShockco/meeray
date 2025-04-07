@@ -572,7 +572,7 @@ let p2p = {
                 cache.rollback()
                 dao.resetID()
                 daoMaster.resetID()
-                p2p.recoveredBlocks = []
+                p2p.recoveredBlocks = {}
                 p2p.recoveringBlocks = []
                 p2p.recoverAttempt++
                 if (p2p.recoverAttempt > max_recover_attempts)
@@ -584,8 +584,17 @@ let p2p = {
                 }
             } else {
                 p2p.recoverAttempt = 0
+                // Remove the processed block from recoveredBlocks
                 delete p2p.recoveredBlocks[newBlock._id]
+                // Remove the block from recoveringBlocks if it exists
+                const index = p2p.recoveringBlocks.indexOf(newBlock._id)
+                if (index > -1) {
+                    p2p.recoveringBlocks.splice(index, 1)
+                }
+                
+                // Continue recovery
                 p2p.recover()
+                
                 if (p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
                     setTimeout(function () {
                         if (p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
