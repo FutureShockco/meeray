@@ -610,10 +610,11 @@ let p2p = {
                 delete p2p.recoveredBlocks[newBlock._id]
                 p2p.recover()
                 // Process next block immediately if available
-                const nextBlockId = chain.getLatestBlock()._id + 1
-                if (p2p.recoveredBlocks[nextBlockId]) {
-                    p2p.addRecursive(p2p.recoveredBlocks[nextBlockId])
-                }
+                if (p2p.recoveredBlocks[chain.getLatestBlock()._id+1]) 
+                    setTimeout(function() {
+                        if (p2p.recoveredBlocks[chain.getLatestBlock()._id+1])
+                            p2p.addRecursive(p2p.recoveredBlocks[chain.getLatestBlock()._id+1])
+                    }, 100)
             }
         })
     },
