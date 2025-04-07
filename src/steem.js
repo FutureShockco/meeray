@@ -189,7 +189,7 @@ const updateNetworkBehindBlocks = (newValue) => {
             // Set exit target only when consensus says we're caught up
             if (consensusBehind <= config.steemBlockDelay * 3 && !syncExitTargetBlock) {
                 // Set exit in two blocks
-                syncExitTargetBlock = latestBlock._id + 2
+                syncExitTargetBlock = latestBlock._id + config.steemBlockDelay
                 logr.warn(`Network consensus shows we're caught up (${consensusBehind} blocks behind). Setting exit target to next block ${syncExitTargetBlock}`)
                 
                 // Broadcast our target
@@ -261,13 +261,13 @@ const shouldExitSyncMode = (currentBlockId) => {
     }
     
     // ONLY use the consensus behind blocks count for exit decision
-    if (consensusBehind <= 1) {
+    if (consensusBehind <= config.steemBlockDelay) {
         logr.info(`Network consensus shows we're caught up (${consensusBehind} blocks behind). Exiting sync mode at block ${currentBlockId}`)
         return true
     }
     
     // If consensus says we're still behind, don't exit
-    if (consensusBehind > 1) {
+    if (consensusBehind > config.steemBlockDelay) {
         // If we have a target block but consensus says we're still behind, clear the target
         if (syncExitTargetBlock) {
             logr.info(`Clearing sync exit target. Consensus shows we're still ${consensusBehind} blocks behind`)
@@ -278,7 +278,7 @@ const shouldExitSyncMode = (currentBlockId) => {
 
     // Special case: if all nodes have minimal range and agree we're caught up
     // This helps when the network is in full agreement
-    if (behindBlocksCounts.length >= 3 && highestBehind <= 2 && lowestBehind === 0) {
+    if (behindBlocksCounts.length >= 3 && highestBehind <= config.steemBlockDelay && lowestBehind === 0) {
         logr.info(`Network nodes in tight agreement (range: ${lowestBehind}-${highestBehind}). Exiting sync mode at block ${currentBlockId}`)
         return true
     }
@@ -350,49 +350,7 @@ const exitSyncMode = (blockId, steemBlockNum) => {
             exitTarget: null
         })
     }
-    
-    // // Fix post-sync block timing by completely resetting scheduling system
-    // if (chain) {
-    //     try {
-    //         // Clear pending timeouts
-    //         if (typeof chain.cancelNextBlockSchedule === 'function') {
-    //             chain.cancelNextBlockSchedule()
-    //             logr.debug('Cleared block production timeouts')
-    //         }
-            
-    //         // Update timing variables to ensure consistent block times after sync
-    //         if (chain.lastBlockTime) {
-    //             chain.lastBlockTime = lastSyncExitTime
-    //             logr.debug('Reset chain.lastBlockTime to sync exit time')
-    //         }
-            
-    //         // Force scheduling the next blocks with clean timing
-    //         if (typeof chain.scheduleNextBlock === 'function') {
-    //             // Schedule first block at 100ms from now
-    //             const firstBlockTime = lastSyncExitTime + 100
-    //             chain.scheduleNextBlock(firstBlockTime)
-    //             logr.debug(`Force scheduled first post-sync block at timestamp ${firstBlockTime}`)
-                
-    //             // Ensure next blocks are scheduled with proper intervals by setting reference time
-    //             if (chain.nextBlockTime) {
-    //                 const secondBlockTime = firstBlockTime + normalBlockTime
-    //                 logr.debug(`Pre-set second post-sync block for timestamp ${secondBlockTime}`)
-    //             }
-    //         } else {
-    //             logr.warn('No scheduleNextBlock function available - using fallback method')
-    //             // Fallback method - force next block immediately through worker
-    //             clearTimeout(chain.worker)
-    //             chain.worker = setTimeout(() => {
-    //                 chain.mineBlock((error, finalBlock) => {
-    //                     if (error) logr.warn('Post-sync block production error', error)
-    //                 })
-    //             }, 100)
-    //         }
-    //     } catch (err) {
-    //         logr.error('Error scheduling post-sync blocks:', err)
-    //     }
-    // }
-    
+
     logr.warn(`Exited sync mode at block ${blockId} (exit #${exitCount}), CONSENSUS: ${consensusBehind} blocks behind, current: ${currentBehind} blocks behind, switching to normal block time (${normalBlockTime}ms)`)
     logr.warn(`BEGIN POST-SYNC MONITORING: Tracking how far behind Steem the chain falls after sync exit`)
     return true
@@ -501,7 +459,7 @@ const prefetchBlocks = async (blockNum) => {
 
 // Function declarations
 const processBlock = async (blockNum) => {
-    if (p2p.recovering && !isInSyncMode()) {
+    if (p2p.recovering) {
         logr.debug('Skipping Steem block processing - node not ready to receive transactions yet')
         return Promise.resolve()
     }
