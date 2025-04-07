@@ -457,7 +457,7 @@ let p2p = {
             d: status
         })
 
-        logr.info(`Broadcasting sync status: ${status.behindBlocks} blocks behind, Steem block: ${status.steemBlock || 'N/A'}, isSyncing: ${status.isSyncing}, blockId: ${status.blockId || 'N/A'}`)
+        logr.debug(`Broadcasting sync status: ${status.behindBlocks} blocks behind, Steem block: ${status.steemBlock || 'N/A'}, isSyncing: ${status.isSyncing}, blockId: ${status.blockId || 'N/A'}`)
     },
     getSyncStatus: async () => {
         // Request sync status from peers

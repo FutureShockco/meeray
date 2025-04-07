@@ -547,7 +547,7 @@ let chain = {
                         // Always update and broadcast if we're in sync mode or if there's a significant change
                         if (chain.behindBlocks > config.steemBlockDelay) {
                             steem.updateNetworkBehindBlocks(chain.behindBlocks)
-                            logr.info(`Updated behind blocks count: ${chain.behindBlocks} (Steem: ${chain.latestSteemBlock}, Local: ${block.steemblock})`)
+                            logr.debug(`Updated behind blocks count: ${chain.behindBlocks} (Steem: ${chain.latestSteemBlock}, Local: ${block.steemblock})`)
 
                             if (p2p && p2p.sockets && p2p.sockets.length > 0) {
                                 p2p.broadcastSyncStatus({
