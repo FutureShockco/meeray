@@ -488,10 +488,21 @@ let p2p = {
     },
     recover: () => {
         if (!p2p.sockets || p2p.sockets.length === 0) return
-        if (Object.keys(p2p.recoveredBlocks).length + p2p.recoveringBlocks.length > max_blocks_buffer) {
-            logr.debug('Recovery paused: buffer full')
+        
+        const bufferSize = Object.keys(p2p.recoveredBlocks).length + p2p.recoveringBlocks.length
+        if (bufferSize > max_blocks_buffer) {
+            logr.debug(`Recovery paused: buffer full (${bufferSize}/${max_blocks_buffer}) - recovered: ${Object.keys(p2p.recoveredBlocks).length}, recovering: ${p2p.recoveringBlocks.length}`)
+            
+            // If buffer is full, try to process the next block in recoveredBlocks
+            const nextBlockId = chain.getLatestBlock()._id + 1
+            if (p2p.recoveredBlocks[nextBlockId]) {
+                logr.debug(`Processing next block ${nextBlockId} from recovered blocks`)
+                p2p.addRecursive(p2p.recoveredBlocks[nextBlockId])
+                return
+            }
             return
         }
+        
         if (!p2p.recovering) p2p.recovering = chain.getLatestBlock()._id
 
         let peersAhead = []
