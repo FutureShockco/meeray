@@ -385,6 +385,7 @@ let p2p = {
                         })
                     })
                     break
+
                 case MessageType.STEEM_BEHIND:
                     // Handle behind blocks count from other nodes
                     if (!message.d || typeof message.d !== 'number') {
@@ -413,9 +414,6 @@ let p2p = {
                         break
                     }
 
-
-
-                    // Update our steem module if available
                     if (!p2p.recovering) {
                         // Store the sync status for this peer
                         p2p.sockets[p2p.sockets.indexOf(ws)].steemSyncStatus = message.d
@@ -533,7 +531,7 @@ let p2p = {
     },
     closeConnection: (ws) => {
         p2p.sockets.splice(p2p.sockets.indexOf(ws), 1)
-        logr.debug('a peer disconnected, ' + p2p.sockets.length + ' peers left')
+        logr.debug('a peer disconnected, '+p2p.sockets.length+' peers left')
     },
     sendJSON: (ws, d) => {
         try {
@@ -543,7 +541,7 @@ let p2p = {
         } catch (error) {
             logr.warn('Tried sending p2p message and failed')
         }
-
+        
     },
     broadcastNotSent: (d) => {
         firstLoop:
@@ -587,7 +585,7 @@ let p2p = {
                     setTimeout(function () {
                         if (p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
                             p2p.addRecursive(p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
-                    }, 1)
+                    }, 100)
             }
         })
     },
