@@ -499,7 +499,7 @@ let chain = {
             output += '  steem block: ' + block.steemblock
 
             // Add sync status information
-            if (steem.isInSyncMode() && steem.getBehindBlocks() > config.steemBlockDelay) {
+            if (!p2p.recovering && steem.isInSyncMode() && steem.getBehindBlocks() > config.steemBlockDelay) {
                 output += '  sync: ' + (steem.isInSyncMode() ? 'YES' : 'NO')
                 chain.behindBlocks = steem.getBehindBlocks()
                 if (chain.behindBlocks > 0) {
@@ -593,7 +593,7 @@ let chain = {
                 steem.prefetchBlocks(block.steemblock)
             }
             // Track post-sync averages when not in sync mode
-            if (!steem.isInSyncMode()) {
+            if (!p2p.recovering && !steem.isInSyncMode()) {
                 chain.totalPostSyncBehind += chain.behindBlocks
                 chain.postSyncBehindCount++
                 chain.avgPostSyncBehind = chain.totalPostSyncBehind / chain.postSyncBehindCount
