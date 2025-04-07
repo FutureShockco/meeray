@@ -464,13 +464,13 @@ const processBlock = async (blockNum) => {
         return Promise.resolve()
     }
 
-    if (processingBlocks.includes(blockNum)) {
-        logr.warn(`Block ${blockNum} is already being processed`)
-        return Promise.resolve()
-    }
+    // if (processingBlocks.includes(blockNum)) {
+    //     logr.warn(`Block ${blockNum} is already being processed`)
+    //     return Promise.resolve()
+    // }
 
     // Add the block to the processing list
-    processingBlocks.push(blockNum)
+    //processingBlocks.push(blockNum)
 
     try {
         // Check if block is in cache
