@@ -506,7 +506,7 @@ const processBlock = async (blockNum) => {
 
         // Process the transactions
         const transactions = await processTransactions(steemBlock, blockNum)
-
+        console.log(transactions)
         // Update currentSteemBlock
         currentSteemBlock = Math.max(currentSteemBlock, blockNum)
 
