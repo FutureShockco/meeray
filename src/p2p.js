@@ -510,10 +510,7 @@ let p2p = {
             p2p.sendJSON(champion, { t: MessageType.QUERY_BLOCK, d: p2p.recovering })
             p2p.recoveringBlocks.push(p2p.recovering)
             logr.debug('query block #' + p2p.recovering + ' -- head block: ' + champion.node_status.head_block)
-            if (p2p.recovering % 2)
-                setTimeout(() => {
-                    p2p.recover()
-                }, 200);
+            if (p2p.recovering % 2) p2p.recover()
         }
     },
     refresh: (force = false) => {
@@ -524,8 +521,6 @@ let p2p = {
                 && p2p.sockets[i].node_status.origin_block === config.originHash) {
                 logr.info('Catching up with network, head block: ' + p2p.sockets[i].node_status.head_block)
                 p2p.recovering = chain.getLatestBlock()._id
-                p2p.recoveredBlocks = {}
-                p2p.recoveringBlocks = []
                 p2p.recover()
                 break
             }
@@ -568,30 +563,16 @@ let p2p = {
     addRecursive: (block) => {
         chain.validateAndAddBlock(block, true, function (err, newBlock) {
             if (err) {
-                // Check if it's a duplicate key error
-                if (err.code === 11000 || (err.message && err.message.includes('duplicate key'))) {
-                    logr.debug(`Block ${block._id} already exists, skipping`)
-                    delete p2p.recoveredBlocks[block._id]
-                    const index = p2p.recoveringBlocks.indexOf(block._id)
-                    if (index > -1) {
-                        p2p.recoveringBlocks.splice(index, 1)
-                    }
-                    p2p.recover()
-                    return
-                }
-
                 // try another peer if bad block
                 cache.rollback()
                 dao.resetID()
                 daoMaster.resetID()
-                p2p.recoveredBlocks = {}
+                p2p.recoveredBlocks = []
                 p2p.recoveringBlocks = []
                 p2p.recoverAttempt++
-                if (p2p.recoverAttempt > max_recover_attempts) {
+                if (p2p.recoverAttempt > max_recover_attempts)
                     logr.error('Error Replay', newBlock._id)
-                    p2p.recoveredBlocks = {}
-                    p2p.recovering = false
-                } else {
+                else {
                     logr.warn('Recover attempt #' + p2p.recoverAttempt + ' for block ' + newBlock._id)
                     p2p.recovering = chain.getLatestBlock()._id
                     p2p.recover()
@@ -600,12 +581,11 @@ let p2p = {
                 p2p.recoverAttempt = 0
                 delete p2p.recoveredBlocks[newBlock._id]
                 p2p.recover()
-                // Process next block immediately if available
                 if (p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
                     setTimeout(function () {
                         if (p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
                             p2p.addRecursive(p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
-                    }, 200)
+                    }, 1)
             }
         })
     },
