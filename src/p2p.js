@@ -526,7 +526,7 @@ let p2p = {
             logr.debug('query block #' + p2p.recovering + ' -- head block: ' + champion.node_status.head_block)
             
             // Continue recovery process for every block
-            setTimeout(() => p2p.recover(), 100) // Add small delay to prevent overwhelming the network
+            if (p2p.recovering % 2) p2p.recover()
         }
     },
     refresh: (force = false) => {
