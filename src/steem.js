@@ -465,7 +465,7 @@ const processBlock = async (blockNum) => {
     }
 
     if (processingBlocks.includes(blockNum)) {
-        logr.debug(`Block ${blockNum} is already being processed`)
+        logr.warn(`Block ${blockNum} is already being processed`)
         return Promise.resolve()
     }
 
@@ -1326,7 +1326,7 @@ module.exports = {
             }
         })
     },
-    processBlock: processBlock,
+    processBlock,
     fetchMissingBlock,
     prefetchBlocks,
     setReadyToReceiveTransactions,
