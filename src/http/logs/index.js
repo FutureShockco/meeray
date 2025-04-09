@@ -31,11 +31,13 @@ let logs = {
                 return res.status(404).json({ error: 'Log file not found' })
             }
 
-            res.download(filePath, filename, (err) => {
-                if (err) {
+            try {
+                res.download(filePath, filename)
+            } catch (error) {
+                if (!res.headersSent) {
                     res.status(500).json({ error: 'Failed to download log file' })
                 }
-            })
+            }
         })
 
         app.use('/logs', router)
