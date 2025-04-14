@@ -499,19 +499,7 @@ let p2p = {
         if (!p2p.sockets || p2p.sockets.length === 0) return
         if (Object.keys(p2p.recoveredBlocks).length + p2p.recoveringBlocks.length > max_blocks_buffer) return
         if (!p2p.recovering) p2p.recovering = chain.getLatestBlock()._id
-
-        // Find the peer with the highest block
-        let highestPeer = null
-        let highestBlock = 0
-        for (let i = 0; i < p2p.sockets.length; i++) {
-            if (p2p.sockets[i].node_status &&
-                p2p.sockets[i].node_status.head_block > highestBlock &&
-                p2p.sockets[i].node_status.origin_block === config.originHash) {
-                highestPeer = p2p.sockets[i]
-                highestBlock = p2p.sockets[i].node_status.head_block
-            }
-        }
-
+        
         let peersAhead = []
         for (let i = 0; i < p2p.sockets.length; i++)
             if (p2p.sockets[i].node_status 
@@ -519,45 +507,31 @@ let p2p = {
             && p2p.sockets[i].node_status.origin_block === config.originHash)
                 peersAhead.push(p2p.sockets[i])
 
-        if (!highestPeer || peersAhead.length === 0) {
+        if (peersAhead.length === 0) {
             p2p.recovering = false
             return
         }
 
-        // let champion = peersAhead[Math.floor(Math.random()*peersAhead.length)]
-        // if (p2p.recovering+1 <= champion.node_status.head_block) {
-        //     p2p.recovering++
-        //     p2p.sendJSON(champion, {t: MessageType.QUERY_BLOCK, d:p2p.recovering})
-        //     p2p.recoveringBlocks.push(p2p.recovering)
-        //     logr.debug('query block #'+p2p.recovering+' -- head block: '+champion.node_status.head_block)
-        //     if (p2p.recovering%2) p2p.recover()
-        // }
-        // Only request from the highest peer
-        if (p2p.recovering + 1 <= highestBlock) {
+        let champion = peersAhead[Math.floor(Math.random()*peersAhead.length)]
+        if (p2p.recovering+1 <= champion.node_status.head_block) {
             p2p.recovering++
-            p2p.sendJSON(highestPeer, { t: MessageType.QUERY_BLOCK, d: p2p.recovering })
+            p2p.sendJSON(champion, {t: MessageType.QUERY_BLOCK, d:p2p.recovering})
             p2p.recoveringBlocks.push(p2p.recovering)
-            logr.debug('query block #' + p2p.recovering + ' -- head block: ' + highestBlock)
-            // Always continue recovery until we're caught up
+            logr.debug('query block #'+p2p.recovering+' -- head block: '+champion.node_status.head_block)
             if (p2p.recovering%2) p2p.recover()
         }
     },
     refresh: (force = false) => {
-        if (p2p.recovering && !force) {
-            logr.debug('Skipping refresh during recovery')
-            return
-        }
-        
-        for (let i = 0; i < p2p.sockets.length; i++) {
-            if (p2p.sockets[i].node_status &&
-                p2p.sockets[i].node_status.head_block > chain.getLatestBlock()._id + 10 &&
-                p2p.sockets[i].node_status.origin_block === config.originHash) {
+        if (p2p.recovering && !force) return
+        for (let i = 0; i < p2p.sockets.length; i++)
+            if (p2p.sockets[i].node_status 
+            && p2p.sockets[i].node_status.head_block > chain.getLatestBlock()._id + 10
+            && p2p.sockets[i].node_status.origin_block === config.originHash) {
                 logr.info('Catching up with network, head block: ' + p2p.sockets[i].node_status.head_block)
                 p2p.recovering = chain.getLatestBlock()._id
                 p2p.recover()
                 break
             }
-        }
     },
     errorHandler: (ws) => {
         ws.on('close', () => p2p.closeConnection(ws))
