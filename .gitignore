@@ -11,6 +11,12 @@ genesis
 apidoc
 .DS_Store
 src/logs/output.log
+scripts/start.sh
 scripts/start copy - Copie.bat
 scripts/start copy.bat
+scripts/start.sh
 scripts/keys.json
+src/logs/output.log
+src/logs/output.log.2.gz
+src/logs/output.log.3.gz
+scripts/start.bat

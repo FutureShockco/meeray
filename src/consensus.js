@@ -88,7 +88,7 @@ let consensus = {
         }
 
         for (let i = 0; i < consensus.possBlocks.length; i++) {
-            const possBlock = consensus.possBlocks[i]
+            let possBlock = consensus.possBlocks[i]
             logr.cons('T'+Math.ceil(threshold)+' R0-'+possBlock[0].length+' R1-'+possBlock[1].length)
             // if 2/3+ of the final round and not already finalizing another block
             if (possBlock[config.consensusRounds-1].length > threshold 
@@ -103,14 +103,39 @@ let consensus = {
                     let collisions = []
                     for (let j in possBlocksById[possBlock.block._id])
                         collisions.push([possBlocksById[possBlock.block._id][j].block.miner,possBlocksById[possBlock.block._id][j].block.timestamp])
+                    
                     logr.info('Block collision detected at height '+possBlock.block._id+', the leaders are:',collisions)
-                    logr.cons('Poss blocks',possBlocksById[possBlock.block._id])
-                    logr.info('Applying block '+possBlock.block._id+'#'+possBlock.block.hash.substr(0,4)+' by '+possBlock.block.miner+' with timestamp '+possBlock.block.timestamp)
+                    
+                    // Sort by timestamp and take the earliest block
+                    collisions.sort((a,b) => a[1] - b[1])
+                    const winningMiner = collisions[0][0]
+                    let winningBlock = null
+                    
+                    // Find the block by the winning miner
+                    for (let j in possBlocksById[possBlock.block._id]) {
+                        if (possBlocksById[possBlock.block._id][j].block.miner === winningMiner) {
+                            winningBlock = possBlocksById[possBlock.block._id][j]
+                            break
+                        }
+                    }
+                    
+                    if (winningBlock) {
+                        possBlock = winningBlock
+                        // Clear other possible blocks for this height to prevent confusion
+                        consensus.possBlocks = consensus.possBlocks.filter(pb => 
+                            pb.block._id !== possBlock.block._id || pb.block.hash === possBlock.block.hash
+                        )
+                        
+                        logr.info('Applying block '+possBlock.block._id+'#'+possBlock.block.hash.substr(0,4)+' by '+possBlock.block.miner+' with timestamp '+possBlock.block.timestamp)
+                    }
                 } else
                     logr.cons('block '+possBlock.block._id+'#'+possBlock.block.hash.substr(0,4)+' got finalized')
 
                 chain.validateAndAddBlock(possBlock.block, false, function(err) {
-                    if (err) throw err
+                    if (err){
+                        logr.error(err)
+                        throw err
+                    } 
 
                     // clean up old possible blocks
                     let newPossBlocks = []
@@ -142,6 +167,15 @@ let consensus = {
         }
 
         if (round === 0) {
+            // Skip if we already have a block at this height
+            if (consensus.possBlocks.some(pb => 
+                pb.block._id === block._id && 
+                pb[0].length > 0 && 
+                pb.block.timestamp < block.timestamp)) {
+                if (cb) cb(-1)
+                return
+            }
+
             // precommit stage
 
             // skip whatever we already validated
@@ -199,7 +233,7 @@ let consensus = {
                             i--
                             continue
                         }
-                        let blockTime = steem.isSyncing() ? config.syncBlockTime : config.blockTime
+                        let blockTime = steem.isInSyncMode() ? config.syncBlockTime : config.blockTime
                         if (consensus.queue[i].d.ts + 2*blockTime < new Date().getTime()) {
                             consensus.queue.splice(i, 1)
                             i--

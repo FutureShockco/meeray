@@ -7,8 +7,8 @@
 #export P2P_HOST=0.0.0.0
 
 # MongoDB configuration
-#export DB_NAME=echelon
-#export DB_URL=mongodb://localhost:27017
+export DB_NAME=echelon
+export DB_URL=mongodb://localhost:27017
 
 # Directory to folder containing blocks.bson file
 #export BLOCKS_DIR=
@@ -16,7 +16,7 @@
 # Peering configuration
 #export OFFLINE=1
 #export NO_DISCOVERY=1
-#export DISCOVERY_EXCLUDE=dtube
+#export DISCOVERY_EXCLUDE=echelon-node1
 
 # Enable more modules
 #export NOTIFICATIONS=1
@@ -44,13 +44,13 @@ export REPLAY_OUTPUT=10000
 #export REBUILD_STATE=1
 #export REBUILD_WRITE_INTERVAL=10000
 #export REBUILD_NO_VALIDATE=1
-
+export STEEM_API="https://api.steemit.com"
 # default peers to connect with on startup
-export PEERS=
+export PEERS="ws://ws.steemx.com"
 export MAX_PEERS=20
 
 # your user and keys (only useful for active node owners)
-export NODE_OWNER="hightouch"
+export NODE_OWNER="echelon-node1"
 export NODE_OWNER_PUB="e27B66QHwRLjnjxi5KAa9G7fLSDajtoB6CxuZ87oTdfS"
 export NODE_OWNER_PRIV="AFW24kVuhjd4YRcK9qVJe72k3tQYJfGH7k45NRhupjLn"
 

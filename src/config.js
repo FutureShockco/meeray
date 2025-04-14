@@ -2,7 +2,8 @@ let config = {
     history: {
         0: {
             // Steem block to start streaming from
-            steemStartBlock: 94072025,
+            steemStartBlock: 94370562,
+            steemBlockDelay: 1,
             // this is the block 0 configuration for mainnet
             accountPriceBase: 20000,
             accountPriceCharMult: 4,
@@ -22,8 +23,8 @@ let config = {
             // the block hash serialization revision
             blockHashSerialization: 1,
             // the block time in ms
-            blockTime: 3000,
-            syncBlockTime: 1500,
+            blockTime: 2940,
+            syncBlockTime: 1000,
             // the number of ms needed for 0.01 DTC to generate 1 byte of bw
             bwGrowth: 36000000, // +10 bytes per hour per DTC (3600 * 1000 * 100 / 10)
             // the maximum bandwidth an account can have available
@@ -76,7 +77,7 @@ let config = {
             // masterFee = 19 => <5% fee
             masterFee: 9,
             // the init account username
-            masterName: 'hightouch',
+            masterName: 'echelon-node1',
             // if false master can create accounts with usernames without burning tokens
             masterPaysForUsernames: false,
             // the master account public original key (irrelevant if using genesis)
@@ -85,6 +86,8 @@ let config = {
             masterPubLeader: 'e27B66QHwRLjnjxi5KAa9G7fLSDajtoB6CxuZ87oTdfS',
             // the maximum time drift in ms before a block is invalid
             maxDrift: 200,
+            // the maximum time drift during sync mode
+            syncMaxDrift: 500,
             // the maximum number of transactions in a single block
             maxTxPerBlock: 20,
             // the max length of a transfer memo

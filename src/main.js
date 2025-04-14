@@ -8,17 +8,18 @@ cache = require('./cache.js')
 validate = require('./validate')
 eco = require('./economics.js')
 rankings = require('./rankings.js')
+steem = require('./steem.js')
+
 consensus = require('./consensus')
 leaderStats = require('./leaderStats')
-steem = require('./steem.js')
-dao = require('./dao')
-daoMaster = require('./daoMaster')
-blocks = require('./blocks')
-mongo = require('./mongo')
-http = require('./http')
+const dao = require('./dao')
+const daoMaster = require('./daoMaster')
+const blocks = require('./blocks')
+const mongo = require('./mongo')
+const http = require('./http')
 
 // verify node version
-const allowNodeV = [14, 16, 18]
+const allowNodeV = [14, 16, 18, 20]
 const currentNodeV = parseInt(process.versions.node.split('.')[0])
 if (allowNodeV.indexOf(currentNodeV) === -1) {
     logr.fatal('Wrong NodeJS version. Allowed versions: v'+allowNodeV.join(', v'))
@@ -56,6 +57,7 @@ mongo.init(async function(state) {
     await dao.loadActiveChainUpdateProposals()
     await dao.loadGovConfig()
     await daoMaster.loadID()
+    await steem.prefetchBlocks()
 
     // Rebuild chain state if specified
     let rebuildResumeBlock = state && state.headBlock ? state.headBlock+1 : 0
@@ -155,7 +157,7 @@ function startDaemon() {
     p2p.connect(process.env.PEERS ? process.env.PEERS.split(',') : [], true)
     // keep peer connection alive
     setTimeout(p2p.keepAlive,3000)
-    let blockTime = steem.isSyncing() ? config.syncBlockTime : config.blockTime
+    let blockTime = steem.isInSyncMode() ? config.syncBlockTime : config.blockTime
     // regularly clean up old txs from mempool
     setInterval(function() {
         transaction.cleanPool()
@@ -172,7 +174,7 @@ process.on('SIGINT', function() {
     setInterval(() => {
         blocks.close()
         if (cache.writerQueue.queue.length === 0 && !cache.writerQueue.processing) {
-            logr.info('Avalon exitted safely')
+            logr.info('Echelon exitted safely')
             process.exit(0)
         }
     },1000)
