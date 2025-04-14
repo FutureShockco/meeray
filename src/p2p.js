@@ -512,7 +512,14 @@ let p2p = {
             }
         }
 
-        if (!highestPeer) {
+        let peersAhead = []
+        for (let i = 0; i < p2p.sockets.length; i++)
+            if (p2p.sockets[i].node_status 
+            && p2p.sockets[i].node_status.head_block > chain.getLatestBlock()._id
+            && p2p.sockets[i].node_status.origin_block === config.originHash)
+                peersAhead.push(p2p.sockets[i])
+
+        if (!highestPeer || peersAhead.length === 0) {
             p2p.recovering = false
             return
         }
