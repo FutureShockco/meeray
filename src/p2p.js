@@ -539,13 +539,7 @@ let p2p = {
     },
     closeConnection: (ws) => {
         p2p.sockets.splice(p2p.sockets.indexOf(ws), 1)
-        logr.debug('a peer disconnected, ' + p2p.sockets.length + ' peers left')
-        
-        // If we're in recovery and still have peers, continue recovery
-        if (p2p.recovering && p2p.sockets.length > 0) {
-            logr.debug('Peer disconnected during recovery, continuing with remaining peers')
-            setTimeout(() => p2p.recover(), 100)
-        }
+        logr.debug('a peer disconnected, '+p2p.sockets.length+' peers left')
     },
     sendJSON: (ws, d) => {
         try {
