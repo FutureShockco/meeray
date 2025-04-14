@@ -410,7 +410,7 @@ const prefetchBlocks = async (blockNum) => {
                 if (steemBlock) {
                     blockCache.set(blockToFetch, steemBlock)
 
-                } else {
+        } else {
                     missedBlocks++
                     logr.warn(`No data returned for Steem block ${blockToFetch}`)
 
@@ -488,11 +488,11 @@ const processBlock = async (blockNum) => {
                         keysToDelete.forEach(key => blockCache.delete(key))
                     }
                 }
-            } catch (error) {
+    } catch (error) {
                 incrementConsecutiveErrors()
                 logr.error(`Failed to fetch Steem block ${blockNum}:`, error)
                 // Remove from processing list
-                processingBlocks = processingBlocks.filter(b => b !== blockNum)
+        processingBlocks = processingBlocks.filter(b => b !== blockNum)
                 return Promise.reject(error)
             }
         }
@@ -536,12 +536,12 @@ const processTransactions = async (steemBlock, blockNum) => {
     for (let tx of steemBlock.transactions) {
         for (let op of tx.operations) {
             try {
-                const [opType, opData] = op
+            const [opType, opData] = op
 
-                if (opType !== 'custom_json' || opData.id !== 'sidechain') {
-                    opIndex++
-                    continue
-                }
+            if (opType !== 'custom_json' || opData.id !== 'sidechain') {
+                opIndex++
+                continue
+            }
 
                 let json
                 try {
@@ -637,7 +637,7 @@ const processTransactions = async (steemBlock, blockNum) => {
                 opIndex++
             } catch (error) {
                 logr.error(`Error processing operation ${opIndex} in block ${blockNum}:`, error)
-                opIndex++
+            opIndex++
             }
         }
     }
@@ -717,7 +717,7 @@ const getValidRpcHeights = () => {
         if (now - data.timestamp > RPC_HEIGHT_EXPIRY) {
             rpcHeightData.delete(url)
             logr.debug(`Expired RPC height data for ${url}`)
-        } else {
+            } else {
             validHeights.push(data.height)
         }
     }
@@ -882,7 +882,7 @@ const resetErrorState = () => {
     retryDelay = MIN_RETRY_DELAY
     if (circuitBreakerOpen) {
         circuitBreakerOpen = false
-        healthCheckFailures = 0
+    healthCheckFailures = 0
     }
 }
 
@@ -1264,7 +1264,7 @@ module.exports = {
                 let steemBlock = blockCache.get(block.steemblock)
 
                 // If block not in cache, try to fetch it
-                if (!steemBlock) {
+            if (!steemBlock) {
                     logr.warn(`Steem block ${block.steemblock} not found in cache, attempting to fetch it`)
                     steemBlock = await module.exports.fetchMissingBlock(block.steemblock)
 
@@ -1278,38 +1278,38 @@ module.exports = {
                 // If we have no transactions to validate, return true
                 if (!block.txs || block.txs.length === 0) {
                     return resolve(true)
-                }
+            }
 
-                // Check each transaction in our block against Steem block
-                for (let tx of block.txs) {
-                    if (tx.type !== 'custom_json')
-                        continue
+            // Check each transaction in our block against Steem block
+            for (let tx of block.txs) {
+                if (tx.type !== 'custom_json')
+                    continue
 
-                    // Find matching custom_json operation in Steem block
-                    let found = false
-                    for (let steemTx of steemBlock.transactions) {
+                // Find matching custom_json operation in Steem block
+                let found = false
+                for (let steemTx of steemBlock.transactions) {
                         try {
-                            for (let op of steemTx.operations) {
-                                if (op[0] !== 'custom_json')
-                                    continue
+                    for (let op of steemTx.operations) {
+                        if (op[0] !== 'custom_json')
+                            continue
 
-                                if (op[1].id === 'sidechain' &&
-                                    op[1].json === JSON.stringify({
-                                        contract: tx.data.contract,
-                                        payload: tx.data.payload
-                                    })) {
-                                    found = true
-                                    break
-                                }
-                            }
-                            if (found) break
+                        if (op[1].id === 'sidechain' &&
+                            op[1].json === JSON.stringify({
+                                contract: tx.data.contract,
+                                payload: tx.data.payload
+                            })) {
+                            found = true
+                            break
+                        }
+                    }
+                    if (found) break
                         } catch (txErr) {
                             logr.error('Error processing transaction in Steem block:', txErr)
                             // Continue processing other transactions
                         }
-                    }
+                }
 
-                    if (!found) {
+                if (!found) {
                         logr.warn(`Transaction not found in Steem block ${block.steemblock}`)
                         return resolve(false)
                     }

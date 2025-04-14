@@ -19,6 +19,8 @@ const bs58 = require('base-x')(config.b58Alphabet)
 const blocks = require('./blocks')
 const dao = require('./dao')
 const daoMaster = require('./daoMaster')
+const RECOVERY_BATCH_SIZE = 10 // Number of blocks to request in each batch
+const RECOVERY_BATCH_DELAY = 200 // Delay between batches in ms
 
 const MessageType = {
     QUERY_NODE_STATUS: 0,
@@ -524,6 +526,7 @@ let p2p = {
         
         // Calculate how many blocks we can request in this batch
         const blocksToRequest = Math.min(
+            RECOVERY_BATCH_SIZE,
             max_blocks_buffer - (Object.keys(p2p.recoveredBlocks).length + p2p.recoveringBlocks.length),
             highestPeerBlock - p2p.recovering
         )
@@ -559,20 +562,25 @@ let p2p = {
 
         // If we're still behind, schedule next recovery batch
         if (p2p.recovering < highestPeerBlock) {
-            setTimeout(() => p2p.recover(), 100) // Small delay between batches
+            setTimeout(() => p2p.recover(), RECOVERY_BATCH_DELAY)
         }
     },
     refresh: (force = false) => {
-        if (p2p.recovering && !force) return
-        for (let i = 0; i < p2p.sockets.length; i++)
-            if (p2p.sockets[i].node_status
-                && p2p.sockets[i].node_status.head_block > chain.getLatestBlock()._id + 10
-                && p2p.sockets[i].node_status.origin_block === config.originHash) {
+        if (p2p.recovering && !force) {
+            logr.debug('Skipping refresh during recovery')
+            return
+        }
+        
+        for (let i = 0; i < p2p.sockets.length; i++) {
+            if (p2p.sockets[i].node_status &&
+                p2p.sockets[i].node_status.head_block > chain.getLatestBlock()._id + 10 &&
+                p2p.sockets[i].node_status.origin_block === config.originHash) {
                 logr.info('Catching up with network, head block: ' + p2p.sockets[i].node_status.head_block)
                 p2p.recovering = chain.getLatestBlock()._id
                 p2p.recover()
                 break
             }
+        }
     },
     errorHandler: (ws) => {
         ws.on('close', () => p2p.closeConnection(ws))
@@ -616,12 +624,13 @@ let p2p = {
                 cache.rollback()
                 dao.resetID()
                 daoMaster.resetID()
-                p2p.recoveredBlocks = []
+                p2p.recoveredBlocks = {}
                 p2p.recoveringBlocks = []
                 p2p.recoverAttempt++
-                if (p2p.recoverAttempt > max_recover_attempts)
+                if (p2p.recoverAttempt > max_recover_attempts) {
                     logr.error('Error Replay', newBlock._id)
-                else {
+                    p2p.recovering = false
+                } else {
                     logr.warn('Recover attempt #' + p2p.recoverAttempt + ' for block ' + newBlock._id)
                     p2p.recovering = chain.getLatestBlock()._id
                     p2p.recover()
@@ -629,12 +638,14 @@ let p2p = {
             } else {
                 p2p.recoverAttempt = 0
                 delete p2p.recoveredBlocks[newBlock._id]
-                p2p.recover()
-                if (p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
-                    setTimeout(function () {
-                        if (p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
-                            p2p.addRecursive(p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
-                    }, 1)
+                
+                // If we have the next block, process it immediately
+                if (p2p.recoveredBlocks[chain.getLatestBlock()._id + 1]) {
+                    p2p.addRecursive(p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
+                } else {
+                    // Otherwise, continue recovery
+                    p2p.recover()
+                }
             }
         })
     },
