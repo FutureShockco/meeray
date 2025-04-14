@@ -554,9 +554,15 @@ let p2p = {
 
             // Choose a random peer for each block to distribute load
             const randomPeer = peersAhead[Math.floor(Math.random() * peersAhead.length)]
+            if (!randomPeer || !randomPeer.node_status) {
+                logr.warn('Invalid peer selected for block request')
+                continue
+            }
+
+            const peerId = randomPeer.node_status.nodeId || 'unknown'
             p2p.sendJSON(randomPeer, { t: MessageType.QUERY_BLOCK, d: blockToRequest })
             p2p.recoveringBlocks.push(blockToRequest)
-            logr.debug(`Requesting block #${blockToRequest} from peer ${randomPeer.nodeId} (head: ${randomPeer.node_status.head_block})`)
+            logr.debug(`Requesting block #${blockToRequest} from peer ${peerId} (head: ${randomPeer.node_status.head_block})`)
         }
 
         // Update recovering counter
