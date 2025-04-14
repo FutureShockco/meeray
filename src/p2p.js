@@ -515,7 +515,8 @@ let p2p = {
             p2p.sendJSON(champion, { t: MessageType.QUERY_BLOCK, d: p2p.recovering })
             p2p.recoveringBlocks.push(p2p.recovering)
             logr.debug('query block #' + p2p.recovering + ' -- head block: ' + champion.node_status.head_block)
-            if (p2p.recovering % 2) p2p.recover()
+            // Always continue recovery until we're caught up
+            p2p.recover()
         }
     },
     refresh: (force = false) => {
