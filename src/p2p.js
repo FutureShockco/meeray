@@ -144,13 +144,16 @@ let p2p = {
             logr.warn('Incoming handshake refused because already peered enough ' + p2p.sockets.length + '/' + max_peers)
             ws.close(); return
         }
-        // close connection if we already have this peer ip in our connected sockets
-        for (let i = 0; i < p2p.sockets.length; i++)
-            if (p2p.sockets[i]._socket.remoteAddress === ws._socket.remoteAddress
-                && p2p.sockets[i]._socket.remotePort === ws._socket.remotePort) {
-                ws.close()
-                return
+        // If we're in recovery, don't disconnect duplicate connections
+        if (p2p.recovering) {
+            for (let i = 0; i < p2p.sockets.length; i++) {
+                if (p2p.sockets[i]._socket.remoteAddress === ws._socket.remoteAddress
+                    && p2p.sockets[i]._socket.remotePort === ws._socket.remotePort) {
+                    logr.debug('Allowing duplicate connection during recovery')
+                    return
+                }
             }
+        }
         logr.debug('Handshaking new peer', ws.url || ws._socket.remoteAddress + ':' + ws._socket.remotePort)
         let random = randomBytes(config.randomBytesLength).toString('hex')
         ws.challengeHash = random
@@ -493,32 +496,84 @@ let p2p = {
         }
     },
     recover: () => {
-        if (!p2p.sockets || p2p.sockets.length === 0) return
-        if (Object.keys(p2p.recoveredBlocks).length + p2p.recoveringBlocks.length > max_blocks_buffer) return
+        if (!p2p.sockets || p2p.sockets.length === 0) {
+            logr.debug('No peers available for recovery')
+            return
+        }
+        if (Object.keys(p2p.recoveredBlocks).length + p2p.recoveringBlocks.length > max_blocks_buffer) {
+            logr.debug('Recovery buffer full, waiting for blocks to process')
+            return
+        }
         if (!p2p.recovering) p2p.recovering = chain.getLatestBlock()._id
 
+        // Find all peers that are ahead of us
         let peersAhead = []
-        for (let i = 0; i < p2p.sockets.length; i++)
-            if (p2p.sockets[i].node_status
-                && p2p.sockets[i].node_status.head_block > chain.getLatestBlock()._id
-                && p2p.sockets[i].node_status.origin_block === config.originHash)
+        for (let i = 0; i < p2p.sockets.length; i++) {
+            if (p2p.sockets[i].node_status &&
+                p2p.sockets[i].node_status.head_block > chain.getLatestBlock()._id &&
+                p2p.sockets[i].node_status.origin_block === config.originHash) {
                 peersAhead.push(p2p.sockets[i])
+            }
+        }
 
         if (peersAhead.length === 0) {
+            logr.debug('No peers ahead of us, stopping recovery')
             p2p.recovering = false
             return
         }
 
-        let champion = peersAhead[Math.floor(Math.random() * peersAhead.length)]
-        if (p2p.recovering + 1 <= champion.node_status.head_block) {
-            p2p.recovering++
-            p2p.sendJSON(champion, { t: MessageType.QUERY_BLOCK, d: p2p.recovering })
-            p2p.recoveringBlocks.push(p2p.recovering)
-            logr.debug('query block #' + p2p.recovering + ' -- head block: ' + champion.node_status.head_block)
-            // Always continue recovery until we're caught up
-            if (p2p.recovering < champion.node_status.head_block) {
-                p2p.recover()
+        // Sort peers by their head block height
+        peersAhead.sort((a, b) => b.node_status.head_block - a.node_status.head_block)
+        
+        // Get the highest block among peers
+        const highestPeerBlock = peersAhead[0].node_status.head_block
+        
+        // Calculate how many blocks we can request in this batch
+        const blocksToRequest = Math.min(
+            5, // Limit batch size to 5 blocks
+            max_blocks_buffer - (Object.keys(p2p.recoveredBlocks).length + p2p.recoveringBlocks.length),
+            highestPeerBlock - p2p.recovering
+        )
+
+        if (blocksToRequest <= 0) {
+            logr.debug('No more blocks to request, stopping recovery')
+            p2p.recovering = false
+            return
+        }
+
+        // Request blocks in parallel from different peers
+        for (let i = 0; i < blocksToRequest; i++) {
+            const blockToRequest = p2p.recovering + i + 1
+            
+            // Skip if we're already requesting this block
+            if (p2p.recoveringBlocks.includes(blockToRequest)) {
+                continue
             }
+            
+            // Skip if we already have this block
+            if (p2p.recoveredBlocks[blockToRequest]) {
+                continue
+            }
+
+            // Choose a random peer for each block to distribute load
+            const randomPeer = peersAhead[Math.floor(Math.random() * peersAhead.length)]
+            if (!randomPeer || !randomPeer.node_status) {
+                logr.warn('Invalid peer selected for block request')
+                continue
+            }
+
+            const peerId = randomPeer.node_status.nodeId || 'unknown'
+            p2p.sendJSON(randomPeer, { t: MessageType.QUERY_BLOCK, d: blockToRequest })
+            p2p.recoveringBlocks.push(blockToRequest)
+            logr.debug(`Requesting block #${blockToRequest} from peer ${peerId} (head: ${randomPeer.node_status.head_block})`)
+        }
+
+        // Update recovering counter
+        p2p.recovering += blocksToRequest
+
+        // If we're still behind, schedule next recovery batch
+        if (p2p.recovering < highestPeerBlock) {
+            setTimeout(() => p2p.recover(), 100)
         }
     },
     refresh: (force = false) => {
@@ -545,6 +600,12 @@ let p2p = {
     closeConnection: (ws) => {
         p2p.sockets.splice(p2p.sockets.indexOf(ws), 1)
         logr.debug('a peer disconnected, ' + p2p.sockets.length + ' peers left')
+        
+        // If we're in recovery and still have peers, continue recovery
+        if (p2p.recovering && p2p.sockets.length > 0) {
+            logr.debug('Peer disconnected during recovery, continuing with remaining peers')
+            setTimeout(() => p2p.recover(), 100)
+        }
     },
     sendJSON: (ws, d) => {
         try {
