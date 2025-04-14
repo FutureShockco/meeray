@@ -515,8 +515,10 @@ let p2p = {
             p2p.sendJSON(champion, { t: MessageType.QUERY_BLOCK, d: p2p.recovering })
             p2p.recoveringBlocks.push(p2p.recovering)
             logr.debug('query block #' + p2p.recovering + ' -- head block: ' + champion.node_status.head_block)
-            // Always continue recovery until we're caught up
-            p2p.recover()
+            // Only continue recovery if we're still behind
+            if (p2p.recovering < champion.node_status.head_block) {
+                p2p.recover()
+            }
         }
     },
     refresh: (force = false) => {
@@ -593,12 +595,25 @@ let p2p = {
                 p2p.recoverAttempt = 0
                 delete p2p.recoveredBlocks[newBlock._id]
                 
+                // Check if we're still behind
+                let maxPeerBlock = 0
+                for (let i = 0; i < p2p.sockets.length; i++) {
+                    if (p2p.sockets[i].node_status && 
+                        p2p.sockets[i].node_status.head_block > maxPeerBlock) {
+                        maxPeerBlock = p2p.sockets[i].node_status.head_block
+                    }
+                }
+                
                 // If we have the next block, process it immediately
                 if (p2p.recoveredBlocks[chain.getLatestBlock()._id + 1]) {
                     p2p.addRecursive(p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
-                } else {
-                    // Otherwise, continue recovery
+                } else if (chain.getLatestBlock()._id < maxPeerBlock) {
+                    // If we're still behind, continue recovery
+                    p2p.recovering = chain.getLatestBlock()._id
                     p2p.recover()
+                } else {
+                    // We're caught up
+                    p2p.recovering = false
                 }
             }
         })
