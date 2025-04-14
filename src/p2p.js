@@ -523,7 +523,15 @@ let p2p = {
             p2p.recovering = false
             return
         }
-
+        
+        let champion = peersAhead[Math.floor(Math.random()*peersAhead.length)]
+        if (p2p.recovering+1 <= champion.node_status.head_block) {
+            p2p.recovering++
+            p2p.sendJSON(champion, {t: MessageType.QUERY_BLOCK, d:p2p.recovering})
+            p2p.recoveringBlocks.push(p2p.recovering)
+            logr.debug('query block #'+p2p.recovering+' -- head block: '+champion.node_status.head_block)
+            if (p2p.recovering%2) p2p.recover()
+        }
         // Only request from the highest peer
         if (p2p.recovering + 1 <= highestBlock) {
             p2p.recovering++
