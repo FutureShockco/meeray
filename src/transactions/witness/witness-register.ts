@@ -1,15 +1,14 @@
-import { Account } from '../../models/account.js';
 import logger from '../../logger.js';
-import mongoose from 'mongoose';
+import cache from '../../cache.js';
 
 export interface WitnessRegisterData {
   pub: string;
 }
 
 export async function validate(data: WitnessRegisterData, sender: string): Promise<boolean> {
-  try {    
+  try {
     // Check if account already registered as witness
-    const account = await Account.findById(sender);    
+    const account = await cache.findOnePromise('accounts', { name: sender });
     if (!account) {
       logger.warn(`Invalid witness register: account ${sender} not found`);
       return false;
@@ -25,7 +24,7 @@ export async function validate(data: WitnessRegisterData, sender: string): Promi
       logger.warn(`Invalid witness register: missing or invalid public key`);
       return false;
     }
-    
+
     // The original check was for length 53, but we'll be more permissive
     if (data.pub.length < 20) {
       logger.warn(`Invalid witness register: public key too short (${data.pub.length} chars)`);
@@ -40,23 +39,27 @@ export async function validate(data: WitnessRegisterData, sender: string): Promi
 }
 
 export async function process(data: WitnessRegisterData, sender: string): Promise<boolean> {
-  try {    
+  try {
     // Direct check of account state before transaction
-    const beforeAccount = await Account.findById(sender);
-    // Direct update approach instead of using a transaction
-    const updateResult = await Account.findOneAndUpdate(
-      { _id: sender },
-      { $set: { witnessPublicKey: data.pub } },
-      { new: true } // Return the updated document
-    );
-    
-    if (!updateResult) {
-      logger.error(`Failed to update account ${sender} - account not found`);
+    const beforeAccount = await cache.findOnePromise('accounts', { name: sender });
+    if (!beforeAccount) {
+      logger.error(`Failed to check account ${sender} - account not found`);
       return false;
     }
-    
-    // Verify the change was persisted with a separate query
-    const verifyAccount = await Account.findById(sender);
+    // Direct update approach instead of using a transaction
+    const updateSuccess = await cache.updateOnePromise('accounts', { name: sender }, { $set: { witnessPublicKey: data.pub } });
+    if (!updateSuccess) {
+      logger.error(`Failed to update account ${sender} via cache - account not found in cache or update failed`);
+      return false;
+    }
+
+    // Verify the change was persisted with a separate query (from cache, which should reflect the update)
+    const verifyAccount = await cache.findOnePromise('accounts', { name: sender });
+    if (!verifyAccount || verifyAccount.witnessPublicKey !== data.pub) { // Check if the pubkey was actually updated
+      logger.error(`Failed to verify account update for ${sender} - account not found or public key not updated in cache`);
+      return false;
+    }
+
     return true;
   } catch (error) {
     logger.error(`Error processing witness register: ${error}`);

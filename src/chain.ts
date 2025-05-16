@@ -4,30 +4,25 @@
 // TODO: Add proper types for chain logic, blocks, state, etc.
 
 import { Block, isValidNewBlock } from './block.js';
-import { BlockModel } from './models/block.js';
 import config from './config.js';
 import { blocks } from './blockStore.js';
 import logger from './logger.js';
 import secp256k1 from 'secp256k1';
 import { createHash, randomBytes } from 'crypto';
 import baseX from 'base-x';
-import cloneDeep from 'clone-deep';
-import CryptoJS from 'crypto-js';
 // @ts-ignore
 import series from 'run-series';
 import transaction from './transaction.js';
 import { Transaction } from './transactions/index.js';
 import mining from './mining.js';
 import cache from './cache.js';
-import txHistory from './transactions/txHistory.js';
+import txHistory from './txHistory.js';
 import witnessesStats from './witnessesStats.js';
 import witnessesModule from './witnesses.js';
 import p2p from './p2p.js';
 import notifications from './modules/notifications.js';
-// import mining from './mining.js';
-// import witnesses from './witnesses.js';
-// import cache from './cache.js';
-// import notifications from './notifications.js';
+import mongo from './mongo.js';
+
 
 const bs58 = baseX(config.b58Alphabet);
 
@@ -37,7 +32,7 @@ export const chain = {
     schedule: null as any,
     recentBlocks: [] as any[],
     recentTxs: {} as Record<string, any>,
-    nextOutput: { txs: 0, dist: 0, burn: 0 },
+    nextOutput: { txs: 0, dist: 0 },
     lastRebuildOutput: 0,
     worker: null as any,
     shuttingDown: false,
@@ -53,11 +48,11 @@ export const chain = {
         };
     },
     calculateBlockHash: (
-        index: number, 
-        phash: string, 
-        timestamp: number, 
-        txs: Transaction[], 
-        witness: string, 
+        index: number,
+        phash: string,
+        timestamp: number,
+        txs: Transaction[],
+        witness: string,
         missedBy: string = '',
         distributed: number = 0
     ): string => {
@@ -137,9 +132,7 @@ export const chain = {
         chain.nextOutput.txs += block.txs.length;
         if (block.dist)
             chain.nextOutput.dist += block.dist;
-        if (block.burn)
-            chain.nextOutput.burn += block.burn;
-        // TODO: replay_output logic
+
         let currentOutTime = new Date().getTime();
         let output = '';
         if (rebuilding)
@@ -153,17 +146,16 @@ export const chain = {
         if (chain.nextOutput.txs > 1)
             output += 's';
         output += '  dist: ' + (chain.nextOutput.dist);
-        output += '  burn: ' + (chain.nextOutput.burn);
         output += '  delay: ' + (currentOutTime - block.timestamp);
         if (block.missedBy && !rebuilding)
             output += '  MISS: ' + block.missedBy;
         logger.info(output);
-        chain.nextOutput = { txs: 0, dist: 0, burn: 0 };
+        chain.nextOutput = { txs: 0, dist: 0 };
     },
 
     applyHardfork: (block: any, cb: (err: any, result: any) => void) => {
         // TODO: Implement hardfork logic as needed
-        cb(null, { executed: false, distributed: 0, burned: 0 });
+        cb(null, { executed: false, distributed: 0 });
     },
 
     applyHardforkPostBlock: (blockNum: number) => {
@@ -182,87 +174,105 @@ export const chain = {
         else cb(chain.blocksToRebuild.shift());
     },
 
-    rebuildState: function(blockNum: number, cb: (err: any, headBlockNum: number) => void): void {
+    rebuildState: function (blockNum: number, cb: (err: any, headBlockNum: number) => void): void {
         logger.info(`Rebuilding chain state from block ${blockNum}`);
-        
+
         // If chain shutting down, stop rebuilding and output last number for resuming
         if (chain.shuttingDown) {
-          return cb(null, blockNum);
+            return cb(null, blockNum);
         }
-        
+
         // Genesis block is handled differently
         if (blockNum === 0) {
-          chain.recentBlocks = [this.getGenesisBlock()];
-          chain.schedule = witnessesModule.witnessSchedule(this.getGenesisBlock());
-          this.rebuildState(blockNum + 1, cb);
-          return;
+            chain.recentBlocks = [this.getGenesisBlock()];
+            chain.schedule = witnessesModule.witnessSchedule(this.getGenesisBlock());
+            this.rebuildState(blockNum + 1, cb);
+            return;
         }
-        
+
         // Process blocks in batches
         this.batchLoadBlocks(blockNum, async (blockToRebuild: Block | null) => {
-          if (!blockToRebuild) {
-            // Rebuild is complete
-            return cb(null, blockNum);
-          }
-          
-          try {
-            // Execute transactions in the block
-            this.executeBlockTransactions(blockToRebuild, true, (validTxs: Transaction[], dist: number) => {
-              if (blockToRebuild.txs.length !== validTxs.length) {
-                logger.error('Invalid transaction found in block during rebuild');
-                return cb('Invalid transaction in block', blockNum);
-              }
-              
-              // Verify distribution amount
-              if (blockToRebuild.dist !== dist) {
-                logger.error(`Wrong distribution amount: ${blockToRebuild.dist} vs ${dist}`);
-                return cb('Wrong distribution amount', blockNum);
-              }
-              
-              // Add transactions to recent transactions
-              this.addRecentTxsInBlock(blockToRebuild.txs);
-              const configBlock = config.read(blockToRebuild._id)
+            if (!blockToRebuild) {
+                // Rebuild is complete
+                return cb(null, blockNum);
+            }
 
-              chain.applyHardforkPostBlock(blockToRebuild._id)
-              // Continue with next block
-              chain.cleanMemory()
-              witnessesStats.processBlock(blockToRebuild)
-              txHistory.processBlock(blockToRebuild)
+            try {
+                // Execute transactions in the block
+                this.executeBlockTransactions(blockToRebuild, true, (validTxs: Transaction[], dist: number) => {
+                    if (blockToRebuild.txs.length !== validTxs.length) {
+                        logger.error('Invalid transaction found in block during rebuild');
+                        return cb('Invalid transaction in block', blockNum);
+                    }
 
-              let writeInterval = parseInt(process.env.REBUILD_WRITE_INTERVAL!)
-              if (isNaN(writeInterval) || writeInterval < 1)
-                  writeInterval = 10000
+                    // Verify distribution amount
+                    if (blockToRebuild.dist !== dist) {
+                        logger.error(`Wrong distribution amount: ${blockToRebuild.dist} vs ${dist}`);
+                        return cb('Wrong distribution amount', blockNum);
+                    }
 
-              cache.processRebuildOps(() => {
-                if (blockToRebuild._id % config.witnesses === 0)
-                    chain.schedule = witnessesModule.witnessSchedule(blockToRebuild)
-                chain.recentBlocks.push(blockToRebuild)
-                chain.output(blockToRebuild, true)
-                
-                // process notifications and leader stats (non blocking)
-                notifications.processBlock(blockToRebuild)
+                    // Add transactions to recent transactions
+                    this.addRecentTxsInBlock(blockToRebuild.txs);
+                    const configBlock = config.read(blockToRebuild._id)
 
-                // next block
-                chain.rebuildState(blockNum+1, cb)
-            }, blockToRebuild._id % writeInterval === 0)
-            });
-          } catch (error) {
-            logger.error('Error rebuilding state:', error);
-            return cb(error, blockNum);
-          }
+                    chain.applyHardforkPostBlock(blockToRebuild._id)
+                    // Continue with next block
+                    chain.cleanMemory()
+                    witnessesStats.processBlock(blockToRebuild)
+                    txHistory.processBlock(blockToRebuild)
+
+                    let writeInterval = parseInt(process.env.REBUILD_WRITE_INTERVAL!)
+                    if (isNaN(writeInterval) || writeInterval < 1)
+                        writeInterval = 10000
+
+                    cache.processRebuildOps(() => {
+                        if (blockToRebuild._id % config.witnesses === 0)
+                            chain.schedule = witnessesModule.witnessSchedule(blockToRebuild)
+                        chain.recentBlocks.push(blockToRebuild)
+                        chain.output(blockToRebuild, true)
+
+                        // process notifications and witness stats (non blocking)
+                        notifications.processBlock(blockToRebuild)
+
+                        // next block
+                        chain.rebuildState(blockNum + 1, cb)
+                    }, blockToRebuild._id % writeInterval === 0)
+                });
+            } catch (error) {
+                logger.error('Error rebuilding state:', error);
+                return cb(error, blockNum);
+            }
         });
-      },
+    },
 
     // Block addition and validation
     addBlock: async (block: any, cb: (err?: any) => void) => {
         // add the block in our own db
-        if (blocks.isOpen)
-            blocks.appendBlock(block);
-        else {
+        if (blocks && typeof blocks.isOpen !== 'undefined' && blocks.isOpen) {
             try {
-                await BlockModel.updateOne({ _id: block._id }, { $set: block }, { upsert: true });
-            } catch (error) {
+                // Assuming blocks.appendBlock might be synchronous or promise-based
+                // If it's callback-based, this would need adjustment.
+                await blocks.appendBlock(block); 
+            } catch (levelDbError) {
+                if (logger) logger.error(`Error appending block to LevelDB: _id=${block._id}`, levelDbError);
+                // Decide if we should fallback to MongoDB or return error
+                // For now, let's try to fallback if LevelDB fails, or just error out if LevelDB was the primary expected store
+                // Fallback to MongoDB if appendBlock fails:
+                try {
+                    await mongo.getDb().collection('blocks').insertOne(block)
+                } catch (mongoError) {
+                    if (logger) logger.error(`Error inserting block into MongoDB after LevelDB fail: _id=${block._id}`, mongoError);
+                    return cb(mongoError); // Return error to original callback
+                }
+            }
+        } else {
+            try {
+                // Former Mongoose call: await BlockModel.updateOne({ _id: block._id }, { $set: block }, { upsert: true }).exec();
+                const db = mongo.getDb();
+                await db.collection('blocks').updateOne({ _id: block._id }, { $set: block }, { upsert: true });
+            } catch (error) { // This catches errors from the MongoDB operation
                 if (logger) logger.error(`Error inserting block into MongoDB: _id=${block._id}`, error);
+                return cb(error); // Return error to original callback
             }
         }
         // push cached accounts and contents to mongodb
@@ -273,48 +283,83 @@ export const chain = {
         witnessesStats.processBlock(block);
         txHistory.processBlock(block);
 
-        // if block id is mult of n leaders, reschedule next n blocks
+        // if block id is mult of n witnesss, reschedule next n blocks
         if (block._id % configBlock.witnesses === 0)
             chain.schedule = witnessesModule.witnessSchedule(block);
 
         chain.recentBlocks.push(block);
         mining.minerWorker(block);
         chain.output(block);
-        cache.writeToDisk(false);
-        cb(true);
+        cache.writeToDisk(false, () => { // writeToDisk has its own callback
+            cb(null); // Call original cb after writeToDisk's callback completes
+        });
     },
-    validateAndAddBlock: (block: any, revalidate: boolean, cb: (err: any) => void) => {
-        isValidNewBlock(block, true, revalidate, function(isValid: boolean) {
+    validateAndAddBlock: async (newBlock: any, revalidate: boolean, cb: (err: any) => void) => {
+        if (chain.shuttingDown) return
+        isValidNewBlock(newBlock, true, revalidate, function (isValid: boolean) {
             if (!isValid) {
-                cb(true);
-                return;
+                return cb(true);
             }
-            chain.addBlock(block, function() {
-                p2p.broadcastBlock(block);
-                cb(null);
-            });
+            // straight execution
+            chain.executeBlockTransactions(newBlock, false, function (validTxs: any[], distributed: number) {
+                // if any transaction is wrong, thats a fatal error
+                if (newBlock.txs.length !== validTxs.length) {
+                    logger.error('Invalid tx(s) in block')
+                    cb(true); return
+                }
+
+                // error if distributed computed amounts are different than the reported one
+                let blockDist = newBlock.dist || 0
+                if (blockDist !== distributed) {
+                    logger.error('Wrong dist amount', blockDist, distributed)
+                    cb(true); return
+                }
+
+
+                // add txs to recents
+                chain.addRecentTxsInBlock(newBlock.txs)
+
+                // remove all transactions from this block from our transaction pool
+                transaction.removeFromPool(newBlock.txs)
+
+                chain.addBlock(newBlock, function () {
+                    // and broadcast to peers (if not replaying)
+                    if (!p2p.recovering)
+                        p2p.broadcastBlock(newBlock)
+
+                    // process notifications and witness stats (non blocking)
+                    notifications.processBlock(newBlock)
+
+                    // emit event to confirm new transactions in the http api
+                    if (!p2p.recovering)
+                        for (let i = 0; i < newBlock.txs.length; i++)
+                            transaction.eventConfirmation.emit(newBlock.txs[i].hash)
+
+                    cb(null)
+                })
+            })
         });
     },
 
-    executeBlockTransactions: (block: any, revalidate: boolean, cb: (validTxs: any[], dist: number, burn: number) => void) => {
+    executeBlockTransactions: (block: any, revalidate: boolean, cb: (validTxs: any[], dist: number) => void) => {
         // revalidating transactions in orders if revalidate = true
         // adding transaction to recent transactions (to prevent tx re-use) if isFinal = true
         let executions: any[] = [];
         for (let i = 0; i < block.txs.length; i++) {
-            executions.push(function(callback: any) {
+            executions.push(function (callback: any) {
                 let tx = block.txs[i];
-                if (revalidate)
-                    transaction.isValid(tx, block.timestamp, function(isValid: boolean, error: any) {
+
+                if (revalidate) {
+                    transaction.isValid(tx, block.timestamp, function (isValid: boolean, error: any) {
                         if (isValid)
-                            transaction.execute(tx, block.timestamp, function(executed: boolean, distributed: number, burned: number) {
+                            transaction.execute(tx, block.timestamp, function (executed: boolean, distributed: number | undefined) {
                                 if (!executed) {
                                     logger.fatal('Tx execution failure', tx);
                                     process.exit(1);
                                 }
                                 callback(null, {
                                     executed: executed,
-                                    distributed: distributed,
-                                    burned: burned
+                                    distributed: distributed
                                 });
                             });
                         else {
@@ -322,22 +367,48 @@ export const chain = {
                             callback(null, false);
                         }
                     });
-                else
-                    transaction.execute(tx, block.timestamp, function(executed: boolean, distributed: number, burned: number) {
+                }
+                else {
+
+                    transaction.execute(tx, block.timestamp, function (executed: boolean, distributed: number | undefined) {
                         if (!executed)
                             logger.fatal('Tx execution failure', tx);
                         callback(null, {
                             executed: executed,
-                            distributed: distributed,
-                            burned: burned
+                            distributed: distributed
                         });
                     });
+                }
+
+
             });
         }
-        // TODO: Add hardfork logic if needed
-        // series(executions, ...)
-        // For now, just call cb with empty arrays for compatibility
-        cb([], 0, 0);
+        executions.push((callback: (err: any, result: any) => void) => chain.applyHardfork(block, callback));
+
+        series(executions, function (err: any, results: any) {
+            let string = 'executed'
+            if(revalidate) string = 'validated & '+string
+            if (err) {
+                logger.error('Error in series execution:', err);
+                throw err;
+            }
+            // First result is from account creation
+            let executedSuccesfully: any[] = [];
+            let distributedInBlock = 0;
+            for (let i = 0; i < block.txs.length; i++) {
+                const result = results[i];
+                if (result && result.executed) {
+                    executedSuccesfully.push(block.txs[i]);
+                    if (result.distributed) distributedInBlock += result.distributed;
+                }
+            }
+            // add rewards for the witness who mined this block
+            witnessesModule.witnessRewards(block.witness, block.timestamp, function (dist: number) {
+                distributedInBlock += dist;
+                distributedInBlock = Math.round(distributedInBlock * 1000) / 1000;
+                cb(executedSuccesfully, distributedInBlock);
+            });
+        });
     },
 };
 

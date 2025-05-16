@@ -1,7 +1,7 @@
 import config from '../config.js';
-import { NotificationModel } from '../models/notification.js';
 import { TransactionType } from '../transactions/types.js';
-import chain from '../chain.js';
+import { chain } from '../chain.js';
+import mongo from '../mongo.js';
 const isEnabled = process.env.NOTIFICATIONS === 'true' || false;
 
 export const notifications = {
@@ -16,7 +16,7 @@ export const notifications = {
     },
     purgeOld: async (block: any) => {
         let threshold = block.timestamp - config.notifPurge * config.notifPurgeAfter * config.blockTime;
-        await NotificationModel.deleteMany({
+        await mongo.getDb().collection('notifications').deleteMany({
             ts: { $lt: threshold }
         });
     },
@@ -29,7 +29,7 @@ export const notifications = {
                     tx: tx,
                     ts: ts
                 };
-                await NotificationModel.create(notif);
+                await mongo.getDb().collection('notifications').insertOne(notif);
                 break;
             case TransactionType.TRANSFER_TOKEN:
                 notif = {
@@ -37,7 +37,7 @@ export const notifications = {
                     tx: tx,
                     ts: ts
                 };
-                await NotificationModel.create(notif);
+                await mongo.getDb().collection('notifications').insertOne(notif);
                 break;
             default:
                 break;

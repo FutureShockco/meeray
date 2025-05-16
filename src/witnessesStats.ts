@@ -1,5 +1,6 @@
-import WitnessStatsModel, { IWitnessStats } from './models/witnessStats.js';
 import logger from './logger.js';
+import mongo from './mongo.js';
+import { IWitnessStats } from './models/witnessStats.js';
 
 // @ts-ignore
 const db = { collection: () => ({ updateOne: () => {}, find: () => ({ toArray: () => {} }) }) } as any; // TODO: Replace with actual db/mongo implementation
@@ -103,11 +104,11 @@ const indexer: IWitnessIndexer = {
   getWriteOps: () => {
     if (process.env.WITNESS_STATS !== '1') return [];
     let ops: ((cb: (err: any, res?: any) => void) => void)[] = [];
-    for (let acc in indexer.updates.witnesses) {
-      let updatedWitness = indexer.updates.witnesses[acc];
-      ops.push((cb) => WitnessStatsModel.updateOne(
-        { _id: updatedWitness },
-        { $set: indexer.witnesses[updatedWitness] },
+    for (let accKey in indexer.updates.witnesses) {
+      const updatedWitnessName = indexer.updates.witnesses[accKey];
+      ops.push((cb) => mongo.getDb().collection<IWitnessStats>('witnessStats').updateOne(
+        { _id: updatedWitnessName },
+        { $set: indexer.witnesses[updatedWitnessName] },
         { upsert: true },
       ).then(() => cb(null, true)).catch(cb)
       );
@@ -118,10 +119,12 @@ const indexer: IWitnessIndexer = {
   loadIndex: async () => {
     if (process.env.WITNESS_STATS !== '1') return;
     try {
-      const witnesses = await WitnessStatsModel.find({}).exec();
+      const db = mongo.getDb();
+      const witnesses = await db.collection<IWitnessStats>('witnessStats').find({}).toArray();
       for (const witness of witnesses) {
-        indexer.witnesses[witness._id] = witness.toObject();
-        delete indexer.witnesses[witness._id]._id;
+        const witnessName = witness._id as string;
+        indexer.witnesses[witnessName] = { ...witness };
+        delete indexer.witnesses[witnessName]._id;
       }
     } catch (e) {
       logger.error('Failed to load witness stats:', e);

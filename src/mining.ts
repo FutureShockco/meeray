@@ -18,7 +18,7 @@ export const mining = {
     /**
      * Prepare a new block with transactions from the mempool.
      */
-    prepareBlock: () => {
+    prepareBlock: (cb: (err: any, newBlock?: any) => void) => {
         let previousBlock = chain.getLatestBlock();
         let nextIndex = previousBlock._id + 1;
         let nextTimestamp = new Date().getTime();
@@ -27,10 +27,10 @@ export const mining = {
         // grab all transactions and sort by ts
 
         // Calculate the appropriate timestamp based on miner priority
-        let minerPriority = 1; // Default priority for the leader
+        let minerPriority = 1; // Default priority for the witness
         if (chain.schedule && chain.schedule.shuffle &&
             chain.schedule.shuffle[(nextIndex - 1) % config.read(0).witnesses].name !== process.env.STEEM_ACCOUNT) {
-            // We're not the scheduled leader, calculate our priority
+            // We're not the scheduled witness, calculate our priority
             for (let i = 1; i < 2 * config.read(0).witnesses; i++) {
                 if (chain.recentBlocks[chain.recentBlocks.length - i]
                     && chain.recentBlocks[chain.recentBlocks.length - i].miner === process.env.STEEM_ACCOUNT) {
@@ -40,52 +40,79 @@ export const mining = {
             }
         }
 
-        let txs: any[] = [];
-        let mempool = transaction.pool.sort((a: any, b: any) => a.ts - b.ts);
-        loopOne:
-        for (let i = 0; i < mempool.length; i++) {
-            if (txs.length === config.maxTxPerBlock)
-                break;
-            for (let y = 0; y < txs.length; y++)
-                if (txs[y].sender === mempool[i].sender)
-                    continue loopOne;
-            txs.push(mempool[i]);
-        }
-        loopTwo:
-        for (let i = 0; i < mempool.length; i++) {
-            if (txs.length === config.maxTxPerBlock)
-                break;
-            for (let y = 0; y < txs.length; y++)
-                if (txs[y].hash === mempool[i].hash)
-                    continue loopTwo;
-            txs.push(mempool[i]);
-        }
-        txs = txs.sort((a: any, b: any) => a.ts - b.ts);
-        transaction.removeFromPool(txs);
+        steem.processBlock(nextSteemBlockNum).then((transactions) => {
+            if (!transactions) {
+                // Handle the case where the Steem block doesn't exist yet
+                if (steem.getBehindBlocks() <= 0) {
+                    logger.warn(`Cannot prepare block - Steem block ${nextSteemBlockNum} not found, but we're caught up with Steem head. Retrying in 1 second...`)
 
-        let newBlock: Block = {
-            _id: nextIndex,
-            blockNum: nextIndex,
-            phash: previousBlock.hash,
-            timestamp: nextTimestamp,
-            steemBlockNum: nextSteemBlockNum,
-            steemBlockTimestamp: nextSteemBlockTimestamp,
-            txs: txs,
-            witness: process.env.STEEM_ACCOUNT || '',
-            missedBy: '',
-            dist: 0,
-            hash: '',
-            signature: '',
-            sync: steem.isInSyncMode() || false
-        };
-        // Set distribution amount based on leader rewards
-        if (config.witnessReward > 0) {
-            newBlock.dist = config.witnessReward
-        }
+                    // If we're at the head of Steem, wait a bit and let the caller retry
+                    setTimeout(() => {
+                        cb(true, null)
+                    }, 1000)
 
-        // hash and sign the block with our private key
-        newBlock = mining.hashAndSignBlock(newBlock)
-        return newBlock;
+                }
+
+                logger.warn(`Cannot prepare block - Steem block ${nextSteemBlockNum} not found`)
+                cb(true, null)
+            }
+
+            // Add mempool transactions
+            let txs = []
+            let mempool = transaction.pool.sort((a: any, b: any) => a.ts - b.ts);
+
+            loopOne:
+            for (let i = 0; i < mempool.length; i++) {
+                if (txs.length === config.maxTxPerBlock)
+                    break
+                // do not allow multiple txs from same account in the same block
+                for (let y = 0; y < txs.length; y++)
+                    if (txs[y].sender === mempool[i].sender)
+                        continue loopOne
+                txs.push(mempool[i])
+            }
+
+            loopTwo:
+            for (let i = 0; i < mempool.length; i++) {
+                if (txs.length === config.maxTxPerBlock)
+                    break
+                for (let y = 0; y < txs.length; y++)
+                    if (txs[y].hash === mempool[i].hash)
+                        continue loopTwo
+                txs.push(mempool[i])
+            }
+            txs = txs.sort((a: any, b: any) => a.ts - b.ts);
+
+            transaction.removeFromPool(txs)
+
+            // Create the initial block
+            let newBlock: Block = {
+                _id: nextIndex,
+                blockNum: nextIndex,
+                phash: previousBlock.hash,
+                timestamp: nextTimestamp,
+                steemBlockNum: nextSteemBlockNum,
+                steemBlockTimestamp: nextSteemBlockTimestamp,
+                txs: txs,
+                witness: process.env.STEEM_ACCOUNT || '',
+                missedBy: '',
+                dist: 0,
+                hash: '',
+                signature: '',
+                sync: steem.isInSyncMode() || false
+            };
+
+            // Set distribution amount based on witness rewards
+            if (config.witnessReward > 0) {
+                newBlock.dist = config.witnessReward
+            }
+            // hash and sign the block with our private key
+            newBlock = mining.hashAndSignBlock(newBlock)
+            cb(null, newBlock)
+        }).catch((error) => {
+            logger.error(`Error processing Steem block ${nextSteemBlockNum}:`, error)
+            cb(true, null)
+        })
     },
 
     /**
@@ -95,12 +122,16 @@ export const mining = {
         if ((chain as any).shuttingDown) {
             cb(true, null); return;
         }
-        let newBlock = mining.prepareBlock();
-        isValidNewBlock(newBlock, false, false, function (isValid: boolean) {
-            if (!isValid) {
-                cb(true, newBlock); return;
+        mining.prepareBlock((err, newBlock) => {
+            if (newBlock === null || newBlock === undefined) {
+                cb(true, null); return;
             }
-            cb(null, newBlock);
+            isValidNewBlock(newBlock, false, false, function (isValid: boolean) {
+                if (!isValid) {
+                    cb(true, newBlock); return;
+                }
+                cb(null, newBlock);
+            });
         });
     },
 
@@ -118,8 +149,7 @@ export const mining = {
             // so we will execute transactions in order and revalidate after each execution
             chain.executeBlockTransactions(newBlock, true, function (validTxs: Transaction[], distributed: number) {
                 try {
-                    cache.rollback();
-
+                    cache.rollback()
                     // Assign the executed transactions to the block (fix)
                     newBlock.txs = validTxs;
 
@@ -130,8 +160,6 @@ export const mining = {
                     }
 
                     if (distributed) newBlock.dist = distributed;
-
-
 
                     // hash and sign the block with our private key
                     newBlock = mining.hashAndSignBlock(newBlock);
@@ -175,7 +203,7 @@ export const mining = {
 
 
         if (!chain.schedule || !chain.schedule.shuffle || chain.schedule.shuffle.length === 0) {
-            logger.error('All leaders gave up their stake? Chain is over');
+            logger.error('All witnesses gave up their stake? Chain is over');
             process.exit(1);
         }
         const configBlock = config.read(chain.getLatestBlock()._id);
@@ -183,7 +211,7 @@ export const mining = {
         let mineInMs: number | null = null;
         if (chain.schedule.shuffle[(block._id) % config.witnesses].name === process.env.STEEM_ACCOUNT)
             mineInMs = config.blockTime
-        // else if the scheduled leaders miss blocks
+        // else if the scheduled witnesses miss blocks
         // backups witnesses are available after each block time intervals
         else for (let i = 1; i < 2 * config.witnesses; i++)
             if (chain.recentBlocks[chain.recentBlocks.length - i]
@@ -219,7 +247,7 @@ export const mining = {
                         logger.warn('miner worker trying to mine but couldnt', finalBlock)
                 })
             }, mineInMs)
-        } 
+        }
     },
     hashAndSignBlock: (block: Block): Block => {
         try {

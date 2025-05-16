@@ -12,16 +12,16 @@ import { randomBytes } from 'crypto';
 import secp256k1 from 'secp256k1';
 import baseX from 'base-x';
 import config from './config.js';
-import chain from './chain.js';
+import { chain } from './chain.js';
 import blocks from './blockStore.js';
 import { Block } from './block.js';
 import logger from './logger.js';
-import cache from './cache.js';
+import cache  from './cache.js';
 import consensus from './consensus.js';
 import steem from './steem.js';
 import witnessesModule from './witnesses.js';
 import { verifySignature } from './crypto.js';
-import { BlockModel } from './models/block.js';
+import mongo from './mongo.js'; // Ensure mongo is imported
 // TODO: import steem from './steem.js';
 // Dynamically import the 'ws' module
 import * as wsModule from 'ws';
@@ -62,7 +62,7 @@ export interface NodeStatus {
     origin_block: string;
     version: string;
     sign?: string;
-    is_leader?: boolean;
+    is_witness?: boolean;
     node_type?: string;
 }
 
@@ -171,16 +171,16 @@ export const p2p = {
             return;
         }
 
-        let leaders = witnessesModule.generateLeaders(false, true, config.witnesses * 3, 0);
-        for (let i = 0; i < leaders.length; i++) {
+        let witnesses = witnessesModule.generateWitnesses(false, true, config.witnesses * 3, 0);
+        for (let i = 0; i < witnesses.length; i++) {
             if (p2p.sockets.length >= max_peers) {
                 logger.debug('We already have maximum peers: ' + p2p.sockets.length + '/' + max_peers);
                 break;
             }
 
-            if (leaders[i].ws) {
+            if (witnesses[i].ws) {
                 let excluded = process.env.DISCOVERY_EXCLUDE ? process.env.DISCOVERY_EXCLUDE.split(',') : [];
-                if (excluded.indexOf(leaders[i].name) > -1)
+                if (excluded.indexOf(witnesses[i].name) > -1)
                     continue;
 
                 let isConnected = false;
@@ -190,19 +190,19 @@ export const p2p = {
                         ip = ip.replace('::ffff:', '');
 
                     try {
-                        let leaderIp = leaders[i].ws.split('://')[1].split(':')[0];
-                        if (leaderIp === ip) {
-                            logger.warn('Already peered with ' + leaders[i].name);
+                        let witnessIp = witnesses[i].ws.split('://')[1].split(':')[0];
+                        if (witnessIp === ip) {
+                            logger.warn('Already peered with ' + witnesses[i].name);
                             isConnected = true;
                         }
                     } catch (error) {
-                        logger.debug('Wrong ws for leader ' + leaders[i].name + ' ' + leaders[i].ws, error);
+                        logger.debug('Wrong ws for witness ' + witnesses[i].name + ' ' + witnesses[i].ws, error);
                     }
                 }
 
                 if (!isConnected) {
-                    logger[isInit ? 'info' : 'debug']('Trying to connect to ' + leaders[i].name + ' ' + leaders[i].ws);
-                    p2p.connect([leaders[i].ws], isInit);
+                    logger[isInit ? 'info' : 'debug']('Trying to connect to ' + witnesses[i].name + ' ' + witnesses[i].ws);
+                    p2p.connect([witnesses[i].ws], isInit);
                 }
             }
         }
@@ -334,7 +334,7 @@ export const p2p = {
         });
     },
 
-    broadcastSyncStatus: (syncStatus: number | SteemSyncStatus): void => {
+    broadcastSyncStatus: (syncStatus: any | SteemSyncStatus): void => {
         // Broadcast steem sync status to all connected peers
         if (!steem || p2p.recovering) return;
 
@@ -500,7 +500,8 @@ export const p2p = {
                     } else {
                         const start = Date.now();
                         try {
-                            const block = await BlockModel.findOne({ _id: message.d });
+                            const db = mongo.getDb();
+                            const block = await db.collection('blocks').findOne({ _id: message.d });
                             logger.info(`[P2P] Sending block #${block?._id} with ${block?.txs?.length ?? 0} txs (db)`);
                             logger.debug(`[P2P] findOne for block ${message.d} took ${Date.now() - start}ms`);
                             if (block) {
@@ -509,7 +510,6 @@ export const p2p = {
                         } catch (err) {
                             logger.error(`[P2P] MongoDB error for block ${message.d}: ${err}`);
                         }
-
                     }
                     break;
 
@@ -564,7 +564,7 @@ export const p2p = {
 
                 case MessageType.BLOCK_CONF_ROUND:
                     // we are receiving a consensus round confirmation
-                    // it should come from one of the elected leaders, so let's verify signature
+                    // it should come from one of the elected witnesses, so let's verify signature
                     if (p2p.recovering) return;
                     if (!message.s || !message.s.s || !message.s.n) return;
                     if (!message.d || !message.d.ts ||
@@ -817,30 +817,6 @@ export const p2p = {
     },
 
     addRecursive: (block: Block): void => {
-        if (!chain) {
-            logger.warn('Chain service unavailable during addRecursive');
-            return;
-        }
-        logger.debug(`[P2P] Entering addRecursive for block _id=${block._id}`);
-        const latestBlockId = chain.getLatestBlock()._id;
-
-        if (block._id <= latestBlockId) {
-            logger.warn(`[P2P] Skipping block ${block._id} in addRecursive as we already have blocks up to ${latestBlockId}`);
-            delete p2p.recoveredBlocks[block._id];
-            p2p.recover();
-            return;
-        }
-
-        if (block._id !== latestBlockId + 1) {
-            logger.warn(`[P2P] Received block ${block._id} out of sequence (expected ${latestBlockId + 1})`);
-            delete p2p.recoveredBlocks[block._id];
-            p2p.recovering = latestBlockId;
-            p2p.recover();
-            return;
-        }
-
-        logger.info(`[P2P] Validating and adding block #${block._id}`);
-
         chain.validateAndAddBlock(block, true, (err: any) => {
             if (err) {
                 logger.error(`[P2P] Failed to validate block ${block._id}: ${err}`);
@@ -862,13 +838,6 @@ export const p2p = {
             } else {
                 p2p.recoverAttempt = 0;
                 p2p.recover();
-
-                // If next block is in cache, process it recursively
-                const nextBlockId = chain.getLatestBlock()._id + 1;
-                if (p2p.recoveredBlocks[nextBlockId]) {
-                    logger.debug(`[P2P] Found next block ${nextBlockId} in recovery cache, processing immediately`);
-                    p2p.addRecursive(p2p.recoveredBlocks[nextBlockId]);
-                }
             }
         });
     },

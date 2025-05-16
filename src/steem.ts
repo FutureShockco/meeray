@@ -1,9 +1,11 @@
 import { Client as DsteemClient } from 'dsteem';
 import logger from './logger.js';
 import parseSteemTransactions, { SteemBlock, SteemBlockResult } from './steemParser.js';
-import { TransactionType } from './transactions/types.js';
 import config from './config.js';
 import { Block } from './block.js';
+import p2p from './p2p.js';
+import { chain } from './chain.js';
+import transaction from './transaction.js';
 interface NetworkSyncStatus {
     highestBlock: number;
     referenceExists: boolean;
@@ -28,10 +30,7 @@ interface RpcHeightData {
     timestamp: number;
 }
 
-// Initialize dependencies via dynamic imports to avoid circular dependencies
-let p2p: any;
-let chain: any;
-let transaction: any;
+
 
 // Module variables
 let currentSteemBlock = 0;
@@ -110,21 +109,27 @@ const apiUrls = process.env.STEEM_API
 let currentEndpointIndex = 0;
 let client = null as any;
 const isTestnet = process.env.NODE_ENV === 'development';
-if (!isTestnet) {
-    client = new DsteemClient(apiUrls[currentEndpointIndex], {
-        addressPrefix: 'STM',
-        chainId: '0000000000000000000000000000000000000000000000000000000000000000',
-        timeout: 15000  // Increased timeout for better reliability
-    });
-}
-else {
-    logger.info('Using testnet API');
-    client = new DsteemClient('https://testapi.moecki.online', {
-        addressPrefix: 'MTN',
-        chainId: '1aa939649afcc54c67e01a809967f75b8bee5d928aa6bdf237d0d5d6bfbc5c22',
-        timeout: 15000  // Increased timeout for better reliability
-    });
-}
+// if (!isTestnet) {
+//     client = new DsteemClient(apiUrls[currentEndpointIndex], {
+//         addressPrefix: 'STM',
+//         chainId: '0000000000000000000000000000000000000000000000000000000000000000',
+//         timeout: 15000  // Increased timeout for better reliability
+//     });
+// }
+// else {
+//     logger.info('Using testnet API');
+//     client = new DsteemClient('https://testapi.moecki.online', {
+//         addressPrefix: 'MTN',
+//         chainId: '1aa939649afcc54c67e01a809967f75b8bee5d928aa6bdf237d0d5d6bfbc5c22',
+//         timeout: 15000  // Increased timeout for better reliability
+//     });
+// }
+
+client = new DsteemClient(apiUrls[currentEndpointIndex], {
+    addressPrefix: 'STM',
+    chainId: '0000000000000000000000000000000000000000000000000000000000000000',
+    timeout: 15000  // Increased timeout for better reliability
+});
 
 let nextSteemBlock = 0;
 // Map to store peer sync statuses
@@ -505,7 +510,7 @@ const processBlock = async (blockNum: number): Promise<SteemBlockResult | null> 
         logger.debug('Skipping Steem block processing - node not ready to receive transactions yet');
         return Promise.resolve(null);
     }
-
+    currentSteemBlock = chain.getLatestBlock()?.steemBlockNum;
     // Check if we're trying to process a block out of order
     if (blockNum !== currentSteemBlock + 1) {
         logger.warn(`Attempting to process block ${blockNum} before ${currentSteemBlock + 1}, skipping`);
@@ -548,7 +553,6 @@ const processBlock = async (blockNum: number): Promise<SteemBlockResult | null> 
                 return Promise.reject(error);
             }
         }
-
         if (!steemBlock) {
             logger.warn(`Steem block ${blockNum} not found`);
             // Remove from processing list
@@ -561,9 +565,9 @@ const processBlock = async (blockNum: number): Promise<SteemBlockResult | null> 
         resetConsecutiveErrors();
         // Add transactions to the pool
         if (steemBlockResult.transactions.length > 0) {
+ 
             transaction.addToPool(steemBlockResult.transactions);
         }
-
         // Remove from processing list
         processingBlocks = processingBlocks.filter(b => b !== blockNum);
         return Promise.resolve(steemBlockResult);

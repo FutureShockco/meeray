@@ -12,7 +12,6 @@ import logger from './logger.js';
 import { Transaction } from './transactions/index.js';
 import chain from './chain.js';
 import { isValidSignature, isValidPubKey } from './crypto.js';
-import witnessesModule from './witnesses.js';
 
 const bs58 = baseX(config.b58Alphabet || '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz');
 
@@ -151,34 +150,20 @@ export function isValidHashAndSignature(newBlock: any, cb: (valid: boolean) => v
 // isValidBlockTxs
 export function isValidBlockTxs(newBlock: any, cb: (valid: boolean) => void) {
     // Revalidate transactions in order
-    let executions: any[] = [];
-    for (let i = 0; i < newBlock.txs.length; i++) {
-        executions.push(function (callback: any) {
-            let tx = newBlock.txs[i];
-            transaction.isValid(tx, newBlock.timestamp, function (isValid: boolean, error: any) {
-                if (isValid)
-                    transaction.execute(tx, newBlock.timestamp, function (executed: boolean, distributed: number, burned: number) {
-                        if (!executed) {
-                            logger.fatal('Tx execution failure', tx);
-                            process.exit(1);
-                        }
-                        callback(null, {
-                            executed: executed,
-                            distributed: distributed,
-                            burned: burned
-                        });
-                    });
-                else {
-                    logger.error(error, tx);
-                    callback(null, false);
-                }
-            });
-        });
-    }
-    // TODO: Add hardfork logic if needed
-    // series(executions, ...)
-    // For now, just call cb(true) for compatibility
-    cb(true);
+    chain.executeBlockTransactions(newBlock, true, function(validTxs, dist) {
+        cache.rollback()
+        if (validTxs.length !== newBlock.txs.length) {
+            logger.error('invalid block transaction')
+            cb(false); return
+        }
+        let blockDist = newBlock.dist || 0
+        if (blockDist !== dist) {
+            logger.error('Wrong dist amount',blockDist,dist)
+            return cb(false)
+        }
+
+        cb(true)
+    })
 }
 
 export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boolean, verifyTxValidity: boolean, cb: (isValid: boolean) => void) {
@@ -286,15 +271,20 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
             }
             // Optionally, revalidate all transactions
             if (verifyTxValidity) {
-                for (const tx of newBlock.txs) {
-                    const validTx = await new Promise<boolean>((resolve) => {
-                        transaction.isValid(tx, newBlock.timestamp, (isValid: boolean) => resolve(isValid));
-                    });
-                    if (!validTx) {
-                        logger.error('invalid transaction in block', tx);
-                        return cb(false);
+                isValidBlockTxs(newBlock, function(isValid) {
+                    if (!isValid) {
+                        cb(false); return
                     }
-                }
+                    if (!verifyHashAndSignature) {
+                        cb(true); return
+                    }
+                    isValidHashAndSignature(newBlock, function(isValid) {
+                        if (!isValid) {
+                            cb(false); return
+                        }
+                        cb(true)
+                    })
+                })
             }
             cb(true);
         });

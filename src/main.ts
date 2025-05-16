@@ -11,21 +11,40 @@ import logger from './logger.js';
 import config from './config.js';
 import { p2p } from './p2p.js';
 import { chain } from './chain.js';
-import { transaction } from './transaction.js';
-import { cache } from './cache.js';
+import transaction from './transaction.js';
+import cache from './cache.js'; // Will be refactored in Phase 2
+import { setMongoDbInstance as setCacheMongoDbInstance } from './cache.js'; // Import the setter
 import { witnessesStats } from './witnessesStats.js';
-import { BlockModel } from './models/block.js';
 
 import { blocks } from './blockStore.js';
-import {mongo} from './mongo.js';
+import { mongo, StateDoc } from './mongo.js'; // Ensure StateDoc is imported
 // import validate from './validate.js'; // Uncomment when available
 import witnessesModule from './witnesses.js';
+import { initializeModules } from './initialize.js';
+// import rpc from './rpc.js'; // Removed for now, investigate separately if needed
+import { Block } from './block.js'; // Ensure Block is imported
 
-process.on('unhandledRejection', (reason, promise) => {
-  logger.fatal('Unhandled Rejection at:', { promise, reason });
-  // Application specific logging, throwing an error, or other logic here
-  // It is generally recommended to exit the process on unhandled rejections after logging.
-  process.exit(1);
+process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
+  console.error('CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
+  if (typeof logger !== 'undefined' && logger.fatal) {
+    logger.fatal('CRITICAL: Unhandled Rejection at:', { promise_details: String(promise), reason_details: String(reason) });
+    if (reason instanceof Error && reason.stack) {
+        logger.fatal('Stack Trace:', reason.stack);
+    }
+  } else {
+    if (reason instanceof Error && reason.stack) {
+        console.error('Stack Trace:', reason.stack);
+    }
+  }
+});
+
+process.on('uncaughtException', (error: Error) => {
+  console.error('CRITICAL: Uncaught Exception:', error);
+  if (typeof logger !== 'undefined' && logger.fatal) {
+    logger.fatal('CRITICAL: Uncaught Exception:', { errorName: error.name, errorMessage: error.message, stack: error.stack });
+  } else {
+    console.error('Stack Trace:', error.stack);
+  }
 });
 
 const allowNodeV = [18, 20, 22];
@@ -41,133 +60,232 @@ let erroredRebuild = false;
 let closing = false;
 
 export async function main() {
-    // init the database and load most recent blocks in memory directly
-    await mongo.init(async function (state: any) {
-        // init blocks BSON if not using mongodb for blocks
-        await blocks.init(state);
+    logger.info('Starting ECH Node...');
+
+    mongo.init(async (error: Error | null, state?: StateDoc | null) => {
+        if (error) {
+            logger.fatal('Failed to initialize MongoDB via mongo.init:', error);
+            process.exit(1);
+        }
+        logger.info('MongoDB initialized via mongo.init.');
+        
+        try {
+            const mongoInstance = mongo.getDb();
+            setCacheMongoDbInstance(mongoInstance); // Set the DB instance for the cache module
+        } catch (e: any) {
+            logger.fatal('[MAIN] Failed to get MongoDB instance for cache setup after mongo.init:', e.message || e);
+            process.exit(1); 
+        }
+        
+        // Initialize modules that might depend on DB being ready
+        initializeModules();
+        logger.info('Core modules initialized.');
+
+        const headBlockIdFromState = state?.headBlock || 0;
+        await blocks.init(headBlockIdFromState);
+        logger.info(`Block store initialized with head block ID: ${headBlockIdFromState}`);
+
+        // Initialize currentConfig (can be updated later based on specific blocks)
+        let currentConfig = config.read ? config.read(headBlockIdFromState) : config;
 
         // Warmup accounts
-        let timeStart = Date.now();
-        await cache.warmup?.('accounts', parseInt(process.env.WARMUP_ACCOUNTS || '10000'));
-        logger.info(Object.keys((cache as any).accounts || {}).length + ' accounts loaded in RAM in ' + (Date.now() - timeStart) + ' ms');
+        let timeStart = new Date().getTime();
+        const warmupAccountsCount = parseInt(process.env.WARMUP_ACCOUNTS || '10000');
+        await cache.warmup('accounts', warmupAccountsCount);
+        logger.info(`${Object.keys(cache.accounts || {}).length} accounts loaded in RAM in ${new Date().getTime() - timeStart} ms`);
 
         // Warmup tokens
-        timeStart = Date.now();
-        await cache.warmup?.('tokens', parseInt(process.env.WARMUP_TOKENS || '1000'));
-        logger.info(Object.keys((cache as any).tokens || {}).length + ' tokens loaded in RAM in ' + (Date.now() - timeStart) + ' ms');
+        timeStart = new Date().getTime();
+        const warmupTokensCount = parseInt(process.env.WARMUP_TOKENS || '10000');
+        await cache.warmup('tokens', warmupTokensCount);
+        logger.info(`${Object.keys(cache.tokens || {}).length} tokens loaded in RAM in ${new Date().getTime() - timeStart} ms`);
 
-        // Warmup leaders
-        timeStart = Date.now();
-        let leaderCount = await cache.warmupLeaders?.();
-        logger.info((leaderCount || 0) + ' leaders loaded in RAM in ' + (Date.now() - timeStart) + ' ms');
+        // Warmup witnesses
+        timeStart = new Date().getTime();
+        const witnessCount = await cache.warmupWitnesses();
+        logger.info(`${witnessCount} witnesses loaded in RAM in ${new Date().getTime() - timeStart} ms`);
 
-        // Warmup leader stats
-        await witnessesStats.loadIndex?.();
+        // Warmup witness stats
+        await witnessesStats.loadIndex();
 
         // Rebuild chain state if specified
-        let rebuildResumeBlock = state && state.headBlock ? state.headBlock + 1 : 0;
-        let isResumingRebuild = process.env.REBUILD_STATE === '1' && rebuildResumeBlock;
+        const rebuildResumeBlock = state && state.headBlock ? state.headBlock + 1 : 0;
+        // Ensure isResumingRebuild correctly identifies actual resumption (rebuildResumeBlock > 0)
+        const isResumingRebuild = process.env.REBUILD_STATE === '1' && rebuildResumeBlock > 0;
+
 
         if (process.env.REBUILD_STATE === '1') {
-            if (process.env.REBUILD_NO_VALIDATE === '1')
-                logger.info('Rebuilding without validation. Only use this if you know what you are doing!');
-            else if (process.env.REBUILD_NO_VERIFY === '1')
-                logger.info('Rebuilding without signature verification. Only use this if you know what you are doing!');
+            if (process.env.REBUILD_NO_VALIDATE === '1') {
+                logger.warn('Rebuilding without validation. Only use this if you know what you are doing!');
+            } else if (process.env.REBUILD_NO_VERIFY === '1') {
+                logger.warn('Rebuilding without signature verification. Only use this if you know what you are doing!');
+            }
         }
 
         if (process.env.REBUILD_STATE === '1' && !isResumingRebuild) {
-            logger.info('Chain state rebuild requested' + (process.env.UNZIP_BLOCKS === '1' && !blocks.isOpen ? ', unzipping blocks.zip...' : ''));
+            logger.info(`Chain state rebuild requested${(process.env.UNZIP_BLOCKS === '1' && !blocks.isOpen) ? ', unzipping blocks.zip...' : ''}`);
             if (!blocks.isOpen) {
-                await mongo.restoreBlocks((e: string | null) => {
-                    if (e) return logger.error(e);
-                    startRebuild(0);
+                mongo.restoreBlocks((e?: string | null) => {
+                    if (e) {
+                        logger.error('Error restoring blocks for rebuild:', e);
+                        // Decide if to exit or try to continue with a different approach
+                        process.exit(1); 
+                        return;
+                    }
+                    startRebuild(0, currentConfig);
                 });
             } else {
-                startRebuild(0);
+                startRebuild(0, currentConfig);
             }
             return;
         }
 
-        let block = blocks.isOpen ? blocks.lastBlock?.() : await mongo.lastBlock();
-        // Resuming an interrupted rebuild
+        let block = blocks.isOpen ? blocks.lastBlock() : await mongo.lastBlock();
+        if (!block) {
+            logger.warn('No last block found from blockStore or MongoDB, attempting to use genesis block.');
+            block = chain.getGenesisBlock();
+            if (!block) {
+                logger.fatal('CRITICAL: Cannot determine last block or genesis block. Exiting.');
+                process.exit(1);
+            }
+        }
+        
+        currentConfig = config.read ? config.read(block._id) : config; // Update config based on latest known block
+
         if (isResumingRebuild) {
-            logger.info('Resuming interrupted rebuild from block ' + rebuildResumeBlock);
-            chain.restoredBlocks = block?._id;
-            let blkScheduleStart = rebuildResumeBlock - 1 - ((rebuildResumeBlock - 1) % (config.witnesses || 1));
-            if (!blocks.isOpen) {
-                await mongo.fillInMemoryBlocks?.(() => {
-                    BlockModel.findOne({ _id: blkScheduleStart }, (e: any, b: any) => {
-                        chain.schedule = witnessesModule.witnessSchedule(b);
-                        startRebuild(rebuildResumeBlock);
-                    });
-                    startRebuild(rebuildResumeBlock);
-                }, rebuildResumeBlock);
+            logger.info(`Resuming interrupted rebuild from block ${rebuildResumeBlock}`);
+            currentConfig = config.read ? config.read(rebuildResumeBlock - 1) : config; // Config for the block before resuming
+            
+            if (block) { // block should be defined from above
+                 chain.restoredBlocks = block._id; // Record the most recent block ID before resuming rebuild
             } else {
-                blocks.fillInMemoryBlocks?.(rebuildResumeBlock);
-                chain.schedule = witnessesModule.witnessSchedule(blocks.read?.(blkScheduleStart));
-                startRebuild(rebuildResumeBlock);
+                // This case should ideally be prevented by the !block check above which exits.
+                logger.fatal("CRITICAL: Block information missing for resuming rebuild. Exiting.");
+                process.exit(1);
+            }
+
+            const blkScheduleStart = rebuildResumeBlock - 1 - ((rebuildResumeBlock - 1) % (currentConfig.witnesses || 21));
+            
+            if (!blocks.isOpen) {
+                await mongo.fillInMemoryBlocks(async () => {
+                    try {
+                        const scheduleSourceBlock = await mongo.getDb().collection<Block>('blocks').findOne({ _id: blkScheduleStart });
+                        if (!scheduleSourceBlock) {
+                            logger.warn(`Cannot find schedule source block ${blkScheduleStart} for resumed rebuild. Using genesis.`);
+                            chain.schedule = witnessesModule.witnessSchedule(chain.getGenesisBlock());
+                        } else {
+                            chain.schedule = witnessesModule.witnessSchedule(scheduleSourceBlock);
+                        }
+                        startRebuild(rebuildResumeBlock, currentConfig);
+                    } catch (findErr: any) {
+                        logger.error('Error finding block for schedule in resumed rebuild:', findErr.message || findErr);
+                        logger.warn('Using genesis for schedule due to error.');
+                        chain.schedule = witnessesModule.witnessSchedule(chain.getGenesisBlock());
+                        startRebuild(rebuildResumeBlock, currentConfig);
+                    }
+                }, rebuildResumeBlock); // Pass headBlock for fillInMemoryBlocks
+            } else {
+                blocks.fillInMemoryBlocks(rebuildResumeBlock); // Assumes this takes the target head block
+                const scheduleSourceBlock = blocks.read(blkScheduleStart);
+                if (!scheduleSourceBlock) {
+                    logger.warn(`Cannot read schedule source block ${blkScheduleStart} from blockStore for resumed rebuild. Using genesis.`);
+                    chain.schedule = witnessesModule.witnessSchedule(chain.getGenesisBlock());
+                } else {
+                    chain.schedule = witnessesModule.witnessSchedule(scheduleSourceBlock);
+                }
+                startRebuild(rebuildResumeBlock, currentConfig);
             }
             return;
         }
-        logger.info('#' + (block?._id ?? '?') + ' is the latest block in our db');
-        // config = require('./config.js').read(block._id); // Not needed, config is static in TS
+
+        logger.info(`#${block._id} is the latest block in our db`);
+        // currentConfig is already updated based on this block few lines above
+
         if (blocks.isOpen) {
-            blocks.fillInMemoryBlocks?.();
-            startDaemon();
+            blocks.fillInMemoryBlocks(); // Fill based on its current state
+            await startDaemon(currentConfig);
         } else {
-            await mongo.fillInMemoryBlocks?.(startDaemon);
+            await mongo.fillInMemoryBlocks(async () => { // Ensure cb for fillInMemoryBlocks is async if it needs to await startDaemon
+                await startDaemon(currentConfig);
+            });
         }
     });
 }
 
-function startRebuild(startBlock: number) {
-    let rebuildStartTime = Date.now();
+function startRebuild(startBlock: number, currentConfig: any) {
+    let rebuildStartTime = new Date().getTime();
     chain.lastRebuildOutput = rebuildStartTime;
-    chain.rebuildState?.(startBlock, (e: any, headBlockNum?: number) => {
+    chain.rebuildState(startBlock, async (e: any, headBlockNum?: number) => { // Added async for startDaemon call
         if (e) {
             erroredRebuild = true;
-            return logger.error('Error rebuilding chain at block', headBlockNum, e);
-        } else if (headBlockNum && headBlockNum <= chain.restoredBlocks) {
-            logger.info('Rebuild interrupted at block ' + headBlockNum + ', so far it took ' + (Date.now() - rebuildStartTime) + ' ms.');
+            logger.error('Error rebuilding chain at block', headBlockNum, e);
+            // Consider if process should exit or retry
+            return;
+        } else if (headBlockNum && chain.restoredBlocks && headBlockNum <= chain.restoredBlocks) {
+            logger.info(`Rebuild interrupted at block ${headBlockNum}, so far it took ${new Date().getTime() - rebuildStartTime} ms.`);
         } else {
-            logger.info('Rebuilt ' + headBlockNum + ' blocks successfully in ' + (Date.now() - rebuildStartTime) + ' ms');
+            logger.info(`Rebuilt ${headBlockNum || 0} blocks successfully in ${new Date().getTime() - rebuildStartTime} ms`);
         }
         logger.info('Writing rebuild data to disk...');
-        let cacheWriteStart = Date.now();
-        (cache as any).writeToDisk?.(true, () => {
-            logger.info('Rebuild data written to disk in ' + (Date.now() - cacheWriteStart) + ' ms');
+        let cacheWriteStart = new Date().getTime();
+        cache.writeToDisk(true, async (err?: Error | null) => { // Added async for startDaemon call
+            if (err) {
+                logger.error('Error writing rebuild data to disk:', err);
+            }
+            logger.info(`Rebuild data written to disk in ${new Date().getTime() - cacheWriteStart} ms`);
             if (chain.shuttingDown || process.env.TERMINATE_AFTER_REBUILD === '1') {
                 if (blocks.isOpen) blocks.close?.();
                 process.exit(0);
+                return;
             }
-            startDaemon();
+            await startDaemon(currentConfig);
         });
     });
 }
 
-async function startDaemon() {
-    // start witness schedule
-    let blkScheduleStart = chain.getLatestBlock()._id - (chain.getLatestBlock()._id % config.witnesses)
-    if (blocks.isOpen)
-        chain.schedule = witnessesModule.witnessSchedule(blocks.read(blkScheduleStart))
-    else {
-        const block = await BlockModel.findOne({ _id: blkScheduleStart })
-        chain.schedule = witnessesModule.witnessSchedule(block)
+async function startDaemon(currentConfig: any) {
+    const latestBlockForSchedule = chain.getLatestBlock();
+    if (!latestBlockForSchedule) {
+        logger.error("Cannot start daemon: chain.getLatestBlock() returned null/undefined. Using Genesis for schedule.");
+        chain.schedule = witnessesModule.witnessSchedule(chain.getGenesisBlock());
+    } else {
+        const blkScheduleStart = latestBlockForSchedule._id - (latestBlockForSchedule._id % (currentConfig.witnesses || 21));
+        if (blocks.isOpen) {
+            const scheduleSourceBlock = blocks.read(blkScheduleStart);
+            if (!scheduleSourceBlock) {
+                logger.warn(`Cannot read schedule source block ${blkScheduleStart} from blockStore for daemon start. Using genesis.`);
+                chain.schedule = witnessesModule.witnessSchedule(chain.getGenesisBlock());
+            } else {
+                chain.schedule = witnessesModule.witnessSchedule(scheduleSourceBlock);
+            }
+        } else {
+            try {
+                const scheduleSourceBlock = await mongo.getDb().collection<Block>('blocks').findOne({ _id: blkScheduleStart });
+                if (!scheduleSourceBlock) {
+                    logger.warn(`Cannot find schedule source block ${blkScheduleStart} from DB for daemon start. Using genesis.`);
+                    chain.schedule = witnessesModule.witnessSchedule(chain.getGenesisBlock());
+                } else {
+                    chain.schedule = witnessesModule.witnessSchedule(scheduleSourceBlock);
+                }
+            } catch (err: any) {
+                logger.error('Error fetching block for schedule in startDaemon:', err.message || err);
+                logger.warn('Using genesis for schedule due to error.');
+                chain.schedule = witnessesModule.witnessSchedule(chain.getGenesisBlock());
+            }
+        }
     }
+    
+    logger.info('Witness schedule initialized/updated.');
 
-    // start the http server
-    http.init()
-    // start the websocket server
-    p2p.init?.();
-    // and connect to peers
-    p2p.connect?.(process.env.PEERS ? process.env.PEERS.split(',') : [], true);
-    // keep peer connection alive
+    http.init();
+    p2p.init();
+    p2p.connect(process.env.PEERS ? process.env.PEERS.split(',') : [], true);
     setTimeout(() => p2p.keepAlive?.(), 3000);
 
-    // regularly clean up old txs from mempool
     setInterval(() => {
         transaction.cleanPool?.();
-    }, (config.blockTime || 3000) * 0.9);
+    }, (currentConfig.blockTime || 3000) * 0.9);
+    logger.info('Node daemon started successfully.');
 }
 
 process.on('SIGINT', async function () {
@@ -178,9 +296,10 @@ process.on('SIGINT', async function () {
     logger.info('Received SIGINT, completing writer queue...');
 
     const shutdownCheck = setInterval(() => {
-        const isQueueEmpty = cache.writerQueue?.queue?.length === 0;
-        const isProcessing = cache.writerQueue?.processing;
-
+        const isQueueEmpty = cache.writerQueue?.queue?.length === 0; // Adapted for potential new cache structure
+        const isProcessing = cache.writerQueue?.processing; // Adapted
+        if (!erroredRebuild && chain.restoredBlocks && chain.getLatestBlock()._id < chain.restoredBlocks) return
+        process.stdout.write('\r')
         logger.debug(`Waiting for writerQueue... queue=${cache.writerQueue?.queue?.length}, processing=${isProcessing}`);
 
         if (isQueueEmpty && !isProcessing) {
@@ -190,15 +309,15 @@ process.on('SIGINT', async function () {
         }
     }, 1000);
 
-    // Force exit after timeout
     setTimeout(() => {
         logger.warn('Forcing shutdown after 30s timeout...');
         process.exit(1);
     }, 30_000);
 });
 
-// If this is the entrypoint, run main
-main();
-
+main().catch(error => {
+    logger.fatal('Critical error during node startup:', error);
+    process.exit(1);
+});
 
 export default main; 

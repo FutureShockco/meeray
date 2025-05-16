@@ -2,10 +2,9 @@ import cloneDeep from 'clone-deep';
 import CryptoJS from 'crypto-js';
 import secp256k1 from 'secp256k1';
 import bs58 from 'bs58';
-import cache from './cache.js';
-import { IAccount } from './models/account.js';
+import cache  from './cache.js';
 import logger from './logger.js';
-import chain from './chain.js';
+import { chain } from './chain.js';
 import consensus from './consensus.js';
 /**
  * Signs a message using the STEEM_ACCOUNT_PRIV environment variable.
@@ -39,7 +38,7 @@ export function verifySignature(message: any, cb: (isValid: boolean) => void): v
     const tmpMess = cloneDeep(message);
     delete tmpMess.s;
     const hash = CryptoJS.SHA256(JSON.stringify(tmpMess)).toString();
-    const pub = consensus.getActiveLeaderKey(name)
+    const pub = consensus.getActiveWitnessKey(name)
     if (
         pub &&
         secp256k1.ecdsaVerify(
@@ -80,26 +79,26 @@ export async function isValidSignature(
     user: string,
     hash: string,
     sign: string | [string, number][]
-): Promise<boolean> {
+): Promise<string | null> {
     return new Promise((resolve) => {
         cache.findOne('accounts', { name: user }, async function (err: any, account: any) {
             if (err) {
                 logger.error(`Database error finding account ${user}:`, err);
-                return resolve(false);
+                return resolve(account);
             }
 
             if (!account) {
                 logger.error(`Account not found: ${user}`);
-                return resolve(false);
+                return resolve(null);
             } else if (chain.restoredBlocks && chain.getLatestBlock()._id < chain.restoredBlocks && process.env.REBUILD_NO_VERIFY === '1') {
                 // No verify rebuild mode, only use if you trust the contents of blocks.zip
-                return resolve(true);
+                return resolve(account);
             }
 
             // Main key can authorize all transactions
             if (!account.witnessPublicKey) {
                 logger.error(`No public key found for account: ${user}`);
-                return resolve(false);
+                return resolve(null);
             }
 
 
@@ -119,7 +118,7 @@ export async function isValidSignature(
                         signatureString = sign[0];
                     } else {
                         logger.error('Signature is not a string or valid array');
-                        return resolve(false);
+                        return resolve(null);
                     }
                     const decodedSign = bs58.decode(signatureString);
 
@@ -143,7 +142,7 @@ export async function isValidSignature(
 
                 } catch (e) {
                     logger.error(`Failed to decode signature from base58: ${e}`);
-                    return resolve(false);
+                    return resolve(null);
                 }
 
                 // Convert public key from base58 to buffer
@@ -154,11 +153,11 @@ export async function isValidSignature(
                     // Verify that the public key is valid
                     if (!secp256k1.publicKeyVerify(pubKeyBuf)) {
                         logger.error(`Invalid public key format for ${user}`);
-                        return resolve(false);
+                        return resolve(null);
                     }
                 } catch (e) {
                     logger.error(`Failed to decode public key from base58: ${e}`);
-                    return resolve(false);
+                    return resolve(null);
                 }
 
                 // Verify the signature
@@ -166,7 +165,7 @@ export async function isValidSignature(
                     const isValid = secp256k1.ecdsaVerify(signBuffer, bufferHash, pubKeyBuf);
 
                     if (isValid) {
-                        return resolve(true);
+                        return resolve(account);
                     } else {
                         // Try a simpler verification alternative
                         try {
@@ -184,7 +183,7 @@ export async function isValidSignature(
 
                                 if (isValidFixed) {
                                     logger.debug(`Signature verified for ${user} after adjustment`);
-                                    return resolve(true);
+                                    return resolve(null);
                                 }
                             }
                         } catch (altErr) {
@@ -192,15 +191,15 @@ export async function isValidSignature(
                         }
 
                         logger.error(`Signature verification failed for ${user}`);
-                        return resolve(false);
+                        return resolve(null);
                     }
                 } catch (e) {
                     logger.error(`Error during signature verification: ${e}`);
-                    return resolve(false);
+                    return resolve(null);
                 }
             } catch (e) {
                 logger.error(`General error verifying signature: ${e}`);
-                return resolve(false);
+                return resolve(null);
             }
         });
     });

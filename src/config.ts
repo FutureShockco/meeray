@@ -1,3 +1,5 @@
+import { TransactionType } from "./transactions/types.js";
+
 const config = {
   // Protocol/chain constants (do not change via .env)
   chainId: 'sidechain-dev',
@@ -8,7 +10,6 @@ const config = {
   nftCreationFee: 10,
   tradingFee: 0.0025,
   maxWitnesses: 21,
-  maxWitnessVotes: 30,
   masterBalance: 1000000,
   masterName: 'echelon-node1',
   masterPublicKey: 'eShNsq4FFZGBJKHtiTV9T3TWEtYQCR6g6M5TTdR4SK5k',
@@ -17,7 +18,7 @@ const config = {
   steemSyncThreshold: 5, // blocks behind Steem to trigger sync mode
   steemSyncCheckInterval: 30000, // ms - how often to check if we need sync mode
   witnessReward: 1,
-  steemStartBlock: 95446770, // starting Steem block for sidechain
+  steemStartBlock: 95599458, // starting Steem block for sidechain
   steemBlockDelay: 2, // blocks - delay between Steem blocks
   // Node/environment-specific (from .env)
   mongoUri:
@@ -37,7 +38,7 @@ const config = {
   logLevel: process.env.LOG_LEVEL || 'debug',
   b58Alphabet: '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz',
   consensusRounds: 2,
-  witnesses: 21, // or your actual number of leaders
+  witnesses: 21, 
   notifPurge: 1000, // how often to purge old notifications (blocks)
   notifPurgeAfter: 10, // how many purge intervals to keep
   notifMaxMentions: 5, // max mentions per comment
@@ -46,12 +47,14 @@ const config = {
   maxTxPerBlock: 1000, // Added for block validation compatibility
   ecoBlocks: 10000, // Added for chain memory management compatibility
   txExpirationTime: 3600000, // 1 hour, for tx memory cleanup compatibility
-  leaderShufflePrecision: 8, // Added for witness schedule compatibility
+  witnessShufflePrecision: 8, // Added for witness schedule compatibility
   masterPub: process.env.MASTER_PUB || '',
-  masterPubLeader: process.env.MASTER_PUB_LEADER || '',
   block0ts: 0, // Set to appropriate genesis timestamp if needed
   ecoBlocksIncreasesSoon: undefined, // Set to a number if needed for dynamic block memory
   randomBytesLength: 32,
+  txLimits: {
+    [TransactionType.WITNESS_VOTE]: 0,
+  }
 };
 
 // Block-number-based config history (hardforks)

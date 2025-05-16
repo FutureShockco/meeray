@@ -9,19 +9,19 @@ async function checkWitnesses() {
     
     // Find all witness accounts
     const witnesses = await Account.find({ 
-      witnessVotes: { $gt: 0 },
+      totalVoteWeight: { $gt: 0 },
       witnessPublicKey: { $ne: null }
     });
     
     console.log(`Found ${witnesses.length} witness accounts:`);
     witnesses.forEach(w => {
-      console.log(`- ${w._id}: votes=${w.witnessVotes}, key=${w.witnessPublicKey ? w.witnessPublicKey.substring(0, 8) + '...' : 'none'}`);
+      console.log(`- ${w._id}: votes=${w.totalVoteWeight}, key=${w.witnessPublicKey ? w.witnessPublicKey.substring(0, 8) + '...' : 'none'}`);
     });
     
     // Check specific account
     const account = await Account.findOne({ _id: 'echelon-node2' });
     if (account) {
-      console.log(`\nechelon-node2: votes=${account.witnessVotes ?? 0}, key=${account.witnessPublicKey ? 'yes' : 'no'}`);
+      console.log(`\nechelon-node2: votes=${account.totalVoteWeight ?? 0}, key=${account.witnessPublicKey ? 'yes' : 'no'}`);
     } else {
       console.log('\nechelon-node2 account not found in database');
     }

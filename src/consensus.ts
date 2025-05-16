@@ -29,9 +29,9 @@ export interface Consensus {
     queue: any[];
     finalizing: boolean;
     possBlocks: any[];
-    getActiveLeaderKey: (name: string) => string | undefined;
+    getActiveWitnessKey: (name: string) => string | undefined;
     isActive: () => boolean;
-    activeLeaders: () => string[];
+    activeWitnesses: () => string[];
     tryNextStep: () => void;
     round: (round: number, block: any, cb?: (result: number) => void) => void;
     endRound: (round: number, block: any, roundCallback?: Function) => void;
@@ -45,7 +45,7 @@ export const consensus: Consensus = {
     queue: [],
     finalizing: false,
     possBlocks: [],
-    getActiveLeaderKey: (name: string) => {
+    getActiveWitnessKey: (name: string) => {
         let shuffle = chain.schedule.shuffle;
         for (let i = 0; i < shuffle.length; i++)
             if (shuffle[i].name === name)
@@ -54,7 +54,7 @@ export const consensus: Consensus = {
     },
     isActive: function () {
         if (this.observer) return false;
-        const thPub = this.getActiveLeaderKey(process.env.STEEM_ACCOUNT!);
+        const thPub = this.getActiveWitnessKey(process.env.STEEM_ACCOUNT!);
         if (!thPub) {
             logger.info(process.env.STEEM_ACCOUNT + ' is not elected, defaulting to observer');
             this.observer = true;
@@ -62,32 +62,31 @@ export const consensus: Consensus = {
         }
         if (process.env.WITNESS_PUBLIC_KEY !== thPub) {
             this.observer = true;
-            logger.warn('Leader key does not match blockchain data, observing instead', thPub, process.env.WITNESS_PUBLIC_KEY);
+            logger.warn('Witness key does not match blockchain data, observing instead', thPub, process.env.WITNESS_PUBLIC_KEY);
             return false;
         }
         return true;
     },
-    activeLeaders: function () {
+    activeWitnesses: function () {
         // TODO: Implement chain.getLatestBlock, chain.schedule, chain.recentBlocks
         const blockNum = chain.getLatestBlock()._id + 1;
         const actives: string[] = [];
         const configBlock = config.read(0);
         
-        let currentLeader = chain.schedule.shuffle[(blockNum - 1) % configBlock.witnesses].name;
-        if (consensus.getActiveLeaderKey(currentLeader))
-            actives.push(currentLeader);
+        let currentWitness = chain.schedule.shuffle[(blockNum - 1) % configBlock.witnesses].name;
+        if (consensus.getActiveWitnessKey(currentWitness))
+            actives.push(currentWitness);
 
         for (let i = 1; i < 2 * configBlock.witnesses; i++)
             if (chain.recentBlocks[chain.recentBlocks.length - i]
                 && actives.indexOf(chain.recentBlocks[chain.recentBlocks.length - i].miner) === -1
-                && consensus.getActiveLeaderKey(chain.recentBlocks[chain.recentBlocks.length - i].miner))
+                && consensus.getActiveWitnessKey(chain.recentBlocks[chain.recentBlocks.length - i].miner))
                 actives.push(chain.recentBlocks[chain.recentBlocks.length - i].miner);
         
-        // logger.debug('Leaders: ' + actives.join(','));
         return actives;
     },
     tryNextStep: function () {
-        const consensus_size = this.activeLeaders().length;
+        const consensus_size = this.activeWitnesses().length;
         let threshold = consensus_size * consensus_threshold;
         if (!this.isActive()) threshold += 1;
         let possBlocksById: Record<string, any[]> = {};
@@ -123,7 +122,7 @@ export const consensus: Consensus = {
                             possBlocksById[possBlock.block._id][j].block.witness,
                             possBlocksById[possBlock.block._id][j].block.timestamp,
                         ]);
-                    logger.info('Block collision detected at height ' + possBlock.block._id + ', the leaders are:', collisions);
+                    logger.info('Block collision detected at height ' + possBlock.block._id + ', the witnesses are:', collisions);
                     logger.info('Applying block ' + possBlock.block._id + '#' + possBlock.block.hash.substr(0, 4) + ' by ' + possBlock.block.witness + ' with timestamp ' + possBlock.block.timestamp);
                 } else {
                     logger.info('block ' + possBlock.block._id + '#' + possBlock.block.hash.substr(0, 4) + ' got finalized');
@@ -131,10 +130,7 @@ export const consensus: Consensus = {
                 chain.validateAndAddBlock?.(possBlock.block, false, (err: any) => {
                     if (err) {
                         logger.error(`[CONSENSUS-TRYSTEP] Error from validateAndAddBlock for block ${possBlock.block?._id}:`, err);
-                        // this.finalizing should still be reset to allow future attempts for other blocks
-                    } else {
-                        logger.info(`[CONSENSUS-TRYSTEP] validateAndAddBlock successful for block ${possBlock.block?._id}`);
-                    }
+                    } 
                     let newPossBlocks = [];
                     for (let y = 0; y < this.possBlocks.length; y++)
                         if (possBlock.block._id < this.possBlocks[y].block._id)
@@ -222,7 +218,6 @@ export const consensus: Consensus = {
         }
     },
     endRound: function (round: number, block: any, roundCallback?: Function) {
-        logger.debug('[CONSENSUS] endRound called', { round, block_id: block?._id });
         if (this.isActive()) {
             let onlyBlockHash: any = { hash: block.hash };
             if (block.witness === process.env.STEEM_ACCOUNT && round === 0)
@@ -236,13 +231,13 @@ export const consensus: Consensus = {
     remoteRoundConfirm: function (message: any) {
         const block = message.d.b;
         const round = message.d.r;
-        const leader = message.s.n;
+        const witness = message.s.n;
         for (let i = 0; i < this.possBlocks.length; i++) {
             if (block.hash === this.possBlocks[i].block.hash) {
-                if (this.possBlocks[i][round] && this.possBlocks[i][round].indexOf(leader) === -1) {
+                if (this.possBlocks[i][round] && this.possBlocks[i][round].indexOf(witness) === -1) {
                     for (let r = round; r >= 0; r--)
-                        if (this.possBlocks[i][r].indexOf(leader) === -1)
-                            this.possBlocks[i][r].push(leader);
+                        if (this.possBlocks[i][r].indexOf(witness) === -1)
+                            this.possBlocks[i][r].push(witness);
                     this.tryNextStep();
                 }
                 break;

@@ -3,398 +3,705 @@
 
 import parallel from 'run-parallel';
 import cloneDeep from 'clone-deep';
-import { Account } from './models/account.js';
-import { BlockModel } from './models/block.js';
 import ProcessingQueue from './processingQueue.js';
-import StateModel from './models/state.js';
 import logger from './logger.js';
-import witnessesStats from './witnessesStats.js';
-import txHistory from './transactions/txHistory.js';
 import config from './config.js';
 import { chain } from './chain.js';
-import { NotificationModel } from './models/notification.js';
-import WitnessStatsModel from './models/witnessStats.js';
-import { TokenModel } from './models/token.js';
-const modelMap: Record<string, any> = {
-    accounts: Account,
-    tokens: TokenModel,
-    blocks: BlockModel,
-    state: StateModel,
-    notifications: NotificationModel,
-    witnessStats: WitnessStatsModel
-};
+// Removed direct import of mongo here to avoid circular dependencies or premature calls
+// import { mongo } from './mongo.js'; 
+import txHistory from './txHistory.js'; // Assumed to be a JS module with getWriteOps
+import witnessesStats from './witnessesStats.js'; // Assumed to be a JS module with getWriteOps
 
-function assertModelExists(collection: string) {
-    if (!modelMap[collection]) {
-        logger.warn(`[CACHE] No model found for collection: '${collection}'. Check modelMap and collection keys.`);
-        return false;
-    }
-    return true;
+import { Db, Filter, Document as MongoDocument, UpdateFilter, FindOptions, ObjectId } from 'mongodb';
+
+
+interface BasicCacheDoc extends MongoDocument {
+    _id?: ObjectId | string | number; // Flexible _id for state, etc.
+    name?: string; // Primarily for 'accounts'
+    [key: string]: any;
 }
 
-const CacheStorage: any = {
+type StandardCallback<T = any> = (err: Error | null, result?: T) => void;
+type AsyncDbFunction = (callback: StandardCallback) => void;
+
+interface CacheCollectionStore {
+    [key: string]: BasicCacheDoc;
+}
+
+// Collections from the original TypeScript file structure
+interface CacheCopyCollections {
+    accounts: CacheCollectionStore;
+    blocks: CacheCollectionStore;
+    state: CacheCollectionStore;
+    tokens: CacheCollectionStore;
+    nftCollections: CacheCollectionStore;
+    nfts: CacheCollectionStore;
+    markets: CacheCollectionStore;
+    orders: CacheCollectionStore;
+    nftMarket: CacheCollectionStore;
+    pools: CacheCollectionStore;
+    events: CacheCollectionStore;
+    farms: CacheCollectionStore;
+    farmStakes: CacheCollectionStore;
+    // Add other collections from original TS if they were in `copy`
+}
+
+interface CacheMainDataCollections {
+    accounts: CacheCollectionStore;
+    blocks: CacheCollectionStore;
+    state: CacheCollectionStore;
+    tokens: CacheCollectionStore;
+    nftCollections: CacheCollectionStore;
+    nfts: CacheCollectionStore;
+    markets: CacheCollectionStore;
+    orders: CacheCollectionStore;
+    nftMarket: CacheCollectionStore;
+    pools: CacheCollectionStore;
+    events: CacheCollectionStore;
+    farms: CacheCollectionStore;
+    farmStakes: CacheCollectionStore;
+    // Add other collections from original TS if they were direct properties
+}
+
+interface CacheType extends CacheMainDataCollections {
+    copy: CacheCopyCollections;
+    changes: Array<{ // Inline type definition
+        collection: string;
+        query: Filter<BasicCacheDoc>;
+        changes: UpdateFilter<BasicCacheDoc> | Partial<BasicCacheDoc>;
+    }>;
+    inserts: Array<{ // Inline type definition
+        collection: string;
+        document: BasicCacheDoc;
+    }>;
+    rebuild: {
+        changes: Array<{ // Inline type definition
+            collection: string;
+            query: Filter<BasicCacheDoc>;
+            changes: UpdateFilter<BasicCacheDoc> | Partial<BasicCacheDoc>;
+        }>;
+        inserts: Array<{ // Inline type definition
+            collection: string;
+            document: BasicCacheDoc;
+        }>;
+    };
+    witnesses: { [witnessName: string]: 1 };
+    witnessChanges: [string, 0 | 1][];
+    writerQueue: ProcessingQueue;
+
+    rollback: () => void;
+    findOnePromise: (collection: string, query: Filter<BasicCacheDoc>, skipClone?: boolean) => Promise<BasicCacheDoc | null>;
+    findOne: (collection: string, query: Filter<BasicCacheDoc>, cb: StandardCallback<BasicCacheDoc | null>, skipClone?: boolean) => void;
+    updateOnePromise: (collection: string, query: Filter<BasicCacheDoc>, changes: UpdateFilter<BasicCacheDoc> | Partial<BasicCacheDoc>) => Promise<boolean>;
+    updateOne: (collection: string, query: Filter<BasicCacheDoc>, changes: UpdateFilter<BasicCacheDoc> | Partial<BasicCacheDoc>, cb: StandardCallback<boolean>) => void;
+    updateMany: (collection: string, query: Filter<BasicCacheDoc>, changes: UpdateFilter<BasicCacheDoc> | Partial<BasicCacheDoc>, cb: StandardCallback<any[]>) => void;
+    insertOne: (collection: string, document: BasicCacheDoc, cb: StandardCallback<boolean>) => void;
+    addWitness: (witness: string, isRollback: boolean, cb: StandardCallback) => void;
+    removeWitness: (witness: string, isRollback: boolean) => void;
+    clear: () => void;
+    writeToDisk: (rebuild: boolean, cb?: StandardCallback<any[]>) => void;
+    processRebuildOps: (cb: StandardCallback, writeToDiskFlag: boolean) => void;
+    keyByCollection: (collection: string) => string;
+    warmup: (collection: string, maxDoc: number) => Promise<void>; // Modified to only handle 'accounts' from JS example
+    warmupWitnesses: () => Promise<number>;
+    _setNestedValue: (obj: any, path: string, value: any) => void; // Added for type safety
+}
+
+let db: Db | null = null; // Changed declaration
+
+export const setMongoDbInstance = (mongoDbInstance: Db): void => {
+    if (!mongoDbInstance) {
+        logger.fatal('[CACHE] Attempted to set a null or undefined MongoDB instance to cache.');
+        // It's often better to throw an error to stop execution if this critical dependency is missing.
+        throw new Error('MongoDB instance cannot be null or undefined for cache setup.');
+    }
+    db = mongoDbInstance;
+    logger.info('[CACHE] MongoDB instance has been set.');
+};
+
+const cache: CacheType = {
+    // Initialize with collections from the original TypeScript structure
     copy: {
-        accounts: {},
-        blocks: {},
-        state: {},
-        tokens: {},
-        nftCollections: {},
-        nfts: {},
-        markets: {},
-        orders: {},
-        nftMarket: {},
-        pools: {},
-        events: {},
-        farms: {},
-        farmStakes: {}
+        accounts: {}, blocks: {}, state: {}, tokens: {},
+        nftCollections: {}, nfts: {}, markets: {}, orders: {},
+        nftMarket: {}, pools: {}, events: {}, farms: {}, farmStakes: {}
     },
-    accounts: {},
-    blocks: {},
-    state: {},
-    tokens: {},
-    nftCollections: {},
-    nfts: {},
-    markets: {},
-    orders: {},
-    nftMarket: {},
-    pools: {},
-    events: {},
-    farms: {},
-    farmStakes: {},
+    accounts: {}, blocks: {}, state: {}, tokens: {},
+    nftCollections: {}, nfts: {}, markets: {}, orders: {},
+    nftMarket: {}, pools: {}, events: {}, farms: {}, farmStakes: {},
+
     changes: [],
     inserts: [],
-    rebuild: { changes: [], inserts: [] },
-    leaders: {}, leaderChanges: [],
+    rebuild: {
+        changes: [],
+        inserts: []
+    },
+    witnesses: {},
+    witnessChanges: [],
     writerQueue: new ProcessingQueue(),
-    rollback: function () {
-        for (let c in cache.copy) {
-            for (const key in cache.copy[c])
-                cache[c][key] = cloneDeep(cache.copy[c][key]);
-            cache.copy[c] = {};
-        }
-        cache.changes = [];
-        for (let i = 0; i < cache.inserts.length; i++) {
-            let toRemove = cache.inserts[i];
-            let key = cache.keyByCollection(toRemove.collection);
-            delete cache[toRemove.collection][toRemove.document[key]];
-        }
-        cache.inserts = [];
-        for (let i in cache.leaderChanges)
-            if (cache.leaderChanges[i][1] === 0)
-                cache.addLeader(cache.leaderChanges[i][0], true, () => { });
-            else if (cache.leaderChanges[i][1] === 1)
-                cache.removeLeader(cache.leaderChanges[i][0], true);
-        cache.leaderChanges = [];
-    },
-    findOnePromise: function (collection: string, query: any, skipClone?: boolean) {
-        return new Promise((rs, rj) => cache.findOne(collection, query, (e: any, d: any) => e ? rj(e) : rs(d), skipClone));
-    },
-    findOne: function (collection: string, query: any, cb: Function, skipClone?: boolean) {
-        if (!cache.copy[collection])
-            return cb('invalid collection');
-        if (!assertModelExists(collection))
-            return cb('invalid collection');
-        let key = cache.keyByCollection(collection);
-        if (cache[collection][query[key]]) {
-            if (!skipClone)
-                cb(null, cloneDeep(cache[collection][query[key]]));
-            else
-                cb(null, cache[collection][query[key]]);
-            return;
-        }
-        const model = modelMap[collection];
-        model.findOne(query, function (err: any, obj: any) {
-            if (err) logger.debug('error cache');
-            else {
-                if (!obj) { cb(); return; }
-                cache[collection][obj[key]] = obj;
-                if (!skipClone)
-                    cb(null, cloneDeep(obj));
-                else
-                    cb(null, obj);
+
+    _setNestedValue: function(obj: any, path: string, value: any): void {
+        const keys = path.split('.');
+        let current = obj;
+        for (let i = 0; i < keys.length - 1; i++) {
+            if (!current[keys[i]] || typeof current[keys[i]] !== 'object') {
+                current[keys[i]] = {};
             }
+            current = current[keys[i]];
+        }
+        current[keys[keys.length - 1]] = value;
+    },
+
+    rollback: function () {
+        // rolling back changes from copied documents
+        for (let c in this.copy) {
+            const collectionKey = c as keyof CacheCopyCollections;
+            if (this.copy[collectionKey]) { // Check if the collection exists on copy
+                for (const key in this.copy[collectionKey]) {
+                    if (this[collectionKey] && (this[collectionKey] as CacheCollectionStore)[key] && this.copy[collectionKey][key]) {
+                        (this[collectionKey] as CacheCollectionStore)[key] = cloneDeep(this.copy[collectionKey][key]);
+                    }
+                }
+                this.copy[collectionKey] = {};
+            }
+        }
+        this.changes = [];
+
+        // and discarding new inserts
+        for (let i = 0; i < this.inserts.length; i++) {
+            let toRemove = this.inserts[i];
+            let key = this.keyByCollection(toRemove.collection);
+            const collectionName = toRemove.collection as keyof CacheMainDataCollections;
+            if (this[collectionName] && toRemove.document[key] !== undefined) {
+                delete (this[collectionName] as CacheCollectionStore)[toRemove.document[key]];
+            }
+        }
+        this.inserts = [];
+
+        // reset witness changes
+        for (let i = 0; i < this.witnessChanges.length; i++) { // Iterate over array properly
+            const change = this.witnessChanges[i];
+            if (change[1] === 0) {
+                this.addWitness(change[0], true, () => { });
+            } else if (change[1] === 1) {
+                this.removeWitness(change[0], true);
+            }
+        }
+        this.witnessChanges = [];
+        // eco.nextBlock(); // Removed
+    },
+
+    findOnePromise: function (collection, query, skipClone) {
+        return new Promise((rs, rj) => {
+            this.findOne(collection, query, (e, d) => e ? rj(e) : rs(d === undefined ? null : d), skipClone);
         });
     },
-    updateOnePromise: function (collection: string, query: any, changes: any) {
-        return new Promise((rs, rj) => cache.updateOne(collection, query, changes, (e: any, d: any) => e ? rj(e) : rs(true)));
+
+    findOne: function (collection, query, cb, skipClone) {
+        const collectionName = collection as keyof CacheMainDataCollections;
+        if (!this.copy[collectionName as keyof CacheCopyCollections]) { // Check against known copy collections
+            return cb(new Error('invalid collection in copy'));
+        }
+        if (!db) return cb(new Error('Database not initialized'));
+
+        let keyField = this.keyByCollection(collection);
+        const docId = query[keyField];
+
+        if (docId !== undefined && this[collectionName] && (this[collectionName] as CacheCollectionStore)[docId]) {
+            const cachedDoc = (this[collectionName] as CacheCollectionStore)[docId];
+            cb(null, skipClone ? cachedDoc : cloneDeep(cachedDoc));
+            return;
+        }
+
+        db.collection<BasicCacheDoc>(collection).findOne(query)
+            .then(obj => {
+                if (!obj) {
+                    cb(null, null); // Not found, explicitly return null for document
+                    return;
+                }
+                if (obj[keyField] !== undefined && this[collectionName]) {
+                    (this[collectionName] as CacheCollectionStore)[obj[keyField]] = obj;
+                }
+                cb(null, skipClone ? obj : cloneDeep(obj));
+            })
+            .catch(err => {
+                logger.error(`[CACHE findOne] DB error querying ${collection}:`, err);
+                cb(err);
+            });
     },
-    updateOne: function (collection: string, query: any, changes: any, cb: Function) {
-        cache.findOne(collection, query, function (err: any, obj: any) {
-            if (err) throw err;
-            if (!obj) { cb(null, false); return; }
-            let key = cache.keyByCollection(collection);
-            if (!cache.copy[collection][obj[key]] && (!chain.restoredBlocks || chain.getLatestBlock()._id >= chain.restoredBlocks))
-                cache.copy[collection][obj[key]] = cloneDeep(cache[collection][obj[key]]);
-            for (let c in changes)
-                switch (c) {
+
+    updateOnePromise: function (collection, query, changes) {
+        return new Promise((rs, rj) => {
+            this.updateOne(collection, query, changes, (e, d) => e ? rj(e) : rs(d || false));
+        });
+    },
+
+    updateOne: function (collection, query, changes, cb) {
+        if (!db) return cb(new Error('Database not initialized'));
+        const collectionName = collection as keyof CacheMainDataCollections;
+        const copyCollectionName = collection as keyof CacheCopyCollections;
+
+        this.findOne(collection, query, (err, obj) => {
+            if (err) { cb(err); return; }
+            if (!obj) {
+                cb(null, false); return;
+            }
+            let keyField = this.keyByCollection(collection);
+            const docId = obj[keyField];
+
+            if (docId === undefined) {
+                cb(new Error('Document ID is undefined after findOne in updateOne.'));
+                return;
+            }
+
+            const liveCollection = (this[collectionName] as CacheCollectionStore);
+            const copyCollection = (this.copy[copyCollectionName] as CacheCollectionStore);
+
+            // Ensure chain.getLatestBlock() is checked for null/undefined before accessing _id
+            const latestBlock = chain.getLatestBlock();
+            if (copyCollection && !copyCollection[docId] &&
+                (!chain.restoredBlocks || (latestBlock && latestBlock._id >= chain.restoredBlocks))) {
+                if (liveCollection && liveCollection[docId]) {
+                    copyCollection[docId] = cloneDeep(liveCollection[docId]);
+                }
+            }
+
+            const targetDoc = liveCollection ? liveCollection[docId] : null;
+            if (!targetDoc) {
+                cb(new Error(`Document ${collection}/${docId} not found in live cache for update.`));
+                return;
+            }
+
+            for (const op in changes) {
+                const opArgs = (changes as any)[op];
+                if (!opArgs) continue;
+
+                switch (op) {
                     case '$inc':
-                        for (let i in changes[c])
-                            if (!cache[collection][obj[key]][i])
-                                cache[collection][obj[key]][i] = changes[c][i];
-                            else
-                                cache[collection][obj[key]][i] += changes[c][i];
+                        for (const fieldPath in opArgs) {
+                            // Note: This $inc logic also needs dot notation handling if used for nested fields.
+                            // For now, assuming it's used for top-level or we address it separately.
+                            const keys = fieldPath.split('.');
+                            let current = targetDoc;
+                            for (let i = 0; i < keys.length - 1; i++) {
+                                if (!current[keys[i]] || typeof current[keys[i]] !== 'object') {
+                                    current[keys[i]] = {}; // Initialize nested path for $inc
+                                }
+                                current = current[keys[i]];
+                            }
+                            current[keys[keys.length - 1]] = (current[keys[keys.length - 1]] || 0) + opArgs[fieldPath];
+                        }
                         break;
                     case '$push':
-                        for (let p in changes[c]) {
-                            if (!cache[collection][obj[key]][p])
-                                cache[collection][obj[key]][p] = [];
-                            cache[collection][obj[key]][p].push(changes[c][p]);
+                        for (const fieldPath in opArgs) {
+                            const keys = fieldPath.split('.');
+                            let current:any = targetDoc;
+                            let validPath = true;
+                            for (let i = 0; i < keys.length - 1; i++) {
+                                if (!current[keys[i]] || typeof current[keys[i]] !== 'object') {
+                                    current[keys[i]] = {}; 
+                                }
+                                current = current[keys[i]];
+                            }
+                            const arrField = keys[keys.length - 1];
+                            if (!current[arrField] || !Array.isArray(current[arrField])) current[arrField] = [];
+                            current[arrField].push(opArgs[fieldPath]);
                         }
                         break;
                     case '$pull':
-                        for (let l in changes[c])
-                            for (let y = 0; y < cache[collection][obj[key]][l].length; y++)
-                                if (typeof changes[c][l] === 'object') {
-                                    let matching = true;
-                                    for (const v in changes[c][l])
-                                        if (cache[collection][obj[key]][l][y][v] !== changes[c][l][v]) {
-                                            matching = false;
-                                            break;
-                                        }
-                                    if (matching)
-                                        cache[collection][obj[key]][l].splice(y, 1);
-                                } else if (cache[collection][obj[key]][l][y] === changes[c][l])
-                                    cache[collection][obj[key]][l].splice(y, 1);
+                        for (const fieldPath in opArgs) {
+                            const keys = fieldPath.split('.');
+                            let current: any = targetDoc;
+                            let validPath = true;
+                            for (let i = 0; i < keys.length - 1; i++) {
+                                if (!current || typeof current[keys[i]] !== 'object') {
+                                    validPath = false;
+                                    break;
+                                }
+                                current = current[keys[i]];
+                            }
+                            if (!validPath || !current) continue; // Path did not fully exist or became null
+
+                            const arrField = keys[keys.length-1];
+                            if (Array.isArray(current[arrField])) {
+                                const condition = opArgs[fieldPath];
+                                if (typeof condition === 'object' && condition !== null && !Array.isArray(condition)) {
+                                    current[arrField] = current[arrField].filter((item: any) =>
+                                        !Object.keys(condition).every(k => item[k] === condition[k])
+                                    );
+                                } else {
+                                    current[arrField] = current[arrField].filter((item: any) => item !== condition);
+                                }
+                            }
+                        }
                         break;
                     case '$set':
-                        for (let s in changes[c])
-                            cache[collection][obj[key]][s] = changes[c][s];
+                        for (const fieldPath in opArgs) {
+                            this._setNestedValue(targetDoc, fieldPath, opArgs[fieldPath]);
+                        }
                         break;
                     case '$unset':
-                        for (let u in changes[c])
-                            delete cache[collection][obj[key]][u];
+                        for (const fieldPath in opArgs) {
+                            const keys = fieldPath.split('.');
+                            let current: any = targetDoc;
+                            let validPath = true;
+                            for (let i = 0; i < keys.length - 1; i++) {
+                                if (!current || typeof current[keys[i]] !== 'object') {
+                                    validPath = false;
+                                    break;
+                                }
+                                current = current[keys[i]];
+                            }
+                            if (validPath && current) {
+                                delete current[keys[keys.length - 1]];
+                            }
+                        }
                         break;
                     default:
+                        logger.warn(`[CACHE updateOne] Unsupported operator: ${op}`);
                         break;
                 }
-            cache.changes.push({ collection: collection, query: query, changes: changes });
+            }
+
+            this.changes.push({ collection: collection, query: query, changes: changes });
             cb(null, true);
-        }, true);
+        }, true); // skipClone = true for findOne
     },
-    updateMany: function (collection: string, query: any, changes: any, cb: Function) {
-        let key = cache.keyByCollection(collection);
-        if (!query[key] || !query[key]['$in'])
-            throw 'updateMany requires a $in operator';
-        let indexesToUpdate = query[key]['$in'];
-        let executions: any[] = [];
-        for (let i = 0; i < indexesToUpdate.length; i++)
-            executions.push(function (callback: any) {
-                let newQuery: any = {};
-                newQuery[key] = indexesToUpdate[i];
-                cache.updateOne(collection, newQuery, changes, function (err: any, result: any) {
-                    callback(null, result);
+
+    updateMany: function (collection, query, changes, cb) {
+        let keyField = this.keyByCollection(collection);
+        const idsToUpdate = query[keyField]?.$in;
+
+        if (!idsToUpdate || !Array.isArray(idsToUpdate)) {
+            const errMsg = 'updateMany requires a query with $in operator on the key field (e.g., { name: { $in: [...] } })';
+            logger.error(`[CACHE updateMany] ${errMsg}`);
+            cb(new Error(errMsg));
+            return;
+        }
+
+        let executions: AsyncDbFunction[] = [];
+        for (let i = 0; i < idsToUpdate.length; i++) {
+            executions.push((callback) => {
+                let newQuery: Filter<BasicCacheDoc> = {};
+                newQuery[keyField] = idsToUpdate[i];
+                this.updateOne(collection, newQuery, changes, (err, result) => {
+                    callback(err ?? null, result); // Ensure err is Error | null
                 });
             });
-        parallel(executions, function (err: any, results: any) {
-            cb(err, results);
+        }
+
+        parallel(executions, (err: Error | null, results: any) => {
+            cb(err ?? null, results as any[]);
         });
     },
-    insertOne: function (collection: string, document: any, cb: Function) {
-        let key = cache.keyByCollection(collection);
-        if (cache[collection][document[key]]) {
-            cb(null, false); return;
+
+    insertOne: function (collection, document, cb) {
+        const collectionName = collection as keyof CacheMainDataCollections;
+        let keyField = this.keyByCollection(collection);
+        const docId = document[keyField];
+
+        if (docId !== undefined && this[collectionName] && (this[collectionName] as CacheCollectionStore)[docId]) {
+            cb(null, false);
+            return;
         }
-        cache[collection][document[key]] = document;
-        cache.inserts.push({ collection: collection, document: document });
+
+        if (this[collectionName]) {
+            if (docId !== undefined) {
+                (this[collectionName] as CacheCollectionStore)[docId] = document;
+            } else {
+                // Handle documents without a predefined key if necessary, though JS logic implies key exists
+                logger.warn(`[CACHE insertOne] Document for ${collection} missing keyField '${keyField}'. DB will assign _id if this was the intended key.`);
+            }
+        }
+
+        this.inserts.push({ collection: collection, document: document });
         cb(null, true);
     },
-    addLeader: function (leader: string, isRollback: boolean, cb: Function) {
-        if (!cache.leaders[leader])
-            cache.leaders[leader] = 1;
-        if (!isRollback)
-            cache.leaderChanges.push([leader, 1]);
-        cache.findOne('accounts', { name: leader }, () => cb(), true);
-    },
-    removeLeader: function (leader: string, isRollback: boolean) {
-        if (cache.leaders[leader])
-            delete cache.leaders[leader];
-        if (!isRollback)
-            cache.leaderChanges.push([leader, 0]);
-    },
-    clear: function () {
-        cache.changes = [];
-        cache.inserts = [];
-        cache.rebuild.changes = [];
-        cache.rebuild.inserts = [];
-        cache.leaderChanges = [];
-        for (let c in cache.copy)
-            cache.copy[c] = {};
-    },
-    writeToDisk: function (rebuild: boolean, cb: Function) {
-        let executions: any[] = [];
-        let insertArr = rebuild ? cache.rebuild.inserts : cache.inserts;
-        for (let i = 0; i < insertArr.length; i++)
-            executions.push(function (callback: any) {
-                let insert = insertArr[i];
-                logger.debug(`[CACHE] Starting model.create for ${insert.collection}`, insert.document);
-                if (!assertModelExists(insert.collection)) {
-                    const err = new Error('Invalid collection: ' + insert.collection);
-                    logger.error(`[CACHE] Error in model.create for ${insert.collection}:`, err);
-                    return callback(err);
-                }
-                const model = modelMap[insert.collection];
-                model.create(insert.document, function (err: any) {
-                    if (err) {
-                        logger.error(`[CACHE] Error in model.create for ${insert.collection}:`, err, insert.document);
-                        return callback(err);
-                    }
-                    logger.debug(`[CACHE] Finished model.create for ${insert.collection}`, insert.document);
-                    callback();
-                });
-            });
-        let docsToUpdate: any = {};
-        for (let c in cache.copy)
-            docsToUpdate[c] = {};
-        let changesArr = rebuild ? cache.rebuild.changes : cache.changes;
-        for (let i = 0; i < changesArr.length; i++) {
-            let change = changesArr[i];
-            let collection = change.collection;
-            let key = change.query[cache.keyByCollection(collection)];
-            docsToUpdate[collection][key] = cache[collection][key];
-        }
-        for (const col in docsToUpdate)
-            for (const i in docsToUpdate[col])
-                executions.push(function (callback: any) {
-                    const docToUpdate = docsToUpdate[col][i];
-                    logger.debug(`[CACHE] Starting model.replaceOne for ${col}`, docToUpdate);
-                    if (!assertModelExists(col)) {
-                        const err = new Error('Invalid collection: ' + col);
-                        logger.error(`[CACHE] Error in model.replaceOne for ${col}:`, err);
-                        return callback(err);
-                    }
-                    let key = cache.keyByCollection(col);
-                    let newDoc = docToUpdate; // already the full document from cache
-                    let query: any = {};
-                    query[key] = newDoc[key];
-                    const model = modelMap[col];
-                    model.replaceOne(query, newDoc, { upsert: true }, function (err: any) {
-                        if (err) {
-                            logger.error(`[CACHE] Error in model.replaceOne for ${col}:`, err, newDoc);
-                            return callback(err);
-                        }
-                        logger.debug(`[CACHE] Finished model.replaceOne for ${col}`, newDoc);
-                        callback();
-                    });
-                });
-        if (process.env.LEADER_STATS === '1') {
-            let leaderStatsWriteOps = witnessesStats.getWriteOps();
-            logger.debug('[CACHE] Adding leaderStatsWriteOps to executions', { count: leaderStatsWriteOps.length });
-            for (let op of leaderStatsWriteOps) { // Changed from "in" to "of" for arrays
-                // It's hard to inject logging into `op` directly here without knowing its structure.
-                // If issues persist, `getWriteOps` itself needs more internal logging.
-                executions.push(op);
-            }
-        }
-        if (process.env.TX_HISTORY === '1') {
-            let txHistoryWriteOps = txHistory.getWriteOps();
-            logger.debug('[CACHE] Adding txHistoryWriteOps to executions', { count: txHistoryWriteOps.length });
-            for (let op of txHistoryWriteOps) { // Changed from "in" to "of" for arrays
-                // Similarly, direct logging injection is hard.
-                executions.push(op);
-            }
-        }
-        executions.push(function (callback: any) {
-            logger.debug('[CACHE] Starting StateModel.updateOne');
-            StateModel.updateOne({ _id: 0 }, { $set: { headBlock: chain.getLatestBlock()._id } }, { upsert: true })
-                .then(() => {
-                    logger.debug('[CACHE] Finished StateModel.updateOne successfully');
-                    callback(null);
-                })
-                .catch((err: any) => {
-                    logger.error('[CACHE] Error in StateModel.updateOne:', err);
-                    callback(err);
-                });
-        });
 
-        logger.debug(`[CACHE] Total operations to be executed by parallel: ${executions.length}`);
-        // You can even log the collections involved if needed:
-        // const collectionsInvolved = executions.map(ex => ex.toString()); // This is a bit naive, better to inspect structure
-        // logger.debug('[CACHE] Execution details:', collectionsInvolved);
+    addWitness: function (witness, isRollback, cb) {
+        if (!this.witnesses[witness]) {
+            this.witnesses[witness] = 1;
+        }
+        if (!isRollback) {
+            this.witnessChanges.push([witness, 1]);
+        }
+        this.findOne('accounts', { name: witness }, () => cb(null), true);
+    },
+
+    removeWitness: function (witness, isRollback) {
+        if (this.witnesses[witness]) {
+            delete this.witnesses[witness];
+        }
+        if (!isRollback) {
+            this.witnessChanges.push([witness, 0]);
+        }
+    },
+
+    clear: function () {
+        this.changes = [];
+        this.inserts = [];
+        this.rebuild.changes = [];
+        this.rebuild.inserts = [];
+        this.witnessChanges = [];
+        for (let c in this.copy) {
+            const collectionKey = c as keyof CacheCopyCollections;
+            if (this.copy[collectionKey]) {
+                this.copy[collectionKey] = {};
+            }
+        }
+    },
+
+    writeToDisk: function (rebuild, cb) {
+        if (!db) {
+            const err = new Error('Database not initialized for writeToDisk');
+            logger.error(err.message);
+            if (cb) cb(err);
+            return;
+        }
+        const currentDb = db; // db is confirmed to be non-null here
+
+        let executions: AsyncDbFunction[] = [];
+        const insertArr = rebuild ? this.rebuild.inserts : this.inserts;
+        for (let i = 0; i < insertArr.length; i++) {
+            executions.push((callback) => {
+                const insertOp = insertArr[i];
+                currentDb.collection<BasicCacheDoc>(insertOp.collection).insertOne(insertOp.document)
+                    .then(() => callback(null))
+                    .catch(err => {
+                        logger.error(`[CACHE writeToDisk] insertOne error for ${insertOp.collection}:`, err, insertOp.document);
+                        callback(err);
+                    });
+            });
+        }
+
+        let docsToUpdate: { [collection: string]: { [key: string]: BasicCacheDoc } } = {};
+        // Initialize docsToUpdate with known collections from the cache.copy structure
+        for (const c of Object.keys(this.copy) as Array<keyof CacheCopyCollections>) {
+            docsToUpdate[c] = {};
+        }
+
+        const changesArr = rebuild ? this.rebuild.changes : this.changes;
+        for (let i = 0; i < changesArr.length; i++) {
+            const changeOp = changesArr[i];
+            const collection = changeOp.collection;
+            const keyField = this.keyByCollection(collection);
+            const docId = changeOp.query[keyField]; // Assumes query[keyField] is the ID
+            const mainCollectionStore = this[collection as keyof CacheMainDataCollections] as CacheCollectionStore;
+
+            if (docId !== undefined && mainCollectionStore && mainCollectionStore[docId]) {
+                if (!docsToUpdate[collection]) docsToUpdate[collection] = {}; // Should already be init by loop over this.copy
+                docsToUpdate[collection][docId] = mainCollectionStore[docId];
+            } else {
+                logger.warn(`[CACHE writeToDisk] Doc for update via changeOp not in live cache or docId missing: ${collection}/${docId}`, changeOp.query);
+            }
+        }
+
+        for (const col in docsToUpdate) {
+            if (!Object.prototype.hasOwnProperty.call(this, col)) continue; // Ensure col is a direct prop of cache main store
+            for (const idKey in docsToUpdate[col]) {
+                executions.push((callback) => {
+                    const keyField = this.keyByCollection(col);
+                    const newDoc = docsToUpdate[col][idKey];
+                    let query: Filter<BasicCacheDoc> = {};
+
+                    if (newDoc[keyField] === undefined) {
+                        logger.error(`[CACHE writeToDisk] Doc for replaceOne has undefined key: ${col}/${idKey}`, newDoc);
+                        callback(new Error(`Document key is undefined for ${col}/${idKey}`), null);
+                        return;
+                    }
+                    query[keyField] = newDoc[keyField];
+
+                    currentDb.collection<BasicCacheDoc>(col).replaceOne(query, newDoc, { upsert: true })
+                        .then(() => callback(null))
+                        .catch(err => {
+                            logger.error(`[CACHE writeToDisk] replaceOne error for ${col}/${newDoc[keyField]}:`, err, newDoc);
+                            callback(err);
+                        });
+                });
+            }
+        }
+
+        if (process.env.LEADER_STATS === '1' && witnessesStats && typeof witnessesStats.getWriteOps === 'function') {
+            try {
+                const witnessesStatsWriteOps = witnessesStats.getWriteOps();
+                if (Array.isArray(witnessesStatsWriteOps)) {
+                    executions.push(...(witnessesStatsWriteOps as AsyncDbFunction[]));
+                }
+            } catch (e) {
+                logger.error('[CACHE writeToDisk] Error getting witnessesStats write ops:', e);
+            }
+        }
+
+        if (process.env.TX_HISTORY === '1' && txHistory && typeof txHistory.getWriteOps === 'function') {
+            try {
+                const txHistoryWriteOps = txHistory.getWriteOps();
+                if (Array.isArray(txHistoryWriteOps)) {
+                    executions.push(...(txHistoryWriteOps as AsyncDbFunction[]));
+                }
+            } catch (e) {
+                logger.error('[CACHE writeToDisk] Error getting txHistory write ops:', e);
+            }
+        }
+
+        const latestBlock = chain.getLatestBlock();
+        if (latestBlock && latestBlock._id !== undefined) {
+            // Ensure _id: 0 is compatible with BasicCacheDoc._id type
+            const stateQuery: Filter<BasicCacheDoc> = { _id: 0 };
+            const stateUpdate = { $set: { headBlock: latestBlock._id } };
+            executions.push((callback) => {
+                currentDb.collection<BasicCacheDoc>('state').updateOne(stateQuery, stateUpdate, { upsert: true })
+                    .then(() => callback(null, true))
+                    .catch(err => {
+                        logger.error('[CACHE writeToDisk] State update error:', err);
+                        callback(err);
+                    });
+            });
+        } else {
+            logger.warn('[CACHE writeToDisk] Skipping state update, latest block or _id is undefined.');
+        }
+
+        const allOpsDoneCallback = (err?: Error | null, results?: any[]) => {
+            if (!err) {
+                if (!rebuild) { // Original JS only cleared non-rebuild, specific items for rebuild in processRebuildOps
+                    this.clear();
+                } else {
+                    // For rebuild, specific clear happens in processRebuildOps
+                    this.rebuild.inserts = [];
+                    this.rebuild.changes = [];
+                    // witnessChanges are cleared in processRebuildOps
+                }
+            } else {
+                logger.error('[CACHE writeToDisk] Batch failed. Cache not cleared (or partially cleared for rebuild).', err);
+            }
+            if (cb) {
+                cb(err ?? null, results);
+            }
+        };
+
+        if (executions.length === 0) {
+            logger.debug('[CACHE writeToDisk] No DB operations for this batch.');
+            allOpsDoneCallback(null, []);
+            return;
+        }
 
         if (typeof cb === 'function') {
             let timeBefore = new Date().getTime();
-            parallel(executions, function (err: any, results: any) {
+            parallel(executions, (err: Error | null, results: any) => {
                 let execTime = new Date().getTime() - timeBefore;
-                if (!rebuild && execTime >= config.blockTime / 2)
-                    logger.warn('Slow write execution: ' + executions.length + ' mongo queries took ' + execTime + 'ms');
-                else
-                    logger.debug(executions.length + ' mongo queries executed in ' + execTime + 'ms');
-                cache.clear();
-                cb(err, results);
+                if (config && config.blockTime && !rebuild && execTime >= config.blockTime / 2) {
+                    logger.warn(`[CACHE writeToDisk] Slow DB batch: ${executions.length} ops, ${execTime}ms`);
+                } else {
+                    logger.debug(`[CACHE writeToDisk] DB batch took ${execTime}ms for ${executions.length} ops.`);
+                }
+                allOpsDoneCallback(err ?? null, results as any[]);
             });
         } else {
-            logger.debug(executions.length + ' mongo ops queued');
-            cache.writerQueue.push((queueCallback: any) => parallel(executions, (err, results) => queueCallback(err, results)));
-            cache.clear();
+            logger.debug(`[CACHE writeToDisk] Queuing ${executions.length} DB ops.`);
+            this.writerQueue.push((queueCb: StandardCallback) => {
+                parallel(executions, (err: Error | null, results: any[]) => {
+                    allOpsDoneCallback(err ?? null, results);
+                    queueCb(err ?? null, results);
+                });
+            });
+            // Per JS, clear is called immediately if not callback based, for non-rebuild.
+            if (!rebuild) {
+                this.clear();
+            }
         }
     },
-    processRebuildOps: function (cb: Function, writeToDisk: boolean) {
-        for (let i in cache.inserts)
-            cache.rebuild.inserts.push(cache.inserts[i]);
-        for (let i in cache.changes)
-            cache.rebuild.changes.push(cache.changes[i]);
-        cache.inserts = [];
-        cache.changes = [];
-        cache.leaderChanges = [];
-        for (let c in cache.copy)
-            cache.copy[c] = {};
-        if (writeToDisk)
-            cache.writeToDisk(true, cb);
-        else
-            cb();
+
+    processRebuildOps: function (cb, writeToDiskFlag) {
+        this.rebuild.inserts.push(...this.inserts);
+        this.rebuild.changes.push(...this.changes);
+        this.inserts = [];
+        this.changes = [];
+        this.witnessChanges = []; // As per JS logic
+        for (let c in this.copy) {
+            const collectionKey = c as keyof CacheCopyCollections;
+            if (this.copy[collectionKey]) {
+                this.copy[collectionKey] = {};
+            }
+        }
+        if (writeToDiskFlag) {
+            this.writeToDisk(true, cb);
+        } else {
+            if (cb) cb(null);
+        }
     },
-    keyByCollection: function (collection: string) {
+
+    keyByCollection: function (collection: string): string {
         switch (collection) {
             case 'accounts': return 'name';
             default: return '_id';
         }
     },
-    warmup: function (collection: string, maxDoc: number) {
-        return new Promise(async (rs, rj) => {
-            if (!collection || !maxDoc || maxDoc === 0)
-                return rs(null);
-            switch (collection) {
-                case 'accounts': {
-                    try {
-                        const accounts = await Account.find({}, null, { sort: { witnessVotes: -1, name: -1 }, limit: maxDoc });
-                        for (let i = 0; i < accounts.length; i++)
-                            cache[collection][accounts[i].name] = accounts[i];
-                        rs(null);
-                    } catch (err) {
-                        rj(err);
+
+    // Warmup only implements 'accounts' as 'contents' is not in the target collection structure
+    warmup: async function (collection: string, maxDoc: number): Promise<void> {
+        if (!db) {
+            logger.error(`[CACHE warmup] Database not initialized for ${collection}.`);
+            return Promise.resolve();
+        }
+        if (!collection || !maxDoc || maxDoc === 0) {
+            return Promise.resolve();
+        }
+
+        const options: FindOptions = { limit: maxDoc };
+
+        switch (collection) {
+            case 'accounts':
+                options.sort = { node_appr: -1, name: -1 }; // JS: {node_appr: -1, name: -1}
+                try {
+                    const accountsDocs = await db.collection<BasicCacheDoc>(collection).find({}, options).toArray();
+                    for (let i = 0; i < accountsDocs.length; i++) {
+                        const acc = accountsDocs[i];
+                        if (acc.name !== undefined) {
+                            (this.accounts as CacheCollectionStore)[acc.name] = acc;
+                        }
                     }
-                    break;
+                    logger.debug(`[CACHE warmup] Warmed up ${accountsDocs.length} accounts.`);
+                } catch (err) {
+                    logger.error(`[CACHE warmup] Error warming up ${collection}:`, err);
+                    throw err;
                 }
-                case 'tokens': {
-                    try {
-                        const tokens = await TokenModel.find({}, { sort: { ts: -1 }, limit: maxDoc });
-                        for (let i = 0; i < tokens.length; i++)
-                            cache[collection][tokens[i]._id] = tokens[i];
-                        rs(null);
-                    } catch (err) {
-                        rj(err);
-                    }
-                    break;
-                }
-                default:
-                    rj('Collection type not found');
-                    break;
-            }
-        });
+                break;
+            // 'contents' logic from JS is omitted as it's not in the target collection set.
+            default:
+                logger.warn(`[CACHE warmup] Collection type '${collection}' not implemented for warmup in this configuration.`);
+                // Original JS would reject, returning resolve to not break Promise.all if used elsewhere
+                return Promise.resolve();
+        }
     },
-    warmupLeaders: function () {
-        return new Promise(async (rs) => {
-            const accs = await Account.find({ witnessPublicKey: { $exists: true, $ne: '' } });
-            for (const acc of accs) {
-                cache.leaders[acc.name] = 1;
-                if (!cache.accounts[acc.name])
-                    cache.accounts[acc.name] = acc;
+
+    warmupWitnesses: async function (): Promise<number> {
+        if (!db) {
+            logger.error('[CACHE warmupWitnesses] Database not initialized.');
+            return 0;
+        }
+        const query: Filter<BasicCacheDoc> = {
+            $and: [
+                { witnessPublicKey: { $exists: true } },
+                { witnessPublicKey: { $ne: '' } }
+            ]
+        };
+        try {
+            const accs = await db.collection<BasicCacheDoc>('accounts').find(query).toArray();
+            for (let i = 0; i < accs.length; i++) {
+                const acc = accs[i];
+                if (acc.name) {
+                    this.witnesses[acc.name] = 1;
+                    if (!(this.accounts as CacheCollectionStore)[acc.name]) {
+                        (this.accounts as CacheCollectionStore)[acc.name] = acc;
+                    }
+                }
             }
-            rs(accs.length);
-        });
+            logger.debug(`[CACHE warmupLeaders] Warmed up ${accs.length} witnesses.`);
+            return accs.length;
+        } catch (e) {
+            logger.error('[CACHE warmupLeaders] Error:', e);
+            throw e;
+        }
     }
 };
 
-export const cache = CacheStorage;
-
-export default CacheStorage; 
+export default cache;

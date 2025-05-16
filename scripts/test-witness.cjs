@@ -45,7 +45,7 @@ async function main() {
           _id: testAccount,
           tokens: { ECH: 0 },
           nfts: {},
-          witnessVotes: 0,
+          totalVoteWeight: 0,
           votedWitnesses: [],
           witnessPublicKey: publicKey,
           createdAt: new Date()
