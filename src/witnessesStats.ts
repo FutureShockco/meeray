@@ -1,9 +1,19 @@
 import logger from './logger.js';
 import mongo from './mongo.js';
-import { IWitnessStats } from './models/witnessStats.js';
+// Removed: import { IWitnessStats } from './models/witnessStats.js';
 
-// @ts-ignore
-const db = { collection: () => ({ updateOne: () => {}, find: () => ({ toArray: () => {} }) }) } as any; // TODO: Replace with actual db/mongo implementation
+// Define IWitnessStats interface here
+interface IWitnessStats {
+  _id?: string; // Witness name, corresponds to the account name
+  sinceTs?: number;
+  sinceBlock?: number;
+  produced?: number;
+  missed?: number;
+  voters?: number;
+  last?: number; // Assuming this refers to the last block number produced
+}
+
+// Removed: const db = { ... } as any; // This placeholder is not needed
 
 interface IWitnessIndexer {
   witnesses: Record<string, Partial<IWitnessStats>>;

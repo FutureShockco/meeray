@@ -36,13 +36,15 @@ interface CacheCopyCollections {
     tokens: CacheCollectionStore;
     nftCollections: CacheCollectionStore;
     nfts: CacheCollectionStore;
-    markets: CacheCollectionStore;
+    tradingPairs: CacheCollectionStore;
     orders: CacheCollectionStore;
-    nftMarket: CacheCollectionStore;
+    nftListings: CacheCollectionStore;
     pools: CacheCollectionStore;
     events: CacheCollectionStore;
     farms: CacheCollectionStore;
-    farmStakes: CacheCollectionStore;
+    userFarmPositions: CacheCollectionStore;
+    userLiquidityPositions: CacheCollectionStore;
+    trades: CacheCollectionStore;
     // Add other collections from original TS if they were in `copy`
 }
 
@@ -53,13 +55,15 @@ interface CacheMainDataCollections {
     tokens: CacheCollectionStore;
     nftCollections: CacheCollectionStore;
     nfts: CacheCollectionStore;
-    markets: CacheCollectionStore;
+    tradingPairs: CacheCollectionStore;
     orders: CacheCollectionStore;
-    nftMarket: CacheCollectionStore;
+    nftListings: CacheCollectionStore;
     pools: CacheCollectionStore;
     events: CacheCollectionStore;
     farms: CacheCollectionStore;
-    farmStakes: CacheCollectionStore;
+    userFarmPositions: CacheCollectionStore;
+    userLiquidityPositions: CacheCollectionStore;
+    trades: CacheCollectionStore;
     // Add other collections from original TS if they were direct properties
 }
 
@@ -91,8 +95,10 @@ interface CacheType extends CacheMainDataCollections {
 
     rollback: () => void;
     findOnePromise: (collection: string, query: Filter<BasicCacheDoc>, skipClone?: boolean) => Promise<BasicCacheDoc | null>;
+    findPromise: (collection: string, query: Filter<BasicCacheDoc>, options?: FindOptions<BasicCacheDoc>, skipClone?: boolean) => Promise<BasicCacheDoc[] | null>;
     findOne: (collection: string, query: Filter<BasicCacheDoc>, cb: StandardCallback<BasicCacheDoc | null>, skipClone?: boolean) => void;
     updateOnePromise: (collection: string, query: Filter<BasicCacheDoc>, changes: UpdateFilter<BasicCacheDoc> | Partial<BasicCacheDoc>) => Promise<boolean>;
+    deleteOnePromise: (collection: string, query: Filter<BasicCacheDoc>) => Promise<boolean>;
     updateOne: (collection: string, query: Filter<BasicCacheDoc>, changes: UpdateFilter<BasicCacheDoc> | Partial<BasicCacheDoc>, cb: StandardCallback<boolean>) => void;
     updateMany: (collection: string, query: Filter<BasicCacheDoc>, changes: UpdateFilter<BasicCacheDoc> | Partial<BasicCacheDoc>, cb: StandardCallback<any[]>) => void;
     insertOne: (collection: string, document: BasicCacheDoc, cb: StandardCallback<boolean>) => void;
@@ -123,12 +129,14 @@ const cache: CacheType = {
     // Initialize with collections from the original TypeScript structure
     copy: {
         accounts: {}, blocks: {}, state: {}, tokens: {},
-        nftCollections: {}, nfts: {}, markets: {}, orders: {},
-        nftMarket: {}, pools: {}, events: {}, farms: {}, farmStakes: {}
+        nftCollections: {}, nfts: {}, tradingPairs: {}, orders: {},
+        nftListings: {}, pools: {}, events: {}, farms: {}, userFarmPositions: {}, userLiquidityPositions: {},
+        trades: {}
     },
     accounts: {}, blocks: {}, state: {}, tokens: {},
-    nftCollections: {}, nfts: {}, markets: {}, orders: {},
-    nftMarket: {}, pools: {}, events: {}, farms: {}, farmStakes: {},
+    nftCollections: {}, nfts: {}, tradingPairs: {}, orders: {},
+    nftListings: {}, pools: {}, events: {}, farms: {}, userFarmPositions: {}, userLiquidityPositions: {},
+    trades: {},
 
     changes: [],
     inserts: [],
@@ -197,6 +205,29 @@ const cache: CacheType = {
         });
     },
 
+    findPromise: async function (collection, query, options, skipClone) {
+        if (!db) {
+            logger.error(`[CACHE findPromise] Database not initialized for ${collection}.`);
+            return Promise.resolve(null); // Or throw new Error('Database not initialized');
+        }
+        try {
+            const documents = await db.collection<BasicCacheDoc>(collection).find(query, options).toArray();
+            if (!documents || documents.length === 0) {
+                return null;
+            }
+            // skipClone functionality is less critical for findPromise as it's a direct DB hit for multiple docs
+            // and the primary caching layer is for single keyed access.
+            // If cloning is desired, it would apply to each doc in the array.
+            // For simplicity and typical use (read-only list), returning direct docs.
+            return skipClone ? documents : documents.map(doc => cloneDeep(doc));
+        } catch (err: any) {
+            logger.error(`[CACHE findPromise] DB error querying ${collection}:`, err);
+            // Depending on desired error handling, could throw err or return null
+            // throw err; 
+            return null;
+        }
+    },
+
     findOne: function (collection, query, cb, skipClone) {
         const collectionName = collection as keyof CacheMainDataCollections;
         if (!this.copy[collectionName as keyof CacheCopyCollections]) { // Check against known copy collections
@@ -234,6 +265,48 @@ const cache: CacheType = {
         return new Promise((rs, rj) => {
             this.updateOne(collection, query, changes, (e, d) => e ? rj(e) : rs(d || false));
         });
+    },
+
+    deleteOnePromise: async function (collection, query) {
+        if (!db) {
+            logger.error(`[CACHE deleteOnePromise] Database not initialized for ${collection}.`);
+            return Promise.resolve(false);
+        }
+        try {
+            // Before deleting from DB, remove from in-memory cache if it exists
+            const collectionName = collection as keyof CacheMainDataCollections;
+            const keyField = this.keyByCollection(collection);
+            const docId = query[keyField]; // This assumes the query directly contains the keyField for simple lookups
+
+            if (docId !== undefined && this[collectionName] && (this[collectionName] as CacheCollectionStore)[docId]) {
+                delete (this[collectionName] as CacheCollectionStore)[docId];
+                logger.debug(`[CACHE deleteOnePromise] Removed ${collection}/${docId} from in-memory store.`);
+            }
+            // Also remove from copy if it exists there (though less likely to be hit directly for a delete operation)
+            if (docId !== undefined && this.copy[collectionName as keyof CacheCopyCollections] && (this.copy[collectionName as keyof CacheCopyCollections] as CacheCollectionStore)[docId]){
+                delete (this.copy[collectionName as keyof CacheCopyCollections] as CacheCollectionStore)[docId];
+                logger.debug(`[CACHE deleteOnePromise] Removed ${collection}/${docId} from copy store.`);
+            }
+
+            const result = await db.collection<BasicCacheDoc>(collection).deleteOne(query);
+            
+            // Add to changes array for writeToDisk to eventually process (if this is part of a transaction block)
+            // However, direct DB modification bypasses the usual change tracking for rollback of in-memory state.
+            // For simplicity here, this method directly modifies DB and in-memory state.
+            // A more complex implementation would queue a delete operation for writeToDisk.
+            if (result.deletedCount && result.deletedCount > 0) {
+                 // For now, we don't add to this.changes for deletions, as writeToDisk mainly handles inserts/updates.
+                 // If deletion needs to be part of the batching/rollback system, this needs more thought.
+                logger.debug(`[CACHE deleteOnePromise] Successfully deleted document from ${collection} matching query:`, query);
+                return true;
+            } else {
+                logger.warn(`[CACHE deleteOnePromise] No document found in ${collection} to delete for query:`, query);
+                return false;
+            }
+        } catch (err: any) {
+            logger.error(`[CACHE deleteOnePromise] DB error deleting from ${collection}:`, err);
+            return false;
+        }
     },
 
     updateOne: function (collection, query, changes, cb) {
@@ -425,7 +498,13 @@ const cache: CacheType = {
         if (!isRollback) {
             this.witnessChanges.push([witness, 1]);
         }
-        this.findOne('accounts', { name: witness }, () => cb(null), true);
+        this.findOne('accounts', { name: witness }, (err, data) => {
+            if (err) {
+                cb(err, null);
+            } else {
+                cb(null, witness);
+            }
+        });
     },
 
     removeWitness: function (witness, isRollback) {

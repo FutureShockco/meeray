@@ -1,21 +1,17 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
+import { isValidPubKey } from '../../crypto.js';
 
 export interface WitnessRegisterData {
   pub: string;
 }
 
-export async function validate(data: WitnessRegisterData, sender: string): Promise<boolean> {
+export async function validateTx(data: WitnessRegisterData, sender: string): Promise<boolean> {
   try {
-    // Check if account already registered as witness
+    // Check if account already registered
     const account = await cache.findOnePromise('accounts', { name: sender });
     if (!account) {
       logger.warn(`Invalid witness register: account ${sender} not found`);
-      return false;
-    }
-
-    if (account.witnessPublicKey) {
-      logger.warn(`Invalid witness register: ${sender} already registered as witness`);
       return false;
     }
 
@@ -25,8 +21,8 @@ export async function validate(data: WitnessRegisterData, sender: string): Promi
       return false;
     }
 
-    // The original check was for length 53, but we'll be more permissive
-    if (data.pub.length < 20) {
+    // Check if public key is valid
+    if (isValidPubKey(data.pub)) {
       logger.warn(`Invalid witness register: public key too short (${data.pub.length} chars)`);
       return false;
     }
@@ -59,8 +55,17 @@ export async function process(data: WitnessRegisterData, sender: string): Promis
       logger.error(`Failed to verify account update for ${sender} - account not found or public key not updated in cache`);
       return false;
     }
-
-    return true;
+    return new Promise((resolve) => {
+      cache.addWitness(sender, false, function(err, witness) {
+        if (err) {
+          logger.error(`Error adding witness ${sender} to cache: ${err}`);
+          resolve(false);
+        } else {
+          logger.debug(`[process] witness: ${witness}`);
+          resolve(true);
+        }
+      });
+    });
   } catch (error) {
     logger.error(`Error processing witness register: ${error}`);
     return false;

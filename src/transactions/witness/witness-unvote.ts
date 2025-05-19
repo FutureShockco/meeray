@@ -5,7 +5,7 @@ export interface WitnessUnvoteData {
   target: string;
 }
 
-export async function validate(data: WitnessUnvoteData, sender: string): Promise<boolean> {
+export async function validateTx(data: WitnessUnvoteData, sender: string): Promise<boolean> {
   try {
     // Check if target account exists
     const targetAccount = await cache.findOnePromise('accounts', { name: data.target });
@@ -78,7 +78,7 @@ export async function process(data: WitnessUnvoteData, sender: string): Promise<
         // Decide if this should throw or be part of a larger transaction rollback
       }
       
-      logger.info(`Witness unvote from ${sender} to ${data.target} processed successfully`);
+      logger.debug(`Witness unvote from ${sender} to ${data.target} processed successfully`);
       return true;
     } catch (updateError) {
       logger.error(`Error updating accounts during witness unvote: ${updateError}`);

@@ -16,12 +16,14 @@
     "genkey": "tsx src/generateKeypair.ts"
   },
   "dependencies": {
+    "@types/decimal.js": "^7.4.3",
     "async": "^3.2.6",
     "bs58": "^6.0.0",
     "bson": "^6.10.3",
     "clone-deep": "^4.0.1",
     "cors": "^2.8.5",
     "crypto-js": "^4.2.0",
+    "decimal.js": "^10.5.0",
     "dotenv": "^16.3.1",
     "dsteem": "^0.11.3",
     "express": "^4.18.2",

@@ -22,3 +22,4 @@ src/logs/output.log.3.gz
 scripts/start.bat
 dist/
 scripts/accounts_steem.json
+.env

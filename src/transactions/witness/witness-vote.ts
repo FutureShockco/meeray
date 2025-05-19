@@ -5,7 +5,7 @@ export interface WitnessVoteData {
   target: string;
 }
 
-export async function validate(data: WitnessVoteData, sender: string): Promise<boolean> {
+export async function validateTx(data: WitnessVoteData, sender: string): Promise<boolean> {
   try {
     // Check if target account exists
     const targetAccount = await cache.findOnePromise('accounts', { name: data.target });
@@ -63,17 +63,9 @@ export async function process(data: WitnessVoteData, sender: string): Promise<bo
     const uniqueVotedWitnesses = new Set([...originalVotedWitnesses, data.target]);
     const newVotedWitnessesList = Array.from(uniqueVotedWitnesses);
 
-    // Check if the list actually changed. If not (e.g. target was already there and Set removed duplicate),
-    // it could be treated as a no-op or an error depending on strictness post-validation.
-    // For now, we proceed to calculate new share, which will be same as old if list didn't grow.
+    // Check if the list actually changed.
     if (newVotedWitnessesList.length === originalVotedWitnesses.length && originalVotedWitnesses.includes(data.target)) {
         logger.warn(`[witness-vote process] Sender ${sender} attempted to vote for ${data.target} again, or validate() check failed. No change to votedWitnesses list.`);
-        // Optionally, return true or false here if this should be a no-op or an error.
-        // For this iteration, we'll let the share calculations proceed; if the list length is same,
-        // shares won't change for existing, and new target won't get newShare if it was pre-existing.
-        // However, this means a vote for an existing witness would still run through the update logic for that witness.
-        // A stricter approach would be to return `false` or `true` (as a no-op success) here.
-        // Let's make it a no-op success to prevent errors but log it.
         return true; 
     }
 
@@ -82,10 +74,7 @@ export async function process(data: WitnessVoteData, sender: string): Promise<bo
       Math.floor(balance / newVotedWitnessesList.length) : 0;
 
     try {
-      // 1. Update sender's account with the new list of voted witnesses
       await cache.updateOnePromise('accounts', { name: sender }, { $set: { votedWitnesses: newVotedWitnessesList } });
-
-      // 2. Adjust votes for witnesses who were voted for *before* this transaction
       // Their vote share changes from oldSharePerWitness to newSharePerWitness
       const adjustment = newSharePerWitness - oldSharePerWitness; // This will be negative or zero
 
@@ -104,17 +93,9 @@ export async function process(data: WitnessVoteData, sender: string): Promise<bo
         }
       }
 
-      // 3. Add the new vote share for the new target witness
-      // Since data.target is assumed to be new (not in originalVotedWitnesses),
-      // it gets the full newSharePerWitness added to its existing totalVoteWeight.
-      // This is an increment, so negative is not a concern here unless newSharePerWitness is somehow negative (should not be).
       logger.debug(`[witness-vote process] Updating target ${data.target} for sender ${sender}: balance=${balance}, newVotedWitnessesList.length=${newVotedWitnessesList.length}, newSharePerWitness=${newSharePerWitness}`);
       await cache.updateOnePromise('accounts', { name: data.target }, { $inc: { totalVoteWeight: newSharePerWitness } });
       
-      // Optional: Log target's T VW immediately after to see effect (if feasible without too much async complexity here)
-      // const targetAccountAfterInc = await cache.findOnePromise('accounts', { name: data.target });
-      // logger.debug(`[witness-vote process] Target ${data.target} totalVoteWeight after $inc: ${targetAccountAfterInc?.totalVoteWeight}`);
-
       return true;
     } catch (updateError) {
       logger.error(`Error updating accounts during witness vote: ${updateError}`);
@@ -122,7 +103,7 @@ export async function process(data: WitnessVoteData, sender: string): Promise<bo
       // Attempt to rollback sender's votedWitnesses list
       try {
         await cache.updateOnePromise('accounts', { name: sender }, { $set: { votedWitnesses: originalVotedWitnesses } });
-        logger.info(`Rolled back sender's votedWitnesses list for ${sender} due to update error.`);
+        logger.warn(`Rolled back sender's votedWitnesses list for ${sender} due to update error.`);
         // Note: Rolling back individual totalVoteWeight adjustments is much more complex and not attempted here.
       } catch (rollbackError) {
         logger.error(`Failed to rollback sender's votedWitnesses list: ${rollbackError}`);

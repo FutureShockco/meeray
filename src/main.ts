@@ -132,10 +132,10 @@ export async function main() {
                         process.exit(1); 
                         return;
                     }
-                    startRebuild(0, currentConfig);
+                    startRebuild(0);
                 });
             } else {
-                startRebuild(0, currentConfig);
+                startRebuild(0);
             }
             return;
         }
@@ -153,49 +153,28 @@ export async function main() {
         currentConfig = config.read ? config.read(block._id) : config; // Update config based on latest known block
 
         if (isResumingRebuild) {
-            logger.info(`Resuming interrupted rebuild from block ${rebuildResumeBlock}`);
-            currentConfig = config.read ? config.read(rebuildResumeBlock - 1) : config; // Config for the block before resuming
-            
-            if (block) { // block should be defined from above
-                 chain.restoredBlocks = block._id; // Record the most recent block ID before resuming rebuild
-            } else {
-                // This case should ideally be prevented by the !block check above which exits.
-                logger.fatal("CRITICAL: Block information missing for resuming rebuild. Exiting.");
-                process.exit(1);
-            }
-
-            const blkScheduleStart = rebuildResumeBlock - 1 - ((rebuildResumeBlock - 1) % (currentConfig.witnesses || 21));
-            
-            if (!blocks.isOpen) {
-                await mongo.fillInMemoryBlocks(async () => {
+            logger.info('Resuming interrupted rebuild from block ' + rebuildResumeBlock)
+            currentConfig = config.read ? config.read(rebuildResumeBlock - 1) : config;
+            chain.restoredBlocks = block._id
+            let blkScheduleStart = rebuildResumeBlock-1 - (rebuildResumeBlock-1)%currentConfig.witnesses
+            if (!blocks.isOpen)
+                mongo.fillInMemoryBlocks(async () => { // Make outer callback async
                     try {
-                        const scheduleSourceBlock = await mongo.getDb().collection<Block>('blocks').findOne({ _id: blkScheduleStart });
-                        if (!scheduleSourceBlock) {
-                            logger.warn(`Cannot find schedule source block ${blkScheduleStart} for resumed rebuild. Using genesis.`);
-                            chain.schedule = witnessesModule.witnessSchedule(chain.getGenesisBlock());
-                        } else {
-                            chain.schedule = witnessesModule.witnessSchedule(scheduleSourceBlock);
-                        }
-                        startRebuild(rebuildResumeBlock, currentConfig);
-                    } catch (findErr: any) {
-                        logger.error('Error finding block for schedule in resumed rebuild:', findErr.message || findErr);
-                        logger.warn('Using genesis for schedule due to error.');
-                        chain.schedule = witnessesModule.witnessSchedule(chain.getGenesisBlock());
-                        startRebuild(rebuildResumeBlock, currentConfig);
+                        const scheduleSourceBlock = await mongo.getDb().collection<Block>('blocks').findOne({_id:rebuildResumeBlock-1 - (rebuildResumeBlock-1)%currentConfig.witnesses});
+                        chain.schedule = witnessesModule.witnessSchedule(scheduleSourceBlock); // scheduleSourceBlock can be null
+                        startRebuild(rebuildResumeBlock);
+                    } catch (e: any) {
+                        logger.error('Error fetching block for schedule during rebuild resume:', e.message || e);
+                        // Decide how to handle this error, e.g., startRebuild with null schedule or exit
+                        startRebuild(rebuildResumeBlock); // Or handle error more gracefully
                     }
-                }, rebuildResumeBlock); // Pass headBlock for fillInMemoryBlocks
-            } else {
-                blocks.fillInMemoryBlocks(rebuildResumeBlock); // Assumes this takes the target head block
-                const scheduleSourceBlock = blocks.read(blkScheduleStart);
-                if (!scheduleSourceBlock) {
-                    logger.warn(`Cannot read schedule source block ${blkScheduleStart} from blockStore for resumed rebuild. Using genesis.`);
-                    chain.schedule = witnessesModule.witnessSchedule(chain.getGenesisBlock());
-                } else {
-                    chain.schedule = witnessesModule.witnessSchedule(scheduleSourceBlock);
-                }
-                startRebuild(rebuildResumeBlock, currentConfig);
+                },rebuildResumeBlock)
+            else {
+                blocks.fillInMemoryBlocks(rebuildResumeBlock)
+                chain.schedule = witnessesModule.witnessSchedule(blocks.read(blkScheduleStart))
+                startRebuild(rebuildResumeBlock)
             }
-            return;
+            return
         }
 
         logger.info(`#${block._id} is the latest block in our db`);
@@ -212,55 +191,51 @@ export async function main() {
     });
 }
 
-function startRebuild(startBlock: number, currentConfig: any) {
-    let rebuildStartTime = new Date().getTime();
-    chain.lastRebuildOutput = rebuildStartTime;
-    chain.rebuildState(startBlock, async (e: any, headBlockNum?: number) => { // Added async for startDaemon call
+function startRebuild(startBlock: number) {
+    let rebuildStartTime = new Date().getTime()
+    chain.lastRebuildOutput = rebuildStartTime
+    chain.rebuildState(startBlock,(e,headBlockNum) => {
         if (e) {
-            erroredRebuild = true;
-            logger.error('Error rebuilding chain at block', headBlockNum, e);
-            // Consider if process should exit or retry
-            return;
-        } else if (headBlockNum && chain.restoredBlocks && headBlockNum <= chain.restoredBlocks) {
-            logger.info(`Rebuild interrupted at block ${headBlockNum}, so far it took ${new Date().getTime() - rebuildStartTime} ms.`);
-        } else {
-            logger.info(`Rebuilt ${headBlockNum || 0} blocks successfully in ${new Date().getTime() - rebuildStartTime} ms`);
-        }
-        logger.info('Writing rebuild data to disk...');
-        let cacheWriteStart = new Date().getTime();
-        cache.writeToDisk(true, async (err?: Error | null) => { // Added async for startDaemon call
-            if (err) {
-                logger.error('Error writing rebuild data to disk:', err);
-            }
-            logger.info(`Rebuild data written to disk in ${new Date().getTime() - cacheWriteStart} ms`);
+            erroredRebuild = true
+            return logger.error('Error rebuilding chain at block',headBlockNum, e)
+        } else if (headBlockNum <= chain.restoredBlocks)
+            logger.info('Rebuild interrupted at block '+headBlockNum+', so far it took ' + (new Date().getTime() - rebuildStartTime) + ' ms.')
+        else
+            logger.info('Rebuilt ' + headBlockNum + ' blocks successfully in ' + (new Date().getTime() - rebuildStartTime) + ' ms')
+        logger.info('Writing rebuild data to disk...')
+        let cacheWriteStart = new Date().getTime()
+        cache.writeToDisk(true,() => {
+            logger.info('Rebuild data written to disk in ' + (new Date().getTime() - cacheWriteStart) + ' ms')
             if (chain.shuttingDown || process.env.TERMINATE_AFTER_REBUILD === '1') {
-                if (blocks.isOpen) blocks.close?.();
-                process.exit(0);
-                return;
+                if (blocks.isOpen)
+                    blocks.close()
+                return process.exit(0)
             }
-            await startDaemon(currentConfig);
-        });
-    });
+            const latestBlockForRebuild = chain.getLatestBlock();
+            const configForDaemon = latestBlockForRebuild ? (config.read ? config.read(latestBlockForRebuild._id) : config) : config;
+            startDaemon(configForDaemon);
+        })
+    })
 }
 
-async function startDaemon(currentConfig: any) {
-    const latestBlockForSchedule = chain.getLatestBlock();
+async function startDaemon(cfg: any) {
+    const latestBlockForSchedule = chain.getLatestBlock(); // Get latest block once
     if (!latestBlockForSchedule) {
         logger.error("Cannot start daemon: chain.getLatestBlock() returned null/undefined. Using Genesis for schedule.");
         chain.schedule = witnessesModule.witnessSchedule(chain.getGenesisBlock());
     } else {
-        const blkScheduleStart = latestBlockForSchedule._id - (latestBlockForSchedule._id % (currentConfig.witnesses || 21));
+        let blkScheduleStart = latestBlockForSchedule._id - (latestBlockForSchedule._id % cfg.witnesses)
         if (blocks.isOpen) {
             const scheduleSourceBlock = blocks.read(blkScheduleStart);
             if (!scheduleSourceBlock) {
-                logger.warn(`Cannot read schedule source block ${blkScheduleStart} from blockStore for daemon start. Using genesis.`);
-                chain.schedule = witnessesModule.witnessSchedule(chain.getGenesisBlock());
+                 logger.warn(`Cannot read schedule source block ${blkScheduleStart} from blockStore for daemon start. Using genesis.`);
+                 chain.schedule = witnessesModule.witnessSchedule(chain.getGenesisBlock());
             } else {
-                chain.schedule = witnessesModule.witnessSchedule(scheduleSourceBlock);
+                 chain.schedule = witnessesModule.witnessSchedule(scheduleSourceBlock);
             }
         } else {
             try {
-                const scheduleSourceBlock = await mongo.getDb().collection<Block>('blocks').findOne({ _id: blkScheduleStart });
+                const scheduleSourceBlock = await mongo.getDb().collection<Block>('blocks').findOne({_id: blkScheduleStart});
                 if (!scheduleSourceBlock) {
                     logger.warn(`Cannot find schedule source block ${blkScheduleStart} from DB for daemon start. Using genesis.`);
                     chain.schedule = witnessesModule.witnessSchedule(chain.getGenesisBlock());
@@ -284,7 +259,7 @@ async function startDaemon(currentConfig: any) {
 
     setInterval(() => {
         transaction.cleanPool?.();
-    }, (currentConfig.blockTime || 3000) * 0.9);
+    }, (cfg.blockTime || 3000) * 0.9);
     logger.info('Node daemon started successfully.');
 }
 

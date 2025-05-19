@@ -1,65 +1,75 @@
 export enum TransactionType {
-  // Witness operations
-  WITNESS_VOTE = 1,
-  WITNESS_REGISTER = 2,
-  WITNESS_UNVOTE = 3,
-
-  // Token operations
-  CREATE_TOKEN = 4,
-  MINT_TOKEN = 5,
-  TRANSFER_TOKEN = 6,
-
-  // NFT operations
-  CREATE_NFT_COLLECTION = 7,
-  MINT_NFT = 8,
-  TRANSFER_NFT = 9,
-
-  // Market operations
-  CREATE_MARKET = 10,
-  PLACE_ORDER = 11,
-  MATCH_ORDER = 12,
-
-  // Pool operations
-  CREATE_POOL = 13,
-  STAKE = 14,
-  UNSTAKE = 15,
-
-  // Farm operations
-  CREATE_FARM = 16,
-  STAKE_FARM = 17,
-  UNSTAKE_FARM = 18,
-  CLAIM_FARM = 19
+  // NFT Transactions
+  NFT_CREATE_COLLECTION = 1,
+  NFT_MINT = 2,
+  NFT_TRANSFER = 3,
+  NFT_LIST_ITEM = 4,
+  NFT_DELIST_ITEM = 5,
+  NFT_BUY_ITEM = 6,
+  
+  // Market Transactions
+  MARKET_CREATE_PAIR = 7,
+  MARKET_PLACE_ORDER = 8,
+  MARKET_CANCEL_ORDER = 9,
+  
+  // Farm Transactions
+  FARM_CREATE = 10,
+  FARM_STAKE = 11,
+  FARM_UNSTAKE = 12,
+  FARM_CLAIM_REWARDS = 13,
+  
+  // Pool Transactions
+  POOL_CREATE = 14,
+  POOL_ADD_LIQUIDITY = 15,
+  POOL_REMOVE_LIQUIDITY = 16,
+  POOL_SWAP = 17,
+  
+  // Token Transactions
+  TOKEN_CREATE = 18,
+  TOKEN_MINT = 19,
+  TOKEN_TRANSFER = 20,
+  TOKEN_UPDATE = 21,
+  
+  // Witness Transactions
+  WITNESS_REGISTER = 22,
+  WITNESS_VOTE = 23,
+  WITNESS_UNVOTE = 24
 }
 
 export const transactions: { [key: number]: string } = {
-  // Witness operations
-  [TransactionType.WITNESS_VOTE]: 'witness_vote',
+  // NFT Transactions
+  [TransactionType.NFT_CREATE_COLLECTION]: 'nft_create_collection',
+  [TransactionType.NFT_MINT]: 'nft_mint',
+  [TransactionType.NFT_TRANSFER]: 'nft_transfer',
+  [TransactionType.NFT_LIST_ITEM]: 'nft_list_item',
+  [TransactionType.NFT_DELIST_ITEM]: 'nft_delist_item',
+  [TransactionType.NFT_BUY_ITEM]: 'nft_buy_item',
+  
+  // Market Transactions
+  [TransactionType.MARKET_CREATE_PAIR]: 'market_create_pair',
+  [TransactionType.MARKET_PLACE_ORDER]: 'market_place_order',
+  [TransactionType.MARKET_CANCEL_ORDER]: 'market_cancel_order',
+  
+  // Farm Transactions
+  [TransactionType.FARM_CREATE]: 'farm_create',
+  [TransactionType.FARM_STAKE]: 'farm_stake',
+  [TransactionType.FARM_UNSTAKE]: 'farm_unstake',
+  [TransactionType.FARM_CLAIM_REWARDS]: 'farm_claim_rewards',
+  
+  // Pool Transactions
+  [TransactionType.POOL_CREATE]: 'pool_create',
+  [TransactionType.POOL_ADD_LIQUIDITY]: 'pool_add_liquidity',
+  [TransactionType.POOL_REMOVE_LIQUIDITY]: 'pool_remove_liquidity',
+  [TransactionType.POOL_SWAP]: 'pool_swap',
+  
+  // Token Transactions
+  [TransactionType.TOKEN_CREATE]: 'token_create',
+  [TransactionType.TOKEN_MINT]: 'token_mint',
+  [TransactionType.TOKEN_TRANSFER]: 'token_transfer',
+  [TransactionType.TOKEN_UPDATE]: 'token_update',
+  
+  // Witness Transactions
   [TransactionType.WITNESS_REGISTER]: 'witness_register',
-  [TransactionType.WITNESS_UNVOTE]: 'witness_unvote',
-
-  // Token operations
-  [TransactionType.CREATE_TOKEN]: 'create_token',
-  [TransactionType.MINT_TOKEN]: 'mint_token',
-  [TransactionType.TRANSFER_TOKEN]: 'transfer_token',
-
-  // NFT operations
-  [TransactionType.CREATE_NFT_COLLECTION]: 'create_nft_collection',
-  [TransactionType.MINT_NFT]: 'mint_nft',
-  [TransactionType.TRANSFER_NFT]: 'transfer_nft',
-
-  // Market operations
-  [TransactionType.CREATE_MARKET]: 'create_market',
-  [TransactionType.PLACE_ORDER]: 'place_order',
-  [TransactionType.MATCH_ORDER]: 'match_order',
-
-  // Pool operations
-  [TransactionType.CREATE_POOL]: 'create_pool',
-  [TransactionType.STAKE]: 'stake',
-  [TransactionType.UNSTAKE]: 'unstake',
-
-  // Farm operations
-  [TransactionType.CREATE_FARM]: 'create_farm',
-  [TransactionType.STAKE_FARM]: 'stake_farm',
-  [TransactionType.UNSTAKE_FARM]: 'unstake_farm',
-  [TransactionType.CLAIM_FARM]: 'claim_farm'
+  [TransactionType.WITNESS_VOTE]: 'witness_vote',
+  [TransactionType.WITNESS_UNVOTE]: 'witness_unvote'
 }; 

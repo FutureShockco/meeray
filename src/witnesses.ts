@@ -92,11 +92,9 @@ export const witnessesModule = {
         // Otherwise, use cache.accounts for a broader list if needed elsewhere.
         let witnessAccSource = withWitnessPub ? cache.witnesses : cache.accounts;
 
-
         if (!witnessAccSource || Object.keys(witnessAccSource).length === 0) {
             logger.warn('[generateWitnesses] witnessAccSource is empty or undefined.');
         }
-
         for (const key in witnessAccSource) {
             // Ensure the account actually exists in the main cache.accounts map
             // and has the necessary properties before proceeding.

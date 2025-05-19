@@ -24,21 +24,6 @@ export const mining = {
         let nextTimestamp = new Date().getTime();
         let nextSteemBlockNum = previousBlock.steemBlockNum + 1;
         let nextSteemBlockTimestamp = previousBlock.steemBlockTimestamp + config.blockTime;
-        // grab all transactions and sort by ts
-
-        // Calculate the appropriate timestamp based on miner priority
-        let minerPriority = 1; // Default priority for the witness
-        if (chain.schedule && chain.schedule.shuffle &&
-            chain.schedule.shuffle[(nextIndex - 1) % config.read(0).witnesses].name !== process.env.STEEM_ACCOUNT) {
-            // We're not the scheduled witness, calculate our priority
-            for (let i = 1; i < 2 * config.read(0).witnesses; i++) {
-                if (chain.recentBlocks[chain.recentBlocks.length - i]
-                    && chain.recentBlocks[chain.recentBlocks.length - i].miner === process.env.STEEM_ACCOUNT) {
-                    minerPriority = i + 1;
-                    break;
-                }
-            }
-        }
 
         steem.processBlock(nextSteemBlockNum).then((transactions) => {
             if (!transactions) {
@@ -233,7 +218,7 @@ export const mining = {
 
         if (mineInMs !== null) {
             mineInMs -= (new Date().getTime() - block.timestamp)
-            mineInMs += 20
+            mineInMs += 40
             logger.debug(`Will attempt to mine in ${mineInMs}ms`);
             consensus.observer = false
 

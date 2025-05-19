@@ -40,8 +40,8 @@ async function searchForHandlers(dirPath: string) {
       await searchForHandlers(filePath);
     } else if (file.endsWith('.ts') && !file.endsWith('.d.ts')) {
       // Skip the index file itself
-      if (file === 'index.ts') {
-        logger.debug(`Skipping index file: ${filePath}`);
+      if (file === 'index.ts' || file.includes('interfaces') || file === 'orderbook.ts' || file === 'matching-engine.ts' || file === 'types.ts') {
+        logger.debug(`Skipping index and interface files: ${filePath}`);
         continue;
       }
 
@@ -50,7 +50,7 @@ async function searchForHandlers(dirPath: string) {
         const module = await import(pathToFileURL(filePath).href);
 
         // Check if the file exports validate and process functions
-        if (module.validate && module.process) {
+        if (module.validateTx && module.process) {
           // Extract transaction type from filename (e.g., witness-vote.ts -> WITNESS_VOTE)
           const typeName = file
             .replace('.ts', '')
@@ -64,7 +64,7 @@ async function searchForHandlers(dirPath: string) {
 
           if (txType !== undefined) {
             transactionHandlers[txType] = {
-              validate: module.validate,
+              validate: module.validateTx,
               process: module.process
             };
             logger.info(`Registered transaction handler for ${typeName} (type ${txType})`);
@@ -93,7 +93,7 @@ async function searchForHandlers(dirPath: string) {
               const altType = TransactionType[altName as keyof typeof TransactionType];
               if (altType !== undefined) {
                 transactionHandlers[altType] = {
-                  validate: module.validate,
+                  validate: module.validateTx,
                   process: module.process
                 };
                 logger.info(`Registered transaction handler for ${typeName} using alternative mapping: ${altName} (type ${altType})`);

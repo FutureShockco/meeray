@@ -92,6 +92,80 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
 
                 let txType: number;
                 switch (json.contract.toLowerCase()) {
+                    // NFT Transactions
+                    case 'nft_create_collection':
+                        txType = TransactionType.NFT_CREATE_COLLECTION;
+                        break;
+                    case 'nft_mint':
+                        txType = TransactionType.NFT_MINT;
+                        break;
+                    case 'nft_transfer':
+                        txType = TransactionType.NFT_TRANSFER;
+                        break;
+                    case 'nft_list_item':
+                        txType = TransactionType.NFT_LIST_ITEM;
+                        break;
+                    case 'nft_delist_item':
+                        txType = TransactionType.NFT_DELIST_ITEM;
+                        break;
+                    case 'nft_buy_item':
+                        txType = TransactionType.NFT_BUY_ITEM;
+                        break;
+                    
+                    // Market Transactions
+                    case 'market_create_pair':
+                        txType = TransactionType.MARKET_CREATE_PAIR;
+                        break;
+                    case 'market_place_order':
+                        txType = TransactionType.MARKET_PLACE_ORDER;
+                        break;
+                    case 'market_cancel_order':
+                        txType = TransactionType.MARKET_CANCEL_ORDER;
+                        break;
+                    
+                    // Farm Transactions
+                    case 'farm_create':
+                        txType = TransactionType.FARM_CREATE;
+                        break;
+                    case 'farm_stake':
+                        txType = TransactionType.FARM_STAKE;
+                        break;
+                    case 'farm_unstake':
+                        txType = TransactionType.FARM_UNSTAKE;
+                        break;
+                    case 'farm_claim_rewards':
+                        txType = TransactionType.FARM_CLAIM_REWARDS;
+                        break;
+                    
+                    // Pool Transactions
+                    case 'pool_create':
+                        txType = TransactionType.POOL_CREATE;
+                        break;
+                    case 'pool_add_liquidity':
+                        txType = TransactionType.POOL_ADD_LIQUIDITY;
+                        break;
+                    case 'pool_remove_liquidity':
+                        txType = TransactionType.POOL_REMOVE_LIQUIDITY;
+                        break;
+                    case 'pool_swap':
+                        txType = TransactionType.POOL_SWAP;
+                        break;
+                    
+                    // Token Transactions
+                    case 'token_create':
+                        txType = TransactionType.TOKEN_CREATE;
+                        break;
+                    case 'token_mint':
+                        txType = TransactionType.TOKEN_MINT;
+                        break;
+                    case 'token_transfer':
+                        txType = TransactionType.TOKEN_TRANSFER;
+                        break;
+                    case 'token_update':
+                        txType = TransactionType.TOKEN_UPDATE;
+                        break;
+                    
+                    // Witness Transactions
                     case 'witness_register':
                         txType = TransactionType.WITNESS_REGISTER;
                         break;
@@ -101,51 +175,7 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                     case 'witness_unvote':
                         txType = TransactionType.WITNESS_UNVOTE;
                         break;
-                    case 'create_token':
-                        txType = TransactionType.CREATE_TOKEN;
-                        break;
-                    case 'mint_token':
-                        txType = TransactionType.MINT_TOKEN;
-                        break;
-                    case 'transfer_token':
-                        txType = TransactionType.TRANSFER_TOKEN;
-                        break;
-                    case 'create_nft_collection':
-                        txType = TransactionType.CREATE_NFT_COLLECTION;
-                        break;
-                    case 'mint_nft':
-                        txType = TransactionType.MINT_NFT;
-                        break;
-                    case 'transfer_nft':
-                        txType = TransactionType.TRANSFER_NFT;
-                        break;
-                    case 'create_market':
-                        txType = TransactionType.CREATE_MARKET;
-                        break;
-                    case 'place_order':
-                        txType = TransactionType.PLACE_ORDER;
-                        break;
-                    case 'create_pool':
-                        txType = TransactionType.CREATE_POOL;
-                        break;
-                    case 'stake':
-                        txType = TransactionType.STAKE;
-                        break;
-                    case 'unstake':
-                        txType = TransactionType.UNSTAKE;
-                        break;
-                    case 'create_farm':
-                        txType = TransactionType.CREATE_FARM;
-                        break;
-                    case 'stake_farm':
-                        txType = TransactionType.STAKE_FARM;
-                        break;
-                    case 'unstake_farm':
-                        txType = TransactionType.UNSTAKE_FARM;
-                        break;
-                    case 'claim_farm':
-                        txType = TransactionType.CLAIM_FARM;
-                        break;
+                    
                     default:
                         const typeNum = parseInt(json.contract);
                         if (!isNaN(typeNum) && TransactionType[typeNum]) {

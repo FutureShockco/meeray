@@ -9,7 +9,7 @@ const config = {
   tokenCreationFee: 100,
   nftCreationFee: 10,
   tradingFee: 0.0025,
-  maxWitnesses: 21,
+  maxWitnesses: 30,
   masterBalance: 1000000,
   masterName: 'echelon-node1',
   masterPublicKey: 'eShNsq4FFZGBJKHtiTV9T3TWEtYQCR6g6M5TTdR4SK5k',
@@ -38,7 +38,7 @@ const config = {
   logLevel: process.env.LOG_LEVEL || 'debug',
   b58Alphabet: '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz',
   consensusRounds: 2,
-  witnesses: 21, 
+  witnesses: 10, 
   notifPurge: 1000, // how often to purge old notifications (blocks)
   notifPurgeAfter: 10, // how many purge intervals to keep
   notifMaxMentions: 5, // max mentions per comment
@@ -64,12 +64,11 @@ const history: Record<number, Partial<typeof config>> = {
     blockTime: 3000,
     consensusRounds: 2,
     ecoBlocks: 10000,
-    witnesses: 21,
     maxTxPerBlock: 1000,
     // ...add more fields as needed
   },
   1000090: {
-    witnesses: 13,
+    witnesses: 10,
     // ...add more overrides for this hardfork
   },
   // Add more hardforks as needed

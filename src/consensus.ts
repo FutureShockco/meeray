@@ -68,20 +68,21 @@ export const consensus: Consensus = {
         return true;
     },
     activeWitnesses: function () {
-        // TODO: Implement chain.getLatestBlock, chain.schedule, chain.recentBlocks
+        // the real active leaders are those who can mine or backup this block
+        // i.e. a new leader only enters consensus on the block he gets scheduled for
+        // and out of consensus 2*config.leaders blocks after his last scheduled block
         const blockNum = chain.getLatestBlock()._id + 1;
         const actives: string[] = [];
-        const configBlock = config.read(0);
         
-        let currentWitness = chain.schedule.shuffle[(blockNum - 1) % configBlock.witnesses].name;
+        let currentWitness = chain.schedule.shuffle[(blockNum - 1) % config.witnesses].name;
         if (consensus.getActiveWitnessKey(currentWitness))
             actives.push(currentWitness);
 
-        for (let i = 1; i < 2 * configBlock.witnesses; i++)
+        for (let i = 1; i < 2 * config.witnesses; i++)
             if (chain.recentBlocks[chain.recentBlocks.length - i]
-                && actives.indexOf(chain.recentBlocks[chain.recentBlocks.length - i].miner) === -1
-                && consensus.getActiveWitnessKey(chain.recentBlocks[chain.recentBlocks.length - i].miner))
-                actives.push(chain.recentBlocks[chain.recentBlocks.length - i].miner);
+                && actives.indexOf(chain.recentBlocks[chain.recentBlocks.length - i].witness) === -1
+                && consensus.getActiveWitnessKey(chain.recentBlocks[chain.recentBlocks.length - i].witness))
+                actives.push(chain.recentBlocks[chain.recentBlocks.length - i].witness);
         
         return actives;
     },

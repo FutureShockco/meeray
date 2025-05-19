@@ -23,17 +23,21 @@ export const notifications = {
     processTx: async (tx: any, ts: number) => {
         let notif: any = {};
         switch (tx.type) {
-            case TransactionType.CREATE_TOKEN:
-                notif = {
-                    u: tx.data.owner,
-                    tx: tx,
-                    ts: ts
-                };
-                await mongo.getDb().collection('notifications').insertOne(notif);
+            case TransactionType.TOKEN_CREATE:
+                const tokenCreateData = tx.data as any;
+                if (tokenCreateData.creator) {
+                    notif = {
+                        u: tokenCreateData.creator,
+                        tx: tx,
+                        ts: ts
+                    };
+                    await mongo.getDb().collection('notifications').insertOne(notif);
+                }
                 break;
-            case TransactionType.TRANSFER_TOKEN:
+            case TransactionType.TOKEN_TRANSFER:
+                const tokenTransferData = tx.data as any;
                 notif = {
-                    u: tx.data.receiver,
+                    u: tokenTransferData.receiver,
                     tx: tx,
                     ts: ts
                 };
