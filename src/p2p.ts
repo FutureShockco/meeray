@@ -205,61 +205,31 @@ export const p2p = {
             setTimeout(() => p2p.keepAlive(), keep_alive_interval);
             return;
         }
-        const currentTime = Date.now();
-        // Clean up old connection attempts (older than 5 minutes)
-        for (const peer in p2p.recentConnectionAttempts) {
-            if (currentTime - p2p.recentConnectionAttempts[peer] > 300000) {
-                delete p2p.recentConnectionAttempts[peer];
-            }
-        }
 
-        // ensure all peers explicitly listed in PEERS are connected when online
         let peers = process.env.PEERS ? process.env.PEERS.split(',') : [];
         let toConnect: string[] = [];
 
-        // Limit the number of connection attempts per keepAlive cycle
-        const maxAttemptsPerCycle = 2;
-
-        for (let p = 0; p < peers.length; p++) {
-            // Stop if we've reached the maximum attempts for this cycle
-            if (toConnect.length >= maxAttemptsPerCycle) break;
-
-
-            let connected = false;
-            let colonSplit = peers[p].replace('ws://', '').split(':');
-            let port = parseInt(colonSplit.pop() || '0');
-            let address = colonSplit.join(':').replace('[', '').replace(']', '');
-
-            if (!net.isIP(address)) {
+        for (let p in peers) {
+            let connected = false
+            let colonSplit = peers[p].replace('ws://','').split(':')
+            let port = parseInt(colonSplit.pop() || "0");
+            let address = colonSplit.join(':').replace('[','').replace(']','')
+            if (!net.isIP(address))
                 try {
-                    address = (await dns.promises.lookup(address)).address;
+                    address = (await dns.promises.lookup(address)).address
                 } catch (e) {
-                    logger.debug('dns lookup failed for ' + address);
-                    // Record this failed attempt
-                    p2p.recentConnectionAttempts[peers[p]] = currentTime;
-                    continue;
+                    logger.debug('dns lookup failed for '+address)
+                    continue
                 }
-            }
-
-            for (let s = 0; s < p2p.sockets.length; s++)
-                if (p2p.sockets[s]._socket?.remoteAddress?.replace('::ffff:', '') === address &&
-                    p2p.sockets[s]._socket?.remotePort === port) {
-                    connected = true;
-                    break;
+            for (let s in p2p.sockets)
+                if (p2p.sockets[s]._socket.remoteAddress?.replace('::ffff:','') === address && p2p.sockets[s]._socket.remotePort === port) {
+                    connected = true
+                    break
                 }
-
-            if (!connected) {
-                toConnect.push(peers[p]);
-                // Record this connection attempt
-                p2p.recentConnectionAttempts[peers[p]] = currentTime;
-            }
+            if (!connected)
+                toConnect.push(peers[p])
         }
-
-        if (toConnect.length > 0) {
-            logger.debug(`Keep-alive: attempting to connect to ${toConnect.length} peer(s)`);
-            p2p.connect(toConnect);
-        }
-
+        p2p.connect(toConnect)
         setTimeout(() => p2p.keepAlive(), keep_alive_interval);
     },
 

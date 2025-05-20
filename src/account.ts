@@ -3,6 +3,7 @@ import { Transaction } from './transactions/index.js';
 import cache from './cache.js';
 import logger from './logger.js';
 import mongo from './mongo.js';
+import { AccountDoc } from './mongo.js';
 
 
 
@@ -29,21 +30,24 @@ export async function upsertAccountsReferencedInTx(tx: ParsedTransaction | Trans
 
     logger.debug(`Ensuring account exists: ${username}`);
 
-    let accountFromCache: any | undefined | null = cache.accounts[username] as (any | undefined | null);
-    let accountFromDb: any | null = null;
+    let accountFromCache: AccountDoc | undefined | null = cache.accounts[username] as (AccountDoc | undefined | null);
+    let accountFromDb: AccountDoc | null = null;
 
     if (!accountFromCache) {
       try {
-        await new Promise<void>((resolve, reject) => {
-          cache.insertOne('accounts', accountFromDb, (err, success) => {
-            if (err) {
-              logger.error(`Error updating cache for ${username} from DB:`, err);
-              return reject(err);
-            }
-            logger.debug(`Cache updated/checked for ${username} from DB fetch.`);
-            resolve();
+        accountFromDb = await mongo.getDb().collection<AccountDoc>('accounts').findOne({ name: username });
+        if (accountFromDb) {
+          await new Promise<void>((resolve, reject) => {
+            cache.insertOne('accounts', accountFromDb as AccountDoc, (err, success) => {
+              if (err) {
+                logger.error(`Error updating cache for ${username} from DB:`, err);
+                return reject(err);
+              }
+              logger.debug(`Cache updated/checked for ${username} from DB fetch.`);
+              resolve();
+            });
           });
-        })
+        }
       } catch (dbError) {
         logger.error(`Error fetching account ${username} from DB:`, dbError);
         // Decide if to continue or throw/return error
@@ -54,7 +58,7 @@ export async function upsertAccountsReferencedInTx(tx: ParsedTransaction | Trans
     const finalAccountState = accountFromCache || accountFromDb;
 
     if (!finalAccountState) {
-      const newAccountData = {
+      const newAccountData: AccountDoc = {
         name: username,
         created: new Date(),
         tokens: { ECH: 0 }, // Default ECH balance
@@ -65,8 +69,9 @@ export async function upsertAccountsReferencedInTx(tx: ParsedTransaction | Trans
       };
 
       try {
+        await mongo.getDb().collection('accounts').insertOne(newAccountData);
         await new Promise<void>((resolve, reject) => {
-          cache.insertOne('accounts', newAccountData, (err, success) => {
+          cache.insertOne('accounts', newAccountData as AccountDoc, (err, success) => {
             if (err) {
               logger.error(`Error inserting new account ${username} into cache:`, err);
               return reject(err);
