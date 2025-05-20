@@ -73,8 +73,10 @@ export function calculateHashForBlock(
             delete clonedBlock.hash
             delete clonedBlock.signature
         }
-
-        return CryptoJS.SHA256(JSON.stringify(deleteExisting ? clonedBlock : blockData)).toString();
+        console.log('calculateHashForBlock DEBUG: clonedBlock =', clonedBlock, deleteExisting);
+        const hash = CryptoJS.SHA256(JSON.stringify(deleteExisting ? clonedBlock : blockData)).toString();
+        console.log('calculateHashForBlock DEBUG: hash =', hash);
+        return hash;
     } catch (error) {
         logger.error(`Error calculating hash for block ${blockData._id}:`, error);
         return '';

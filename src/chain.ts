@@ -309,6 +309,7 @@ export const chain = {
             if (!isValid) {
                 return cb(true, block);
             }
+            console.log('block is valid')
             // straight execution
             chain.executeBlockTransactions(block, false, function (validTxs: any[], distributed: number) {
                 // if any transaction is wrong, thats a fatal error

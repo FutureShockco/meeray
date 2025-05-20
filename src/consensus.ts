@@ -120,7 +120,7 @@ export const consensus: Consensus = {
                 }
                 chain.validateAndAddBlock(possBlock.block, false, (err: any) => {
                     if (err) {
-                        logger.error(`[CONSENSUS-TRYSTEP] Error from validateAndAddBlock for block ${possBlock.block?._id}:`, err);
+                        logger.error(`[CONSENSUS-TRYSTEP] Error for block ${possBlock.block?._id}:`, err);
                     }
                     let newPossBlocks = [];
                     for (let y = 0; y < this.possBlocks.length; y++)

@@ -170,53 +170,72 @@ export const mining = {
      * Worker function to schedule mining attempts.
      */
     minerWorker: (block: Block): void => {
-        if (p2p.recovering) {
-            logger.debug('Mining skipped: Node is recovering');
-            clearTimeout(chain.worker)
-            return;
+        if (p2p.recovering) return
+        clearTimeout(chain.worker)
+
+        if (chain.schedule.shuffle.length === 0) {
+            logger.fatal('All witnesses gave up their stake? Chain is over')
+            process.exit(1)
         }
 
-
-        if (!chain.schedule || !chain.schedule.shuffle || chain.schedule.shuffle.length === 0) {
-            logger.error('All witnesses gave up their stake? Chain is over');
-            process.exit(1);
-        }
-        const configBlock = config.read(chain.getLatestBlock()._id);
-
-        let mineInMs: number | null = null;
-        if (chain.schedule.shuffle[(block._id) % config.witnesses].name === process.env.STEEM_ACCOUNT)
-            mineInMs = config.blockTime
-        // else if the scheduled witnesses miss blocks
-        // backups witnesses are available after each block time intervals
-        else for (let i = 1; i < 2 * config.witnesses; i++)
-            if (chain.recentBlocks[chain.recentBlocks.length - i]
-                && chain.recentBlocks[chain.recentBlocks.length - i].witness === process.env.STEEM_ACCOUNT) {
-                mineInMs = (i + 1) * config.blockTime
-                break
-            }
+        let mineInMs = null
         // Get the appropriate block time based on sync state
         let blockTime = steem.isInSyncMode()
-            ? configBlock.syncBlockTime
-            : configBlock.blockTime;
+            ? config.syncBlockTime
+            : config.blockTime
 
         // Log which block time we're using for clarity
         if (steem.isInSyncMode()) {
-            logger.debug(`Using sync block time: ${blockTime}ms`);
+            logger.debug(`Using sync block time: ${blockTime}ms`)
         } else if (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 5000) {
-            logger.warn(`Recently exited sync mode, using normal block time: ${blockTime}ms`);
+            logger.warn(`Recently exited sync mode, using normal block time: ${blockTime}ms`)
         }
 
-        if (mineInMs !== null) {
-            mineInMs -= (new Date().getTime() - block.timestamp)
-            mineInMs += 40
-            logger.debug(`Will attempt to mine in ${mineInMs}ms`);
+        // if we are the next scheduled witness, try to mine in time
+        if (chain.schedule.shuffle[(block._id) % config.witnesses].name === process.env.NODE_OWNER)
+            mineInMs = blockTime
+        // else if the scheduled leaders miss blocks
+        // backups witnesses are available after each block time intervals
+        else for (let i = 1; i < 2 * config.witnesses; i++)
+            if (chain.recentBlocks[chain.recentBlocks.length - i]
+                && chain.recentBlocks[chain.recentBlocks.length - i].miner === process.env.NODE_OWNER) {
+                mineInMs = (i + 1) * blockTime
+                break
+            }
+
+        if (mineInMs) {
+            // Calculate time since last block, accounting for possible clock drift
+            const currentTime = new Date().getTime()
+            const timeSinceLastBlock = currentTime - block.timestamp
+
+            // Adjust mining time - add a small buffer to ensure we mine on time
+            mineInMs -= timeSinceLastBlock
+
+            // Add a small buffer to avoid clock differences causing delays
+            mineInMs += 30
+
+
+
+            logger.debug('Trying to mine in ' + mineInMs + 'ms' + ' (sync: ' + steem.isInSyncMode() +
+                '), time since last block: ' + timeSinceLastBlock + 'ms')
             consensus.observer = false
 
-            if (mineInMs < config.blockTime / 2) {
+            // More lenient performance check during sync mode
+            if (steem.isInSyncMode()) {
+                // During sync, only skip if extremely slow (less than 20% of block time)
+                if (mineInMs < blockTime / 20) {
+                    logger.warn('Extremely slow performance during sync, skipping block')
+                    return
+                }
+            } else if (mineInMs < blockTime / 2) {
                 logger.warn('Slow performance detected, will not try to mine next block')
                 return
             }
-            logger.debug(`[MINING] Scheduling mining attempt for block #${chain.getLatestBlock()._id + 1} in ${mineInMs}ms`);
+
+            // Make sure the node is marked as ready to receive transactions now that we're mining
+            if (steem && steem.setReadyToReceiveTransactions)
+                steem.setReadyToReceiveTransactions(true)
+
             chain.worker = setTimeout(function () {
                 mining.mineBlock(function (error, finalBlock) {
                     if (error)
