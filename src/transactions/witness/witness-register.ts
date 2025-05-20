@@ -20,9 +20,8 @@ export async function validateTx(data: WitnessRegisterData, sender: string): Pro
       logger.warn(`Invalid witness register: missing or invalid public key`);
       return false;
     }
-
     // Check if public key is valid
-    if (isValidPubKey(data.pub)) {
+    if (!isValidPubKey(data.pub)) {
       logger.warn(`Invalid witness register: public key too short (${data.pub.length} chars)`);
       return false;
     }

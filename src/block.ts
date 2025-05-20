@@ -188,6 +188,7 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
         logger.error('invalid block too many txs');
         return cb(false);
     }
+    console.log('isValidNewBlock DEBUG: newBlock.witness =', newBlock.witness);
     if (!newBlock.witness || typeof newBlock.witness !== 'string') {
         logger.error('invalid block witness');
         return cb(false);

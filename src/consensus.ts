@@ -47,6 +47,7 @@ export const consensus: Consensus = {
     possBlocks: [],
     getActiveWitnessKey: (name: string) => {
         let shuffle = chain.schedule.shuffle;
+        console.log('shuffle', shuffle);
         for (let i = 0; i < shuffle.length; i++)
             if (shuffle[i].name === name)
                 return shuffle[i].witnessPublicKey;
@@ -224,8 +225,8 @@ export const consensus: Consensus = {
             if (block.witness === process.env.STEEM_ACCOUNT && round === 0)
                 onlyBlockHash = block;
             let signed = signMessage({t:5, d:{r:round, b: onlyBlockHash, ts: new Date().getTime()}})
-
-            p2p.broadcast?.(signed);
+            console.log('signed', signed);
+            p2p.broadcast(signed);
         }
         this.tryNextStep();
     },
