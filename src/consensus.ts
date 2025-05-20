@@ -5,6 +5,7 @@ import p2p, { MessageType } from './p2p.js';
 import baseX from 'base-x';
 import { isValidNewBlock } from './block.js';
 import { signMessage } from './crypto.js';
+import steem from './steem.js';
 const bs58 = baseX(config.b58Alphabet || '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz');
 
 const consensus_need = 2;
@@ -189,7 +190,8 @@ export const consensus: Consensus = {
                             i--;
                             continue;
                         }
-                        if (this.queue[i].d.ts + 2 * (config.blockTime || 3000) < new Date().getTime()) {
+                        const blockTime = steem.isInSyncMode() ? config.syncBlockTime : config.blockTime;
+                        if (this.queue[i].d.ts + 2 * blockTime < new Date().getTime()) {
                             this.queue.splice(i, 1);
                             i--;
                         }
