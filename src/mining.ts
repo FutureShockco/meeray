@@ -11,7 +11,6 @@ import { Transaction } from './transactions/index.js';
 import cache from './cache.js';
 import consensus from './consensus.js';
 import p2p from './p2p.js';
-import witnessesModule from './witnesses.js';
 const bs58 = baseX(config.b58Alphabet);
 
 export const mining = {
@@ -236,88 +235,10 @@ export const mining = {
         }
     },
     hashAndSignBlock: (block: Block): Block => {
-        try {
-            const nextHash = calculateHashForBlock({
-                _id: block._id,
-                blockNum: block.blockNum,
-                phash: block.phash,
-                timestamp: block.timestamp,
-                steemBlockNum: block.steemBlockNum,
-                steemBlockTimestamp: block.steemBlockTimestamp,
-                txs: block.txs,
-                witness: block.witness,
-                missedBy: block.missedBy || '',
-                dist: block.dist || 0,
-                sync: block.sync,
-            }); 
-
-            logger.debug(`Signing block ${block._id} with hash: ${nextHash.substring(0, 10)}...`);
-
-            // Convert hex string hash to buffer
-            const msgBuffer = Buffer.from(nextHash, 'hex');
-            logger.debug(`Hash buffer created: ${msgBuffer.length} bytes`);
-
-            // Check if we have a witness private key
-            if (!process.env.WITNESS_PRIVATE_KEY) {
-                logger.error('No WITNESS_PRIVATE_KEY defined, cannot sign block');
-                return {
-                    ...block,
-                    hash: nextHash,
-                    signature: ''
-                };
-            }
-            // Get private key as buffer
-            let privKeyBuffer;
-            try {
-                privKeyBuffer = bs58.decode(process.env.WITNESS_PRIVATE_KEY);
-
-                // Verify private key is valid
-                if (!secp256k1.privateKeyVerify(privKeyBuffer)) {
-                    logger.error('Invalid private key format');
-                    return {
-                        ...block,
-                        hash: nextHash,
-                        signature: ''
-                    };
-                }
-            } catch (e) {
-                logger.error(`Failed to decode private key: ${e}`);
-                return {
-                    ...block,
-                    hash: nextHash,
-                    signature: ''
-                };
-            }
-
-            // Sign the message
-            let signResult;
-            try {
-                signResult = secp256k1.ecdsaSign(msgBuffer, privKeyBuffer);
-
-                // Combine signature and recovery ID into a single buffer
-                let signature = bs58.encode(signResult.signature)
-
-                return {
-                    ...block,
-                    hash: nextHash,
-                    signature: signature
-                };
-            } catch (e) {
-                logger.error(`Failed to sign message: ${e}`);
-                return {
-                    ...block,
-                    hash: nextHash,
-                    signature: ''
-                };
-            }
-        } catch (error) {
-            logger.error(`Unexpected error signing block ${block._id}: ${error}`, error);
-            return {
-                ...block,
-                hash: '',
-                signature: ''
-            };
-        }
+        let nextHash = calculateHashForBlock(block)
+        let sigObj  = secp256k1.ecdsaSign(Buffer.from(nextHash, 'hex'), bs58.decode(process.env.WITNESS_PRIVATE_KEY || ''))
+        const signature = bs58.encode(sigObj.signature)
+        return new Block(block._id, block.blockNum, block.steemBlockNum, block.steemBlockTimestamp, block.phash, block.timestamp, block.txs, block.witness, block.missedBy, block.dist, signature, nextHash)
     },
 };
 

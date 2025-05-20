@@ -24,8 +24,8 @@ export class Block {
     timestamp!: number;
     txs!: any[];
     witness!: string;
-    missedBy?: string;
-    dist?: number;
+    missedBy: string;
+    dist: number;
     signature?: string;
     hash?: string;
     sync!: boolean;
@@ -52,10 +52,10 @@ export class Block {
         this.timestamp = timestamp;
         this.txs = txs;
         this.witness = witness;
-        if (missedBy) this.missedBy = missedBy;
-        if (dist) this.dist = dist;
-        if (signature) this.signature = signature;
-        if (hash) this.hash = hash;
+        this.missedBy = missedBy || '';
+        this.dist = dist || 0;
+        this.signature = signature || '';
+        this.hash = hash || '';
     }
 }
 
@@ -84,7 +84,7 @@ export function calculateHashForBlock(
         let clonedBlock = cloneDeep(blockData);
         console.log('calculateHashForBlock DEBUG: clonedBlock =', clonedBlock);
         // Always ensure hash and signature are removed when calculating the hash
-        if (deleteExisting === true || 'hash' in clonedBlock || 'signature' in clonedBlock || 'missedBy' in clonedBlock) {
+        if (deleteExisting === true || 'hash' in clonedBlock || 'signature' in clonedBlock) {
             delete clonedBlock.hash;
             delete clonedBlock.signature;
         }
