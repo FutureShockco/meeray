@@ -85,10 +85,11 @@ export async function upsertAccountsReferencedInTx(tx: ParsedTransaction | Trans
         });
       } catch (insertError) {
         logger.error(`Failed to insert new account ${username} into DB or cache:`, insertError);
-        // Decide if to continue or throw/return error
+        throw insertError;
       }
     } else {
       logger.debug(`Account ${username} already exists in cache or DB.`);
+      return;
     }
   }
 }
