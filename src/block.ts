@@ -73,9 +73,7 @@ export function calculateHashForBlock(
             delete clonedBlock.hash
             delete clonedBlock.signature
         }
-        console.log('calculateHashForBlock DEBUG: clonedBlock =', clonedBlock, deleteExisting);
         const hash = CryptoJS.SHA256(JSON.stringify(deleteExisting ? clonedBlock : blockData)).toString();
-        console.log('calculateHashForBlock DEBUG: hash =', hash);
         return hash;
     } catch (error) {
         logger.error(`Error calculating hash for block ${blockData._id}:`, error);
@@ -178,7 +176,7 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
     }
     // check that the witness is scheduled
     let witnessPriority = 0;
-    if (chain.schedule.shuffle[(newBlock._id - 1) % config.witnesses] && chain.schedule.shuffle[(newBlock._id - 1) % config.witnesses].name === newBlock.witness) {
+    if (chain.schedule.shuffle[(newBlock._id - 1) % config.witnesses].name === newBlock.witness) {
         witnessPriority = 1;
     } else {
         // Allow backup witnesses if scheduled missed

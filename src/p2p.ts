@@ -235,6 +235,18 @@ export const p2p = {
     },
 
     handshake: (ws: EnhancedWebSocket): void => {
+        const peerAddress = ws._socket.remoteAddress + ':' + ws._socket.remotePort;
+        const now = Date.now();
+        const lastConnect = p2p.recentConnections.get(peerAddress) || 0;
+        
+        if (now - lastConnect < 10000) { // 10 second cooldown
+            logger.debug(`Connection attempt from ${peerAddress} rejected (too frequent)`);
+            ws.close();
+            return;
+        }
+        
+        p2p.recentConnections.set(peerAddress, now);
+        
         if (process.env.OFFLINE) {
             logger.warn('Incoming handshake refused because OFFLINE');
             ws.close();
