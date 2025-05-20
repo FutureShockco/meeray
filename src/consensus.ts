@@ -6,7 +6,6 @@ import baseX from 'base-x';
 import { isValidNewBlock } from './block.js';
 import { signMessage } from './crypto.js';
 import steem from './steem.js';
-const bs58 = baseX(config.b58Alphabet || '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz');
 
 const consensus_need = 2;
 const consensus_total = 3;
@@ -106,6 +105,7 @@ export const consensus: Consensus = {
                 possBlock[0] && possBlock[0].indexOf(process.env.STEEM_ACCOUNT) !== -1
             ) {
                 this.finalizing = true;
+                // log which block got applied if collision exists
                 if (possBlocksById[possBlock.block._id] && possBlocksById[possBlock.block._id].length > 1) {
                     let collisions = [];
                     for (let j = 0; j < possBlocksById[possBlock.block._id].length; j++)
@@ -129,11 +129,10 @@ export const consensus: Consensus = {
                     this.possBlocks = newPossBlocks;
                     this.finalizing = false; // Reset finalizing status here.
                 });
-            } else {
-                for (let y = 0; y < (config.consensusRounds || 2) - 1; y++)
-                    if (possBlock[y].length > threshold)
-                        this.round(y + 1, possBlock.block);
             }
+            else for (let y = 0; y < (config.consensusRounds || 2) - 1; y++)
+                if (possBlock[y].length > threshold)
+                    this.round(y + 1, possBlock.block);
         }
     },
     round: function (round: number, block: any, cb?: (result: number) => void) {
