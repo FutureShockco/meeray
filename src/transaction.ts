@@ -155,7 +155,6 @@ const transaction: TransactionModule = {
         if (transaction.isPublished(tx)) {
             cb(false, 'transaction already in chain'); return
         }
-        // RESTORED: upsertAccountsReferencedInTx call here
         try {
             await upsertAccountsReferencedInTx(tx);
         } catch (error) {

@@ -3,7 +3,6 @@ import { Transaction } from './transactions/index.js';
 import cache from './cache.js';
 import logger from './logger.js';
 import mongo from './mongo.js';
-import { AccountDoc } from './mongo.js';
 
 
 
@@ -30,15 +29,15 @@ export async function upsertAccountsReferencedInTx(tx: ParsedTransaction | Trans
 
     logger.debug(`Ensuring account exists: ${username}`);
 
-    let accountFromCache: AccountDoc | undefined | null = cache.accounts[username] as (AccountDoc | undefined | null);
-    let accountFromDb: AccountDoc | null = null;
+    let accountFromCache: any | undefined | null = cache.accounts[username] as (any | undefined | null);
+    let accountFromDb: any | null = null;
 
     if (!accountFromCache) {
       try {
-        accountFromDb = await mongo.getDb().collection<AccountDoc>('accounts').findOne({ name: username });
+        accountFromDb = await mongo.getDb().collection('accounts').findOne({ name: username });
         if (accountFromDb) {
           await new Promise<void>((resolve, reject) => {
-            cache.insertOne('accounts', accountFromDb as AccountDoc, (err, success) => {
+            cache.insertOne('accounts', accountFromDb, (err, success) => {
               if (err) {
                 logger.error(`Error updating cache for ${username} from DB:`, err);
                 return reject(err);
@@ -58,7 +57,7 @@ export async function upsertAccountsReferencedInTx(tx: ParsedTransaction | Trans
     const finalAccountState = accountFromCache || accountFromDb;
 
     if (!finalAccountState) {
-      const newAccountData: AccountDoc = {
+      const newAccountData = {
         name: username,
         created: new Date(),
         tokens: { ECH: 0 }, // Default ECH balance
@@ -69,9 +68,8 @@ export async function upsertAccountsReferencedInTx(tx: ParsedTransaction | Trans
       };
 
       try {
-        await mongo.getDb().collection<AccountDoc>('accounts').insertOne(newAccountData);
         await new Promise<void>((resolve, reject) => {
-          cache.insertOne('accounts', newAccountData as AccountDoc, (err, success) => {
+          cache.insertOne('accounts', newAccountData, (err, success) => {
             if (err) {
               logger.error(`Error inserting new account ${username} into cache:`, err);
               return reject(err);
@@ -89,7 +87,6 @@ export async function upsertAccountsReferencedInTx(tx: ParsedTransaction | Trans
       }
     } else {
       logger.debug(`Account ${username} already exists in cache or DB.`);
-      return;
     }
   }
 }
