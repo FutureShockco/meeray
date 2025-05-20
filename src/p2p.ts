@@ -27,7 +27,7 @@ import mongo from './mongo.js'; // Ensure mongo is imported
 import * as wsModule from 'ws';
 const version = '1.6.6';
 const default_port = 6001;
-const replay_interval = 5000;
+const replay_interval = 10000;
 const discovery_interval = 30000;
 const keep_alive_interval = 10000;
 const max_blocks_buffer = 100;
@@ -128,8 +128,8 @@ export const p2p = {
             // Use a longer initial delay before starting regular refresh schedule
             setTimeout(() => {
                 setInterval(() => p2p.refresh(), replay_interval);
-            }, replay_interval * 2); // 30 seconds initial delay
-        }, 5000); // Double the standard replay interval for startup
+            }, replay_interval * 2);
+        }, 5000); 
 
         if (!process.env.NO_DISCOVERY || process.env.NO_DISCOVERY === '0' || process.env.NO_DISCOVERY === '0') {
             // Delay initial discovery to spread out startup operations
@@ -142,7 +142,7 @@ export const p2p = {
         // Spread out operation schedules
         setTimeout(() => {
             setInterval(() => p2p.cleanRoundConfHistory(), history_interval);
-        }, 15000); // 15 seconds delay
+        }, 15000);
     },
 
     generateNodeId: (): void => {
@@ -156,11 +156,6 @@ export const p2p = {
     },
 
     discoveryWorker: (isInit: boolean = false): void => {
-        if (!chain) {
-            logger.error('Chain module not available for discovery worker');
-            return;
-        }
-
         let witnesses = witnessesModule.generateWitnesses(false, true, config.witnesses * 3, 0);
         for (let i = 0; i < witnesses.length; i++) {
             if (p2p.sockets.length >= max_peers) {
@@ -658,25 +653,12 @@ export const p2p = {
 
     refresh: (force: boolean = false): void => {
         logger.info('Connected peers ' + p2p.sockets.length);
-        // Don't refresh if we're shutting down
-        if (!chain) {
-            logger.warn('Chain service unavailable during refresh');
-            return;
-        }
-        p2p.refreshAttempt++;
 
         // Don't start a new recovery if one is already in progress
         if (p2p.recovering && !force) {
             return;
         }
-        // else if(refreshAttempt >= max_refresh_attempts) {
-        //     refreshAttempt = 0;
-        //     p2p.recovering = false;
-        //     p2p.recoveringBlocks = []; // Clear any blocks being recovered
-        //     p2p.recoveredBlocks = {}; // Clear any previously recovered blocks
-        //     p2p.refresh(true);
-        // }
-        // Get latest block from our chain
+
         const latestBlockId = chain.getLatestBlock()._id;
 
         // Require at least one connected peer
@@ -764,7 +746,7 @@ export const p2p = {
             if (err) {
                 cache.rollback();
                 logger.warn(`[P2P] Failed to validate block ${newBlock._id}, clearing recovery cache`);
-                p2p.recoveredBlocks = {};
+                p2p.recoveredBlocks = [];
                 p2p.recoveringBlocks = [];
                 p2p.recoverAttempt++;
                 if (p2p.recoverAttempt > max_recover_attempts) {
