@@ -27,9 +27,9 @@ import mongo from './mongo.js'; // Ensure mongo is imported
 import * as wsModule from 'ws';
 const version = '1.6.6';
 const default_port = 6001;
-const replay_interval = 1500;
+const replay_interval = 5000;
 const discovery_interval = 60000;
-const keep_alive_interval = 2500;
+const keep_alive_interval = 10000;
 const max_blocks_buffer = 100;
 const max_peers = Number(process.env.MAX_PEERS) || 15;
 const max_recover_attempts = 25;
@@ -98,12 +98,12 @@ const MAX_BLOCK_RETRIES = 5;
 
 export const p2p = {
     sockets: [] as EnhancedWebSocket[],
+    recentConnections: new Map<string, number>(),
     recoveringBlocks: [] as number[],
     recoveredBlocks: {} as Record<number, Block>,
     recovering: false as boolean | number,
     recoverAttempt: 0,
     nodeId: null as NodeKeyPair | null,
-    recentConnectionAttempts: {} as Record<string, number>,
     refreshAttempt: 0,
     init: async (): Promise<void> => {
         p2p.generateNodeId();
@@ -278,18 +278,17 @@ export const p2p = {
             }
         });
 
-        const recentConnections = new Map<string, number>();
         const peerAddress = ws._socket.remoteAddress + ':' + ws._socket.remotePort;
         const now = Date.now();
-        const lastConnect = recentConnections.get(peerAddress) || 0;
-
+        const lastConnect = p2p.recentConnections.get(peerAddress) || 0;
+        
         if (now - lastConnect < 10000) { // 10 second cooldown
             logger.debug(`Connection attempt from ${peerAddress} rejected (too frequent)`);
             ws.close();
             return;
         }
-
-        recentConnections.set(peerAddress, now);
+        
+        p2p.recentConnections.set(peerAddress, now);
     },
 
     broadcastSyncStatus: (syncStatus: any | SteemSyncStatus): void => {
