@@ -87,8 +87,8 @@ export function calculateHashForBlock(
         console.log('calculateHashForBlock DEBUG: clonedBlock =', clonedBlock);
         // Always ensure hash and signature are removed when calculating the hash
         if (deleteExisting === true || 'hash' in clonedBlock || 'signature' in clonedBlock) {
-            delete clonedBlock.hash;
-            delete clonedBlock.signature;
+            clonedBlock.hash = '';
+            clonedBlock.signature = '';
         }
 
 
