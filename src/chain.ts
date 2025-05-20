@@ -3,7 +3,7 @@
 
 // TODO: Add proper types for chain logic, blocks, state, etc.
 
-import { Block, isValidNewBlock } from './block.js';
+import { Block, calculateHashForBlock, isValidNewBlock } from './block.js';
 import config from './config.js';
 import { blocks } from './blockStore.js';
 import logger from './logger.js';
@@ -52,26 +52,7 @@ export const chain = {
             priv: bs58.encode(privKey)
         };
     },
-    calculateBlockHash: (
-        index: number,
-        phash: string,
-        timestamp: number,
-        txs: Transaction[],
-        witness: string,
-        missedBy: string = '',
-        distributed: number = 0,
-        sync: boolean = false
-    ): string => {
-        try {
-            // Simple implementation for hash calculation
-            const data = `${index}${phash}${timestamp}${JSON.stringify(txs)}${witness}${missedBy}${distributed}${sync}`;
-            const hash = createHash('sha256').update(data).digest('hex');
-            return hash;
-        } catch (error) {
-            logger.error('Error calculating block hash:', error);
-            return '';
-        }
-    },
+   
     getGenesisBlock: () => {
         const genesisBlock: Block = {
             _id: 0, // _id: 0
@@ -83,22 +64,26 @@ export const chain = {
             txs: [], // txs: []
             witness: config.masterName, // witness: config.masterName
             hash: '', // hash: '' (will be set below)
-            signature: config.originHash, // signature: config.originHash
+            signature: '0000000000000000000000000000000000000000000000000000000000000000', // signature: config.originHash
             missedBy: '', // missedBy: ''
             dist: config.witnessReward > 0 ? config.witnessReward : 0, // dist: config.witnessReward > 0 ? config.witnessReward : 0
             sync: false, // sync: false
         };
         // Calculate and set the actual hash for the genesis block
-        genesisBlock.hash = chain.calculateBlockHash(
-            genesisBlock._id,
-            genesisBlock.phash,
-            genesisBlock.timestamp,
-            genesisBlock.txs,
-            genesisBlock.witness,
-            genesisBlock.missedBy,
-            genesisBlock.dist,
-            genesisBlock.sync
-        );
+        genesisBlock.hash = calculateHashForBlock({
+            _id: genesisBlock._id,
+            blockNum: genesisBlock.blockNum,
+            steemBlockNum: genesisBlock.steemBlockNum,
+            steemBlockTimestamp: genesisBlock.steemBlockTimestamp,
+            phash: genesisBlock.phash,
+            timestamp: genesisBlock.timestamp,
+            txs: genesisBlock.txs,
+            witness: genesisBlock.witness,
+            missedBy: genesisBlock.missedBy,
+            dist: genesisBlock.dist,
+            sync: genesisBlock.sync,
+            signature: genesisBlock.signature
+        });
         return genesisBlock;
     },
 

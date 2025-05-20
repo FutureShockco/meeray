@@ -26,9 +26,9 @@ export class Block {
     witness!: string;
     missedBy: string;
     dist: number;
+    sync: boolean;
     signature?: string;
     hash: string;
-    sync: boolean;
 
     constructor(
         _id: number,
@@ -41,9 +41,9 @@ export class Block {
         witness: string,
         missedBy?: string,
         dist?: number,
+        sync?: boolean,
         signature?: string,
-        hash?: string,
-        sync?: boolean
+        hash?: string
     ) {
         this._id = _id;
         this.blockNum = blockNum;
@@ -55,30 +55,28 @@ export class Block {
         this.witness = witness;
         this.missedBy = missedBy || '';
         this.dist = dist || 0;
+        this.sync = sync || false;
         this.signature = signature || '';
         this.hash = hash || '';
-        this.sync = sync || false;
     }
 }
-
-// Directly ported block-related functions from chain.js
 
 
 export function calculateHashForBlock(
     blockData: {
         _id: number;
         blockNum: number;
-        phash: string;
-        timestamp: number;
         steemBlockNum: number;
         steemBlockTimestamp: number;
+        timestamp: number;
+        phash: string;
         txs: Transaction[];
         witness: string;
         missedBy?: string;
         dist: number;
+        sync: boolean;
         hash?: string;
         signature?: string;
-        sync: boolean;
     },
     deleteExisting?: boolean
 ): string {
@@ -86,9 +84,9 @@ export function calculateHashForBlock(
         let clonedBlock = cloneDeep(blockData);
         console.log('calculateHashForBlock DEBUG: clonedBlock =', clonedBlock);
         // Always ensure hash and signature are removed when calculating the hash
-        if (deleteExisting === true || 'hash' in clonedBlock || 'signature' in clonedBlock) {
-            clonedBlock.hash = '';
-            clonedBlock.signature = '';
+        if (deleteExisting) {
+            delete clonedBlock.hash
+            delete clonedBlock.signature
         }
 
 
@@ -246,4 +244,3 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
         })
 }
 
-// Additional block-related functions can be added here 
