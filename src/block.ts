@@ -73,8 +73,11 @@ export function calculateHashForBlock(
             delete clonedBlock.hash
             delete clonedBlock.signature
         }
-        const hash = CryptoJS.SHA256(JSON.stringify(deleteExisting ? clonedBlock : blockData)).toString();
-        console.log('calculateHashForBlock DEBUG: hash =', hash);
+        const blockToHash = deleteExisting ? clonedBlock : blockData;
+        // Add detailed logging of the object being hashed
+        logger.debug('[calculateHashForBlock] Object being hashed:', JSON.stringify(blockToHash, null, 2));
+        const hash = CryptoJS.SHA256(JSON.stringify(blockToHash)).toString();
+        logger.debug('calculateHashForBlock DEBUG: hash =', hash);
         return hash;
     } catch (error) {
         logger.error(`Error calculating hash for block ${blockData._id}:`, error);
@@ -87,6 +90,8 @@ export function isValidHashAndSignature(newBlock: any, cb: (valid: boolean) => v
     if (theoreticalHash !== newBlock.hash) {
         logger.debug(typeof (newBlock.hash) + ' ' + typeof theoreticalHash)
         logger.error('invalid hash: ' + theoreticalHash + ' ' + newBlock.hash)
+        // Log the full newBlock object when there's a hash mismatch
+        logger.error('[isValidHashAndSignature] Mismatch detected. Received newBlock object:', JSON.stringify(newBlock, null, 2));
         cb(false); return
     }
 

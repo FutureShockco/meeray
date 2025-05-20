@@ -294,6 +294,8 @@ export const chain = {
     },
     validateAndAddBlock: async (block: any, revalidate: boolean, cb: (err: any, newBlock: any) => void) => {
         if (chain.shuttingDown) return
+        // Log the received block before validation begins
+        logger.debug('[validateAndAddBlock] Received block for validation:', JSON.stringify(block, null, 2));
         isValidNewBlock(block, revalidate, false, function (isValid: boolean) {
             if (!isValid) {
                 return cb(true, block);

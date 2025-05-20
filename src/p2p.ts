@@ -214,11 +214,11 @@ export const p2p = {
 
     keepAlive: async (): Promise<void> => {
         // Only try to reconnect if we're not at max peers
-        if (p2p.sockets.length >= max_peers) {
-            logger.debug(`Already at max peers (${p2p.sockets.length}/${max_peers}), skipping keep-alive check`);
-            setTimeout(() => p2p.keepAlive(), keep_alive_interval);
-            return;
-        }
+        // if (p2p.sockets.length >= max_peers) {
+        //     logger.debug(`Already at max peers (${p2p.sockets.length}/${max_peers}), skipping keep-alive check`);
+        //     setTimeout(() => p2p.keepAlive(), keep_alive_interval);
+        //     return;
+        // }
 
         let peers = process.env.PEERS ? process.env.PEERS.split(',') : [];
         let toConnect: string[] = [];
@@ -253,10 +253,10 @@ export const p2p = {
             const now = Date.now();
             const lastConnect = p2p.recentConnections.get(normalizedAddress) || 0;
 
-            if (now - lastConnect < 10000) { // 10 second cooldown
-                logger.debug(`Outgoing connection to ${peerString} (${normalizedAddress}) skipped (too frequent)`);
-                return;
-            }
+            // if (now - lastConnect < 10000) { // 10 second cooldown
+            //     logger.debug(`Outgoing connection to ${peerString} (${normalizedAddress}) skipped (too frequent)`);
+            //     return;
+            // }
             // Update cooldown for this normalized address BEFORE attempting connection
             p2p.recentConnections.set(normalizedAddress, now);
 
