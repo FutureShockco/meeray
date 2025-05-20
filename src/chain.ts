@@ -271,13 +271,14 @@ export const chain = {
             // Use setTimeout to make this non-blocking
             setTimeout(() => {
                 // Only broadcast if p2p is available and we have peers
-                if (p2p && p2p.sockets && p2p.sockets.length > 0) {
+                if (p2p && p2p.nodeId && p2p.sockets && p2p.sockets.length > 0) {
                     const currentStatus = {
+                        nodeId: p2p.nodeId.pub,
                         behindBlocks: steem.getBehindBlocks(),
                         steemBlock: block.steemBlockNum,
                         isSyncing: isSyncing,
                         blockId: block._id,
-                        consensusBlocks: null,
+                        consensusBlocks: undefined,
                         exitTarget: steem.getSyncExitTarget(),
                         timestamp: Date.now()
                     };
@@ -295,7 +296,7 @@ export const chain = {
     validateAndAddBlock: async (block: any, revalidate: boolean, cb: (err: any, newBlock: any) => void) => {
         if (chain.shuttingDown) return
         // Log the received block before validation begins
-        logger.debug('[validateAndAddBlock] Received block for validation:', JSON.stringify(block, null, 2));
+        logger.debug(`[validateAndAddBlock] Received block for validation: ${JSON.stringify(block, null, 2)}`);
         isValidNewBlock(block, revalidate, false, function (isValid: boolean) {
             if (!isValid) {
                 return cb(true, block);

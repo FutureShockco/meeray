@@ -25,6 +25,10 @@ import mongo from './mongo.js'; // Ensure mongo is imported
 // TODO: import steem from './steem.js';
 // Dynamically import the 'ws' module
 import * as wsModule from 'ws';
+
+const bs58 = baseX(config.b58Alphabet || '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz');
+
+
 const version = '1.6.6';
 const default_port = 6001;
 const replay_interval = 5000;
@@ -37,7 +41,6 @@ const history_interval = 10000;
 const keep_history_for = 20000;
 const p2p_port = Number(process.env.P2P_PORT) || default_port;
 const p2p_host = process.env.P2P_HOST || '::';
-const bs58 = baseX(config.b58Alphabet);
 
 export enum MessageType {
     QUERY_NODE_STATUS = 0,
@@ -81,7 +84,7 @@ export interface SteemSyncStatus {
     isSyncing: boolean;
     timestamp: number;
     steemBlock?: number;
-    blockId?: string;
+    blockId?: number;
     consensusBlocks?: number;
     isInWarmup?: boolean;
 }
@@ -96,48 +99,36 @@ const pendingBlockRequests = new Set<number>();
 const blockRequestRetries = new Map<number, { attempts: number, triedPeers: Set<string> }>();
 const MAX_BLOCK_RETRIES = 5;
 
-// Helper function to get a normalized address for cooldown tracking
-function getNormalizedPeerAddress(peer: string | EnhancedWebSocket): string {
-    if (typeof peer === 'string') {
-        // For outgoing, try to resolve to ip:port if it's a hostname
-        // This is a simplification; a more robust solution might involve actual DNS resolution
-        // and consistent formatting. For now, we'll use the string as is if it's already ip:port
-        // or keep the ws://host:port format.
-        // Attempt to extract host and port if it's a ws:// or wss:// URL
-        try {
-            const url = new URL(peer);
-            // Prefer hostname and port from URL if available, otherwise fallback to original peer string
-            // This doesn't resolve DNS here, assumes peer string might be IP or resolvable hostname by WebSocket
-            return url.hostname + ':' + url.port || peer;
-        } catch (e) {
-            // If not a valid URL, assume it's already in a format like 'ip:port' or a plain hostname
-            return peer;
-        }
-    } else {
-        // For incoming, use remoteAddress and remotePort
-        return peer._socket.remoteAddress + ':' + peer._socket.remotePort;
-    }
-}
 
 export const p2p = {
     sockets: [] as EnhancedWebSocket[],
-    recentConnections: new Map<string, number>(),
     recoveringBlocks: [] as number[],
     recoveredBlocks: {} as Record<number, Block>,
     recovering: false as boolean | number,
     recoverAttempt: 0,
     nodeId: null as NodeKeyPair | null,
-    refreshAttempt: 0,
+    recentConnectionAttempts: {} as Record<string, number>,
+
     init: async (): Promise<void> => {
         p2p.generateNodeId();
 
+
+        // Dynamically import the 'ws' module
+        const wsModule = await import('ws');
+
+        // Use type assertions to access untyped properties safely
         const WebSocketServer =
             (wsModule as any).WebSocketServer ||
             (wsModule as any).Server ||
             (wsModule.default as any)?.WebSocketServer ||
             (wsModule.default as any)?.Server;
 
+        // Optional: throw if not found
+        if (!WebSocketServer) {
+            throw new Error('WebSocketServer not found in ws module');
+        }
 
+        // Create server
         const server = new WebSocketServer({ host: p2p_host, port: p2p_port });
 
         server.on('connection', (ws: WebSocket) => p2p.handshake(ws as EnhancedWebSocket));
@@ -149,33 +140,33 @@ export const p2p = {
             // Set up recovery on a slower schedule
             p2p.recover();
             // Use a longer initial delay before starting regular refresh schedule
-            setInterval(() => p2p.refresh(), replay_interval);
-        }, replay_interval);
+            setTimeout(() => {
+                setInterval(() => p2p.refresh(), replay_interval);
+            }, replay_interval * 2); // 30 seconds initial delay
+        }, 5000); // Double the standard replay interval for startup
 
         if (!process.env.NO_DISCOVERY || process.env.NO_DISCOVERY === '0' || process.env.NO_DISCOVERY === '0') {
             // Delay initial discovery to spread out startup operations
-            setInterval(() => p2p.discoveryWorker(), discovery_interval);
-            p2p.discoveryWorker(true);
+            setTimeout(() => {
+                setInterval(() => p2p.discoveryWorker(), discovery_interval);
+                p2p.discoveryWorker(true);
+            }, 5000); // 5 seconds delay
         }
 
         // Spread out operation schedules
         setTimeout(() => {
             setInterval(() => p2p.cleanRoundConfHistory(), history_interval);
-        }, history_interval);
+        }, 15000); // 15 seconds delay
     },
 
     generateNodeId: (): void => {
-        if (!chain) {
-            logger.error('Chain module not available for generating node ID');
-            return;
-        }
         p2p.nodeId = getNewKeyPair();
-
-        logger.info('P2P ID: ' + p2p.nodeId?.pub);
+        logger.info('P2P ID: ' + p2p.nodeId.pub);
     },
 
     discoveryWorker: (isInit: boolean = false): void => {
-        let witnesses = witnessesModule.generateWitnesses(false, true, config.witnesses * 3, 0);
+        const configBlock = config.read(0);
+        let witnesses = witnessesModule.generateWitnesses(false, true, configBlock.witnesses * 3, 0);
         for (let i = 0; i < witnesses.length; i++) {
             if (p2p.sockets.length >= max_peers) {
                 logger.debug('We already have maximum peers: ' + p2p.sockets.length + '/' + max_peers);
@@ -214,137 +205,125 @@ export const p2p = {
 
     keepAlive: async (): Promise<void> => {
         // Only try to reconnect if we're not at max peers
-        // if (p2p.sockets.length >= max_peers) {
-        //     logger.debug(`Already at max peers (${p2p.sockets.length}/${max_peers}), skipping keep-alive check`);
-        //     setTimeout(() => p2p.keepAlive(), keep_alive_interval);
-        //     return;
-        // }
+        if (p2p.sockets.length >= max_peers) {
+            logger.debug(`Already at max peers (${p2p.sockets.length}/${max_peers}), skipping keep-alive check`);
+            setTimeout(() => p2p.keepAlive(), keep_alive_interval);
+            return;
+        }
+        const currentTime = Date.now();
+        // Clean up old connection attempts (older than 5 minutes)
+        for (const peer in p2p.recentConnectionAttempts) {
+            if (currentTime - p2p.recentConnectionAttempts[peer] > 300000) {
+                delete p2p.recentConnectionAttempts[peer];
+            }
+        }
 
+        // ensure all peers explicitly listed in PEERS are connected when online
         let peers = process.env.PEERS ? process.env.PEERS.split(',') : [];
         let toConnect: string[] = [];
 
-        for (let p in peers) {
-            let connected = false
-            let colonSplit = peers[p].replace('ws://', '').split(':')
-            let port = parseInt(colonSplit.pop() || "0");
-            let address = colonSplit.join(':').replace('[', '').replace(']', '')
-            if (!net.isIP(address))
+        // Limit the number of connection attempts per keepAlive cycle
+        const maxAttemptsPerCycle = 2;
+
+        for (let p = 0; p < peers.length; p++) {
+            // Stop if we've reached the maximum attempts for this cycle
+            if (toConnect.length >= maxAttemptsPerCycle) break;
+
+            // Skip peers we recently tried to connect to
+            if (p2p.recentConnectionAttempts[peers[p]]
+                && currentTime - p2p.recentConnectionAttempts[peers[p]] < 60000) {
+                logger.debug(`Skipping recent connection attempt to ${peers[p]}`);
+                continue;
+            }
+
+            let connected = false;
+            let colonSplit = peers[p].replace('ws://', '').split(':');
+            let port = parseInt(colonSplit.pop() || '0');
+            let address = colonSplit.join(':').replace('[', '').replace(']', '');
+
+            if (!net.isIP(address)) {
                 try {
-                    address = (await dns.promises.lookup(address)).address
+                    address = (await dns.promises.lookup(address)).address;
                 } catch (e) {
-                    logger.debug('dns lookup failed for ' + address)
-                    continue
+                    logger.debug('dns lookup failed for ' + address);
+                    // Record this failed attempt
+                    p2p.recentConnectionAttempts[peers[p]] = currentTime;
+                    continue;
                 }
-            for (let s in p2p.sockets)
-                if (p2p.sockets[s]._socket.remoteAddress?.replace('::ffff:', '') === address && p2p.sockets[s]._socket.remotePort === port) {
-                    connected = true
-                    break
+            }
+
+            for (let s = 0; s < p2p.sockets.length; s++) {
+                const sock = p2p.sockets[s]._socket;
+                if (sock && sock.remoteAddress && sock.remoteAddress.replace('::ffff:', '') === address &&
+                    sock.remotePort === port) {
+                    connected = true;
+                    break;
                 }
-            if (!connected)
-                toConnect.push(peers[p])
+            }
+
+            if (!connected) {
+                toConnect.push(peers[p]);
+                // Record this connection attempt
+                p2p.recentConnectionAttempts[peers[p]] = currentTime;
+            }
         }
-        p2p.connect(toConnect)
+
+        if (toConnect.length > 0) {
+            logger.debug(`Keep-alive: attempting to connect to ${toConnect.length} peer(s)`);
+            p2p.connect(toConnect);
+        }
+
         setTimeout(() => p2p.keepAlive(), keep_alive_interval);
     },
 
     connect: (newPeers: string[], isInit: boolean = false): void => {
-        newPeers.forEach((peerString) => {
-            const normalizedAddress = getNormalizedPeerAddress(peerString);
-            const now = Date.now();
-            const lastConnect = p2p.recentConnections.get(normalizedAddress) || 0;
-
-            // if (now - lastConnect < 10000) { // 10 second cooldown
-            //     logger.debug(`Outgoing connection to ${peerString} (${normalizedAddress}) skipped (too frequent)`);
-            //     return;
-            // }
-            // Update cooldown for this normalized address BEFORE attempting connection
-            p2p.recentConnections.set(normalizedAddress, now);
-
-            const socket = new WebSocket(peerString) as EnhancedWebSocket;
-            socket.on('open', () => {
-                // Connection opened, proceed to handshake.
-                // The handshake function will also update recentConnections for its normalized address.
-                p2p.handshake(socket);
-            });
-            socket.on('error', (err: Error) => { // Added type for err
-                logger[isInit ? 'warn' : 'debug'](`Peer connection to ${peerString} failed: ${err.message}`);
-                // If connection fails, consider if we should remove from recentConnections
-                // to allow quicker retry. For now, let it time out naturally from the map
-                // or be overwritten by a successful handshake.
-                // p2p.recentConnections.delete(normalizedAddress); // Optional: remove on error
+        newPeers.forEach((peer) => {
+            const socket = new WebSocket(peer) as EnhancedWebSocket;
+            socket.on('open', () => p2p.handshake(socket));
+            socket.on('error', () => {
+                logger[isInit ? 'warn' : 'debug']('peer connection failed', peer);
             });
         });
     },
 
     handshake: (ws: EnhancedWebSocket): void => {
-        const normalizedAddress = getNormalizedPeerAddress(ws);
-        const now = Date.now();
-        
-        // Check recentConnections first (this covers both incoming and just-opened outgoing)
-        const lastConnect = p2p.recentConnections.get(normalizedAddress) || 0;
-        
-        // More refined check: if it's a *new* incoming connection (not one we just opened and is now handshaking back)
-        // and it's too frequent, reject.
-        // A simple way to distinguish: if ws is already in p2p.sockets, it's likely an outgoing one completing handshake.
-        // However, p2p.sockets.includes(ws) might not be reliable yet if it hasn't been added.
-        // A safer check: if the lastConnect timestamp is very recent AND this specific ws instance isn't already being processed
-        // (which is hard to tell at this exact point without more state).
-        // The core idea: prevent rapid new incoming connections from the same normalized address.
-        // if (now - lastConnect < 10000 && !p2p.sockets.some(s => s === ws)) {
-        //     logger.debug(`Incoming connection from ${normalizedAddress} rejected (too frequent new attempt)`);
-        //     ws.close();
-        //     return;
-        // }
-        // Update timestamp for this successful interaction point or new attempt
-        p2p.recentConnections.set(normalizedAddress, now);
-
-        // FIRST check offline mode
         if (process.env.OFFLINE) {
             logger.warn('Incoming handshake refused because OFFLINE');
             ws.close();
             return;
         }
 
-        // NEXT check peer limit
         if (p2p.sockets.length >= max_peers) {
             logger.warn('Incoming handshake refused because already peered enough ' + p2p.sockets.length + '/' + max_peers);
             ws.close();
             return;
         }
 
-        // THEN check for duplicate connections (already in sockets array and OPEN)
-        const existingSocket = p2p.sockets.find(s => s !== ws && getNormalizedPeerAddress(s) === normalizedAddress && s.readyState === WebSocket.OPEN);
-        if (existingSocket) {
-            logger.debug(`Duplicate connection from ${normalizedAddress}, closing new one.`);
-            ws.close();
-            return;
-        }
-            
-        // Continue with handshake for a new or re-establishing connection
-        logger.debug('Handshaking new peer', ws.url || normalizedAddress);
-        
+        // close connection if we already have this peer ip in our connected sockets
+        for (let i = 0; i < p2p.sockets.length; i++)
+            if (p2p.sockets[i]._socket.remoteAddress === ws._socket.remoteAddress
+                && p2p.sockets[i]._socket.remotePort === ws._socket.remotePort) {
+                ws.close();
+                return;
+            }
+
+        logger.debug('Handshaking new peer', ws.url || ws._socket.remoteAddress + ':' + ws._socket.remotePort);
         let random = randomBytes(config.read(0).randomBytesLength).toString('hex');
         ws.challengeHash = random;
 
         ws.pendingDisconnect = setTimeout(() => {
             for (let i = 0; i < p2p.sockets.length; i++)
-                if (p2p.sockets[i]?.challengeHash === random) { // Added null check for sockets[i]
+                if (p2p.sockets[i].challengeHash === random) {
                     p2p.sockets[i].close();
                     logger.warn('A peer did not reply to NODE_STATUS');
-                    // No continue here, let loop finish if other matches (though unlikely for same random)
+                    continue;
                 }
         }, 1000);
 
-        // Ensure socket is added only if all checks pass and not already present
-        if (!p2p.sockets.includes(ws)) {
-            p2p.sockets.push(ws);
-        }
-        // Ensure these are only set up once if handshake could be re-entrant for an existing socket
-        if (!ws.listenerCount('message')) { // Check if handlers are already attached
-            p2p.messageHandler(ws);
-            p2p.errorHandler(ws);
-        }
-        
+        p2p.sockets.push(ws);
+        p2p.messageHandler(ws);
+        p2p.errorHandler(ws);
+
         p2p.sendJSON(ws, {
             t: MessageType.QUERY_NODE_STATUS,
             d: {
@@ -352,12 +331,11 @@ export const p2p = {
                 random: random
             }
         });
-
     },
 
-    broadcastSyncStatus: (syncStatus: any | SteemSyncStatus): void => {
+    broadcastSyncStatus: (syncStatus: number | SteemSyncStatus): void => {
         // Broadcast steem sync status to all connected peers
-        if (!steem || p2p.recovering) return;
+        if (p2p.recovering) return;
 
         // If syncStatus is a number, it's just the behindBlocks count
         const status: SteemSyncStatus = typeof syncStatus === 'number' ? {
@@ -386,7 +364,7 @@ export const p2p = {
 
     messageHandler: (ws: EnhancedWebSocket): void => {
         ws.on('message', async (data: WebSocket.Data) => {
-            let message: any;
+            let message: { t: number, d: any, s?: any };
             try {
                 message = JSON.parse(data.toString());
             } catch (e) {
@@ -396,6 +374,7 @@ export const p2p = {
 
             if (!message || typeof message.t === 'undefined') return;
             if (!message.d) return;
+            // logger.debug('P2P-IN '+message.t)
 
             switch (message.t) {
                 case MessageType.QUERY_NODE_STATUS:
@@ -477,8 +456,8 @@ export const p2p = {
 
                             for (let i = 0; i < p2p.sockets.length; i++)
                                 if (i !== nodeStatusIndex
-                                    && p2p.sockets[i]?.node_status
-                                    && p2p.sockets[i]?.node_status?.nodeId === nodeId) {
+                                    && p2p.sockets[i].node_status
+                                    && p2p.sockets[i].node_status?.nodeId === nodeId) {
                                     logger.debug('Peer disconnected because duplicate connections');
                                     p2p.sockets[i].close();
                                 }
@@ -497,31 +476,34 @@ export const p2p = {
 
                 case MessageType.QUERY_BLOCK:
                     // a peer wants to see the data in one of our stored blocks
-                    if (blocks.isOpen) {
+                    if ((blocks as any).isOpen) {
                         let block = {};
                         try {
-                            block = blocks.read(message.d);
+                            block = (blocks as any).read(message.d);
                         } catch (e) {
                             break;
                         }
                         logger.info(`[P2P] Sending block #${(block as Block)._id} with ${(block as Block).txs?.length ?? 0} txs (memory)`);
                         p2p.sendJSON(ws, { t: MessageType.BLOCK, d: block });
                     } else {
+                        const start = Date.now();
                         try {
                             const block = await mongo.getDb().collection('blocks').findOne({ _id: message.d });
                             logger.info(`[P2P] Sending block #${block?._id} with ${block?.txs?.length ?? 0} txs (db)`);
+                            logger.debug(`[P2P] findOne for block ${message.d} took ${Date.now() - start}ms`);
                             if (block) {
                                 p2p.sendJSON(ws, { t: MessageType.BLOCK, d: block });
                             }
                         } catch (err) {
                             logger.error(`[P2P] MongoDB error for block ${message.d}: ${err}`);
                         }
+
                     }
                     break;
 
                 case MessageType.BLOCK:
                     // a peer sends us a block we requested with QUERY_BLOCK
-                    logger.debug(`[P2P] Received block #${message.d?._id} with ${message.d?.txs?.length ?? 0} txs`);
+                    logger.info(`[P2P] Received block #${message.d?._id} with ${message.d?.txs?.length ?? 0} txs`);
                     if (!message.d._id || !p2p.recoveringBlocks.includes(message.d._id)) return;
                     for (let i = 0; i < p2p.recoveringBlocks.length; i++)
                         if (p2p.recoveringBlocks[i] === message.d._id) {
@@ -530,10 +512,8 @@ export const p2p = {
                         }
 
                     if (chain.getLatestBlock()._id + 1 === message.d._id) {
-                        logger.debug(`[P2P][DEBUG] Processing block #${message.d._id} via addRecursive`);
                         p2p.addRecursive(message.d);
                     } else {
-                        logger.debug(`[P2P][DEBUG] Caching block #${message.d._id} for later processing`);
                         p2p.recoveredBlocks[message.d._id] = message.d;
                         p2p.recover();
                     }
@@ -544,7 +524,7 @@ export const p2p = {
                     break;
 
                 case MessageType.NEW_BLOCK:
-                    logger.info(`[P2P][DEBUG] Is this node observer? ${consensus.observer}`);
+
                     // we received a new block we didn't request from a peer
                     // we save the head_block of our peers
                     // and we forward the message to consensus if we are not replaying
@@ -556,23 +536,20 @@ export const p2p = {
 
                     let socket = p2p.sockets[newBlockIndex];
                     if (!socket || !socket.node_status) return;
-
-                    if (p2p.sockets && p2p.sockets[newBlockIndex] && p2p.sockets[newBlockIndex].node_status) {
-                        p2p.sockets[newBlockIndex].node_status.head_block = block._id;
-                        p2p.sockets[newBlockIndex].node_status.head_block_hash = block.hash;
-                        p2p.sockets[newBlockIndex].node_status.previous_block_hash = block.phash;
+                    if(socket.node_status.head_block){
+                        socket.node_status.head_block = block._id;
+                        socket.node_status.head_block_hash = block.hash;
+                        socket.node_status.previous_block_hash = block.phash;
                     }
 
                     if (p2p.recovering) return;
-                    logger.debug(`[P2P][DEBUG] Calling consensus.round for block #${block._id}`);
                     consensus.round(0, block);
                     break;
 
                 case MessageType.BLOCK_CONF_ROUND:
                     // we are receiving a consensus round confirmation
-                    // it should come from one of the elected witnesses, so let's verify signature
+                    // it should come from one of the elected leaders, so let's verify signature
                     if (p2p.recovering) return;
-
                     if (!message.s || !message.s.s || !message.s.n) return;
                     if (!message.d || !message.d.ts ||
                         typeof message.d.ts != 'number' ||
@@ -598,8 +575,6 @@ export const p2p = {
                         if (consensus.processed[i][0].s === message.s.n)
                             return;
                     }
-
-                    consensus.processed.push([message, new Date().getTime()])
 
                     verifySignature(message, function (isValid: boolean) {
                         if (!isValid && !p2p.recovering) {
@@ -636,18 +611,18 @@ export const p2p = {
                             p2p.sockets[syncSocketIndex].steemSyncStatus = message.d;
                         }
 
-                        if (steem) {
-                            steem.receivePeerSyncStatus(message.d.nodeId, {
-                                behindBlocks: message.d.behindBlocks,
-                                isSyncing: message.d.isSyncing,
-                                steemBlock: message.d.steemBlock,
-                                blockId: message.d.blockId,
-                                consensusBlocks: message.d.consensusBlocks,
-                                exitTarget: message.d.exitTarget
-                            });
+                        steem.receivePeerSyncStatus(message.d.nodeId, {
+                            nodeId: message.d.nodeId,
+                            behindBlocks: message.d.behindBlocks,
+                            isSyncing: message.d.isSyncing,
+                            steemBlock: message.d.steemBlock,
+                            blockId: message.d.blockId,
+                            consensusBlocks: message.d.consensusBlocks,
+                            exitTarget: message.d.exitTarget,
+                            timestamp: message.d.timestamp
+                        });
 
-                            logger.debug(`Received sync status from ${message.d.nodeId}: ${message.d.behindBlocks} blocks behind, isSyncing: ${message.d.isSyncing}`);
-                        }
+                        logger.debug(`Received sync status from ${message.d.nodeId}: ${message.d.behindBlocks} blocks behind, isSyncing: ${message.d.isSyncing}`);
                     }
                     break;
             }
@@ -655,20 +630,19 @@ export const p2p = {
     },
 
     recover: (): void => {
-        if (!chain) {
-            logger.warn('Chain service unavailable during recovery');
-            return;
-        }
         if (!p2p.sockets || p2p.sockets.length === 0) return;
         if (Object.keys(p2p.recoveredBlocks).length + p2p.recoveringBlocks.length > max_blocks_buffer) return;
         if (!p2p.recovering) p2p.recovering = chain.getLatestBlock()._id;
         const latestBlockId = chain.getLatestBlock()._id;
         let peersAhead: EnhancedWebSocket[] = [];
-        for (const socket of p2p.sockets) {
-            if (socket?.node_status?.head_block && socket.node_status.origin_block
-                && socket.node_status.head_block > latestBlockId
-                && socket.node_status.origin_block === config.read(0).originHash) {
-                peersAhead.push(socket);
+        for (let i = 0; i < p2p.sockets.length; i++) {
+            const ns = p2p.sockets[i].node_status;
+            if (
+                ns &&
+                ns.head_block !== undefined && ns.head_block > latestBlockId &&
+                ns.origin_block === config.read(0).originHash
+            ) {
+                peersAhead.push(p2p.sockets[i]);
             }
         }
         if (peersAhead.length === 0) {
@@ -687,7 +661,9 @@ export const p2p = {
             retryInfo = { attempts: 0, triedPeers: new Set() };
             blockRequestRetries.set(nextBlockToRecover, retryInfo);
         }
-        const availablePeers = peersAhead.filter(peer => !retryInfo!.triedPeers.has(peer.node_status?.nodeId || ''));
+        const availablePeers = peersAhead.filter(
+            peer => peer.node_status?.nodeId && !retryInfo!.triedPeers.has(peer.node_status.nodeId)
+        );
         let peerToTry: EnhancedWebSocket | undefined = availablePeers.length > 0
             ? availablePeers[Math.floor(Math.random() * availablePeers.length)]
             : undefined;
@@ -724,13 +700,19 @@ export const p2p = {
     },
 
     refresh: (force: boolean = false): void => {
-        logger.info('Connected peers ' + p2p.sockets.length);
 
         // Don't start a new recovery if one is already in progress
         if (p2p.recovering && !force) {
             return;
         }
-
+        // else if(refreshAttempt >= max_refresh_attempts) {
+        //     refreshAttempt = 0;
+        //     p2p.recovering = false;
+        //     p2p.recoveringBlocks = []; // Clear any blocks being recovered
+        //     p2p.recoveredBlocks = {}; // Clear any previously recovered blocks
+        //     p2p.refresh(true);
+        // }
+        // Get latest block from our chain
         const latestBlockId = chain.getLatestBlock()._id;
 
         // Require at least one connected peer
@@ -742,12 +724,13 @@ export const p2p = {
         // Find peers that are significantly ahead of us (at least 10 blocks)
         let peersAhead: EnhancedWebSocket[] = [];
         for (let i = 0; i < p2p.sockets.length; i++) {
-            const socket = p2p.sockets[i];
-            const nodeStatus = socket.node_status;
-            if (nodeStatus
-                && nodeStatus.head_block > latestBlockId + 10
-                && nodeStatus.origin_block === config.read(0)?.originHash) {
-                peersAhead.push(socket);
+            const ns = p2p.sockets[i].node_status;
+            if (
+                ns &&
+                ns.head_block !== undefined && ns.head_block > latestBlockId + 10 &&
+                ns.origin_block === config.read(0).originHash
+            ) {
+                peersAhead.push(p2p.sockets[i]);
             }
         }
 
@@ -797,56 +780,72 @@ export const p2p = {
             }
             const sentUs = p2p.sockets[i].sentUs;
             if (sentUs) {
-                for (let y = 0; y < sentUs.length; y++) {
-                    if (sentUs[y]?.[0] === d.s?.s) {
+                for (let y = 0; y < sentUs.length; y++)
+                    if (sentUs[y][0] === d.s.s)
                         continue firstLoop;
-                    }
-                }
-                p2p.sendJSON(p2p.sockets[i], d);
             }
+            p2p.sendJSON(p2p.sockets[i], d);
         }
     },
 
     broadcast: (d: any): void => p2p.sockets.forEach(ws => p2p.sendJSON(ws, d)),
 
     broadcastBlock: (block: Block): void => {
+        logger.info(`[P2P] Broadcasting block #${block._id} with ${block.txs?.length ?? 0} txs`);
         p2p.broadcast({ t: MessageType.NEW_BLOCK, d: block });
     },
 
     addRecursive: (block: Block): void => {
-        // console.log(block) // Keep this commented out unless specifically debugging block content
-        chain.validateAndAddBlock(block, true, (err: any, newBlock: Block | null) => { // Ensure newBlock can be Block | null
+        logger.debug(`[P2P] Entering addRecursive for block _id=${block._id}`);
+        const latestBlockId = chain.getLatestBlock()._id;
+
+        if (block._id <= latestBlockId) {
+            logger.warn(`[P2P] Skipping block ${block._id} in addRecursive as we already have blocks up to ${latestBlockId}`);
+            delete p2p.recoveredBlocks[block._id];
+            p2p.recover();
+            return;
+        }
+
+        if (block._id !== latestBlockId + 1) {
+            logger.warn(`[P2P] Received block ${block._id} out of sequence (expected ${latestBlockId + 1})`);
+            delete p2p.recoveredBlocks[block._id];
+            p2p.recovering = latestBlockId;
+            p2p.recover();
+            return;
+        }
+
+        logger.info(`[P2P] Validating and adding block #${block._id}`);
+
+        chain.validateAndAddBlock(block, true, (err: any | null, newBlock: Block | null) => {
             if (err) {
+                logger.error(`[P2P] Failed to validate block ${block._id}: ${err}`);
                 cache.rollback();
-                // Ensure newBlock and newBlock._id are checked for null before logging
-                const blockIdForLog = newBlock && newBlock._id ? newBlock._id : 'unknown';
-                logger.warn(`[P2P] Failed to validate block ${blockIdForLog}, clearing recovery cache`);
-                p2p.recoveredBlocks = {}; // Corrected: assign empty object
+                logger.warn(`[P2P] Failed to validate block ${block._id}, clearing recovery cache`);
+                p2p.recoveredBlocks = {};
                 p2p.recoveringBlocks = [];
                 p2p.recoverAttempt++;
                 if (p2p.recoverAttempt > max_recover_attempts) {
-                    logger.error(`[P2P] Error Replay - exceeded maximum recovery attempts for block ${blockIdForLog}`);
-                    p2p.recovering = false; // Stop recovery
-                    p2p.recoverAttempt = 0; // Reset attempt counter
+                    logger.error(`[P2P] Error Replay - exceeded maximum recovery attempts for block ${block._id}`);
+                    p2p.recovering = false;
+                    p2p.recoverAttempt = 0;
+                    return;
                 } else {
-                    logger.debug(`[P2P] Recover attempt #${p2p.recoverAttempt} for block ${blockIdForLog}`);
+                    logger.debug(`[P2P] Recover attempt #${p2p.recoverAttempt} for block ${block._id}`);
                     p2p.recovering = chain.getLatestBlock()._id;
                     p2p.recover();
                 }
             } else {
                 p2p.recoverAttempt = 0;
-                if (newBlock && newBlock._id) { // Check if newBlock and its _id are valid
+                if (newBlock) {
                     delete p2p.recoveredBlocks[newBlock._id];
                 }
                 p2p.recover();
+
+                // If next block is in cache, process it recursively
                 const nextBlockId = chain.getLatestBlock()._id + 1;
                 if (p2p.recoveredBlocks[nextBlockId]) {
-                    setTimeout(function () {
-                        // Re-check if the block still exists, as it might have been processed by another path
-                        if (p2p.recoveredBlocks[nextBlockId]) {
-                            p2p.addRecursive(p2p.recoveredBlocks[nextBlockId]);
-                        }
-                    }, 1);
+                    logger.debug(`[P2P] Found next block ${nextBlockId} in recovery cache, processing immediately`);
+                    p2p.addRecursive(p2p.recoveredBlocks[nextBlockId]);
                 }
             }
         });
@@ -855,16 +854,17 @@ export const p2p = {
     cleanRoundConfHistory: (): void => {
         logger.debug('Cleaning old p2p messages history');
         for (let i = 0; i < p2p.sockets.length; i++) {
-            if (!p2p.sockets[i].sentUs) continue;
             const sentUs = p2p.sockets[i].sentUs;
-            if (!sentUs) continue;
-            for (let y = 0; y < sentUs.length; y++)
-                if (new Date().getTime() - sentUs[y][1] > keep_history_for) {
-                    sentUs.splice(y, 1);
-                    y--;
-                }
+            if (sentUs) {
+                for (let y = 0; y < sentUs.length; y++)
+                    if (new Date().getTime() - sentUs[y][1] > keep_history_for) {
+                        sentUs.splice(y, 1);
+                        y--;
+                    }
+            }
         }
     }
 };
+
 
 export default p2p; 

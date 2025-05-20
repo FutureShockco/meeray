@@ -16,13 +16,14 @@ interface NetworkSyncStatus {
 }
 
 interface SyncStatus {
+    nodeId: string;
     behindBlocks: number;
     steemBlock: number;
     isSyncing: boolean;
     blockId: number;
     consensusBlocks: any;
     exitTarget: number | null;
-    timestamp?: number;
+    timestamp: number;
 }
 
 interface RpcHeightData {
@@ -329,13 +330,14 @@ function broadcastSyncStatusLoop(): void {
     if (p2p && p2p.sockets && p2p.sockets.length > 0 && chain.getLatestBlock() && chain.getLatestBlock()._id) {
         // Prepare current status
         const currentStatus: SyncStatus = {
+            nodeId: p2p.sockets[0].node_status?.nodeId || '',
             behindBlocks: behindBlocks,
             steemBlock: currentSteemBlock,
             isSyncing: isSyncing,
             blockId: chain.getLatestBlock()._id,
             consensusBlocks: null,
             exitTarget: syncExitTargetBlock,
-            timestamp: Date.now() // Add current timestamp
+            timestamp: new Date().getTime()
         };
         
         // Check if status has changed substantively since last broadcast
@@ -393,13 +395,14 @@ function enterSyncMode(): void {
     // Notify other system components about sync mode
     if (p2p && p2p.sockets && p2p.sockets.length > 0) {
         const syncStatus: SyncStatus = {
+            nodeId: p2p.sockets[0].node_status?.nodeId || '',
             behindBlocks: behindBlocks,
             steemBlock: currentSteemBlock,
             isSyncing: true,
             blockId: chain?.getLatestBlock()?._id || 0,
             consensusBlocks: behindBlocks,
             exitTarget: null,
-            timestamp: Date.now()
+            timestamp: new Date().getTime()
         };
         p2p.broadcastSyncStatus(syncStatus);
     }
@@ -434,13 +437,14 @@ function exitSyncMode(currentBlockId: number, currentSteemBlockNum: number): voi
     // Broadcast exit to peers with the current timestamp for better coordination
     if (p2p && p2p.sockets && p2p.sockets.length > 0) {
         const exitStatus: SyncStatus = {
+            nodeId: p2p.sockets[0].node_status?.nodeId || '',
             behindBlocks: behindBlocks,
             steemBlock: currentSteemBlockNum,
             isSyncing: false,
             blockId: currentBlockId,
             consensusBlocks: behindBlocks,
             exitTarget: null,
-            timestamp: Date.now()
+            timestamp: new Date().getTime()
         };
         p2p.broadcastSyncStatus(exitStatus);
         

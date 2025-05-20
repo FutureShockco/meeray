@@ -75,12 +75,12 @@ export function calculateHashForBlock(
         }
         const blockToHash = deleteExisting ? clonedBlock : blockData;
         // Add detailed logging of the object being hashed
-        logger.debug('[calculateHashForBlock] Object being hashed:', JSON.stringify(blockToHash, null, 2));
+        logger.debug(`[calculateHashForBlock] Object being hashed: ${JSON.stringify(blockToHash, null, 2)}`);
         const hash = CryptoJS.SHA256(JSON.stringify(blockToHash)).toString();
-        logger.debug('calculateHashForBlock DEBUG: hash =', hash);
+        logger.debug(`calculateHashForBlock DEBUG: hash = ${hash}`);
         return hash;
     } catch (error) {
-        logger.error(`Error calculating hash for block ${blockData._id}:`, error);
+        logger.error(`Error calculating hash for block ${blockData._id}: ${error}`);
         return '';
     }
 }
@@ -88,10 +88,10 @@ export function calculateHashForBlock(
 export function isValidHashAndSignature(newBlock: any, cb: (valid: boolean) => void) {
     let theoreticalHash = calculateHashForBlock(newBlock, true)
     if (theoreticalHash !== newBlock.hash) {
-        logger.debug(typeof (newBlock.hash) + ' ' + typeof theoreticalHash)
-        logger.error('invalid hash: ' + theoreticalHash + ' ' + newBlock.hash)
+        logger.debug(`Hash types: received = ${typeof (newBlock.hash)}, calculated = ${typeof theoreticalHash}`);
+        logger.error(`invalid hash: calculated = ${theoreticalHash}, received = ${newBlock.hash}`);
         // Log the full newBlock object when there's a hash mismatch
-        logger.error('[isValidHashAndSignature] Mismatch detected. Received newBlock object:', JSON.stringify(newBlock, null, 2));
+        logger.error(`[isValidHashAndSignature] Mismatch detected. Received newBlock object: ${JSON.stringify(newBlock, null, 2)}`);
         cb(false); return
     }
 
@@ -210,7 +210,7 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
         }
         isValidHashAndSignature(newBlock, function (isValid) {
             if (!isValid) {
-                logger.error('invalid hash: ' + newBlock.hash)
+                logger.error(`invalid hash: ${newBlock.hash}`);
                 cb(false); return
             }
             cb(true)
