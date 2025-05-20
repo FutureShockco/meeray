@@ -17,7 +17,7 @@ export async function validateTx(data: PoolSwapData, sender: string): Promise<bo
   try {
     if (sender !== data.trader) {
       logger.warn('[pool-swap] Sender must be the trader.');
-      return false;
+        return false;
     }
 
     const amountInNum = parseAmount(data.amountIn);
@@ -29,7 +29,7 @@ export async function validateTx(data: PoolSwapData, sender: string): Promise<bo
                                                           // Current doc implies it\'s always present as string.
     if (minAmountOutNum <=0) { // If minAmountOut is required and must be positive.
          logger.warn('[pool-swap] minAmountOut must be a positive number string.');
-         return false;
+        return false;
     }
 
     const traderAccount = await getAccount(data.trader);
@@ -131,7 +131,7 @@ export async function validateTx(data: PoolSwapData, sender: string): Promise<bo
             return false;
         }
         const tokenInIdentifier = `${data.tokenInSymbol}@${data.tokenInIssuer}`;
-        const traderTokenInBalance = traderAccount.balances?.[tokenInIdentifier] || 0;
+    const traderTokenInBalance = traderAccount.balances?.[tokenInIdentifier] || 0;
         if (traderTokenInBalance < amountInNum) {
           logger.warn(`[pool-swap-direct] Trader ${data.trader} has insufficient ${data.tokenInSymbol} balance. Has ${traderTokenInBalance}, needs ${amountInNum}`);
           return false;
@@ -140,7 +140,7 @@ export async function validateTx(data: PoolSwapData, sender: string): Promise<bo
     // Invalid structure - neither valid routed nor valid direct
     else {
         logger.warn('[pool-swap] Invalid data structure: Must provide valid hops for a routed swap or poolId & token details for a direct swap.');
-        return false;
+      return false;
     }
 
     return true;
@@ -181,7 +181,7 @@ export async function process(data: PoolSwapData, sender: string): Promise<boole
     // 1. Debit initial token from trader
     if (!await adjustBalance(data.trader, initialTokenIdentifier, -amountInNum)) {
         logger.error(`[pool-swap-route] Failed to debit ${amountInNum} ${initialTokenIdentifier} from ${data.trader}.`);
-        return false;
+      return false;
     }
 
     const processedPoolsInfo: Array<{pool: LiquidityPool, originalReserveIn: number, originalReserveOut: number, hopTokenInSymbol: string, hopTokenInIssuer: string}> = [];
@@ -193,15 +193,15 @@ export async function process(data: PoolSwapData, sender: string): Promise<boole
         if (!pool) {
           logger.error(`[pool-swap-route] CRITICAL: Pool ${hop.poolId} for hop ${i} not found during processing.`);
           throw new Error(`Pool ${hop.poolId} not found for hop ${i}`);
-        }
+    }
 
-        let reserveIn: number, reserveOut: number;
+    let reserveIn: number, reserveOut: number;
         if (pool.tokenA_symbol === hop.hopTokenInSymbol && pool.tokenA_issuer === hop.hopTokenInIssuer) {
-          reserveIn = pool.tokenA_reserve;
-          reserveOut = pool.tokenB_reserve;
+      reserveIn = pool.tokenA_reserve;
+      reserveOut = pool.tokenB_reserve;
         } else if (pool.tokenB_symbol === hop.hopTokenInSymbol && pool.tokenB_issuer === hop.hopTokenInIssuer) {
-          reserveIn = pool.tokenB_reserve;
-          reserveOut = pool.tokenA_reserve;
+      reserveIn = pool.tokenB_reserve;
+      reserveOut = pool.tokenA_reserve;
         } else {
           logger.error(`[pool-swap-route] CRITICAL: Mismatch in hopTokenInSymbol for pool ${hop.poolId} (hop ${i}).`);
           throw new Error(`Token mismatch in hop ${i}`);
@@ -278,7 +278,7 @@ export async function process(data: PoolSwapData, sender: string): Promise<boole
         let previousPoolUpdateChanges = {};
          if (info.pool.tokenA_symbol === info.hopTokenInSymbol && info.pool.tokenA_issuer === info.hopTokenInIssuer) {
             previousPoolUpdateChanges = { tokenA_reserve: info.originalReserveIn, tokenB_reserve: info.originalReserveOut };
-        } else {
+    } else {
             previousPoolUpdateChanges = { tokenB_reserve: info.originalReserveIn, tokenA_reserve: info.originalReserveOut };
         }
         await cache.updateOnePromise('liquidityPools', { _id: info.pool._id }, { $set: previousPoolUpdateChanges });
@@ -293,9 +293,9 @@ export async function process(data: PoolSwapData, sender: string): Promise<boole
         const pool = await cache.findOnePromise('liquidityPools', { _id: data.poolId }) as LiquidityPool | null;
         if (!pool) {
           logger.error(`[pool-swap-direct] CRITICAL: Pool ${data.poolId} not found during processing.`);
-          return false;
-        }
-
+      return false;
+    }
+    
         let reserveIn: number, reserveOut: number;
         // Determine which pool token is tokenIn and which is tokenOut
         if (pool.tokenA_symbol === data.tokenInSymbol && pool.tokenA_issuer === data.tokenInIssuer) {
@@ -306,79 +306,79 @@ export async function process(data: PoolSwapData, sender: string): Promise<boole
           reserveOut = pool.tokenA_reserve;
         } else {
           logger.error(`[pool-swap-direct] CRITICAL: Mismatch in tokenIn for pool ${data.poolId}.`);
-          return false;
-        }
-        
-        if (reserveIn <= 0 || reserveOut <= 0) {
+        return false;
+    }
+
+    if (reserveIn <= 0 || reserveOut <= 0) {
             logger.error(`[pool-swap-direct] CRITICAL: Pool ${data.poolId} has zero or negative reserve.`);
-            return false;
-        }
+        return false;
+    }
 
         const amountOut = calculateSwapAmountOut(amountInNum, reserveIn, reserveOut, pool.feeRate || SWAP_FEE_RATE); // Use pool.feeRate
 
-        if (amountOut <= 0) {
+    if (amountOut <= 0) {
           logger.warn(`[pool-swap-direct] Calculated amountOut is ${amountOut}. Swap not viable.`);
-          return false;
-        }
+      return false;
+    }
         if (minAmountOutNum > 0 && amountOut < minAmountOutNum) {
           logger.warn(`[pool-swap-direct] Slippage protection: Calculated amountOut ${amountOut} is less than minAmountOut ${minAmountOutNum}.`);
-          return false;
-        }
+      return false;
+    }
 
         const tokenInIdentifier = `${data.tokenInSymbol}@${data.tokenInIssuer}`;
         if (!await adjustBalance(data.trader, tokenInIdentifier, -amountInNum)) {
             logger.error(`[pool-swap-direct] Failed to debit ${amountInNum} ${tokenInIdentifier} from ${data.trader}.`);
-            return false;
-        }
+        return false;
+    }
 
         const newReserveIn = reserveIn + amountInNum;
-        const newReserveOut = reserveOut - amountOut;
+    const newReserveOut = reserveOut - amountOut;
 
-        let poolUpdateChanges = {};
+    let poolUpdateChanges = {};
         if (pool.tokenA_symbol === data.tokenInSymbol && pool.tokenA_issuer === data.tokenInIssuer) {
-            poolUpdateChanges = { tokenA_reserve: newReserveIn, tokenB_reserve: newReserveOut };
-        } else {
-            poolUpdateChanges = { tokenB_reserve: newReserveIn, tokenA_reserve: newReserveOut };
-        }
+        poolUpdateChanges = { tokenA_reserve: newReserveIn, tokenB_reserve: newReserveOut };
+    } else {
+        poolUpdateChanges = { tokenB_reserve: newReserveIn, tokenA_reserve: newReserveOut };
+    }
 
-        const poolUpdateSuccess = await cache.updateOnePromise(
-          'liquidityPools',
-          { _id: data.poolId },
-          { $set: { ...poolUpdateChanges, lastUpdatedAt: new Date().toISOString() } }
-        );
+    const poolUpdateSuccess = await cache.updateOnePromise(
+      'liquidityPools',
+      { _id: data.poolId },
+      { $set: { ...poolUpdateChanges, lastUpdatedAt: new Date().toISOString() } }
+    );
 
-        if (!poolUpdateSuccess) {
+    if (!poolUpdateSuccess) {
           logger.error(`[pool-swap-direct] CRITICAL: Failed to update pool reserves for ${data.poolId}. Rolling back debit.`);
           await adjustBalance(data.trader, tokenInIdentifier, amountInNum);
-          return false;
-        }
+      return false;
+    }
 
         const tokenOutIdentifier = `${data.tokenOutSymbol}@${data.tokenOutIssuer}`;
-        if (!await adjustBalance(data.trader, tokenOutIdentifier, amountOut)) {
+    if (!await adjustBalance(data.trader, tokenOutIdentifier, amountOut)) {
             logger.error(`[pool-swap-direct] CRITICAL: Failed to credit ${amountOut} ${tokenOutIdentifier} to ${data.trader}. State inconsistent!`);
             await adjustBalance(data.trader, tokenInIdentifier, amountInNum); // Rollback debit
             let previousPoolUpdateChanges = {}; // Rollback pool
             if (pool.tokenA_symbol === data.tokenInSymbol && pool.tokenA_issuer === data.tokenInIssuer) {
-                previousPoolUpdateChanges = { tokenA_reserve: reserveIn, tokenB_reserve: reserveOut };
-            } else {
-                previousPoolUpdateChanges = { tokenB_reserve: reserveIn, tokenA_reserve: reserveOut };
-            }
-            await cache.updateOnePromise('liquidityPools', { _id: data.poolId }, { $set: previousPoolUpdateChanges });
-            return false;
+            previousPoolUpdateChanges = { tokenA_reserve: reserveIn, tokenB_reserve: reserveOut };
+        } else {
+            previousPoolUpdateChanges = { tokenB_reserve: reserveIn, tokenA_reserve: reserveOut };
         }
+        await cache.updateOnePromise('liquidityPools', { _id: data.poolId }, { $set: previousPoolUpdateChanges });
+        return false;
+    }
 
         logger.info(`[pool-swap-direct] Trader ${data.trader} swapped ${amountInNum.toFixed(8)} ${data.tokenInSymbol} for ${amountOut.toFixed(8)} ${data.tokenOutSymbol} in pool ${data.poolId}.`);
-        
-        const eventDocument = {
+
+    const eventDocument = {
           type: 'poolDirectSwap', // Differentiate event type
-          timestamp: new Date().toISOString(),
-          actor: sender,
+      timestamp: new Date().toISOString(),
+      actor: sender,
           data: { ...data, tokenIn_amount: amountInNum, minTokenOut_amount: minAmountOutNum, tokenOut_amount: amountOut } // Log actual processed amounts
         };
         cache.insertOne('events', eventDocument, (err) => {
             if (err) logger.error(`[pool-swap-direct] CRITICAL: Failed to log poolDirectSwap event: ${err}`);
         });
-        return true;
+    return true;
 
       } catch (directError: any) {
         logger.error(`[pool-swap-direct] Error processing direct swap: ${directError.message}`);

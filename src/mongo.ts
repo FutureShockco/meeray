@@ -202,6 +202,8 @@ export const mongo = {
             await currentDb.collection('accounts').createIndex({ name: 1 });
             await currentDb.collection('accounts').createIndex({ totalVoteWeight: 1 });
             await currentDb.collection('tokens').createIndex({ symbol: 1 });
+            await currentDb.collection('tokens').createIndex({ launchpadId: 1 });
+            await currentDb.collection('tokens').createIndex({ owner: 1 });
 
             // NFT Collections
             await currentDb.collection('nftCollections').createIndex({ _id: 1 }); // symbol is _id
@@ -248,27 +250,46 @@ export const mongo = {
             await currentDb.collection('tradingPairs').createIndex({ status: 1 });
             await currentDb.collection('tradingPairs').createIndex({ baseAssetSymbol: 1, baseAssetIssuer: 1, quoteAssetSymbol: 1, quoteAssetIssuer: 1 }, { name: "assets_combination_idx"});
 
+            // Launchpads Collection Indexes
+            logger.info('[DB Indexes] Creating indexes for launchpads collection...');
+            const launchpadsCollection = currentDb.collection('launchpads');
+            await launchpadsCollection.createIndex({ status: 1 });
+            await launchpadsCollection.createIndex({ launchedByUserId: 1 });
+            await launchpadsCollection.createIndex({ "tokenToLaunch.symbol": 1 });
+            await launchpadsCollection.createIndex({ mainTokenId: 1 });
+            await launchpadsCollection.createIndex({ "presale.participants.userId": 1 });
+            logger.info('[DB Indexes] Finished creating indexes for launchpads collection.');
+
             // Orders
-            await currentDb.collection('orders').createIndex({ _id: 1 });
-            await currentDb.collection('orders').createIndex({ pairId: 1 });
-            await currentDb.collection('orders').createIndex({ userId: 1 });
-            await currentDb.collection('orders').createIndex({ status: 1 });
-            await currentDb.collection('orders').createIndex({ pairId: 1, status: 1 }); // For finding open/filled orders in a pair
-            await currentDb.collection('orders').createIndex({ userId: 1, status: 1 }); // For finding user's open/filled orders
-            await currentDb.collection('orders').createIndex({ pairId: 1, side: 1, price: 1, status: 1}); // For order book reconstruction / matching query
+            logger.info('[DB Indexes] Creating indexes for orders collection...');
+            const ordersCollection = currentDb.collection('orders');
+            await ordersCollection.createIndex({ _id: 1 });
+            await ordersCollection.createIndex({ pairId: 1 });
+            await ordersCollection.createIndex({ userId: 1 });
+            await ordersCollection.createIndex({ status: 1 });
+            await ordersCollection.createIndex({ pairId: 1, status: 1 }); // For finding open/filled orders in a pair
+            await ordersCollection.createIndex({ userId: 1, status: 1 }); // For finding user's open/filled orders
+            await ordersCollection.createIndex({ pairId: 1, side: 1, price: 1, status: 1}); // For order book reconstruction / matching query
+            logger.info('[DB Indexes] Finished creating indexes for orders collection.');
 
             // Trades
-            await currentDb.collection('trades').createIndex({ _id: 1 });
-            await currentDb.collection('trades').createIndex({ pairId: 1 });
-            await currentDb.collection('trades').createIndex({ timestamp: -1 });
-            await currentDb.collection('trades').createIndex({ makerOrderId: 1 });
-            await currentDb.collection('trades').createIndex({ takerOrderId: 1 });
+            logger.info('[DB Indexes] Creating indexes for trades collection...');
+            const tradesCollection = currentDb.collection('trades');
+            await tradesCollection.createIndex({ _id: 1 });
+            await tradesCollection.createIndex({ pairId: 1 });
+            await tradesCollection.createIndex({ timestamp: -1 });
+            await tradesCollection.createIndex({ makerOrderId: 1 });
+            await tradesCollection.createIndex({ takerOrderId: 1 });
+            logger.info('[DB Indexes] Finished creating indexes for trades collection.');
 
             // Pools (Liquidity Pools)
-            await currentDb.collection('pools').createIndex({ _id: 1 }); // poolId
-            await currentDb.collection('pools').createIndex({ tokenA_symbol: 1 });
-            await currentDb.collection('pools').createIndex({ tokenB_symbol: 1 });
-            await currentDb.collection('pools').createIndex({ creator: 1 });
+            logger.info('[DB Indexes] Creating indexes for pools collection...');
+            const poolsCollection = currentDb.collection('pools');
+            await poolsCollection.createIndex({ _id: 1 }); // poolId
+            await poolsCollection.createIndex({ tokenA_symbol: 1 });
+            await poolsCollection.createIndex({ tokenB_symbol: 1 });
+            await poolsCollection.createIndex({ creator: 1 });
+            logger.info('[DB Indexes] Finished creating indexes for pools collection.');
 
             logger.info('MongoDB indexes ensured for all relevant collections.');
         } catch (indexError) {

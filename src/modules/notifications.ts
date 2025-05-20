@@ -26,12 +26,12 @@ export const notifications = {
             case TransactionType.TOKEN_CREATE:
                 const tokenCreateData = tx.data as any;
                 if (tokenCreateData.creator) {
-                    notif = {
+                notif = {
                         u: tokenCreateData.creator,
-                        tx: tx,
-                        ts: ts
-                    };
-                    await mongo.getDb().collection('notifications').insertOne(notif);
+                    tx: tx,
+                    ts: ts
+                };
+                await mongo.getDb().collection('notifications').insertOne(notif);
                 }
                 break;
             case TransactionType.TOKEN_TRANSFER:

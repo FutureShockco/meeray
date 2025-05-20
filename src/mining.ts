@@ -29,17 +29,18 @@ export const mining = {
             if (!transactions) {
                 // Handle the case where the Steem block doesn't exist yet
                 if (steem.getBehindBlocks() <= 0) {
-                    logger.warn(`Cannot prepare block - Steem block ${nextSteemBlockNum} not found, but we're caught up with Steem head. Retrying in 1 second...`)
+                    logger.debug(`Cannot prepare block - Steem block ${nextSteemBlockNum} not found, but we're caught up with Steem head. Retrying in 1 second...`)
 
                     // If we're at the head of Steem, wait a bit and let the caller retry
                     setTimeout(() => {
                         cb(true, null)
                     }, 1000)
-
+                    return; // Add explicit return to prevent further execution
                 }
 
-                logger.warn(`Cannot prepare block - Steem block ${nextSteemBlockNum} not found`)
+                logger.warn(`Cannot prepare block - Steem block ${nextSteemBlockNum} not found, behind by ${steem.getBehindBlocks()} blocks`)
                 cb(true, null)
+                return; // Add explicit return to prevent further execution
             }
 
             // Add mempool transactions

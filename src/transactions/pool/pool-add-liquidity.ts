@@ -120,12 +120,12 @@ export async function process(data: PoolAddLiquidityData, sender: string): Promi
     }
 
     const poolUpdateData = {
-      $inc: {
-        tokenA_reserve: data.tokenA_amount,
-        tokenB_reserve: data.tokenB_amount,
-        totalLpTokens: lpTokensToMint
-      },
-      $set: { lastUpdatedAt: new Date().toISOString() }
+        $inc: {
+          tokenA_reserve: data.tokenA_amount,
+          tokenB_reserve: data.tokenB_amount,
+          totalLpTokens: lpTokensToMint
+        },
+        $set: { lastUpdatedAt: new Date().toISOString() }
     };
 
     const updateResult = await cache.updateOnePromise(

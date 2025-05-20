@@ -45,6 +45,7 @@ interface CacheCopyCollections {
     userFarmPositions: CacheCollectionStore;
     userLiquidityPositions: CacheCollectionStore;
     trades: CacheCollectionStore;
+    launchpads: CacheCollectionStore;
     // Add other collections from original TS if they were in `copy`
 }
 
@@ -64,6 +65,7 @@ interface CacheMainDataCollections {
     userFarmPositions: CacheCollectionStore;
     userLiquidityPositions: CacheCollectionStore;
     trades: CacheCollectionStore;
+    launchpads: CacheCollectionStore;
     // Add other collections from original TS if they were direct properties
 }
 
@@ -131,12 +133,14 @@ const cache: CacheType = {
         accounts: {}, blocks: {}, state: {}, tokens: {},
         nftCollections: {}, nfts: {}, tradingPairs: {}, orders: {},
         nftListings: {}, pools: {}, events: {}, farms: {}, userFarmPositions: {}, userLiquidityPositions: {},
-        trades: {}
+        trades: {},
+        launchpads: {}
     },
     accounts: {}, blocks: {}, state: {}, tokens: {},
     nftCollections: {}, nfts: {}, tradingPairs: {}, orders: {},
     nftListings: {}, pools: {}, events: {}, farms: {}, userFarmPositions: {}, userLiquidityPositions: {},
     trades: {},
+    launchpads: {},
 
     changes: [],
     inserts: [],

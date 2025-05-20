@@ -176,6 +176,17 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                         txType = TransactionType.WITNESS_UNVOTE;
                         break;
                     
+                    // Launchpad Transactions
+                    case 'launchpad_launch_token':
+                        txType = TransactionType.LAUNCHPAD_LAUNCH_TOKEN;
+                        break;
+                    case 'launchpad_participate_presale':
+                        txType = TransactionType.LAUNCHPAD_PARTICIPATE_PRESALE;
+                        break;
+                    case 'launchpad_claim_tokens':
+                        txType = TransactionType.LAUNCHPAD_CLAIM_TOKENS;
+                        break;
+                    
                     default:
                         const typeNum = parseInt(json.contract);
                         if (!isNaN(typeNum) && TransactionType[typeNum]) {

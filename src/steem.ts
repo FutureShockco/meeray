@@ -45,7 +45,7 @@ const CIRCUIT_BREAKER_THRESHOLD = 30;
 const PREFETCH_BLOCKS = 5;  // Maximum number of blocks to prefetch at once
 const MAX_PREFETCH_BLOCKS = 10;  // Maximum number of blocks to prefetch at once
 const SYNC_EXIT_THRESHOLD = 3;   // Exit sync when we're at most this many blocks behind
-const DEFAULT_BROADCAST_INTERVAL = 10000; // 10 seconds
+const DEFAULT_BROADCAST_INTERVAL = 30000; // 30 seconds in normal mode (increased from 10s)
 const FAST_BROADCAST_INTERVAL = 5000; // 5 second
 
 // --- Post-sync cooldown and READY handshake ---
@@ -135,6 +135,21 @@ let nextSteemBlock = 0;
 // Map to store peer sync statuses
 const peerSyncStatuses: Record<string, SyncStatus> = {};
 
+// Add new constants for block time control
+// const NORMAL_MODE_BLOCK_TIME = 3000; // 3 seconds in normal mode
+// const SYNC_MODE_BLOCK_TIME = 1000;   // 1 second in sync mode (faster)
+const SYNC_MODE_BLOCK_FETCH_BATCH = 10; // Number of blocks to fetch at once in sync mode
+const NORMAL_MODE_BLOCK_FETCH_BATCH = 5; // Number of blocks to fetch at once in normal mode
+
+// Add a constant for the Steem head block polling interval
+const STEEM_HEAD_POLLING_INTERVAL = 3000; // Check Steem head block every 3 seconds
+const SYNC_MODE_POLLING_INTERVAL = 1000; // Check more frequently in sync mode
+let steemBlockPollingInterval: NodeJS.Timeout | null = null;
+
+// Add a counter for status broadcasts to prevent flooding
+let statusBroadcastCounter = 0;
+const MAX_RAPID_BROADCASTS = 5; // Maximum number of rapid broadcasts before slowing down
+
 /**
  * Initialize the Steem module
  * @param blockNum - The block number to start syncing from
@@ -148,6 +163,14 @@ const init = (blockNum: number): void => {
     syncExitTargetBlock = null; // Reset sync exit target
     startSyncStatusBroadcasting();
     readySent = false;
+
+    // Start regular network status checks
+    const networkCheckInterval = setInterval(checkNetworkSyncStatus, 5000);
+    
+    // Clean up interval on process exit
+    process.on('SIGINT', () => {
+        clearInterval(networkCheckInterval);
+    });
 
     checkNetworkSyncStatus().then(async () => {
         // Wait a bit to collect peer statuses
@@ -198,6 +221,9 @@ const init = (blockNum: number): void => {
             const waitForNetworkSync = setInterval(requestBlocks, 3000);
             const blockRequestInterval = setInterval(requestBlocks, 1000);
             requestBlocks();
+        } else {
+            // No reference node or we're the highest node, start Steem sync directly
+            initSteemSync(blockNum);
         }
     }).catch(err => {
         logger.error('Error checking network sync status:', err);
@@ -286,7 +312,12 @@ function broadcastSyncStatusLoop(): void {
     // Always broadcast in sync mode or when behind
     const shouldBroadcast = isSyncing || behindBlocks >= config.steemBlockDelay;
     const interval = shouldBroadcast ? FAST_BROADCAST_INTERVAL : DEFAULT_BROADCAST_INTERVAL;
-
+    
+    // If we're caught up and not in sync mode, we may broadcast less frequently
+    const forceFullBroadcast = shouldBroadcast || 
+                            (Date.now() - lastForcedBroadcast > FORCED_BROADCAST_INTERVAL);
+    
+    // Adjust interval if needed
     if (lastBroadcastInterval !== interval) {
         if (syncStatusBroadcastInterval) clearInterval(syncStatusBroadcastInterval);
         // Add random jitter to avoid synchronization
@@ -303,14 +334,30 @@ function broadcastSyncStatusLoop(): void {
             isSyncing: isSyncing,
             blockId: chain.getLatestBlock()._id,
             consensusBlocks: null,
-            exitTarget: syncExitTargetBlock
+            exitTarget: syncExitTargetBlock,
+            timestamp: Date.now() // Add current timestamp
         };
+        
+        // Check if status has changed substantively since last broadcast
+        const hasChanged = lastBroadcastedSyncStatus.isSyncing !== currentStatus.isSyncing ||
+                           lastBroadcastedSyncStatus.behindBlocks !== currentStatus.behindBlocks ||
+                           lastBroadcastedSyncStatus.exitTarget !== currentStatus.exitTarget;
 
-        // Always broadcast if we're behind or in sync mode
-        if (shouldBroadcast) {
+        // Broadcast if we should, or if status changed, or if forced
+        if (shouldBroadcast || hasChanged || forceFullBroadcast) {
             p2p.broadcastSyncStatus(currentStatus);
             lastBroadcastedSyncStatus = { ...currentStatus };
-            lastForcedBroadcast = Date.now();
+            
+            // Update last forced broadcast time if this was a forced broadcast
+            if (forceFullBroadcast) {
+                lastForcedBroadcast = Date.now();
+            }
+            
+            // Only log if we're in sync mode or the status changed
+            if (isSyncing || hasChanged) {
+                const statusDesc = isSyncing ? "SYNC MODE" : (behindBlocks > 0 ? `${behindBlocks} blocks behind` : "CAUGHT UP");
+                logger.debug(`Broadcast sync status: ${statusDesc}, block: ${currentStatus.blockId}`);
+            }
         }
     }
 }
@@ -319,28 +366,72 @@ function broadcastSyncStatusLoop(): void {
  * Enter sync mode
  */
 function enterSyncMode(): void {
+    if (isSyncing) {
+        logger.debug('Already in sync mode, ignoring enterSyncMode call');
+        return;
+    }
+    
+    logger.info('Entering sync mode');
     isSyncing = true;
     syncExitTargetBlock = null;
+    
+    // No need to set block time - mining.ts handles this
+    
+    // Start more aggressive prefetching
+    prefetchBlocks(currentSteemBlock + 1);
+    
+    // Update polling interval for more frequent updates during sync
+    updateSteemBlockPolling();
+    
+    // Broadcast sync status more frequently
     startSyncStatusBroadcasting();
-    readySent = false; // Only reset readySent when entering sync mode
+    readySent = false;
+    
+    // Reset broadcast counter to allow initial rapid broadcasts
+    statusBroadcastCounter = 0;
+    
+    // Notify other system components about sync mode
+    if (p2p && p2p.sockets && p2p.sockets.length > 0) {
+        const syncStatus: SyncStatus = {
+            behindBlocks: behindBlocks,
+            steemBlock: currentSteemBlock,
+            isSyncing: true,
+            blockId: chain?.getLatestBlock()?._id || 0,
+            consensusBlocks: behindBlocks,
+            exitTarget: null,
+            timestamp: Date.now()
+        };
+        p2p.broadcastSyncStatus(syncStatus);
+    }
 }
 
 /**
  * Exit sync mode
  * @param currentBlockId - The current block ID
+ * @param currentSteemBlockNum - The current Steem block number
  */
 function exitSyncMode(currentBlockId: number, currentSteemBlockNum: number): void {
+    if (!isSyncing) {
+        logger.debug('Not in sync mode, ignoring exitSyncMode call');
+        return;
+    }
+    
     logger.info(`Exiting sync mode at block ${currentBlockId} (Steem block: ${currentSteemBlockNum})`);
     isSyncing = false;
+
+    // No need to reset block time - mining.ts handles this
+
+    // Update polling interval back to normal frequency
+    updateSteemBlockPolling();
 
     // Set post-sync lenient period
     postSyncLenientUntil = currentBlockId + POST_SYNC_LENIENT_BLOCKS;
     logger.info(`Setting lenient validation until block ${postSyncLenientUntil}`);
 
     // Record the time of sync exit for future reference
-    lastSyncExitTime = new Date().getTime();
+    lastSyncExitTime = Date.now();
 
-    // Broadcast exit to peers
+    // Broadcast exit to peers with the current timestamp for better coordination
     if (p2p && p2p.sockets && p2p.sockets.length > 0) {
         const exitStatus: SyncStatus = {
             behindBlocks: behindBlocks,
@@ -348,10 +439,26 @@ function exitSyncMode(currentBlockId: number, currentSteemBlockNum: number): voi
             isSyncing: false,
             blockId: currentBlockId,
             consensusBlocks: behindBlocks,
-            exitTarget: null
+            exitTarget: null,
+            timestamp: Date.now()
         };
         p2p.broadcastSyncStatus(exitStatus);
+        
+        // Broadcast rapidly a few times to ensure peers receive the exit signal
+        statusBroadcastCounter = 0;
+        const rapidBroadcastExit = () => {
+            if (statusBroadcastCounter < MAX_RAPID_BROADCASTS) {
+                p2p.broadcastSyncStatus(exitStatus);
+                statusBroadcastCounter++;
+                setTimeout(rapidBroadcastExit, 500); // Every 500ms
+            }
+        };
+        setTimeout(rapidBroadcastExit, 500);
     }
+    
+    // Return to normal broadcast interval
+    stopSyncStatusBroadcasting();
+    startSyncStatusBroadcasting();
 }
 
 /**
@@ -423,78 +530,122 @@ const shouldExitSyncMode = (currentBlockId: number): boolean => {
 const prefetchBlocks = async (blockNum: number): Promise<void> => {
     if (prefetchInProgress || circuitBreakerOpen) return;
     prefetchInProgress = true;
-    let currentBlock = blockNum || config.steemStartBlock;
-    const latestSteemBlock = await getLatestSteemBlockNum();
-    if (!latestSteemBlock) {
-        prefetchInProgress = false;
-        logger.warn(`Could not fetch latest steem block`);
-        return;
-    }
-    let blocksToPrefetch = PREFETCH_BLOCKS;
-    const localBehindBlocks = latestSteemBlock - currentBlock;
-    if (localBehindBlocks > MAX_PREFETCH_BLOCKS) {
-        blocksToPrefetch = MAX_PREFETCH_BLOCKS;
-        logger.debug(`Very far behind (${localBehindBlocks} blocks) - aggressive prefetching ${blocksToPrefetch} blocks`);
-    }
-    blocksToPrefetch = Math.min(blocksToPrefetch, latestSteemBlock - currentBlock);
-    if (blocksToPrefetch <= 0) {
-        prefetchInProgress = false;
-        return;
-    }
-    let missedBlocks = 0;
-    let processedFirstBlock = false;
+    
     try {
+        let currentBlock = blockNum || config.steemStartBlock;
+        const latestSteemBlock = await getLatestSteemBlockNum();
+        
+        if (!latestSteemBlock) {
+            logger.warn(`Could not fetch latest steem block`);
+            prefetchInProgress = false;
+            return;
+        }
+        
+        const localBehindBlocks = latestSteemBlock - currentBlock;
+        behindBlocks = localBehindBlocks; // Update global behind blocks count
+        
+        // If we're already caught up, nothing to prefetch
+        if (localBehindBlocks <= 0) {
+            logger.debug('Already caught up with Steem, no blocks to prefetch');
+            prefetchInProgress = false;
+            return;
+        }
+        
+        // Determine batch size based on how many blocks are actually available
+        let blocksToPrefetch;
+        
+        if (isSyncing) {
+            // In sync mode, try to fetch more blocks to catch up faster
+            blocksToPrefetch = Math.min(SYNC_MODE_BLOCK_FETCH_BATCH, localBehindBlocks);
+            logger.debug(`Sync mode - prefetching up to ${blocksToPrefetch} blocks`);
+        } else {
+            // In normal mode, be more conservative - only fetch what's actually needed
+            // When almost caught up (< 3 blocks behind), just fetch the available blocks
+            blocksToPrefetch = Math.min(NORMAL_MODE_BLOCK_FETCH_BATCH, localBehindBlocks);
+            logger.debug(`Normal mode - prefetching ${blocksToPrefetch} blocks (${localBehindBlocks} available)`);
+        }
+        
+        // Adjust batch size if we're very far behind
+        if (localBehindBlocks > MAX_PREFETCH_BLOCKS) {
+            blocksToPrefetch = Math.min(MAX_PREFETCH_BLOCKS, localBehindBlocks);
+            logger.debug(`Very far behind (${localBehindBlocks} blocks) - aggressive prefetching ${blocksToPrefetch} blocks`);
+        }
+        
+        logger.debug(`Prefetching ${blocksToPrefetch} blocks starting from ${currentBlock} (behind: ${localBehindBlocks})`);
+        
+        let missedBlocks = 0;
+        let processedFirstBlock = false;
+        
         for (let i = 0; i < blocksToPrefetch && !circuitBreakerOpen; i++) {
             const blockToFetch = currentBlock + i;
+            
             // Skip blocks already being processed or in cache
             if (processingBlocks.includes(blockToFetch) || blockCache.has(blockToFetch)) {
                 continue;
             }
+            
             try {
                 const steemBlock = await client.database.getBlock(blockToFetch);
                 if (steemBlock) {
                     blockCache.set(blockToFetch, steemBlock as any);
+                    processedFirstBlock = true;
                 } else {
                     missedBlocks++;
                     logger.warn(`No data returned for Steem block ${blockToFetch}`);
-                    // If this is the first block and we couldn't get it, try to move past it
-                    if (i === 0 && !processedFirstBlock) {
-                        if (consecutiveErrors > 3) {
-                            logger.warn(`Skipping problematic block ${blockToFetch} after multiple failures`);
-                            nextSteemBlock = blockToFetch + 1;
-                            resetConsecutiveErrors();
-                        } else {
-                            incrementConsecutiveErrors();
-                        }
+                    
+                    // If this is the first block and we couldn't get it repeatedly, try to move past it
+                    if (i === 0 && !processedFirstBlock && consecutiveErrors > 3) {
+                        logger.warn(`Skipping problematic block ${blockToFetch} after multiple failures`);
+                        nextSteemBlock = blockToFetch + 1;
+                        resetConsecutiveErrors();
+                    } else {
+                        incrementConsecutiveErrors();
                     }
                 }
             } catch (error) {
                 missedBlocks++;
                 incrementConsecutiveErrors();
                 logger.warn(`Failed to prefetch Steem block ${blockToFetch}:`, error);
-                // If this is the first block and we've been stuck for a while, try to move past it
+                
+                // If this is the first block and we've been stuck, try to move past it
                 if (i === 0 && !processedFirstBlock && consecutiveErrors > 5) {
                     logger.warn(`Moving past problematic block ${blockToFetch} after ${consecutiveErrors} consecutive errors`);
                     nextSteemBlock = blockToFetch + 1;
                     resetConsecutiveErrors();
                 }
             }
-            // Throttle requests in sync mode
-            if (isSyncing) {
-                await new Promise(resolve => setTimeout(resolve, SYNC_BLOCK_FETCH_DELAY));
-            }
+            
+            // Throttle requests based on sync mode
+            const fetchDelay = isSyncing ? SYNC_BLOCK_FETCH_DELAY : SYNC_BLOCK_FETCH_DELAY * 2;
+            await new Promise(resolve => setTimeout(resolve, fetchDelay));
         }
+        
         // If we've missed too many blocks, try switching endpoints
-        if (missedBlocks > blocksToPrefetch / 2) {
+        if (missedBlocks > 0 && missedBlocks >= blocksToPrefetch / 2) {
             logger.warn(`Missed ${missedBlocks}/${blocksToPrefetch} blocks, switching RPC endpoint`);
             switchToNextEndpoint();
         }
+        
         // Trim cache if it gets too large
         if (blockCache.size > blocksToPrefetch * 2) {
             const keysArray = Array.from(blockCache.keys()).sort((a, b) => a - b);
             const keysToDelete = keysArray.slice(0, blockCache.size - blocksToPrefetch);
             keysToDelete.forEach(key => blockCache.delete(key));
         }
+        
+        // If we're behind, automatically enter sync mode
+        if (localBehindBlocks > config.steemBlockDelay && !isSyncing) {
+            logger.info(`Behind ${localBehindBlocks} blocks, automatically entering sync mode`);
+            enterSyncMode();
+        }
+        
+        // If we're in sync mode but caught up, consider exiting
+        if (isSyncing && localBehindBlocks <= SYNC_EXIT_THRESHOLD && shouldExitSyncMode(chain?.getLatestBlock()?._id || 0)) {
+            exitSyncMode(chain?.getLatestBlock()?._id || 0, currentSteemBlock);
+        }
+        
+    } catch (error) {
+        logger.error('Error in prefetchBlocks:', error);
     } finally {
         prefetchInProgress = false;
     }
@@ -585,12 +736,56 @@ const processBlock = async (blockNum: number): Promise<SteemBlockResult | null> 
  * @returns {NetworkSyncStatus} The network sync status
  */
 const getNetworkSyncStatus = (): NetworkSyncStatus => {
-    // Implementation will go here
-    // This function is a placeholder for the full implementation
+    // Find the node with the highest block
+    let highestBlock = chain?.getLatestBlock()?._id || 0;
+    let referenceNodeId = 'self'; // Default to self
+    let referenceExists = false;
+    
+    // Use a timestamp threshold to filter out old status updates
+    const now = Date.now();
+    const validStatuses = new Map<string, {
+        blockId?: number;
+        timestamp: number;
+        steemBlock: number;
+        behindBlocks: number;
+    }>();
+    
+    // Filter and gather valid statuses
+    for (const [nodeId, status] of networkSteemHeights.entries()) {
+        // Only consider statuses from the last minute
+        if (now - status.timestamp < 60000) {
+            validStatuses.set(nodeId, status);
+            
+            // Update highest block if this node has a higher one
+            if (status.blockId && status.blockId > highestBlock) {
+                highestBlock = status.blockId;
+                referenceNodeId = nodeId;
+                referenceExists = true;
+            }
+        }
+    }
+    
+    // Count how many nodes are considered "in sync"
+    const blockHeights = Array.from(validStatuses.values())
+        .filter(s => s.blockId !== undefined)
+        .map(s => s.blockId as number);
+        
+    // If we have block heights, calculate the median
+    const medianBlock = blockHeights.length > 0 ? getMedian(blockHeights) : highestBlock;
+    
+    // Count nodes considered "in sync" (close to median)
+    const nodesInSync = blockHeights.filter(b => Math.abs(b - medianBlock) <= 3).length;
+    
+    // Count total nodes including ourselves
+    const totalNodes = validStatuses.size + 1;
+    
     return {
-        highestBlock: 0,
-        referenceExists: false,
-        referenceNodeId: 'self'
+        highestBlock,
+        referenceExists,
+        referenceNodeId,
+        medianBlock,
+        nodesInSync,
+        totalNodes
     };
 };
 
@@ -719,55 +914,151 @@ const fetchMissingBlock = async (blockNum: number): Promise<SteemBlock | null> =
 };
 
 /**
- * Get the latest Steem block number
- * @returns {Promise<number>} The latest block number
+ * Get the latest Steem block number with improved caching and reliability
+ * @returns {Promise<number | null>} The latest block number or null on failure
  */
-// Function to get the latest Steem block number
 const getLatestSteemBlockNum = async () => {
     try {
-        const dynGlobalProps = await client.database.getDynamicGlobalProperties()
+        // Check if we have recent cached values from RPC endpoints
+        const now = Date.now();
+        let highestCachedBlock = 0;
+        let mostRecentCache = 0;
+        
+        for (const [url, data] of rpcHeightData.entries()) {
+            const cacheAge = now - data.timestamp;
+            // Use cached value if less than 10 seconds old
+            if (cacheAge < 10000 && data.height > highestCachedBlock) {
+                highestCachedBlock = data.height;
+                mostRecentCache = data.timestamp;
+            }
+        }
+        
+        // If we have a recent enough cached value, use it instead of making a network call
+        if (highestCachedBlock > 0 && mostRecentCache > now - 10000) {
+            return highestCachedBlock;
+        }
+        
+        // Otherwise, make a network call
+        const dynGlobalProps = await client.database.getDynamicGlobalProperties();
         if (dynGlobalProps && dynGlobalProps.head_block_number) {
-            return dynGlobalProps.head_block_number
+            // Cache the result with the current endpoint
+            rpcHeightData.set(client.address, {
+                height: dynGlobalProps.head_block_number,
+                timestamp: now
+            });
+            return dynGlobalProps.head_block_number;
         } else {
-            throw new Error('Invalid response from getDynamicGlobalProperties')
+            throw new Error('Invalid response from getDynamicGlobalProperties');
         }
     } catch (error) {
-        logger.warn('Error getting latest Steem block number:', error)
+        logger.warn('Error getting latest Steem block number:', error);
 
         // Try switching endpoints and try again
         if (switchToNextEndpoint()) {
             try {
-                logger.info('Trying alternate endpoint for getLatestSteemBlockNum')
-                const dynGlobalProps = await client.database.getDynamicGlobalProperties()
+                logger.info('Trying alternate endpoint for getLatestSteemBlockNum');
+                const dynGlobalProps = await client.database.getDynamicGlobalProperties();
                 if (dynGlobalProps && dynGlobalProps.head_block_number) {
-                    return dynGlobalProps.head_block_number
+                    // Cache the result with the new endpoint
+                    rpcHeightData.set(client.address, {
+                        height: dynGlobalProps.head_block_number,
+                        timestamp: Date.now()
+                    });
+                    return dynGlobalProps.head_block_number;
                 }
             } catch (retryError) {
-                logger.error('Error with alternate endpoint for getLatestSteemBlockNum:', retryError)
+                logger.error('Error with alternate endpoint for getLatestSteemBlockNum:', retryError);
             }
         }
 
         // If we have cached RPC heights, use the highest one
         if (rpcHeightData.size > 0) {
-            const validHeights = Array.from(rpcHeightData.values()).map(data => data.height);
-            const highestBlockHeight = Math.max(...validHeights);
-            if (highestBlockHeight > 0) {
-                logger.info(`Using cached highest RPC block height: ${highestBlockHeight}`);
-                return highestBlockHeight;
+            const validHeights = Array.from(rpcHeightData.values())
+                .filter(data => Date.now() - data.timestamp < 60000) // Only use cache entries less than 1 minute old
+                .map(data => data.height);
+                
+            if (validHeights.length > 0) {
+                const highestBlockHeight = Math.max(...validHeights);
+                if (highestBlockHeight > 0) {
+                    logger.info(`Using cached highest RPC block height: ${highestBlockHeight}`);
+                    return highestBlockHeight;
+                }
             }
         }
 
-        return null
+        return null;
     }
-}
+};
 
 /**
  * Check the network sync status
  * @returns {Promise<void>}
  */
 const checkNetworkSyncStatus = async (): Promise<void> => {
-    // Implementation will go here
-    // This function is a placeholder for the full implementation
+    try {
+        // Get the latest Steem block number
+        const latestSteemBlock = await getLatestSteemBlockNum();
+        if (!latestSteemBlock) {
+            logger.warn('Failed to get latest Steem block number for network status check');
+            return;
+        }
+        
+        // Update our behind blocks count
+        const lastProcessedBlock = chain?.getLatestBlock()?.steemBlock || 0;
+        behindBlocks = Math.max(0, latestSteemBlock - lastProcessedBlock);
+        
+        // Clean up old network node statuses
+        const now = Date.now();
+        for (const [nodeId, status] of networkSteemHeights.entries()) {
+            // Remove entries older than 2 minutes
+            if (now - status.timestamp > 120000) {
+                networkSteemHeights.delete(nodeId);
+            }
+        }
+        
+        // Get network status
+        const networkStatus = getNetworkSyncStatus();
+        
+        // Log network status in debug level
+        logger.debug(`Network sync status: 
+            Highest block: ${networkStatus.highestBlock}
+            Reference node: ${networkStatus.referenceNodeId}
+            Nodes in sync: ${networkStatus.nodesInSync}/${networkStatus.totalNodes}
+            Median block: ${networkStatus.medianBlock}
+            Our block: ${chain?.getLatestBlock()?._id || 0}
+            Behind Steem: ${behindBlocks} blocks`);
+        
+        // If we're falling significantly behind the network, consider recovery
+        if (networkStatus.referenceExists && 
+            networkStatus.referenceNodeId !== 'self' &&
+            networkStatus.highestBlock > (chain?.getLatestBlock()?._id || 0) + 10) {
+            
+            logger.warn(`Significantly behind network: our block ${chain?.getLatestBlock()?._id || 0} vs network ${networkStatus.highestBlock}`);
+            
+            // Only trigger recovery if we're not already recovering and not in sync mode
+            if (!p2p.recovering && !isSyncing) {
+                logger.info('Requesting recent blocks from network to catch up');
+                // Request a batch of blocks from peers
+                if (p2p && p2p.sockets && p2p.sockets.length > 0) {
+                    const currentBlock = chain?.getLatestBlock()?._id || 0;
+                    const blocksBehind = networkStatus.highestBlock - currentBlock;
+                    const batchSize = Math.min(10, blocksBehind); // Request up to 10 blocks at a time
+                    
+                    for (let i = 0; i < batchSize; i++) {
+                        const blockToRequest = currentBlock + i + 1;
+                        p2p.broadcast({
+                            t: 2, // QUERY_BLOCK message type
+                            d: blockToRequest
+                        });
+                    }
+                    
+                    logger.info(`Requested blocks ${currentBlock + 1} to ${currentBlock + batchSize} from peers`);
+                }
+            }
+        }
+    } catch (error) {
+        logger.error('Error checking network sync status:', error);
+    }
 };
 
 /**
@@ -776,6 +1067,13 @@ const checkNetworkSyncStatus = async (): Promise<void> => {
  * @param status - The sync status
  */
 const receivePeerSyncStatus = (nodeId: string, status: SyncStatus): void => {
+    if (!status) return;
+    
+    // Add timestamp if missing
+    if (!status.timestamp) {
+        status.timestamp = Date.now();
+    }
+    
     // Update our tracking of peer sync status
     peerSyncStatuses[nodeId] = status;
 
@@ -792,10 +1090,8 @@ const receivePeerSyncStatus = (nodeId: string, status: SyncStatus): void => {
         });
     }
 
-    // Check if we're in sync mode and most peers aren't, consider exiting
-    const currentTime = Date.now();
-
     // Clean up old statuses
+    const currentTime = Date.now();
     for (const id in peerSyncStatuses) {
         // Keep entries for up to 2 minutes
         if (currentTime - (peerSyncStatuses[id].timestamp || 0) > 120000) {
@@ -803,9 +1099,9 @@ const receivePeerSyncStatus = (nodeId: string, status: SyncStatus): void => {
         }
     }
 
-    // Log when a significant node reports sync status
-    if (nodeId === 'master') {
-        logger.debug(`Master node sync status: ${JSON.stringify(status)}`);
+    // Log when an important node reports sync status
+    if (nodeId === 'master' || nodeId === getNetworkSyncStatus().referenceNodeId) {
+        logger.debug(`Node ${nodeId} sync status: ${JSON.stringify(status)}`);
     }
 
     // If we're in sync mode but network says we can exit
@@ -813,9 +1109,23 @@ const receivePeerSyncStatus = (nodeId: string, status: SyncStatus): void => {
         const currentBlockId = chain?.getLatestBlock()?._id || 0;
 
         if (!syncExitTargetBlock || currentBlockId >= syncExitTargetBlock) {
-            // Set a nearby exit target if one isn't already set
+            // Set an exit target a few blocks ahead for a smooth transition
             syncExitTargetBlock = currentBlockId + 5;
             logger.info(`Network consensus indicates we can exit sync mode soon at block ${syncExitTargetBlock}`);
+        }
+    }
+    
+    // If reference node entered sync mode and we haven't, we should follow
+    const networkStatus = getNetworkSyncStatus();
+    if (!isSyncing && 
+        networkStatus.referenceExists && 
+        networkStatus.referenceNodeId !== 'self' &&
+        networkSteemHeights.has(networkStatus.referenceNodeId)) {
+        
+        const referenceStatus = networkSteemHeights.get(networkStatus.referenceNodeId);
+        if (referenceStatus && referenceStatus.isInWarmup) {
+            logger.info(`Reference node ${networkStatus.referenceNodeId} entered sync mode, following`);
+            enterSyncMode();
         }
     }
 };
@@ -837,6 +1147,7 @@ const getSyncStatus = (): { isSyncing: boolean; behindBlocks: number } => {
  */
 const isNetworkReadyToExitSyncMode = (): boolean => {
     const networkStatus = getNetworkSyncStatus();
+    const currentBlock = chain?.getLatestBlock()?._id || 0;
 
     // If we're not the reference node, we ONLY exit when the reference node exits
     if (networkStatus.referenceExists && networkStatus.referenceNodeId !== 'self') {
@@ -848,21 +1159,21 @@ const isNetworkReadyToExitSyncMode = (): boolean => {
                 logger.debug(`Staying in sync mode - reference node ${networkStatus.referenceNodeId} is still warming up`);
                 return false;
             }
-            // Exit only if reference node has exited recently (within last 60 seconds)
-            const timeSinceReferenceExit = Date.now() - (referenceStatus.timestamp || 0);
-            if (timeSinceReferenceExit > 60000) {
-                logger.debug(`Reference node sync status too old (${timeSinceReferenceExit}ms), staying in sync mode`);
+            
+            // Check if the reference status is recent enough
+            const timeSinceReferenceUpdate = Date.now() - (referenceStatus.timestamp || 0);
+            if (timeSinceReferenceUpdate > 60000) {
+                logger.debug(`Reference node sync status too old (${timeSinceReferenceUpdate}ms), staying in sync mode`);
                 return false;
             }
 
             // Make sure we're at the same block as reference node or very close
-            const currentBlock = chain?.getLatestBlock()?._id || 0;
             if (referenceStatus.blockId && Math.abs(currentBlock - referenceStatus.blockId) > 3) {
                 logger.debug(`We are at block ${currentBlock} but reference node exited at block ${referenceStatus.blockId}, staying in sync`);
                 return false;
             }
 
-            logger.debug(`Following reference node ${networkStatus.referenceNodeId} to exit sync mode at block ${currentBlock}`);
+            logger.info(`Following reference node ${networkStatus.referenceNodeId} to exit sync mode at block ${currentBlock}`);
             return true;
         }
         logger.debug('Reference node status not found, staying in sync mode');
@@ -870,8 +1181,10 @@ const isNetworkReadyToExitSyncMode = (): boolean => {
     }
 
     // If we're the reference node (or no reference exists), we make the decision
+    
+    // First check that we're caught up with Steem
     if (behindBlocks > 0) {
-        logger.debug('As reference node, staying in sync mode with behindBlocks > 0');
+        logger.debug(`As reference node, staying in sync mode with ${behindBlocks} blocks behind Steem`);
         return false;
     }
 
@@ -879,9 +1192,16 @@ const isNetworkReadyToExitSyncMode = (): boolean => {
     let syncedCount = 1; // Include ourselves
     let totalNodes = networkSteemHeights.size + 1;
     let maxBehind = 0;
+    let nodesReporting = 0;
 
     // Check other nodes
     for (const [nodeId, status] of networkSteemHeights.entries()) {
+        // Only consider recent statuses
+        const timeSinceUpdate = Date.now() - (status.timestamp || 0);
+        if (timeSinceUpdate > 60000) continue;
+        
+        nodesReporting++;
+        
         // Check if node is caught up with our current Steem block
         if (Math.abs(status.steemBlock - currentSteemBlock) <= 1) {
             syncedCount++;
@@ -891,11 +1211,17 @@ const isNetworkReadyToExitSyncMode = (): boolean => {
         maxBehind = Math.max(maxBehind, status.behindBlocks);
     }
 
+    // Ensure we have enough nodes reporting
+    if (nodesReporting < 1) {
+        logger.debug('Not enough nodes reporting status, staying in sync mode');
+        return false;
+    }
+
     const syncedPercent = (syncedCount / totalNodes) * 100;
-    const currentBlock = chain?.getLatestBlock()?._id || 0;
 
     logger.debug(`Reference node sync status check:
         - Nodes synced: ${syncedCount}/${totalNodes} (${syncedPercent.toFixed(1)}%)
+        - Nodes reporting: ${nodesReporting}
         - Max behind: ${maxBehind}
         - Current block: ${currentSteemBlock}
         - Block ID: ${currentBlock}`);
@@ -925,6 +1251,12 @@ const setReadyToReceiveTransactions = (ready: boolean): void => {
  * @param blockNum - The block number to start syncing from
  */
 const initSteemSync = (blockNum: number): void => {
+    // Stop any existing polling
+    if (steemBlockPollingInterval) {
+        clearInterval(steemBlockPollingInterval);
+        steemBlockPollingInterval = null;
+    }
+    
     getLatestSteemBlockNum().then(latestBlock => {
         if (latestBlock) {
             // Get the Steem block from our last chain block
@@ -945,11 +1277,21 @@ const initSteemSync = (blockNum: number): void => {
             if (behindBlocks > 0) {
                 prefetchBlocks(lastProcessedSteemBlock + 1);
             }
+            
+            // Start regular polling for Steem block updates
+            updateSteemBlockPolling();
+            
+            // Check if we need to enter sync mode immediately
+            if (behindBlocks > config.steemBlockDelay) {
+                logger.info(`Already ${behindBlocks} blocks behind, entering sync mode immediately`);
+                enterSyncMode();
+            }
         }
     }).catch(err => {
         logger.error('Error initializing behind blocks count:', err);
+        // Still set up polling even if initial check fails
+        updateSteemBlockPolling();
     });
-
 };
 
 /**
@@ -1067,7 +1409,93 @@ const getSyncExitTarget = (): number | null => {
     return syncExitTargetBlock;
 };
 
+/**
+ * Update the Steem block polling interval based on sync mode
+ */
+function updateSteemBlockPolling(): void {
+    // Clear existing interval if any
+    if (steemBlockPollingInterval) {
+        clearInterval(steemBlockPollingInterval);
+        steemBlockPollingInterval = null;
+    }
+    
+    // Set polling interval based on sync mode and how far behind we are
+    let interval;
+    
+    if (isSyncing) {
+        // In sync mode, poll frequently to catch up faster
+        interval = SYNC_MODE_POLLING_INTERVAL;
+    } else if (behindBlocks > 0) {
+        // If behind but not in sync mode, poll somewhat frequently
+        interval = Math.min(STEEM_HEAD_POLLING_INTERVAL, 
+                           STEEM_HEAD_POLLING_INTERVAL * (1 + behindBlocks / 10));
+    } else {
+        // If fully caught up, poll less frequently to reduce API calls
+        interval = STEEM_HEAD_POLLING_INTERVAL * 2;
+    }
+    
+    // Add jitter to prevent all nodes polling at exactly the same time
+    const jitter = Math.floor(Math.random() * 500); // Add up to 500ms of jitter
+    const finalInterval = interval + jitter;
+    
+    steemBlockPollingInterval = setInterval(async () => {
+        try {
+            // If we're fully caught up, we can sometimes skip polling to reduce load
+            if (!isSyncing && behindBlocks === 0 && Math.random() > 0.7) {
+                logger.debug('Skipping Steem block check - already caught up');
+                return;
+            }
+            
+            const latestBlock = await getLatestSteemBlockNum();
+            if (latestBlock) {
+                const lastProcessedBlock = chain?.getLatestBlock()?.steemBlock || 0;
+                const newBehindBlocks = Math.max(0, latestBlock - lastProcessedBlock);
+                
+                // Only log if the behind count has changed
+                if (newBehindBlocks !== behindBlocks) {
+                    logger.debug(`Behind count changed: ${behindBlocks} → ${newBehindBlocks} blocks`);
+                    behindBlocks = newBehindBlocks;
+                    
+                    // If our behind status changed significantly, update polling frequency
+                    if (Math.abs(newBehindBlocks - behindBlocks) > 3) {
+                        updateSteemBlockPolling();
+                        return; // Exit this callback since we're setting up a new interval
+                    }
+                }
+                
+                // If we're falling behind but not in sync mode, enter sync mode
+                if (behindBlocks > config.steemBlockDelay && !isSyncing) {
+                    logger.info(`Behind ${behindBlocks} blocks, automatically entering sync mode`);
+                    enterSyncMode();
+                }
+                
+                // If we're caught up but in sync mode, consider exiting
+                if (isSyncing && behindBlocks <= SYNC_EXIT_THRESHOLD && shouldExitSyncMode(chain?.getLatestBlock()?._id || 0)) {
+                    exitSyncMode(chain?.getLatestBlock()?._id || 0, currentSteemBlock);
+                }
+                
+                // If we're not far behind but not actively fetching, start prefetch
+                if (behindBlocks > 0 && !prefetchInProgress) {
+                    prefetchBlocks(lastProcessedBlock + 1);
+                }
+            }
+        } catch (error) {
+            logger.error('Error in Steem block polling:', error);
+        }
+    }, finalInterval);
+    
+    logger.info(`Steem block polling set to ${finalInterval}ms`);
+}
 
+// Clean up resources in case of exit
+process.on('SIGINT', () => {
+    if (steemBlockPollingInterval) {
+        clearInterval(steemBlockPollingInterval);
+    }
+    if (syncStatusBroadcastInterval) {
+        clearInterval(syncStatusBroadcastInterval);
+    }
+});
 
 // Export all functions that should be available to other modules
 export {

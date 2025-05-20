@@ -22,9 +22,14 @@ import witnessesModule from './witnesses.js';
 import p2p from './p2p.js';
 import notifications from './modules/notifications.js';
 import mongo from './mongo.js';
+import steem from './steem.js';
 
 
 const bs58 = baseX(config.b58Alphabet);
+
+// Add constants for block-based broadcasting
+const SYNC_MODE_BROADCAST_INTERVAL_BLOCKS = 3; // Broadcast every 3 blocks in sync mode
+const NORMAL_MODE_BROADCAST_INTERVAL_BLOCKS = 6; // Broadcast every 6 blocks in normal mode
 
 export const chain = {
     blocksToRebuild: [] as any[],
@@ -290,6 +295,36 @@ export const chain = {
         chain.recentBlocks.push(block);
         mining.minerWorker(block);
         chain.output(block);
+        
+        // Broadcast sync status based on block interval
+        // This is non-blocking and doesn't affect block processing
+        const isSyncing = steem.isInSyncMode();
+        const broadcastInterval = isSyncing ? 
+            SYNC_MODE_BROADCAST_INTERVAL_BLOCKS : 
+            NORMAL_MODE_BROADCAST_INTERVAL_BLOCKS;
+            
+        // Broadcast every N blocks based on sync mode
+        if (block._id % broadcastInterval === 0) {
+            // Use setTimeout to make this non-blocking
+            setTimeout(() => {
+                // Only broadcast if p2p is available and we have peers
+                if (p2p && p2p.sockets && p2p.sockets.length > 0) {
+                    const currentStatus = {
+                        behindBlocks: steem.getBehindBlocks(),
+                        steemBlock: block.steemBlockNum,
+                        isSyncing: isSyncing,
+                        blockId: block._id,
+                        consensusBlocks: null,
+                        exitTarget: steem.getSyncExitTarget(),
+                        timestamp: Date.now()
+                    };
+                    
+                    logger.debug(`Broadcasting sync status on block ${block._id} (every ${broadcastInterval} blocks)`);
+                    p2p.broadcastSyncStatus(currentStatus);
+                }
+            }, 0);
+        }
+        
         cache.writeToDisk(false, () => { // writeToDisk has its own callback
             cb(null); // Call original cb after writeToDisk's callback completes
         });
