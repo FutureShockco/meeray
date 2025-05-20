@@ -131,6 +131,7 @@ export function isValidHashAndSignature(newBlock: any, cb: (valid: boolean) => v
         else
             allowedPubKeys = [];
         let threshold = 1;
+        console.log('isValidHashAndSignature DEBUG: allowedPubKeys =', allowedPubKeys);
         try {
             for (let i = 0; i < allowedPubKeys.length; i++) {
                 let bufferHash = Buffer.from(newBlock.hash, 'hex');
@@ -142,7 +143,7 @@ export function isValidHashAndSignature(newBlock: any, cb: (valid: boolean) => v
                 }
             }
         } catch (e) { }
-        logger.error('invalid witness signature');
+        logger.error('invalid witness signature in isValidHashAndSignature');
         cb(false);
     });
 }
@@ -265,9 +266,10 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
                 logger.error('invalid or missing witness public key');
                 return cb(false);
             }
+            console.log('isValidNewBlock DEBUG: newBlock.signature =', newBlock.signature);
             const valid = await isValidSignature(newBlock.witness, newBlock.hash, newBlock.signature);
             if (!valid) {
-                logger.error('invalid witness signature');
+                logger.error('invalid witness signature in isValidNewBlock');
                 return cb(false);
             }
             // Optionally, revalidate all transactions

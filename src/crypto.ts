@@ -2,7 +2,7 @@ import cloneDeep from 'clone-deep';
 import CryptoJS from 'crypto-js';
 import secp256k1 from 'secp256k1';
 import bs58 from 'bs58';
-import cache  from './cache.js';
+import cache from './cache.js';
 import logger from './logger.js';
 import { chain } from './chain.js';
 import consensus from './consensus.js';
@@ -78,7 +78,7 @@ export function isValidPubKey(key: string): boolean {
 export async function isValidSignature(
     user: string,
     hash: string,
-    sign: string | [string, number][]
+    sign: string 
 ): Promise<string | null> {
     return new Promise((resolve) => {
         cache.findOne('accounts', { name: user }, async function (err: any, account: any) {
@@ -101,43 +101,50 @@ export async function isValidSignature(
                 return resolve(null);
             }
 
-
             try {
-                // Convert hash from hex to buffer
-                const bufferHash = Buffer.from(hash, 'hex');
-
-                // Convert signature from base58 to buffer
-                let signBuffer;
-                let recoveryId;
+              
                 try {
-                    // Decode the signature from base58 
-                    let signatureString: string;
-                    if (typeof sign === 'string') {
-                        signatureString = sign;
-                    } else if (Array.isArray(sign) && typeof sign[0] === 'string') {
-                        signatureString = sign[0];
-                    } else {
-                        logger.error('Signature is not a string or valid array');
-                        return resolve(null);
-                    }
-                    const decodedSign = bs58.decode(signatureString);
+                    let bufferHash = Buffer.from(hash, 'hex')
+                    let b58sign = bs58.decode(sign)
+                    let b58pub = bs58.decode(account.witnessPublicKey)
 
-                    // Special handling for different signature formats
-                    if (decodedSign.length === 64) {
-                        // Standard 64-byte signature without recovery ID
-                        logger.debug(`Standard signature format detected (64 bytes)`);
-                        signBuffer = Buffer.from(decodedSign);
-                        recoveryId = 0; // Default recovery value
-                    } else if (decodedSign.length === 65) {
-                        // Signature with recovery ID (last byte)
-                        signBuffer = Buffer.from(decodedSign.slice(0, 64));
-                        recoveryId = decodedSign[64];
-                    } else {
-                        // Unknown format - try to adapt
-                        logger.warn(`Unknown signature format: ${decodedSign.length} bytes, attempting to adapt`);
-                        // Use as much of the signature as we can
-                        signBuffer = Buffer.from(decodedSign.slice(0, Math.min(decodedSign.length, 64)));
-                        recoveryId = decodedSign.length > 64 ? decodedSign[64] : 0;
+
+                    // Verify the signature
+                    try {
+
+                        const isValid = secp256k1.ecdsaVerify(b58sign, bufferHash, b58pub);
+                        console.log('isValidSignature DEBUG: isValid =', isValid);
+                        if (isValid) {
+                            return resolve(account);
+                        } 
+                        else {
+                            // Try a simpler verification alternative
+                            try {
+
+                                // Force the signature length to be exactly what's expected
+                                const fixedSignature = Buffer.alloc(64);
+                                let signBuffer = fixedSignature;
+                                logger.debug(`- Adjusted signature to length: ${signBuffer.length}`);
+
+                                // Try verification again with adjusted signature
+                                const isValidFixed = secp256k1.ecdsaVerify(signBuffer, bufferHash, b58pub);
+                                logger.debug(`- Second verification attempt: ${isValidFixed}`);
+
+                                if (isValidFixed) {
+                                    logger.debug(`Signature verified for ${user} after adjustment`);
+                                    return resolve(null);
+                                }
+
+                            } catch (altErr) {
+                                logger.error(`Error in alternative verification: ${altErr}`);
+                            }
+
+                            logger.error(`Signature verification failed for ${user}`);
+                            return resolve(null);
+                        }
+                    } catch (e) {
+                        logger.error(`Error during signature verification: ${e}`);
+                        return resolve(null);
                     }
 
                 } catch (e) {
@@ -145,58 +152,7 @@ export async function isValidSignature(
                     return resolve(null);
                 }
 
-                // Convert public key from base58 to buffer
-                let pubKeyBuf;
-                try {
-                    pubKeyBuf = Buffer.from(bs58.decode(account.witnessPublicKey));
 
-                    // Verify that the public key is valid
-                    if (!secp256k1.publicKeyVerify(pubKeyBuf)) {
-                        logger.error(`Invalid public key format for ${user}`);
-                        return resolve(null);
-                    }
-                } catch (e) {
-                    logger.error(`Failed to decode public key from base58: ${e}`);
-                    return resolve(null);
-                }
-
-                // Verify the signature
-                try {
-                    const isValid = secp256k1.ecdsaVerify(signBuffer, bufferHash, pubKeyBuf);
-
-                    if (isValid) {
-                        return resolve(account);
-                    } else {
-                        // Try a simpler verification alternative
-                        try {
-
-                            // Force the signature length to be exactly what's expected
-                            if (signBuffer.length !== 64) {
-                                const fixedSignature = Buffer.alloc(64);
-                                signBuffer.copy(fixedSignature, 0, 0, Math.min(signBuffer.length, 64));
-                                signBuffer = fixedSignature;
-                                logger.debug(`- Adjusted signature to length: ${signBuffer.length}`);
-
-                                // Try verification again with adjusted signature
-                                const isValidFixed = secp256k1.ecdsaVerify(signBuffer, bufferHash, pubKeyBuf);
-                                logger.debug(`- Second verification attempt: ${isValidFixed}`);
-
-                                if (isValidFixed) {
-                                    logger.debug(`Signature verified for ${user} after adjustment`);
-                                    return resolve(null);
-                                }
-                            }
-                        } catch (altErr) {
-                            logger.error(`Error in alternative verification: ${altErr}`);
-                        }
-
-                        logger.error(`Signature verification failed for ${user}`);
-                        return resolve(null);
-                    }
-                } catch (e) {
-                    logger.error(`Error during signature verification: ${e}`);
-                    return resolve(null);
-                }
             } catch (e) {
                 logger.error(`General error verifying signature: ${e}`);
                 return resolve(null);

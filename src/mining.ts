@@ -249,7 +249,7 @@ export const mining = {
                 missedBy: block.missedBy || '',
                 dist: block.dist || 0,
                 sync: block.sync,
-            }, true); // hex string
+            }, true); 
 
             logger.debug(`Signing block ${block._id} with hash: ${nextHash.substring(0, 10)}...`);
 
@@ -269,7 +269,7 @@ export const mining = {
             // Get private key as buffer
             let privKeyBuffer;
             try {
-                privKeyBuffer = Buffer.from(bs58.decode(process.env.WITNESS_PRIVATE_KEY));
+                privKeyBuffer = bs58.decode(process.env.WITNESS_PRIVATE_KEY);
 
                 // Verify private key is valid
                 if (!secp256k1.privateKeyVerify(privKeyBuffer)) {
