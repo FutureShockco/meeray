@@ -52,38 +52,25 @@ export const chain = {
             priv: bs58.encode(privKey)
         };
     },
-   
+
     getGenesisBlock: () => {
         const genesisBlock: Block = {
             _id: 0, // _id: 0
             blockNum: 0, // blockNum: 0
             steemBlockNum: config.steemStartBlock, // steemBlockNum: config.steemStartBlock
+            steemBlockTimestamp: 0, // steemBlockTimestamp: 0
             phash: '0', // phash: '0'
             timestamp: 0, // timestamp: 0
-            steemBlockTimestamp: 0, // steemBlockTimestamp: 0
             txs: [], // txs: []
             witness: config.masterName, // witness: config.masterName
-            hash: '', // hash: '' (will be set below)
-            signature: '0000000000000000000000000000000000000000000000000000000000000000', // signature: config.originHash
             missedBy: '', // missedBy: ''
-            dist: config.witnessReward > 0 ? config.witnessReward : 0, // dist: config.witnessReward > 0 ? config.witnessReward : 0
+            dist: 0, // dist: config.witnessReward > 0 ? config.witnessReward : 0
             sync: false, // sync: false
+            signature: '0000000000000000000000000000000000000000000000000000000000000000',
+            hash: config.originHash
         };
         // Calculate and set the actual hash for the genesis block
-        genesisBlock.hash = calculateHashForBlock({
-            _id: genesisBlock._id,
-            blockNum: genesisBlock.blockNum,
-            steemBlockNum: genesisBlock.steemBlockNum,
-            steemBlockTimestamp: genesisBlock.steemBlockTimestamp,
-            phash: genesisBlock.phash,
-            timestamp: genesisBlock.timestamp,
-            txs: genesisBlock.txs,
-            witness: genesisBlock.witness,
-            missedBy: genesisBlock.missedBy,
-            dist: genesisBlock.dist,
-            sync: genesisBlock.sync,
-            signature: genesisBlock.signature
-        });
+        //genesisBlock.hash = calculateHashForBlock(genesisBlock);
         return genesisBlock;
     },
 

@@ -28,7 +28,7 @@ export class Block {
     dist: number;
     sync: boolean;
     signature?: string;
-    hash: string;
+    hash?: string;
 
     constructor(
         _id: number,
@@ -63,21 +63,7 @@ export class Block {
 
 
 export function calculateHashForBlock(
-    blockData: {
-        _id: number;
-        blockNum: number;
-        steemBlockNum: number;
-        steemBlockTimestamp: number;
-        timestamp: number;
-        phash: string;
-        txs: Transaction[];
-        witness: string;
-        missedBy?: string;
-        dist: number;
-        sync: boolean;
-        hash?: string;
-        signature?: string;
-    },
+    blockData: Block,
     deleteExisting?: boolean
 ): string {
     try {
@@ -89,11 +75,7 @@ export function calculateHashForBlock(
             delete clonedBlock.signature
         }
 
-
-        // Use a stable stringify to ensure consistent hash generation
-        const blockString = JSON.stringify(deleteExisting ? clonedBlock : blockData);
-        const hash = CryptoJS.SHA256(blockString).toString();
-        return hash;
+        return CryptoJS.SHA256(JSON.stringify(deleteExisting ? clonedBlock : blockData)).toString();
     } catch (error) {
         logger.error(`Error calculating hash for block ${blockData._id}:`, error);
         return '';

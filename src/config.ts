@@ -5,7 +5,7 @@ const config = {
   chainId: 'sidechain-dev',
   networkName: 'Sidechain Devnet',
   nativeToken: 'ECH',
-  originHash: 'e0fb47505021427ce254471d9923d90887d22f86a7b343145891c8273ad54b17',
+  originHash: 'ea6e5bdfaea0a21fb25c9990d9ac8d7ee45138f350fdc13dbd9321bc0e14a472',
   tokenCreationFee: 100,
   nftCreationFee: 10,
   tradingFee: 0.0025,
