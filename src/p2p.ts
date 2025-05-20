@@ -96,6 +96,29 @@ const pendingBlockRequests = new Set<number>();
 const blockRequestRetries = new Map<number, { attempts: number, triedPeers: Set<string> }>();
 const MAX_BLOCK_RETRIES = 5;
 
+// Helper function to get a normalized address for cooldown tracking
+function getNormalizedPeerAddress(peer: string | EnhancedWebSocket): string {
+    if (typeof peer === 'string') {
+        // For outgoing, try to resolve to ip:port if it's a hostname
+        // This is a simplification; a more robust solution might involve actual DNS resolution
+        // and consistent formatting. For now, we'll use the string as is if it's already ip:port
+        // or keep the ws://host:port format.
+        // Attempt to extract host and port if it's a ws:// or wss:// URL
+        try {
+            const url = new URL(peer);
+            // Prefer hostname and port from URL if available, otherwise fallback to original peer string
+            // This doesn't resolve DNS here, assumes peer string might be IP or resolvable hostname by WebSocket
+            return url.hostname + ':' + url.port || peer;
+        } catch (e) {
+            // If not a valid URL, assume it's already in a format like 'ip:port' or a plain hostname
+            return peer;
+        }
+    } else {
+        // For incoming, use remoteAddress and remotePort
+        return peer._socket.remoteAddress + ':' + peer._socket.remotePort;
+    }
+}
+
 export const p2p = {
     sockets: [] as EnhancedWebSocket[],
     recentConnections: new Map<string, number>(),
@@ -225,42 +248,55 @@ export const p2p = {
     },
 
     connect: (newPeers: string[], isInit: boolean = false): void => {
-        newPeers.forEach((peer) => {
-            // Check cooldown BEFORE attempting to connect
+        newPeers.forEach((peerString) => {
+            const normalizedAddress = getNormalizedPeerAddress(peerString);
             const now = Date.now();
-            const lastConnect = p2p.recentConnections.get(peer) || 0; // Use peer string as key
-            if (now - lastConnect < 10000) { // 10 second cooldown
-                logger.debug(`Outgoing connection to ${peer} skipped (too frequent)`);
-                return; 
-            }
-            p2p.recentConnections.set(peer, now); // Add to cooldown map
+            const lastConnect = p2p.recentConnections.get(normalizedAddress) || 0;
 
-            const socket = new WebSocket(peer) as EnhancedWebSocket;
+            if (now - lastConnect < 10000) { // 10 second cooldown
+                logger.debug(`Outgoing connection to ${peerString} (${normalizedAddress}) skipped (too frequent)`);
+                return;
+            }
+            // Update cooldown for this normalized address BEFORE attempting connection
+            p2p.recentConnections.set(normalizedAddress, now);
+
+            const socket = new WebSocket(peerString) as EnhancedWebSocket;
             socket.on('open', () => {
-                // Successfully opened, call handshake
-                p2p.handshake(socket); 
+                // Connection opened, proceed to handshake.
+                // The handshake function will also update recentConnections for its normalized address.
+                p2p.handshake(socket);
             });
-            socket.on('error', () => {
-                logger[isInit ? 'warn' : 'debug']('peer connection failed', peer);
-                // Remove from cooldown map if connection failed, so we can retry sooner
-                p2p.recentConnections.delete(peer); 
+            socket.on('error', (err: Error) => { // Added type for err
+                logger[isInit ? 'warn' : 'debug'](`Peer connection to ${peerString} failed: ${err.message}`);
+                // If connection fails, consider if we should remove from recentConnections
+                // to allow quicker retry. For now, let it time out naturally from the map
+                // or be overwritten by a successful handshake.
+                // p2p.recentConnections.delete(normalizedAddress); // Optional: remove on error
             });
         });
     },
 
     handshake: (ws: EnhancedWebSocket): void => {
-        // Check cooldown for INCOMING connections
-        // (this part is mostly correct, but ensure peerAddress is consistent)
-        const peerAddress = ws.url || (ws._socket.remoteAddress + ':' + ws._socket.remotePort); 
+        const normalizedAddress = getNormalizedPeerAddress(ws);
         const now = Date.now();
-        const lastConnect = p2p.recentConnections.get(peerAddress) || 0;
         
-        if (now - lastConnect < 10000) { // 10 second cooldown
-            logger.debug(`Incoming connection from ${peerAddress} rejected (too frequent)`);
+        // Check recentConnections first (this covers both incoming and just-opened outgoing)
+        const lastConnect = p2p.recentConnections.get(normalizedAddress) || 0;
+        
+        // More refined check: if it's a *new* incoming connection (not one we just opened and is now handshaking back)
+        // and it's too frequent, reject.
+        // A simple way to distinguish: if ws is already in p2p.sockets, it's likely an outgoing one completing handshake.
+        // However, p2p.sockets.includes(ws) might not be reliable yet if it hasn't been added.
+        // A safer check: if the lastConnect timestamp is very recent AND this specific ws instance isn't already being processed
+        // (which is hard to tell at this exact point without more state).
+        // The core idea: prevent rapid new incoming connections from the same normalized address.
+        if (now - lastConnect < 10000 && !p2p.sockets.some(s => s === ws)) {
+            logger.debug(`Incoming connection from ${normalizedAddress} rejected (too frequent new attempt)`);
             ws.close();
             return;
         }
-        p2p.recentConnections.set(peerAddress, now);
+        // Update timestamp for this successful interaction point or new attempt
+        p2p.recentConnections.set(normalizedAddress, now);
 
         // FIRST check offline mode
         if (process.env.OFFLINE) {
@@ -276,31 +312,39 @@ export const p2p = {
             return;
         }
 
-        // THEN check for duplicate connections
-        for (let i = 0; i < p2p.sockets.length; i++)
-            if (p2p.sockets[i]._socket.remoteAddress === ws._socket.remoteAddress
-                && p2p.sockets[i]._socket.remotePort === ws._socket.remotePort) {
-                ws.close();
-                return;
-            }
+        // THEN check for duplicate connections (already in sockets array and OPEN)
+        const existingSocket = p2p.sockets.find(s => s !== ws && getNormalizedPeerAddress(s) === normalizedAddress && s.readyState === WebSocket.OPEN);
+        if (existingSocket) {
+            logger.debug(`Duplicate connection from ${normalizedAddress}, closing new one.`);
+            ws.close();
+            return;
+        }
             
-        // Continue with handshake
-        logger.debug('Handshaking new peer', ws.url || ws._socket.remoteAddress + ':' + ws._socket.remotePort);
+        // Continue with handshake for a new or re-establishing connection
+        logger.debug('Handshaking new peer', ws.url || normalizedAddress);
+        
         let random = randomBytes(config.read(0).randomBytesLength).toString('hex');
         ws.challengeHash = random;
 
         ws.pendingDisconnect = setTimeout(() => {
             for (let i = 0; i < p2p.sockets.length; i++)
-                if (p2p.sockets[i].challengeHash === random) {
+                if (p2p.sockets[i]?.challengeHash === random) { // Added null check for sockets[i]
                     p2p.sockets[i].close();
                     logger.warn('A peer did not reply to NODE_STATUS');
-                    continue;
+                    // No continue here, let loop finish if other matches (though unlikely for same random)
                 }
         }, 1000);
 
-        p2p.sockets.push(ws);
-        p2p.messageHandler(ws);
-        p2p.errorHandler(ws);
+        // Ensure socket is added only if all checks pass and not already present
+        if (!p2p.sockets.includes(ws)) {
+            p2p.sockets.push(ws);
+        }
+        // Ensure these are only set up once if handshake could be re-entrant for an existing socket
+        if (!ws.listenerCount('message')) { // Check if handlers are already attached
+            p2p.messageHandler(ws);
+            p2p.errorHandler(ws);
+        }
+        
         p2p.sendJSON(ws, {
             t: MessageType.QUERY_NODE_STATUS,
             d: {
@@ -770,30 +814,40 @@ export const p2p = {
     },
 
     addRecursive: (block: Block): void => {
-        console.log(block)
-        chain.validateAndAddBlock(block, true, (err: any, newBlock: any) => {
+        // console.log(block) // Keep this commented out unless specifically debugging block content
+        chain.validateAndAddBlock(block, true, (err: any, newBlock: Block | null) => { // Ensure newBlock can be Block | null
             if (err) {
                 cache.rollback();
-                logger.warn(`[P2P] Failed to validate block ${newBlock._id}, clearing recovery cache`);
-                p2p.recoveredBlocks = [];
+                // Ensure newBlock and newBlock._id are checked for null before logging
+                const blockIdForLog = newBlock && newBlock._id ? newBlock._id : 'unknown';
+                logger.warn(`[P2P] Failed to validate block ${blockIdForLog}, clearing recovery cache`);
+                p2p.recoveredBlocks = {}; // Corrected: assign empty object
                 p2p.recoveringBlocks = [];
                 p2p.recoverAttempt++;
                 if (p2p.recoverAttempt > max_recover_attempts) {
-                    logger.error(`[P2P] Error Replay - exceeded maximum recovery attempts for block ${newBlock._id}`);
+                    logger.error(`[P2P] Error Replay - exceeded maximum recovery attempts for block ${blockIdForLog}`);
+                    p2p.recovering = false; // Stop recovery
+                    p2p.recoverAttempt = 0; // Reset attempt counter
                 } else {
-                    logger.debug(`[P2P] Recover attempt #${p2p.recoverAttempt} for block ${newBlock._id}`);
+                    logger.debug(`[P2P] Recover attempt #${p2p.recoverAttempt} for block ${blockIdForLog}`);
                     p2p.recovering = chain.getLatestBlock()._id;
                     p2p.recover();
                 }
             } else {
-                p2p.recoverAttempt = 0
-                delete p2p.recoveredBlocks[newBlock._id]
-                p2p.recover()
-                if (p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
+                p2p.recoverAttempt = 0;
+                if (newBlock && newBlock._id) { // Check if newBlock and its _id are valid
+                    delete p2p.recoveredBlocks[newBlock._id];
+                }
+                p2p.recover();
+                const nextBlockId = chain.getLatestBlock()._id + 1;
+                if (p2p.recoveredBlocks[nextBlockId]) {
                     setTimeout(function () {
-                        if (p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
-                            p2p.addRecursive(p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
-                    }, 1)
+                        // Re-check if the block still exists, as it might have been processed by another path
+                        if (p2p.recoveredBlocks[nextBlockId]) {
+                            p2p.addRecursive(p2p.recoveredBlocks[nextBlockId]);
+                        }
+                    }, 1);
+                }
             }
         });
     },

@@ -605,7 +605,7 @@ const cache: CacheType = {
             }
         }
 
-        if (process.env.LEADER_STATS === '1' && witnessesStats && typeof witnessesStats.getWriteOps === 'function') {
+        if (process.env.WITNESS_STATS === '1' && witnessesStats && typeof witnessesStats.getWriteOps === 'function') {
             try {
                 const witnessesStatsWriteOps = witnessesStats.getWriteOps();
                 if (Array.isArray(witnessesStatsWriteOps)) {
@@ -774,10 +774,10 @@ const cache: CacheType = {
                         cache.accounts[name] = accs[i];
                 }
             }
-            logger.debug(`[CACHE warmupLeaders] Warmed up ${accs.length} witnesses.`);
+            logger.debug(`[CACHE warmupWitnesses] Warmed up ${accs.length} witnesses.`);
             return accs.length;
         } catch (e) {
-            logger.error('[CACHE warmupLeaders] Error:', e);
+            logger.error('[CACHE warmupWitnesses] Error:', e);
             throw e;
         }
     }

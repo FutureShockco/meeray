@@ -199,13 +199,13 @@ export const mining = {
         }
 
         // if we are the next scheduled witness, try to mine in time
-        if (chain.schedule.shuffle[(block._id) % config.witnesses].name === process.env.NODE_OWNER)
+        if (chain.schedule.shuffle[(block._id) % config.witnesses].name === process.env.STEEM_ACCOUNT)
             mineInMs = blockTime
-        // else if the scheduled leaders miss blocks
+        // else if the scheduled witnesses miss blocks
         // backups witnesses are available after each block time intervals
         else for (let i = 1; i < 2 * config.witnesses; i++)
             if (chain.recentBlocks[chain.recentBlocks.length - i]
-                && chain.recentBlocks[chain.recentBlocks.length - i].witness === process.env.NODE_OWNER) {
+                && chain.recentBlocks[chain.recentBlocks.length - i].witness === process.env.STEEM_ACCOUNT) {
                 mineInMs = (i + 1) * blockTime
                 break
             }

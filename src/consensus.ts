@@ -57,9 +57,9 @@ export const consensus: Consensus = {
         return true;
     },
     activeWitnesses: function () {
-        // the real active leaders are those who can mine or backup this block
-        // i.e. a new leader only enters consensus on the block he gets scheduled for
-        // and out of consensus 2*config.leaders blocks after his last scheduled block
+        // the real active witnesses are those who can mine or backup this block
+        // i.e. a new witness only enters consensus on the block he gets scheduled for
+        // and out of consensus 2*config.witnesses blocks after his last scheduled block
         const blockNum = chain.getLatestBlock()._id + 1;
         const actives: string[] = [];
 
