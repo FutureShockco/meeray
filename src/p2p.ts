@@ -1,11 +1,4 @@
-// TODO: Uncomment and install these dependencies as you migrate the rest of the Echelon codebase
-// import config from './config.js';
-// import logger from './logger.js';
-// import ... (other dependencies)
-
-// TODO: Add proper types for P2P logic, peers, etc.
-
-import WebSocket, { WebSocketServer } from 'ws';
+import WebSocket from 'ws';
 import dns from 'dns';
 import net from 'net';
 import { randomBytes } from 'crypto';
@@ -21,10 +14,7 @@ import consensus from './consensus.js';
 import steem from './steem.js';
 import witnessesModule from './witnesses.js';
 import { getNewKeyPair, verifySignature } from './crypto.js';
-import mongo from './mongo.js'; // Ensure mongo is imported
-// TODO: import steem from './steem.js';
-// Dynamically import the 'ws' module
-import * as wsModule from 'ws';
+import mongo from './mongo.js';
 
 const bs58 = baseX(config.b58Alphabet || '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz');
 
@@ -166,39 +156,47 @@ export const p2p = {
 
     discoveryWorker: (isInit: boolean = false): void => {
         const configBlock = config.read(0);
+        const maxPeers = max_peers;
+    
+        // Generate witnesses, assuming generateWitnesses returns array of { name: string, ws: string | undefined }
         let witnesses = witnessesModule.generateWitnesses(false, true, configBlock.witnesses * 3, 0);
-        for (let i = 0; i < witnesses.length; i++) {
-            if (p2p.sockets.length >= max_peers) {
-                logger.debug('We already have maximum peers: ' + p2p.sockets.length + '/' + max_peers);
+        if (!Array.isArray(witnesses) || witnesses.length === 0) {
+            logger.warn('No witnesses found for discovery.');
+            return;
+        }
+    
+        for (const witness of witnesses) {
+            if (p2p.sockets.length >= maxPeers) {
+                logger.debug(`Max peers reached: ${p2p.sockets.length}/${maxPeers}`);
                 break;
             }
-
-            if (witnesses[i].ws) {
-                let excluded = process.env.DISCOVERY_EXCLUDE ? process.env.DISCOVERY_EXCLUDE.split(',') : [];
-                if (excluded.indexOf(witnesses[i].name) > -1)
-                    continue;
-
-                let isConnected = false;
-                for (let w = 0; w < p2p.sockets.length; w++) {
-                    let ip = p2p.sockets[w]._socket.remoteAddress;
-                    if (ip && ip.indexOf('::ffff:') > -1)
-                        ip = ip.replace('::ffff:', '');
-
-                    try {
-                        let witnessIp = witnesses[i].ws.split('://')[1].split(':')[0];
-                        if (witnessIp === ip) {
-                            logger.warn('Already peered with ' + witnesses[i].name);
-                            isConnected = true;
-                        }
-                    } catch (error) {
-                        logger.debug('Wrong ws for witness ' + witnesses[i].name + ' ' + witnesses[i].ws, error);
+    
+            if (!witness.ws) continue;
+    
+            const excluded = process.env.DISCOVERY_EXCLUDE ? process.env.DISCOVERY_EXCLUDE.split(',') : [];
+            if (excluded.includes(witness.name)) continue;
+    
+            let isConnected = false;
+    
+            for (const socket of p2p.sockets) {
+                let ip = socket._socket.remoteAddress || '';
+                if (ip.startsWith('::ffff:')) ip = ip.slice(7);
+    
+                try {
+                    const witnessIp = new URL(witness.ws).hostname;
+                    if (witnessIp === ip) {
+                        logger.warn(`Already connected to witness ${witness.name} (${witness.ws})`);
+                        isConnected = true;
+                        break;
                     }
+                } catch (e) {
+                    logger.debug(`Invalid witness ws url: ${witness.ws} for witness ${witness.name}`, e);
                 }
-
-                if (!isConnected) {
-                    logger[isInit ? 'info' : 'debug']('Trying to connect to ' + witnesses[i].name + ' ' + witnesses[i].ws);
-                    p2p.connect([witnesses[i].ws], isInit);
-                }
+            }
+    
+            if (!isConnected) {
+                logger[isInit ? 'info' : 'debug'](`Connecting to witness ${witness.name} at ${witness.ws}`);
+                p2p.connect([witness.ws], isInit);
             }
         }
     },
@@ -369,12 +367,15 @@ export const p2p = {
                 message = JSON.parse(data.toString());
             } catch (e) {
                 logger.warn('P2P received non-JSON, doing nothing ;)');
+                ws.close(1003, "Invalid JSON");
                 return;
             }
 
             if (!message || typeof message.t === 'undefined') return;
             if (!message.d) return;
             // logger.debug('P2P-IN '+message.t)
+
+
 
             switch (message.t) {
                 case MessageType.QUERY_NODE_STATUS:
@@ -407,32 +408,43 @@ export const p2p = {
                     const signature = secp256k1.ecdsaSign(Buffer.from(message.d.random, 'hex'), bs58.decode(p2p.nodeId?.priv || ''));
                     const signatureStr = bs58.encode(signature.signature);
 
-                    let d: NodeStatus = {
+                    let d: NodeStatus & { random: string } = {
                         origin_block: config.read(0).originHash,
                         head_block: chain.getLatestBlock()._id,
                         head_block_hash: chain.getLatestBlock().hash,
                         previous_block_hash: chain.getLatestBlock().phash,
                         nodeId: p2p.nodeId?.pub || '',
                         version: version,
-                        sign: signatureStr
+                        sign: signatureStr,
+                        random: message.d.random
                     };
 
                     p2p.sendJSON(ws, { t: MessageType.NODE_STATUS, d: d });
                     break;
 
                 case MessageType.NODE_STATUS:
-                    // we received a peer node status
                     if (typeof message.d.sign === 'string') {
                         const nodeStatusIndex = p2p.sockets.indexOf(ws);
                         if (nodeStatusIndex === -1) return;
 
-                        let nodeId = p2p.sockets[nodeStatusIndex].node_status?.nodeId;
-                        if (!message.d.nodeId || message.d.nodeId !== nodeId)
+                        const socket = p2p.sockets[nodeStatusIndex];
+                        if (!socket.node_status) {
+                            logger.warn('No node_status present, disconnecting');
+                            ws.close();
                             return;
+                        }
 
-                        let challengeHash = p2p.sockets[nodeStatusIndex].challengeHash;
-                        if (!challengeHash)
+                        const nodeId = socket.node_status.nodeId;
+                        if (!message.d.nodeId || message.d.nodeId !== nodeId) return;
+
+                        if (!nodeId) {
+                            logger.warn('NODE_STATUS with missing nodeId, disconnecting');
+                            ws.close();
                             return;
+                        }
+
+                        const challengeHash = socket.challengeHash;
+                        if (!challengeHash) return;
 
                         if (message.d.origin_block !== config.read(0).originHash) {
                             logger.debug('Different chain id, disconnecting');
@@ -441,11 +453,10 @@ export const p2p = {
                         }
 
                         try {
-                            // Using bs58 from the global import
-                            let isValidSignature = secp256k1.ecdsaVerify(
+                            const isValidSignature = secp256k1.ecdsaVerify(
                                 bs58.decode(message.d.sign),
                                 Buffer.from(challengeHash, 'hex'),
-                                bs58.decode(nodeId || '')
+                                bs58.decode(nodeId)
                             );
 
                             if (!isValidSignature) {
@@ -454,20 +465,21 @@ export const p2p = {
                                 return;
                             }
 
-                            for (let i = 0; i < p2p.sockets.length; i++)
+                            for (let i = 0; i < p2p.sockets.length; i++) {
                                 if (i !== nodeStatusIndex
                                     && p2p.sockets[i].node_status
                                     && p2p.sockets[i].node_status?.nodeId === nodeId) {
                                     logger.debug('Peer disconnected because duplicate connections');
                                     p2p.sockets[i].close();
                                 }
+                            }
 
-                            if (p2p.sockets[nodeStatusIndex].pendingDisconnect) {
-                                clearTimeout(p2p.sockets[nodeStatusIndex].pendingDisconnect);
+                            if (socket.pendingDisconnect) {
+                                clearTimeout(socket.pendingDisconnect);
                             }
 
                             delete message.d.sign;
-                            p2p.sockets[nodeStatusIndex].node_status = message.d;
+                            socket.node_status = message.d;
                         } catch (error) {
                             logger.error('Error during NODE_STATUS verification', error);
                         }
@@ -536,7 +548,7 @@ export const p2p = {
 
                     let socket = p2p.sockets[newBlockIndex];
                     if (!socket || !socket.node_status) return;
-                    if(socket.node_status.head_block){
+                    if (socket.node_status.head_block) {
                         socket.node_status.head_block = block._id;
                         socket.node_status.head_block_hash = block.hash;
                         socket.node_status.previous_block_hash = block.phash;

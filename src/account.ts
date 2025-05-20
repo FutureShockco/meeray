@@ -35,16 +35,8 @@ export async function upsertAccountsReferencedInTx(tx: ParsedTransaction | Trans
       try {
         accountFromDb = await mongo.getDb().collection<AccountDoc>('accounts').findOne({ name: username });
         if (accountFromDb) {
-          await new Promise<void>((resolve, reject) => {
-            cache.insertOne('accounts', accountFromDb as AccountDoc, (err, success) => {
-              if (err) {
-                logger.error(`Error updating cache for ${username} from DB:`, err);
-                return reject(err);
-              }
-              logger.debug(`Cache updated/checked for ${username} from DB fetch.`);
-              resolve();
-            });
-          });
+          cache.accounts[username] = accountFromDb;
+          logger.debug(`Cache updated for ${username} with data from DB.`);
         }
       } catch (dbError) {
         logger.error(`Error fetching account ${username} from DB:`, dbError);
@@ -53,7 +45,7 @@ export async function upsertAccountsReferencedInTx(tx: ParsedTransaction | Trans
     }
 
     // Re-check cache after potential DB fetch and cache update
-    const finalAccountState = accountFromCache || accountFromDb;
+    const finalAccountState = cache.accounts[username] || accountFromDb;
 
     if (!finalAccountState) {
       const newAccountData: AccountDoc = {

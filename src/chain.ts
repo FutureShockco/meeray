@@ -22,6 +22,7 @@ import p2p from './p2p.js';
 import notifications from './modules/notifications.js';
 import mongo from './mongo.js';
 import steem from './steem.js';
+import { upsertAccountsReferencedInTx } from './account.js';
 
 
 const bs58 = baseX(config.b58Alphabet);
@@ -342,46 +343,47 @@ export const chain = {
         });
     },
 
-    executeBlockTransactions: (block: any, revalidate: boolean, cb: (validTxs: any[], dist: number) => void) => {
+    executeBlockTransactions: async (block: any, revalidate: boolean, cb: (validTxs: any[], dist: number) => void) => {
         // revalidating transactions in orders if revalidate = true
         // adding transaction to recent transactions (to prevent tx re-use) if isFinal = true
         let executions: any[] = [];
         for (let i = 0; i < block.txs.length; i++) {
-            executions.push(function (callback: any) {
+            // The function for run-series
+            executions.push(async function (seriesCallback: any) {
                 let tx = block.txs[i];
 
-                if (revalidate) {
-                    transaction.isValid(tx, block.timestamp, function (isValid: boolean, error: any) {
-                        if (isValid)
-                            transaction.execute(tx, block.timestamp, function (executed: boolean, distributed: number | undefined) {
+                try {
+                    // STEP 1: Ensure accounts exist
+                    await upsertAccountsReferencedInTx(tx);
+
+                    // STEP 2: Proceed with validation using the global transaction.isValid method
+                    transaction.isValid(tx, block.timestamp, (isValid: boolean, validationReason?: string) => {
+                        if (!isValid) {
+                            logger.error(`Transaction ${tx.hash} failed validation: ${validationReason}`);
+                            return seriesCallback(new Error(`Transaction validation failed for ${tx.hash}: ${validationReason}`), null);
+                        }
+
+                        // If validation passes:
+                        if (revalidate) {
+                            // During revalidation, if tx is valid, mark as 'executed' (meaning validated) for series result.
+                            seriesCallback(null, { executed: true, distributed: 0 });
+                        } else {
+                            // Not revalidating (normal block processing), so execute the transaction
+                            transaction.execute(tx, block.timestamp, (executed, distributed) => {
                                 if (!executed) {
-                                    logger.fatal('Tx execution failure', tx);
-                                    process.exit(1);
+                                    logger.error(`Transaction ${tx.hash} failed execution.`);
+                                    return seriesCallback(new Error(`Transaction ${tx.hash} failed execution.`), null);
                                 }
-                                callback(null, {
-                                    executed: executed,
-                                    distributed: distributed
-                                });
+                                seriesCallback(null, { executed: true, distributed: distributed || 0 });
                             });
-                        else {
-                            logger.error(error, tx);
-                            callback(null, false);
                         }
                     });
+
+                } catch (e: any) {
+                    const txHashInfo = tx && tx.hash ? tx.hash : 'N/A_UPSERT_FAILURE';
+                    logger.error(`Failed to upsert accounts for tx ${txHashInfo} during block processing: ${e.message}`, e);
+                    return seriesCallback(new Error(`Account upsertion failed for tx ${txHashInfo}: ${e.message}`), null);
                 }
-                else {
-
-                    transaction.execute(tx, block.timestamp, function (executed: boolean, distributed: number | undefined) {
-                        if (!executed)
-                            logger.fatal('Tx execution failure', tx);
-                        callback(null, {
-                            executed: executed,
-                            distributed: distributed
-                        });
-                    });
-                }
-
-
             });
         }
         executions.push((callback: (err: any, result: any) => void) => chain.applyHardfork(block, callback));
