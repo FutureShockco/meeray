@@ -39,9 +39,7 @@ export function verifySignature(message: any, cb: (isValid: boolean) => void): v
     delete tmpMess.s;
     const hash = CryptoJS.SHA256(JSON.stringify(tmpMess)).toString();
     const pub = consensus.getActiveWitnessKey(name)
-    console.log('verifySignature DEBUG: hash =', hash);
-    console.log('verifySignature DEBUG: pub =', pub);
-    console.log('verifySignature DEBUG: sign =', sign);
+
     if (
         pub &&
         secp256k1.ecdsaVerify(

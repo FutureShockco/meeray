@@ -55,7 +55,6 @@ export const witnessesModule = {
             // Calculate the new balance with the reward
             const reward = config.witnessReward;
             let newBalance = (account.tokens?.ECH || 0) + reward;
-            console.log(`[witnessRewards] newBalance: ${newBalance}`);
             if (reward > 0) {
                 // Update the account balance using dot notation for the ECH field within tokens
                 cache.updateOne(

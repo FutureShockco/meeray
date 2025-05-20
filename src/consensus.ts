@@ -224,7 +224,6 @@ export const consensus: Consensus = {
             if (block.witness === process.env.STEEM_ACCOUNT && round === 0)
                 onlyBlockHash = block;
             let signed = signMessage({t:5, d:{r:round, b: onlyBlockHash, ts: new Date().getTime()}})
-            console.log('signed', signed);
             p2p.broadcast(signed);
         }
         this.tryNextStep();
