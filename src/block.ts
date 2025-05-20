@@ -42,7 +42,8 @@ export class Block {
         missedBy?: string,
         dist?: number,
         signature?: string,
-        hash?: string
+        hash?: string,
+        sync?: boolean
     ) {
         this._id = _id;
         this.blockNum = blockNum;
@@ -56,6 +57,7 @@ export class Block {
         this.dist = dist || 0;
         this.signature = signature || '';
         this.hash = hash || '';
+        this.sync = sync || false;
     }
 }
 
