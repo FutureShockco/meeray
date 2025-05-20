@@ -17,7 +17,7 @@ const bs58 = baseX(config.b58Alphabet || '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcde
 
 export class Block {
     _id!: number;
-    blockNum!: number;
+    blockNum: number;
     steemBlockNum!: number;
     steemBlockTimestamp!: number;
     phash!: string;
@@ -27,8 +27,8 @@ export class Block {
     missedBy: string;
     dist: number;
     signature?: string;
-    hash?: string;
-    sync!: boolean;
+    hash: string;
+    sync: boolean;
 
     constructor(
         _id: number,

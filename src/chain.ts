@@ -59,11 +59,12 @@ export const chain = {
         txs: Transaction[],
         witness: string,
         missedBy: string = '',
-        distributed: number = 0
+        distributed: number = 0,
+        sync: boolean = false
     ): string => {
         try {
             // Simple implementation for hash calculation
-            const data = `${index}${phash}${timestamp}${JSON.stringify(txs)}${witness}${missedBy}${distributed}`;
+            const data = `${index}${phash}${timestamp}${JSON.stringify(txs)}${witness}${missedBy}${distributed}${sync}`;
             const hash = createHash('sha256').update(data).digest('hex');
             return hash;
         } catch (error) {
@@ -79,13 +80,13 @@ export const chain = {
             phash: '0', // phash: '0'
             timestamp: 0, // timestamp: 0
             steemBlockTimestamp: 0, // steemBlockTimestamp: 0
-            sync: false, // sync: false
             txs: [], // txs: []
             witness: config.masterName, // witness: config.masterName
             hash: '', // hash: '' (will be set below)
             signature: config.originHash, // signature: config.originHash
             missedBy: '', // missedBy: ''
             dist: config.witnessReward > 0 ? config.witnessReward : 0, // dist: config.witnessReward > 0 ? config.witnessReward : 0
+            sync: false, // sync: false
         };
         // Calculate and set the actual hash for the genesis block
         genesisBlock.hash = chain.calculateBlockHash(
@@ -95,7 +96,8 @@ export const chain = {
             genesisBlock.txs,
             genesisBlock.witness,
             genesisBlock.missedBy,
-            genesisBlock.dist
+            genesisBlock.dist,
+            genesisBlock.sync
         );
         return genesisBlock;
     },

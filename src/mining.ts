@@ -238,7 +238,7 @@ export const mining = {
         let nextHash = calculateHashForBlock(block)
         let sigObj  = secp256k1.ecdsaSign(Buffer.from(nextHash, 'hex'), bs58.decode(process.env.WITNESS_PRIVATE_KEY || ''))
         const signature = bs58.encode(sigObj.signature)
-        return new Block(block._id, block.blockNum, block.steemBlockNum, block.steemBlockTimestamp, block.phash, block.timestamp, block.txs, block.witness, block.missedBy, block.dist, signature, nextHash)
+        return new Block(block._id, block.blockNum, block.steemBlockNum, block.steemBlockTimestamp, block.phash, block.timestamp, block.txs, block.witness, block.missedBy, block.dist, signature, nextHash, block.sync)
     },
 };
 
