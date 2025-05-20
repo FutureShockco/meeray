@@ -255,7 +255,7 @@ async function startDaemon(cfg: any) {
     http.init();
     p2p.init();
     p2p.connect(process.env.PEERS ? process.env.PEERS.split(',') : [], true);
-    setTimeout(() => p2p.keepAlive?.(), 3000);
+    setTimeout(() => p2p.keepAlive(), 3000);
 
     setInterval(() => {
         transaction.cleanPool?.();
