@@ -81,85 +81,26 @@ export function isValidPubKey(key: string): boolean {
 export async function isValidSignature(
     user: string,
     hash: string,
-    sign: string 
-): Promise<string | null> {
-    return new Promise((resolve) => {
-        cache.findOne('accounts', { name: user }, async function (err: any, account: any) {
-            if (err) {
-                logger.error(`Database error finding account ${user}:`, err);
-                return resolve(account);
+    sign: string,
+    cb: (valid: any) => void
+) {
+    cache.findOne('accounts', { name: user }, async function (err, account) {
+        if (err) throw err
+        if (!account) {
+            cb(false); return
+        } else if (chain.restoredBlocks && chain.getLatestBlock()._id < chain.restoredBlocks && process.env.REBUILD_NO_VERIFY === '1')
+            // no verify rebuild mode, only use if you trust the contents of blocks.zip
+            return cb(account)
+
+        try {
+            let bufferHash = Buffer.from(hash, 'hex')
+            let b58sign = bs58.decode(sign)
+            let b58pub = bs58.decode(account.witnessPublicKey)
+            if (secp256k1.ecdsaVerify(b58sign, bufferHash, b58pub)) {
+                cb(account)
+                return
             }
-
-            if (!account) {
-                logger.error(`Account not found: ${user}`);
-                return resolve(null);
-            } else if (chain.restoredBlocks && chain.getLatestBlock()._id < chain.restoredBlocks && process.env.REBUILD_NO_VERIFY === '1') {
-                // No verify rebuild mode, only use if you trust the contents of blocks.zip
-                return resolve(account);
-            }
-
-            // Main key can authorize all transactions
-            if (!account.witnessPublicKey) {
-                logger.error(`No public key found for account: ${user}`);
-                return resolve(null);
-            }
-
-            try {
-              
-                try {
-                    let bufferHash = Buffer.from(hash, 'hex')
-                    let b58sign = bs58.decode(sign)
-                    let b58pub = bs58.decode(account.witnessPublicKey)
-
-                    console.log('isValidSignature DEBUG: b58sign =', b58sign);
-                    // Verify the signature
-                    try {
-
-                        const isValid = secp256k1.ecdsaVerify(b58sign, bufferHash, b58pub);
-                        console.log('isValidSignature DEBUG: isValid =', isValid);
-                        if (isValid) {
-                            return resolve(account);
-                        } 
-                        else {
-                            // Try a simpler verification alternative
-                            try {
-
-                                // Force the signature length to be exactly what's expected
-                                const fixedSignature = Buffer.alloc(64);
-                                let signBuffer = fixedSignature;
-                                logger.debug(`- Adjusted signature to length: ${signBuffer.length}`);
-
-                                // Try verification again with adjusted signature
-                                const isValidFixed = secp256k1.ecdsaVerify(signBuffer, bufferHash, b58pub);
-                                logger.debug(`- Second verification attempt: ${isValidFixed}`);
-
-                                if (isValidFixed) {
-                                    logger.debug(`Signature verified for ${user} after adjustment`);
-                                    return resolve(null);
-                                }
-
-                            } catch (altErr) {
-                                logger.error(`Error in alternative verification: ${altErr}`);
-                            }
-
-                            logger.error(`Signature verification failed for ${user}`);
-                            return resolve(null);
-                        }
-                    } catch (e) {
-                        logger.error(`Error during signature verification: ${e}`);
-                        return resolve(null);
-                    }
-
-                } catch (e) {
-                    logger.error(`Failed to decode signature from base58: ${e}`);
-                    return resolve(null);
-                }
-
-
-            } catch (e) {
-                logger.error(`General error verifying signature: ${e}`);
-                return resolve(null);
-            }
-        });
-    });
+        } catch (e) { }
+        cb(false)
+    })
 }

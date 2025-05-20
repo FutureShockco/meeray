@@ -9,10 +9,7 @@ import chain from './chain.js';
 import cache from './cache.js';
 import { transactionHandlers } from './transactions/index.js';
 import { upsertAccountsReferencedInTx } from './account.js';
-import p2p from './p2p.js';
 import cloneDeep from 'clone-deep';
-import bson from 'bson';
-import { isValidSignature } from './crypto.js';
 // Constants
 const MAX_MEMPOOL_SIZE = parseInt(process.env.MEMPOOL_SIZE || '2000', 10);
 

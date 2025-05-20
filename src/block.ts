@@ -62,7 +62,7 @@ export class Block {
 // Directly ported block-related functions from chain.js
 
 
-export function calculateHashForBlock (
+export function calculateHashForBlock(
     blockData: {
         _id: number;
         blockNum: number;
@@ -82,6 +82,7 @@ export function calculateHashForBlock (
 ): string {
     try {
         let clonedBlock = cloneDeep(blockData);
+        console.log('calculateHashForBlock DEBUG: clonedBlock =', clonedBlock);
         // Always ensure hash and signature are removed when calculating the hash
         if (deleteExisting === true || 'hash' in clonedBlock || 'signature' in clonedBlock || 'missedBy' in clonedBlock) {
             delete clonedBlock.hash;
@@ -98,47 +99,29 @@ export function calculateHashForBlock (
         return '';
     }
 }
-
 // isValidHashAndSignature
 export function isValidHashAndSignature(newBlock: any, cb: (valid: boolean) => void) {
-    let theoreticalHash = calculateHashForBlock(newBlock, true);
+    let theoreticalHash = calculateHashForBlock(newBlock, true)
     if (theoreticalHash !== newBlock.hash) {
-        logger.debug(typeof (newBlock.hash) + ' ' + typeof theoreticalHash);
-        logger.error('invalid hash: ' + theoreticalHash + ' ' + newBlock.hash);
-        cb(false); return;
+        logger.debug(typeof (newBlock.hash) + ' ' + typeof theoreticalHash)
+        logger.error('invalid hash: ' + theoreticalHash + ' ' + newBlock.hash)
+        cb(false); return
     }
-    // Only the witness key is allowed for block signature
-    cache.findOne('accounts', { name: newBlock.witness }, async function (err: any, account: any) {
-        if (err || !account) {
-            cb(false); return;
+
+    // finally, verify the signature of the miner
+    isValidSignature(newBlock.miner, newBlock.hash, newBlock.signature, function (valid) {
+        if (!valid) {
+            logger.error('invalid miner signature')
+            cb(false); return
         }
-        let allowedPubKeys = [] as any[];
-        if (account.witnessPublicKey)
-            allowedPubKeys = [[account.witnessPublicKey, 1]];
-        else
-            allowedPubKeys = [];
-        let threshold = 1;
-        console.log('isValidHashAndSignature DEBUG: allowedPubKeys =', allowedPubKeys);
-        try {
-            for (let i = 0; i < allowedPubKeys.length; i++) {
-                let bufferHash = Buffer.from(newBlock.hash, 'hex');
-                let b58sign = bs58.decode(newBlock.signature);
-                let b58pub = bs58.decode(allowedPubKeys[i][0]);
-                if (secp256k1.ecdsaVerify(b58sign, bufferHash, b58pub) && allowedPubKeys[i][1] >= threshold) {
-                    cb(true);
-                    return;
-                }
-            }
-        } catch (e) { }
-        logger.error('invalid witness signature in isValidHashAndSignature');
-        cb(false);
-    });
+        cb(true)
+    })
 }
 
 // isValidBlockTxs
 export function isValidBlockTxs(newBlock: any, cb: (valid: boolean) => void) {
     // Revalidate transactions in order
-    chain.executeBlockTransactions(newBlock, true, function(validTxs, dist) {
+    chain.executeBlockTransactions(newBlock, true, function (validTxs, dist) {
         cache.rollback()
         if (validTxs.length !== newBlock.txs.length) {
             logger.error('invalid block transaction')
@@ -146,7 +129,7 @@ export function isValidBlockTxs(newBlock: any, cb: (valid: boolean) => void) {
         }
         let blockDist = newBlock.dist || 0
         if (blockDist !== dist) {
-            logger.error('Wrong dist amount',blockDist,dist)
+            logger.error('Wrong dist amount', blockDist, dist)
             return cb(false)
         }
 
@@ -200,7 +183,7 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
         logger.error('block timestamp too far in the future');
         return cb(false);
     }
-     // verify that its indeed the next block
+    // verify that its indeed the next block
     const previousBlock = chain.getLatestBlock();
     if (previousBlock._id + 1 !== newBlock._id) {
         logger.error('invalid index')
@@ -235,64 +218,31 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
         logger.error('block too early for witness with priority #' + witnessPriority);
         return cb(false);
     }
-    // Check hash and signature
-    if (verifyHashAndSignature) {
-        const hash = calculateHashForBlock(newBlock, true);
-        if (hash !== newBlock.hash) {
-            logger.error('invalid block hash: expected', hash, 'got', newBlock.hash);
-            return cb(false);
+    if (!verifyTxValidity) {
+        if (!verifyHashAndSignature) {
+            cb(true); return
         }
-        // Lookup witness public key
-        cache.findOne('accounts', { name: newBlock.witness }, async (err: any, account: any) => {
-            if (err || !account) {
-                logger.error('could not find witness account for signature check');
-                return cb(false);
+        isValidHashAndSignature(newBlock, function (isValid) {
+            if (!isValid) {
+                cb(false); return
             }
-            const pub = account.witnessPublicKey;
-            if (!pub || !isValidPubKey(pub)) {
-                logger.error('invalid or missing witness public key');
-                return cb(false);
+            cb(true)
+        })
+    } else
+        isValidBlockTxs(newBlock, function (isValid) {
+            if (!isValid) {
+                cb(false); return
             }
-            console.log('isValidNewBlock DEBUG: newBlock.signature =', newBlock.signature);
-            const valid = await isValidSignature(newBlock.witness, newBlock.hash, newBlock.signature);
-            if (!valid) {
-                logger.error('invalid witness signature in isValidNewBlock');
-                return cb(false);
+            if (!verifyHashAndSignature) {
+                cb(true); return
             }
-            // Optionally, revalidate all transactions
-            if (verifyTxValidity) {
-                isValidBlockTxs(newBlock, function(isValid) {
-                    if (!isValid) {
-                        cb(false); return
-                    }
-                    if (!verifyHashAndSignature) {
-                        cb(true); return
-                    }
-                    isValidHashAndSignature(newBlock, function(isValid) {
-                        if (!isValid) {
-                            cb(false); return
-                        }
-                        cb(true)
-                    })
-                })
-            }
-            cb(true);
-        });
-        return;
-    }
-    // Optionally, revalidate all transactions
-    if (verifyTxValidity) {
-        for (const tx of newBlock.txs) {
-            const validTx = await new Promise<boolean>((resolve) => {
-                transaction.isValid(tx, newBlock.timestamp, (isValid: boolean) => resolve(isValid));
-            });
-            if (!validTx) {
-                logger.error('invalid transaction in block', tx);
-                return cb(false);
-            }
-        }
-    }
-    cb(true);
+            isValidHashAndSignature(newBlock, function (isValid) {
+                if (!isValid) {
+                    cb(false); return
+                }
+                cb(true)
+            })
+        })
 }
 
 // Additional block-related functions can be added here 
