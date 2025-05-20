@@ -290,11 +290,11 @@ export const p2p = {
         // A safer check: if the lastConnect timestamp is very recent AND this specific ws instance isn't already being processed
         // (which is hard to tell at this exact point without more state).
         // The core idea: prevent rapid new incoming connections from the same normalized address.
-        if (now - lastConnect < 10000 && !p2p.sockets.some(s => s === ws)) {
-            logger.debug(`Incoming connection from ${normalizedAddress} rejected (too frequent new attempt)`);
-            ws.close();
-            return;
-        }
+        // if (now - lastConnect < 10000 && !p2p.sockets.some(s => s === ws)) {
+        //     logger.debug(`Incoming connection from ${normalizedAddress} rejected (too frequent new attempt)`);
+        //     ws.close();
+        //     return;
+        // }
         // Update timestamp for this successful interaction point or new attempt
         p2p.recentConnections.set(normalizedAddress, now);
 
