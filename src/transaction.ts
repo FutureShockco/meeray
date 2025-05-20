@@ -155,14 +155,6 @@ const transaction: TransactionModule = {
         if (transaction.isPublished(tx)) {
             cb(false, 'transaction already in chain'); return
         }
-        try {
-            await upsertAccountsReferencedInTx(tx);
-        } catch (error) {
-            logr.error(`Error upserting account referenced in tx ${tx.hash} during validation:`, error);
-            // If account upsertion fails here, the transaction should be considered invalid.
-            cb(false, `Failed to upsert accounts: ${error instanceof Error ? error.message : String(error)}`);
-            return;
-        }
         let newTx = cloneDeep(tx)
         delete newTx.signature
         delete newTx.hash

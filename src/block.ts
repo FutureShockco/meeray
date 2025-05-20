@@ -199,6 +199,7 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
         logger.error('block too early for witness with priority #' + witnessPriority);
         return cb(false);
     }
+    
     if (!verifyTxValidity) {
         if (!verifyHashAndSignature) {
             cb(true); return
