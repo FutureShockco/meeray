@@ -200,7 +200,7 @@ export const mining = {
         // backups witnesses are available after each block time intervals
         else for (let i = 1; i < 2 * config.witnesses; i++)
             if (chain.recentBlocks[chain.recentBlocks.length - i]
-                && chain.recentBlocks[chain.recentBlocks.length - i].miner === process.env.STEEM_ACCOUNT) {
+                && chain.recentBlocks[chain.recentBlocks.length - i].witness === process.env.STEEM_ACCOUNT) {
                 mineInMs = (i + 1) * config.blockTime
                 break
             }

@@ -109,7 +109,7 @@ export function isValidHashAndSignature(newBlock: any, cb: (valid: boolean) => v
     }
 
     // finally, verify the signature of the miner
-    isValidSignature(newBlock.miner, newBlock.hash, newBlock.signature, function (valid) {
+    isValidSignature(newBlock.witness, newBlock.hash, newBlock.signature, function (valid) {
         if (!valid) {
             logger.error('invalid miner signature')
             cb(false); return

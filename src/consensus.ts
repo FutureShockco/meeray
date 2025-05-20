@@ -1,20 +1,9 @@
-// TODO: Uncomment and install these dependencies as you migrate the rest of the Echelon codebase
-// import ... (other dependencies)
-
-// TODO: Add proper types for consensus logic, etc.
-
-import secp256k1 from 'secp256k1';
-import CryptoJS from 'crypto-js';
-import cloneDeep from 'clone-deep';
 import logger from './logger.js';
 import config from './config.js';
 import { chain } from './chain.js';
 import p2p, { MessageType } from './p2p.js';
-// TODO: Add 'b58Alphabet' and 'consensusRounds' to config if not present
-// @ts-ignore
 import baseX from 'base-x';
 import { isValidNewBlock } from './block.js';
-import witnessesModule from './witnesses.js';
 import { signMessage } from './crypto.js';
 const bs58 = baseX(config.b58Alphabet || '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz');
 
@@ -73,7 +62,7 @@ export const consensus: Consensus = {
         // and out of consensus 2*config.leaders blocks after his last scheduled block
         const blockNum = chain.getLatestBlock()._id + 1;
         const actives: string[] = [];
-        
+
         let currentWitness = chain.schedule.shuffle[(blockNum - 1) % config.witnesses].name;
         if (consensus.getActiveWitnessKey(currentWitness))
             actives.push(currentWitness);
@@ -83,7 +72,7 @@ export const consensus: Consensus = {
                 && actives.indexOf(chain.recentBlocks[chain.recentBlocks.length - i].witness) === -1
                 && consensus.getActiveWitnessKey(chain.recentBlocks[chain.recentBlocks.length - i].witness))
                 actives.push(chain.recentBlocks[chain.recentBlocks.length - i].witness);
-        
+
         return actives;
     },
     tryNextStep: function () {
@@ -131,7 +120,7 @@ export const consensus: Consensus = {
                 chain.validateAndAddBlock?.(possBlock.block, false, (err: any) => {
                     if (err) {
                         logger.error(`[CONSENSUS-TRYSTEP] Error from validateAndAddBlock for block ${possBlock.block?._id}:`, err);
-                    } 
+                    }
                     let newPossBlocks = [];
                     for (let y = 0; y < this.possBlocks.length; y++)
                         if (possBlock.block._id < this.possBlocks[y].block._id)
@@ -174,8 +163,8 @@ export const consensus: Consensus = {
             this.validating.push(block.hash);
 
             let possBlock: any = { block };
-            
-            for (let r = 0; r < config.consensusRounds; r++) 
+
+            for (let r = 0; r < config.consensusRounds; r++)
                 possBlock[r] = [];
             logger.info('New poss block ' + block._id + '/' + block.witness + '/' + block.hash.substr(0, 4));
             isValidNewBlock(block, true, true, (isValid: boolean) => {
@@ -189,13 +178,12 @@ export const consensus: Consensus = {
                     this.possBlocks.push(possBlock);
 
                     for (let i = 0; i < this.possBlocks.length; i++)
-                        if (block.hash === this.possBlocks[i].block.hash && this.possBlocks[i][0].indexOf(process.env.STEEM_ACCOUNT) === -1)
-                        {
+                        if (block.hash === this.possBlocks[i].block.hash && this.possBlocks[i][0].indexOf(process.env.STEEM_ACCOUNT) === -1) {
                             possBlock[0].push(process.env.STEEM_ACCOUNT);
                         }
                     for (let i = 0; i < this.queue.length; i++) {
                         if (this.queue[i].d.b.hash === possBlock.block.hash) {
-                            logger.warn('From Queue: '+consensus.queue[i].d.b.hash)
+                            logger.warn('From Queue: ' + consensus.queue[i].d.b.hash)
                             this.remoteRoundConfirm(this.queue[i]);
                             this.queue.splice(i, 1);
                             i--;
@@ -223,7 +211,7 @@ export const consensus: Consensus = {
             let onlyBlockHash: any = { hash: block.hash };
             if (block.witness === process.env.STEEM_ACCOUNT && round === 0)
                 onlyBlockHash = block;
-            let signed = signMessage({t:5, d:{r:round, b: onlyBlockHash, ts: new Date().getTime()}})
+            let signed = signMessage({ t: MessageType.BLOCK_CONF_ROUND, d: { r: round, b: onlyBlockHash, ts: new Date().getTime() } })
             p2p.broadcast(signed);
         }
         this.tryNextStep();
