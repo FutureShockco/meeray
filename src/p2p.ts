@@ -27,9 +27,9 @@ import mongo from './mongo.js'; // Ensure mongo is imported
 import * as wsModule from 'ws';
 const version = '1.6.6';
 const default_port = 6001;
-const replay_interval = 10000;
-const discovery_interval = 30000;
-const keep_alive_interval = 10000;
+const replay_interval = 1500;
+const discovery_interval = 60000;
+const keep_alive_interval = 2500;
 const max_blocks_buffer = 100;
 const max_peers = Number(process.env.MAX_PEERS) || 15;
 const max_recover_attempts = 25;
@@ -126,23 +126,19 @@ export const p2p = {
             // Set up recovery on a slower schedule
             p2p.recover();
             // Use a longer initial delay before starting regular refresh schedule
-            setTimeout(() => {
-                setInterval(() => p2p.refresh(), replay_interval);
-            }, replay_interval * 2);
-        }, 5000); 
+            setInterval(() => p2p.refresh(), replay_interval);
+        }, replay_interval);
 
         if (!process.env.NO_DISCOVERY || process.env.NO_DISCOVERY === '0' || process.env.NO_DISCOVERY === '0') {
             // Delay initial discovery to spread out startup operations
-            setTimeout(() => {
-                setInterval(() => p2p.discoveryWorker(), discovery_interval);
-                p2p.discoveryWorker(true);
-            }, 5000); // 5 seconds delay
+            setInterval(() => p2p.discoveryWorker(), discovery_interval);
+            p2p.discoveryWorker(true);
         }
 
         // Spread out operation schedules
         setTimeout(() => {
             setInterval(() => p2p.cleanRoundConfHistory(), history_interval);
-        }, 15000);
+        }, history_interval);
     },
 
     generateNodeId: (): void => {
@@ -286,13 +282,13 @@ export const p2p = {
         const peerAddress = ws._socket.remoteAddress + ':' + ws._socket.remotePort;
         const now = Date.now();
         const lastConnect = recentConnections.get(peerAddress) || 0;
-        
+
         if (now - lastConnect < 10000) { // 10 second cooldown
             logger.debug(`Connection attempt from ${peerAddress} rejected (too frequent)`);
             ws.close();
             return;
         }
-        
+
         recentConnections.set(peerAddress, now);
     },
 
@@ -513,7 +509,7 @@ export const p2p = {
                     // we are receiving a consensus round confirmation
                     // it should come from one of the elected witnesses, so let's verify signature
                     if (p2p.recovering) return;
-                    
+
                     if (!message.s || !message.s.s || !message.s.n) return;
                     if (!message.d || !message.d.ts ||
                         typeof message.d.ts != 'number' ||
