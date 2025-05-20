@@ -108,23 +108,13 @@ export const p2p = {
     init: async (): Promise<void> => {
         p2p.generateNodeId();
 
-
-
-
-
-        // Use type assertions to access untyped properties safely
         const WebSocketServer =
             (wsModule as any).WebSocketServer ||
             (wsModule as any).Server ||
             (wsModule.default as any)?.WebSocketServer ||
             (wsModule.default as any)?.Server;
 
-        // Optional: throw if not found
-        if (!WebSocketServer) {
-            throw new Error('WebSocketServer not found in ws module');
-        }
 
-        // Create server
         const server = new WebSocketServer({ host: p2p_host, port: p2p_port });
 
         server.on('connection', (ws: WebSocket) => p2p.handshake(ws as EnhancedWebSocket));
@@ -234,12 +224,6 @@ export const p2p = {
             // Stop if we've reached the maximum attempts for this cycle
             if (toConnect.length >= maxAttemptsPerCycle) break;
 
-            // Skip peers we recently tried to connect to
-            if (p2p.recentConnectionAttempts[peers[p]]
-                && currentTime - p2p.recentConnectionAttempts[peers[p]] < 60000) {
-                logger.debug(`Skipping recent connection attempt to ${peers[p]}`);
-                continue;
-            }
 
             let connected = false;
             let colonSplit = peers[p].replace('ws://', '').split(':');
