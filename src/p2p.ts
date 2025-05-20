@@ -20,7 +20,7 @@ import cache from './cache.js';
 import consensus from './consensus.js';
 import steem from './steem.js';
 import witnessesModule from './witnesses.js';
-import { verifySignature } from './crypto.js';
+import { getNewKeyPair, verifySignature } from './crypto.js';
 import mongo from './mongo.js'; // Ensure mongo is imported
 // TODO: import steem from './steem.js';
 // Dynamically import the 'ws' module
@@ -146,7 +146,7 @@ export const p2p = {
             logger.error('Chain module not available for generating node ID');
             return;
         }
-        p2p.nodeId = chain.getNewKeyPair();
+        p2p.nodeId = getNewKeyPair();
 
         logger.info('P2P ID: ' + p2p.nodeId?.pub);
     },
@@ -226,46 +226,65 @@ export const p2p = {
 
     connect: (newPeers: string[], isInit: boolean = false): void => {
         newPeers.forEach((peer) => {
+            // Check cooldown BEFORE attempting to connect
+            const now = Date.now();
+            const lastConnect = p2p.recentConnections.get(peer) || 0; // Use peer string as key
+            if (now - lastConnect < 10000) { // 10 second cooldown
+                logger.debug(`Outgoing connection to ${peer} skipped (too frequent)`);
+                return; 
+            }
+            p2p.recentConnections.set(peer, now); // Add to cooldown map
+
             const socket = new WebSocket(peer) as EnhancedWebSocket;
-            socket.on('open', () => p2p.handshake(socket));
+            socket.on('open', () => {
+                // Successfully opened, call handshake
+                p2p.handshake(socket); 
+            });
             socket.on('error', () => {
                 logger[isInit ? 'warn' : 'debug']('peer connection failed', peer);
+                // Remove from cooldown map if connection failed, so we can retry sooner
+                p2p.recentConnections.delete(peer); 
             });
         });
     },
 
     handshake: (ws: EnhancedWebSocket): void => {
-        const peerAddress = ws._socket.remoteAddress + ':' + ws._socket.remotePort;
+        // Check cooldown for INCOMING connections
+        // (this part is mostly correct, but ensure peerAddress is consistent)
+        const peerAddress = ws.url || (ws._socket.remoteAddress + ':' + ws._socket.remotePort); 
         const now = Date.now();
         const lastConnect = p2p.recentConnections.get(peerAddress) || 0;
         
         if (now - lastConnect < 10000) { // 10 second cooldown
-            logger.debug(`Connection attempt from ${peerAddress} rejected (too frequent)`);
+            logger.debug(`Incoming connection from ${peerAddress} rejected (too frequent)`);
             ws.close();
             return;
         }
-        
         p2p.recentConnections.set(peerAddress, now);
-        
+
+        // FIRST check offline mode
         if (process.env.OFFLINE) {
             logger.warn('Incoming handshake refused because OFFLINE');
             ws.close();
             return;
         }
 
+        // NEXT check peer limit
         if (p2p.sockets.length >= max_peers) {
             logger.warn('Incoming handshake refused because already peered enough ' + p2p.sockets.length + '/' + max_peers);
             ws.close();
             return;
         }
 
-        // close connection if we already have this peer ip in our connected sockets
+        // THEN check for duplicate connections
         for (let i = 0; i < p2p.sockets.length; i++)
             if (p2p.sockets[i]._socket.remoteAddress === ws._socket.remoteAddress
                 && p2p.sockets[i]._socket.remotePort === ws._socket.remotePort) {
                 ws.close();
                 return;
             }
+            
+        // Continue with handshake
         logger.debug('Handshaking new peer', ws.url || ws._socket.remoteAddress + ':' + ws._socket.remotePort);
         let random = randomBytes(config.read(0).randomBytesLength).toString('hex');
         ws.challengeHash = random;

@@ -102,7 +102,6 @@ export const mongo = {
     },
 
     initGenesis: async (): Promise<void> => {
-        const currentDb = mongo.getDb(); // Use getDb to ensure it's initialized
         if (process.env.REBUILD_STATE === '1') {
             logger.info('Starting genesis for rebuild...');
         } else {

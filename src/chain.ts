@@ -8,7 +8,6 @@ import config from './config.js';
 import { blocks } from './blockStore.js';
 import logger from './logger.js';
 import secp256k1 from 'secp256k1';
-import { createHash, randomBytes } from 'crypto';
 import baseX from 'base-x';
 // @ts-ignore
 import series from 'run-series';
@@ -41,17 +40,7 @@ export const chain = {
     lastRebuildOutput: 0,
     worker: null as any,
     shuttingDown: false,
-    getNewKeyPair: () => {
-        let privKey, pubKey;
-        do {
-            privKey = randomBytes(32); // config.randomBytesLength assumed 32
-            pubKey = secp256k1.publicKeyCreate(privKey);
-        } while (!secp256k1.privateKeyVerify(privKey));
-        return {
-            pub: bs58.encode(pubKey),
-            priv: bs58.encode(privKey)
-        };
-    },
+
 
     getGenesisBlock: () => {
         const genesisBlock: Block = {

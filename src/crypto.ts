@@ -6,6 +6,8 @@ import cache from './cache.js';
 import logger from './logger.js';
 import { chain } from './chain.js';
 import consensus from './consensus.js';
+import { randomBytes } from 'crypto';
+
 /**
  * Signs a message using the STEEM_ACCOUNT_PRIV environment variable.
  * @param message The message object to sign (will be mutated with .s field)
@@ -101,4 +103,16 @@ export async function isValidSignature(
         } catch (e) { }
         cb(false)
     })
+}
+
+export function getNewKeyPair() {
+    let privKey, pubKey;
+    do {
+        privKey = randomBytes(32); // config.randomBytesLength assumed 32
+        pubKey = secp256k1.publicKeyCreate(privKey);
+    } while (!secp256k1.privateKeyVerify(privKey));
+    return {
+        pub: bs58.encode(pubKey),
+        priv: bs58.encode(privKey)
+    };
 }

@@ -13,6 +13,7 @@ import txHistory from './txHistory.js'; // Assumed to be a JS module with getWri
 import witnessesStats from './witnessesStats.js'; // Assumed to be a JS module with getWriteOps
 
 import { Db, Filter, Document as MongoDocument, UpdateFilter, FindOptions, ObjectId } from 'mongodb';
+import mongo from './mongo.js';
 
 
 interface BasicCacheDoc extends MongoDocument {
@@ -152,7 +153,7 @@ const cache: CacheType = {
     witnessChanges: [],
     writerQueue: new ProcessingQueue(),
 
-    _setNestedValue: function(obj: any, path: string, value: any): void {
+    _setNestedValue: function (obj: any, path: string, value: any): void {
         const keys = path.split('.');
         let current = obj;
         for (let i = 0; i < keys.length - 1; i++) {
@@ -287,20 +288,20 @@ const cache: CacheType = {
                 logger.debug(`[CACHE deleteOnePromise] Removed ${collection}/${docId} from in-memory store.`);
             }
             // Also remove from copy if it exists there (though less likely to be hit directly for a delete operation)
-            if (docId !== undefined && this.copy[collectionName as keyof CacheCopyCollections] && (this.copy[collectionName as keyof CacheCopyCollections] as CacheCollectionStore)[docId]){
+            if (docId !== undefined && this.copy[collectionName as keyof CacheCopyCollections] && (this.copy[collectionName as keyof CacheCopyCollections] as CacheCollectionStore)[docId]) {
                 delete (this.copy[collectionName as keyof CacheCopyCollections] as CacheCollectionStore)[docId];
                 logger.debug(`[CACHE deleteOnePromise] Removed ${collection}/${docId} from copy store.`);
             }
 
             const result = await db.collection<BasicCacheDoc>(collection).deleteOne(query);
-            
+
             // Add to changes array for writeToDisk to eventually process (if this is part of a transaction block)
             // However, direct DB modification bypasses the usual change tracking for rollback of in-memory state.
             // For simplicity here, this method directly modifies DB and in-memory state.
             // A more complex implementation would queue a delete operation for writeToDisk.
             if (result.deletedCount && result.deletedCount > 0) {
-                 // For now, we don't add to this.changes for deletions, as writeToDisk mainly handles inserts/updates.
-                 // If deletion needs to be part of the batching/rollback system, this needs more thought.
+                // For now, we don't add to this.changes for deletions, as writeToDisk mainly handles inserts/updates.
+                // If deletion needs to be part of the batching/rollback system, this needs more thought.
                 logger.debug(`[CACHE deleteOnePromise] Successfully deleted document from ${collection} matching query:`, query);
                 return true;
             } else {
@@ -372,11 +373,11 @@ const cache: CacheType = {
                     case '$push':
                         for (const fieldPath in opArgs) {
                             const keys = fieldPath.split('.');
-                            let current:any = targetDoc;
+                            let current: any = targetDoc;
                             let validPath = true;
                             for (let i = 0; i < keys.length - 1; i++) {
                                 if (!current[keys[i]] || typeof current[keys[i]] !== 'object') {
-                                    current[keys[i]] = {}; 
+                                    current[keys[i]] = {};
                                 }
                                 current = current[keys[i]];
                             }
@@ -399,7 +400,7 @@ const cache: CacheType = {
                             }
                             if (!validPath || !current) continue; // Path did not fully exist or became null
 
-                            const arrField = keys[keys.length-1];
+                            const arrField = keys[keys.length - 1];
                             if (Array.isArray(current[arrField])) {
                                 const condition = opArgs[fieldPath];
                                 if (typeof condition === 'object' && condition !== null && !Array.isArray(condition)) {
@@ -733,7 +734,7 @@ const cache: CacheType = {
 
         switch (collection) {
             case 'accounts':
-                options.sort = { node_appr: -1, name: -1 }; // JS: {node_appr: -1, name: -1}
+                options.sort = { totalVoteWeight: -1, name: -1 }; 
                 try {
                     const accountsDocs = await db.collection<BasicCacheDoc>(collection).find({}, options).toArray();
                     for (let i = 0; i < accountsDocs.length; i++) {
@@ -757,25 +758,20 @@ const cache: CacheType = {
     },
 
     warmupWitnesses: async function (): Promise<number> {
-        if (!db) {
-            logger.error('[CACHE warmupWitnesses] Database not initialized.');
-            return 0;
-        }
-        const query: Filter<BasicCacheDoc> = {
-            $and: [
-                { witnessPublicKey: { $exists: true } },
-                { witnessPublicKey: { $ne: '' } }
-            ]
-        };
+
         try {
-            const accs = await db.collection<BasicCacheDoc>('accounts').find(query).toArray();
-            for (let i = 0; i < accs.length; i++) {
-                const acc = accs[i];
-                if (acc.name) {
-                    this.witnesses[acc.name] = 1;
-                    if (!(this.accounts as CacheCollectionStore)[acc.name]) {
-                        (this.accounts as CacheCollectionStore)[acc.name] = acc;
-                    }
+            const accs = await mongo.getDb().collection('accounts').find({
+                $and: [
+                    { witnessPublicKey: { $exists: true } },
+                    { witnessPublicKey: { $ne: '' } }
+                ]
+            }).toArray();
+            for (let i in accs) {
+                const name = accs[i].name;
+                if (typeof name === 'string' && name.length > 0) {
+                    cache.witnesses[name] = 1;
+                    if (!cache.accounts[name])
+                        cache.accounts[name] = accs[i];
                 }
             }
             logger.debug(`[CACHE warmupLeaders] Warmed up ${accs.length} witnesses.`);

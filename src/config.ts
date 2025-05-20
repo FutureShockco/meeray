@@ -43,7 +43,6 @@ const config = {
   notifPurgeAfter: 10, // how many purge intervals to keep
   notifMaxMentions: 5, // max mentions per comment
   allowedUsernameChars: 'abcdefghijklmnopqrstuvwxyz0123456789.-',
-  blockHashSerialization: 1, // Added for block hashing compatibility
   maxTxPerBlock: 1000, // Added for block validation compatibility
   ecoBlocks: 10000, // Added for chain memory management compatibility
   txExpirationTime: 3600000, // 1 hour, for tx memory cleanup compatibility

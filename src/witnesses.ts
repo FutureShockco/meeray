@@ -85,8 +85,7 @@ export const witnessesModule = {
 
     generateWitnesses: (withWitnessPub: boolean, withWs: boolean, limit: number, start: number) => {
         let witnesses: any[] = [];
-        // Use cache.witnesses if withWitnessPub is true, as this is populated by warmupWitnesses
-        // Otherwise, use cache.accounts for a broader list if needed elsewhere.
+
         let witnessAccSource = withWitnessPub ? cache.witnesses : cache.accounts;
 
         if (!witnessAccSource || Object.keys(witnessAccSource).length === 0) {
@@ -114,6 +113,7 @@ export const witnessesModule = {
 
             let witnessDetails: any = {
                 name: account.name,
+                pub: account.witnessPublicKey,
                 witnessPublicKey: account.witnessPublicKey,
                 balance: account.tokens?.ECH || 0,
                 votedWitnesses: account.votedWitnesses,
@@ -125,8 +125,7 @@ export const witnessesModule = {
             witnesses.push(witnessDetails);
         }
         witnesses = witnesses.sort((a: any, b: any) => b.totalVoteWeight - a.totalVoteWeight);
-        const finalWitnesses = witnesses.slice(start, limit);
-        return finalWitnesses;
+        return witnesses.slice(start, limit);
     },
 };
 
