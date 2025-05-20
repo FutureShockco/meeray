@@ -168,12 +168,7 @@ export async function processTransaction(tx: Transaction): Promise<{ success: bo
       // If handler.validate can return a reason for failure, that would be better to propagate.
       return { success: false, error: `invalid ${TransactionType[tx.type].toLowerCase()} transaction data` };
     }
-    // REMOVED: const success = await handler.process(tx.data, tx.sender);
-    // REMOVED: if (!success) {
-    // REMOVED:   logger.warn(`Transaction processing failed for ${tx.type}`);
-    // REMOVED:   return { success: false, error: `failed to process ${TransactionType[tx.type].toLowerCase()}` };
-    // REMOVED: }
-    // logger.info(`OBSERVER TX DEBUG: Successfully processed transaction ${tx.type}`);
+
     logger.info(`Transaction validated successfully (not executed): ${TransactionType[tx.type]} from ${tx.sender}`);
     return { success: true }; // Now only indicates validation success
   } catch (error) {

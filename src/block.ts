@@ -1,19 +1,11 @@
-// Block class and block-related logic
-// Direct port from chain.js (logic unchanged, only TS syntax)
-
 import CryptoJS from 'crypto-js';
-import secp256k1 from 'secp256k1';
 import cloneDeep from 'clone-deep';
-import baseX from 'base-x';
 import config from './config.js';
 import cache from './cache.js';
-import transaction from './transaction.js';
 import logger from './logger.js';
-import { Transaction } from './transactions/index.js';
 import chain from './chain.js';
-import { isValidSignature, isValidPubKey } from './crypto.js';
+import { isValidSignature } from './crypto.js';
 
-const bs58 = baseX(config.b58Alphabet || '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz');
 
 export class Block {
     _id!: number;
@@ -67,17 +59,20 @@ export function calculateHashForBlock(
     deleteExisting?: boolean
 ): string {
     try {
-        let clonedBlock;
+        let blockToProcess: any = cloneDeep(blockData); // Always clone to avoid modifying the original
+
         if (deleteExisting === true) {
-            clonedBlock = cloneDeep(blockData);
-            delete clonedBlock.hash
-            delete clonedBlock.signature
+            delete blockToProcess.hash;
+            delete blockToProcess.signature;
         }
-        const blockToHash = deleteExisting ? clonedBlock : blockData;
-        // Add detailed logging of the object being hashed
-        logger.debug(`[calculateHashForBlock] Object being hashed: ${JSON.stringify(blockToHash, null, 2)}`);
-        const hash = CryptoJS.SHA256(JSON.stringify(blockToHash)).toString();
-        logger.debug(`calculateHashForBlock DEBUG: hash = ${hash}`);
+
+        // Create a canonical representation for hashing
+        const orderedBlock: any = {};
+        Object.keys(blockToProcess).sort().forEach(key => {
+            orderedBlock[key] = blockToProcess[key];
+        });
+
+        const hash = CryptoJS.SHA256(JSON.stringify(orderedBlock)).toString();
         return hash;
     } catch (error) {
         logger.error(`Error calculating hash for block ${blockData._id}: ${error}`);

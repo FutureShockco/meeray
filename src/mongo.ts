@@ -198,69 +198,96 @@ export const mongo = {
     addMongoIndexes: async (): Promise<void> => {
         const currentDb = mongo.getDb();
         try {
-            await currentDb.collection('accounts').createIndex({ name: 1 });
-            await currentDb.collection('accounts').createIndex({ totalVoteWeight: 1 });
-            await currentDb.collection('tokens').createIndex({ symbol: 1 });
-            await currentDb.collection('tokens').createIndex({ launchpadId: 1 });
-            await currentDb.collection('tokens').createIndex({ owner: 1 });
+            logger.debug('[DB Indexes] Creating indexes for accounts collection...');
+            const accountsCollection = currentDb.collection('accounts');
+            await accountsCollection.createIndex({ name: 1 });
+            await accountsCollection.createIndex({ totalVoteWeight: 1 });
+            logger.debug('[DB Indexes] Finished creating indexes for accounts collection.');
+
+            logger.debug('[DB Indexes] Creating indexes for tokens collection...');
+            const tokensCollection = currentDb.collection('tokens');
+            await tokensCollection.createIndex({ symbol: 1 });
+            await tokensCollection.createIndex({ launchpadId: 1 });
+            await tokensCollection.createIndex({ owner: 1 });
 
             // NFT Collections
-            await currentDb.collection('nftCollections').createIndex({ _id: 1 }); // symbol is _id
-            await currentDb.collection('nftCollections').createIndex({ creator: 1 });
+            logger.debug('[DB Indexes] Creating indexes for nftCollections collection...');
+            const nftCollectionsCollection = currentDb.collection('nftCollections');
+            await nftCollectionsCollection.createIndex({ _id: 1 }); // symbol is _id
+            await nftCollectionsCollection.createIndex({ creator: 1 });
+            logger.debug('[DB Indexes] Finished creating indexes for nftCollections collection.');
 
             // NFTs (Instances)
-            await currentDb.collection('nfts').createIndex({ _id: 1 }); // collectionSymbol-instanceId is _id
-            await currentDb.collection('nfts').createIndex({ collectionSymbol: 1 });
-            await currentDb.collection('nfts').createIndex({ owner: 1 });
-            await currentDb.collection('nfts').createIndex({ instanceId: 1 }); // If querying by instanceId across collections
-            await currentDb.collection('nfts').createIndex({ collectionSymbol: 1, instanceId: 1 }); // Compound for specific lookup
+            logger.debug('[DB Indexes] Creating indexes for nfts collection...');
+            const nftsCollection = currentDb.collection('nfts');
+            await nftsCollection.createIndex({ _id: 1 }); // collectionSymbol-instanceId is _id
+            await nftsCollection.createIndex({ collectionSymbol: 1 });
+            await nftsCollection.createIndex({ owner: 1 });
+            await nftsCollection.createIndex({ instanceId: 1 }); // If querying by instanceId across collections
+            await nftsCollection.createIndex({ collectionSymbol: 1, instanceId: 1 }); // Compound for specific lookup
+            logger.debug('[DB Indexes] Finished creating indexes for nfts collection.');
 
             // NFT Listings
-            await currentDb.collection('nftListings').createIndex({ _id: 1 }); // listingId is _id
-            await currentDb.collection('nftListings').createIndex({ collectionSymbol: 1, instanceId: 1 });
-            await currentDb.collection('nftListings').createIndex({ seller: 1 });
-            await currentDb.collection('nftListings').createIndex({ status: 1 });
-            await currentDb.collection('nftListings').createIndex({ paymentTokenSymbol: 1 });
-            await currentDb.collection('nftListings').createIndex({ collectionSymbol: 1, status: 1 }); // For finding active listings in a collection
-            await currentDb.collection('nftListings').createIndex({ seller: 1, status: 1 }); // For finding active listings by a seller
+            logger.debug('[DB Indexes] Creating indexes for nftListings collection...');
+            const nftListingsCollection = currentDb.collection('nftListings');
+            await nftListingsCollection.createIndex({ _id: 1 }); // listingId is _id
+            await nftListingsCollection.createIndex({ collectionSymbol: 1, instanceId: 1 });
+            await nftListingsCollection.createIndex({ seller: 1 });
+            await nftListingsCollection.createIndex({ status: 1 });
+            await nftListingsCollection.createIndex({ paymentTokenSymbol: 1 });
+            await nftListingsCollection.createIndex({ collectionSymbol: 1, status: 1 }); // For finding active listings in a collection
+            await nftListingsCollection.createIndex({ seller: 1, status: 1 }); // For finding active listings by a seller
+            logger.debug('[DB Indexes] Finished creating indexes for nftListings collection.');
 
             // Events
-            await currentDb.collection('events').createIndex({ type: 1 });
-            await currentDb.collection('events').createIndex({ actor: 1 });
-            await currentDb.collection('events').createIndex({ timestamp: 1 });
-            await currentDb.collection('events').createIndex({ "data.collectionSymbol": 1 }, { sparse: true });
-            await currentDb.collection('events').createIndex({ "data.instanceId": 1 }, { sparse: true });
-            await currentDb.collection('events').createIndex({ "data.listingId": 1 }, { sparse: true });
+            logger.debug('[DB Indexes] Creating indexes for events collection...');
+            const eventsCollection = currentDb.collection('events');
+            await eventsCollection.createIndex({ type: 1 });
+            await eventsCollection.createIndex({ actor: 1 });
+            await eventsCollection.createIndex({ timestamp: 1 });
+            await eventsCollection.createIndex({ "data.collectionSymbol": 1 }, { sparse: true });
+            await eventsCollection.createIndex({ "data.instanceId": 1 }, { sparse: true });
+            await eventsCollection.createIndex({ "data.listingId": 1 }, { sparse: true });
+            logger.debug('[DB Indexes] Finished creating indexes for events collection.');
 
             // User Farm Positions
-            await currentDb.collection('userFarmPositions').createIndex({ _id: 1 }); // staker-farmId is _id
-            await currentDb.collection('userFarmPositions').createIndex({ staker: 1 });
-            await currentDb.collection('userFarmPositions').createIndex({ farmId: 1 });
-            await currentDb.collection('userFarmPositions').createIndex({ staker: 1, farmId: 1 }); // Compound for specific lookup
+            logger.debug('[DB Indexes] Creating indexes for userFarmPositions collection...');
+            const userFarmPositionsCollection = currentDb.collection('userFarmPositions');
+            await userFarmPositionsCollection.createIndex({ _id: 1 }); // staker-farmId is _id
+            await userFarmPositionsCollection.createIndex({ staker: 1 });
+            await userFarmPositionsCollection.createIndex({ farmId: 1 });
+            await userFarmPositionsCollection.createIndex({ staker: 1, farmId: 1 }); // Compound for specific lookup
+            logger.debug('[DB Indexes] Finished creating indexes for userFarmPositions collection.');
 
             // User Liquidity Positions
-            await currentDb.collection('userLiquidityPositions').createIndex({ _id: 1 }); // provider-poolId is _id
-            await currentDb.collection('userLiquidityPositions').createIndex({ provider: 1 });
-            await currentDb.collection('userLiquidityPositions').createIndex({ poolId: 1 });
-            await currentDb.collection('userLiquidityPositions').createIndex({ provider: 1, poolId: 1 }); // Compound for specific lookup
+            logger.debug('[DB Indexes] Creating indexes for userLiquidityPositions collection...');
+            const userLiquidityPositionsCollection = currentDb.collection('userLiquidityPositions');
+            await userLiquidityPositionsCollection.createIndex({ _id: 1 }); // provider-poolId is _id
+            await userLiquidityPositionsCollection.createIndex({ provider: 1 });
+            await userLiquidityPositionsCollection.createIndex({ poolId: 1 });
+            await userLiquidityPositionsCollection.createIndex({ provider: 1, poolId: 1 }); // Compound for specific lookup
+            logger.debug('[DB Indexes] Finished creating indexes for userLiquidityPositions collection.');
 
             // Trading Pairs (formerly markets)
-            await currentDb.collection('tradingPairs').createIndex({ _id: 1 }); // pairId is _id
-            await currentDb.collection('tradingPairs').createIndex({ status: 1 });
-            await currentDb.collection('tradingPairs').createIndex({ baseAssetSymbol: 1, baseAssetIssuer: 1, quoteAssetSymbol: 1, quoteAssetIssuer: 1 }, { name: "assets_combination_idx"});
+            logger.debug('[DB Indexes] Creating indexes for tradingPairs collection...');
+            const tradingPairsCollection = currentDb.collection('tradingPairs');
+            await tradingPairsCollection.createIndex({ _id: 1 }); // pairId is _id
+            await tradingPairsCollection.createIndex({ status: 1 });
+            await tradingPairsCollection.createIndex({ baseAssetSymbol: 1, baseAssetIssuer: 1, quoteAssetSymbol: 1, quoteAssetIssuer: 1 }, { name: "assets_combination_idx"});
+            logger.debug('[DB Indexes] Finished creating indexes for tradingPairs collection.');
 
             // Launchpads Collection Indexes
-            logger.info('[DB Indexes] Creating indexes for launchpads collection...');
+            logger.debug('[DB Indexes] Creating indexes for launchpads collection...');
             const launchpadsCollection = currentDb.collection('launchpads');
             await launchpadsCollection.createIndex({ status: 1 });
             await launchpadsCollection.createIndex({ launchedByUserId: 1 });
             await launchpadsCollection.createIndex({ "tokenToLaunch.symbol": 1 });
             await launchpadsCollection.createIndex({ mainTokenId: 1 });
             await launchpadsCollection.createIndex({ "presale.participants.userId": 1 });
-            logger.info('[DB Indexes] Finished creating indexes for launchpads collection.');
+            logger.debug('[DB Indexes] Finished creating indexes for launchpads collection.');
 
             // Orders
-            logger.info('[DB Indexes] Creating indexes for orders collection...');
+            logger.debug('[DB Indexes] Creating indexes for orders collection...');
             const ordersCollection = currentDb.collection('orders');
             await ordersCollection.createIndex({ _id: 1 });
             await ordersCollection.createIndex({ pairId: 1 });
@@ -269,28 +296,28 @@ export const mongo = {
             await ordersCollection.createIndex({ pairId: 1, status: 1 }); // For finding open/filled orders in a pair
             await ordersCollection.createIndex({ userId: 1, status: 1 }); // For finding user's open/filled orders
             await ordersCollection.createIndex({ pairId: 1, side: 1, price: 1, status: 1}); // For order book reconstruction / matching query
-            logger.info('[DB Indexes] Finished creating indexes for orders collection.');
+            logger.debug('[DB Indexes] Finished creating indexes for orders collection.');
 
             // Trades
-            logger.info('[DB Indexes] Creating indexes for trades collection...');
+            logger.debug('[DB Indexes] Creating indexes for trades collection...');
             const tradesCollection = currentDb.collection('trades');
             await tradesCollection.createIndex({ _id: 1 });
             await tradesCollection.createIndex({ pairId: 1 });
             await tradesCollection.createIndex({ timestamp: -1 });
             await tradesCollection.createIndex({ makerOrderId: 1 });
             await tradesCollection.createIndex({ takerOrderId: 1 });
-            logger.info('[DB Indexes] Finished creating indexes for trades collection.');
+            logger.debug('[DB Indexes] Finished creating indexes for trades collection.');
 
             // Pools (Liquidity Pools)
-            logger.info('[DB Indexes] Creating indexes for pools collection...');
+            logger.debug('[DB Indexes] Creating indexes for pools collection...');
             const poolsCollection = currentDb.collection('pools');
             await poolsCollection.createIndex({ _id: 1 }); // poolId
             await poolsCollection.createIndex({ tokenA_symbol: 1 });
             await poolsCollection.createIndex({ tokenB_symbol: 1 });
             await poolsCollection.createIndex({ creator: 1 });
-            logger.info('[DB Indexes] Finished creating indexes for pools collection.');
+            logger.debug('[DB Indexes] Finished creating indexes for pools collection.');
 
-            logger.info('MongoDB indexes ensured for all relevant collections.');
+            logger.debug('MongoDB indexes ensured for all relevant collections.');
         } catch (indexError) {
             logger.error('Error creating MongoDB indexes:', indexError);
         }

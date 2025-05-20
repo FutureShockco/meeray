@@ -5,8 +5,6 @@ import logger from './logger.js';
 import mongo from './mongo.js';
 import { AccountDoc } from './mongo.js';
 
-
-
 const possibleAccountFields = ['target', 'receiver', 'owner', 'delegate', 'to', 'from', 'account', 'new_account_name'];
 
 export async function upsertAccountsReferencedInTx(tx: ParsedTransaction | Transaction): Promise<void> {
