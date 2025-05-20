@@ -146,6 +146,13 @@ export const mining = {
                     // hash and sign the block with our private key
                     newBlock = mining.hashAndSignBlock(newBlock);
 
+                    // Add this check before proposing to consensus
+                    if (newBlock.phash !== chain.getLatestBlock().hash) {
+                        logger.warn(`[MINING] Chain advanced while preparing block ${newBlock._id}. Own block is stale. Aborting mining attempt for ${process.env.STEEM_ACCOUNT}.`);
+                        cb(true, newBlock); // Indicate an error/stale block
+                        return;
+                    }
+                    // End of added check
 
                     let possBlock: any = {
                         block: newBlock
@@ -198,7 +205,7 @@ export const mining = {
         // backups witnesses are available after each block time intervals
         else for (let i = 1; i < 2 * config.witnesses; i++)
             if (chain.recentBlocks[chain.recentBlocks.length - i]
-                && chain.recentBlocks[chain.recentBlocks.length - i].miner === process.env.NODE_OWNER) {
+                && chain.recentBlocks[chain.recentBlocks.length - i].witness === process.env.NODE_OWNER) {
                 mineInMs = (i + 1) * blockTime
                 break
             }
