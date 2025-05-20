@@ -211,18 +211,18 @@ export const p2p = {
 
         for (let p in peers) {
             let connected = false
-            let colonSplit = peers[p].replace('ws://','').split(':')
+            let colonSplit = peers[p].replace('ws://', '').split(':')
             let port = parseInt(colonSplit.pop() || "0");
-            let address = colonSplit.join(':').replace('[','').replace(']','')
+            let address = colonSplit.join(':').replace('[', '').replace(']', '')
             if (!net.isIP(address))
                 try {
                     address = (await dns.promises.lookup(address)).address
                 } catch (e) {
-                    logger.debug('dns lookup failed for '+address)
+                    logger.debug('dns lookup failed for ' + address)
                     continue
                 }
             for (let s in p2p.sockets)
-                if (p2p.sockets[s]._socket.remoteAddress?.replace('::ffff:','') === address && p2p.sockets[s]._socket.remotePort === port) {
+                if (p2p.sockets[s]._socket.remoteAddress?.replace('::ffff:', '') === address && p2p.sockets[s]._socket.remotePort === port) {
                     connected = true
                     break
                 }
@@ -318,19 +318,8 @@ export const p2p = {
     },
 
     messageHandler: (ws: EnhancedWebSocket): void => {
-
-        if (!chain) {
-            logger.warn('Chain service unavailable during message processing');
-            return;
-        }
-
-        if (!consensus) {
-            logger.warn('Consensus service unavailable during message processing');
-            return;
-        }
-
         ws.on('message', async (data: WebSocket.Data) => {
-            let message: { t: number, d: any, s?: any };
+            let message: any;
             try {
                 message = JSON.parse(data.toString());
             } catch (e) {
@@ -340,7 +329,6 @@ export const p2p = {
 
             if (!message || typeof message.t === 'undefined') return;
             if (!message.d) return;
-            // logger.debug('P2P-IN '+message.t)
 
             switch (message.t) {
                 case MessageType.QUERY_NODE_STATUS:
@@ -442,22 +430,19 @@ export const p2p = {
 
                 case MessageType.QUERY_BLOCK:
                     // a peer wants to see the data in one of our stored blocks
-                    if ((blocks as any).isOpen) {
+                    if (blocks.isOpen) {
                         let block = {};
                         try {
-                            block = (blocks as any).read(message.d);
+                            block = blocks.read(message.d);
                         } catch (e) {
                             break;
                         }
                         logger.info(`[P2P] Sending block #${(block as Block)._id} with ${(block as Block).txs?.length ?? 0} txs (memory)`);
                         p2p.sendJSON(ws, { t: MessageType.BLOCK, d: block });
                     } else {
-                        const start = Date.now();
                         try {
-                            const db = mongo.getDb();
-                            const block = await db.collection('blocks').findOne({ _id: message.d });
+                            const block = await mongo.getDb().collection('blocks').findOne({ _id: message.d });
                             logger.info(`[P2P] Sending block #${block?._id} with ${block?.txs?.length ?? 0} txs (db)`);
-                            logger.debug(`[P2P] findOne for block ${message.d} took ${Date.now() - start}ms`);
                             if (block) {
                                 p2p.sendJSON(ws, { t: MessageType.BLOCK, d: block });
                             }
@@ -469,7 +454,7 @@ export const p2p = {
 
                 case MessageType.BLOCK:
                     // a peer sends us a block we requested with QUERY_BLOCK
-                    logger.info(`[P2P] Received block #${message.d?._id} with ${message.d?.txs?.length ?? 0} txs`);
+                    logger.debug(`[P2P] Received block #${message.d?._id} with ${message.d?.txs?.length ?? 0} txs`);
                     if (!message.d._id || !p2p.recoveringBlocks.includes(message.d._id)) return;
                     for (let i = 0; i < p2p.recoveringBlocks.length; i++)
                         if (p2p.recoveringBlocks[i] === message.d._id) {
@@ -478,10 +463,10 @@ export const p2p = {
                         }
 
                     if (chain.getLatestBlock()._id + 1 === message.d._id) {
-                        logger.info(`[P2P][DEBUG] Processing block #${message.d._id} via addRecursive`);
+                        logger.debug(`[P2P][DEBUG] Processing block #${message.d._id} via addRecursive`);
                         p2p.addRecursive(message.d);
                     } else {
-                        logger.info(`[P2P][DEBUG] Caching block #${message.d._id} for later processing`);
+                        logger.debug(`[P2P][DEBUG] Caching block #${message.d._id} for later processing`);
                         p2p.recoveredBlocks[message.d._id] = message.d;
                         p2p.recover();
                     }
@@ -512,7 +497,7 @@ export const p2p = {
                     }
 
                     if (p2p.recovering) return;
-                    logger.info(`[P2P][DEBUG] Calling consensus.round for block #${block._id}`);
+                    logger.debug(`[P2P][DEBUG] Calling consensus.round for block #${block._id}`);
                     consensus.round(0, block);
                     break;
 
@@ -520,6 +505,7 @@ export const p2p = {
                     // we are receiving a consensus round confirmation
                     // it should come from one of the elected witnesses, so let's verify signature
                     if (p2p.recovering) return;
+                    
                     if (!message.s || !message.s.s || !message.s.n) return;
                     if (!message.d || !message.d.ts ||
                         typeof message.d.ts != 'number' ||
@@ -545,6 +531,9 @@ export const p2p = {
                         if (consensus.processed[i][0].s === message.s.n)
                             return;
                     }
+
+                    consensus.processed.push([message, new Date().getTime()])
+
                     verifySignature(message, function (isValid: boolean) {
                         if (!isValid && !p2p.recovering) {
                             logger.warn('Received wrong consensus signature', message);
@@ -780,9 +769,6 @@ export const p2p = {
                 p2p.recoverAttempt++;
                 if (p2p.recoverAttempt > max_recover_attempts) {
                     logger.error(`[P2P] Error Replay - exceeded maximum recovery attempts for block ${newBlock._id}`);
-                    p2p.recovering = false;
-                    p2p.recoverAttempt = 0;
-                    return;
                 } else {
                     logger.debug(`[P2P] Recover attempt #${p2p.recoverAttempt} for block ${newBlock._id}`);
                     p2p.recovering = chain.getLatestBlock()._id;
