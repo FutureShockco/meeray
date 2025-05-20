@@ -231,7 +231,7 @@ export const chain = {
             try {
                 // Assuming blocks.appendBlock might be synchronous or promise-based
                 // If it's callback-based, this would need adjustment.
-                await blocks.appendBlock(block); 
+                await blocks.appendBlock(block);
             } catch (levelDbError) {
                 if (logger) logger.error(`Error appending block to LevelDB: _id=${block._id}`, levelDbError);
                 // Decide if we should fallback to MongoDB or return error
@@ -269,14 +269,14 @@ export const chain = {
         chain.recentBlocks.push(block);
         mining.minerWorker(block);
         chain.output(block);
-        
+
         // Broadcast sync status based on block interval
         // This is non-blocking and doesn't affect block processing
         const isSyncing = steem.isInSyncMode();
-        const broadcastInterval = isSyncing ? 
-            SYNC_MODE_BROADCAST_INTERVAL_BLOCKS : 
+        const broadcastInterval = isSyncing ?
+            SYNC_MODE_BROADCAST_INTERVAL_BLOCKS :
             NORMAL_MODE_BROADCAST_INTERVAL_BLOCKS;
-            
+
         // Broadcast every N blocks based on sync mode
         if (block._id % broadcastInterval === 0) {
             // Use setTimeout to make this non-blocking
@@ -292,59 +292,59 @@ export const chain = {
                         exitTarget: steem.getSyncExitTarget(),
                         timestamp: Date.now()
                     };
-                    
+
                     logger.debug(`Broadcasting sync status on block ${block._id} (every ${broadcastInterval} blocks)`);
                     p2p.broadcastSyncStatus(currentStatus);
                 }
             }, 0);
         }
-        
+
         cache.writeToDisk(false, () => { // writeToDisk has its own callback
             cb(null); // Call original cb after writeToDisk's callback completes
         });
     },
-    validateAndAddBlock: async (newBlock: any, revalidate: boolean, cb: (err: any) => void) => {
+    validateAndAddBlock: async (block: any, revalidate: boolean, cb: (err: any, newBlock: any) => void) => {
         if (chain.shuttingDown) return
-        isValidNewBlock(newBlock, true, revalidate, function (isValid: boolean) {
+        isValidNewBlock(block, revalidate, false, function (isValid: boolean) {
             if (!isValid) {
-                return cb(true);
+                return cb(true, block);
             }
             // straight execution
-            chain.executeBlockTransactions(newBlock, false, function (validTxs: any[], distributed: number) {
+            chain.executeBlockTransactions(block, false, function (validTxs: any[], distributed: number) {
                 // if any transaction is wrong, thats a fatal error
-                if (newBlock.txs.length !== validTxs.length) {
+                if (block.txs.length !== validTxs.length) {
                     logger.error('Invalid tx(s) in block')
-                    cb(true); return
+                    cb(true, block); return
                 }
 
                 // error if distributed computed amounts are different than the reported one
-                let blockDist = newBlock.dist || 0
+                let blockDist = block.dist || 0
                 if (blockDist !== distributed) {
                     logger.error('Wrong dist amount', blockDist, distributed)
-                    cb(true); return
+                    cb(true, block); return
                 }
 
 
                 // add txs to recents
-                chain.addRecentTxsInBlock(newBlock.txs)
+                chain.addRecentTxsInBlock(block.txs)
 
                 // remove all transactions from this block from our transaction pool
-                transaction.removeFromPool(newBlock.txs)
+                transaction.removeFromPool(block.txs)
 
-                chain.addBlock(newBlock, function () {
+                chain.addBlock(block, function () {
                     // and broadcast to peers (if not replaying)
                     if (!p2p.recovering)
-                        p2p.broadcastBlock(newBlock)
+                        p2p.broadcastBlock(block)
 
                     // process notifications and witness stats (non blocking)
-                    notifications.processBlock(newBlock)
+                    notifications.processBlock(block)
 
                     // emit event to confirm new transactions in the http api
                     if (!p2p.recovering)
-                        for (let i = 0; i < newBlock.txs.length; i++)
-                            transaction.eventConfirmation.emit(newBlock.txs[i].hash)
+                        for (let i = 0; i < block.txs.length; i++)
+                            transaction.eventConfirmation.emit(block.txs[i].hash)
 
-                    cb(null)
+                    cb(null, block)
                 })
             })
         });
@@ -396,7 +396,7 @@ export const chain = {
 
         series(executions, function (err: any, results: any) {
             let string = 'executed'
-            if(revalidate) string = 'validated & '+string
+            if (revalidate) string = 'validated & ' + string
             if (err) {
                 logger.error('Error in series execution:', err);
                 throw err;

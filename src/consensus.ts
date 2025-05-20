@@ -51,7 +51,7 @@ export const consensus: Consensus = {
         }
         if (process.env.WITNESS_PUBLIC_KEY !== thPub) {
             this.observer = true;
-            logger.warn('Witness key does not match blockchain data, observing instead', thPub, process.env.WITNESS_PUBLIC_KEY);
+            logger.warn('Witness key does not match blockchain data, observing instead ' + thPub + ' ' + process.env.WITNESS_PUBLIC_KEY);
             return false;
         }
         return true;
@@ -117,7 +117,7 @@ export const consensus: Consensus = {
                 } else {
                     logger.info('block ' + possBlock.block._id + '#' + possBlock.block.hash.substr(0, 4) + ' got finalized');
                 }
-                chain.validateAndAddBlock?.(possBlock.block, false, (err: any) => {
+                chain.validateAndAddBlock(possBlock.block, false, (err: any) => {
                     if (err) {
                         logger.error(`[CONSENSUS-TRYSTEP] Error from validateAndAddBlock for block ${possBlock.block?._id}:`, err);
                     }

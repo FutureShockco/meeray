@@ -82,8 +82,6 @@ export const mining = {
                 witness: process.env.STEEM_ACCOUNT || '',
                 missedBy: '',
                 dist: 0,
-                hash: '',
-                signature: '',
                 sync: steem.isInSyncMode() || false
             };
 
@@ -91,8 +89,7 @@ export const mining = {
             if (config.witnessReward > 0) {
                 newBlock.dist = config.witnessReward
             }
-            // hash and sign the block with our private key
-            newBlock = mining.hashAndSignBlock(newBlock)
+
             cb(null, newBlock)
         }).catch((error) => {
             logger.error(`Error processing Steem block ${nextSteemBlockNum}:`, error)
@@ -149,12 +146,6 @@ export const mining = {
                     // hash and sign the block with our private key
                     newBlock = mining.hashAndSignBlock(newBlock);
 
-                    // push the new block to consensus possible blocks
-                    // and go straight to end of round 0 to skip re-validating the block
-                    if (!consensus) {
-                        logger.error('Consensus module not available');
-                        return cb(true, null);
-                    }
 
                     let possBlock: any = {
                         block: newBlock
@@ -163,7 +154,6 @@ export const mining = {
                         possBlock[r] = [];
 
                     logger.debug('Mined a new block, proposing to consensus');
-
                     possBlock[0].push(process.env.STEEM_ACCOUNT);
                     consensus.possBlocks.push(possBlock);
                     consensus.endRound(0, newBlock);

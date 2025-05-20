@@ -56,8 +56,8 @@ export class Block {
         this.missedBy = missedBy || '';
         this.dist = dist || 0;
         this.sync = sync || false;
-        this.signature = signature || '';
-        this.hash = hash || '';
+        if (signature) this.signature = signature;
+        if (hash) this.hash = hash;
     }
 }
 
@@ -68,9 +68,8 @@ export function calculateHashForBlock(
 ): string {
     try {
         let clonedBlock = cloneDeep(blockData);
-        console.log('calculateHashForBlock DEBUG: clonedBlock =', clonedBlock);
         // Always ensure hash and signature are removed when calculating the hash
-        if (deleteExisting) {
+        if (deleteExisting === true) {
             delete clonedBlock.hash
             delete clonedBlock.signature
         }
@@ -205,6 +204,7 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
         }
         isValidHashAndSignature(newBlock, function (isValid) {
             if (!isValid) {
+                logger.error('invalid hash: ' + newBlock.hash)
                 cb(false); return
             }
             cb(true)

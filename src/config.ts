@@ -5,14 +5,14 @@ const config = {
   chainId: 'sidechain-dev',
   networkName: 'Sidechain Devnet',
   nativeToken: 'ECH',
-  originHash: 'ea6e5bdfaea0a21fb25c9990d9ac8d7ee45138f350fdc13dbd9321bc0e14a472',
+  originHash: 'e201950993be0e15b14ab19dccb165972ff0ba7ea162c5ad6eec9b5268bce468',
   tokenCreationFee: 100,
   nftCreationFee: 10,
   tradingFee: 0.0025,
   maxWitnesses: 30,
   masterBalance: 1000000,
   masterName: 'echelon-node1',
-  masterPublicKey: 'eShNsq4FFZGBJKHtiTV9T3TWEtYQCR6g6M5TTdR4SK5k',
+  masterPublicKey: 'e27B66QHwRLjnjxi5KAa9G7fLSDajtoB6CxuZ87oTdfS',
   blockTime: 3000, // ms
   syncBlockTime: 1000, // ms
   steemSyncThreshold: 5, // blocks behind Steem to trigger sync mode

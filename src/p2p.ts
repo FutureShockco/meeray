@@ -16,7 +16,7 @@ import { chain } from './chain.js';
 import blocks from './blockStore.js';
 import { Block } from './block.js';
 import logger from './logger.js';
-import cache  from './cache.js';
+import cache from './cache.js';
 import consensus from './consensus.js';
 import steem from './steem.js';
 import witnessesModule from './witnesses.js';
@@ -714,7 +714,7 @@ export const p2p = {
     },
 
     refresh: (force: boolean = false): void => {
-        logger.info('Connected peers', p2p.sockets.length);
+        logger.info('Connected peers ' + p2p.sockets.length);
         // Don't refresh if we're shutting down
         if (!chain) {
             logger.warn('Chain service unavailable during refresh');
@@ -817,27 +817,32 @@ export const p2p = {
     },
 
     addRecursive: (block: Block): void => {
-        chain.validateAndAddBlock(block, true, (err: any) => {
+        chain.validateAndAddBlock(block, true, (err: any, newBlock: any) => {
             if (err) {
-                logger.error(`[P2P] Failed to validate block ${block._id}: ${err}`);
                 cache.rollback();
-                logger.warn(`[P2P] Failed to validate block ${block._id}, clearing recovery cache`);
+                logger.warn(`[P2P] Failed to validate block ${newBlock._id}, clearing recovery cache`);
                 p2p.recoveredBlocks = {};
                 p2p.recoveringBlocks = [];
                 p2p.recoverAttempt++;
                 if (p2p.recoverAttempt > max_recover_attempts) {
-                    logger.error(`[P2P] Error Replay - exceeded maximum recovery attempts for block ${block._id}`);
+                    logger.error(`[P2P] Error Replay - exceeded maximum recovery attempts for block ${newBlock._id}`);
                     p2p.recovering = false;
                     p2p.recoverAttempt = 0;
                     return;
                 } else {
-                    logger.debug(`[P2P] Recover attempt #${p2p.recoverAttempt} for block ${block._id}`);
+                    logger.debug(`[P2P] Recover attempt #${p2p.recoverAttempt} for block ${newBlock._id}`);
                     p2p.recovering = chain.getLatestBlock()._id;
                     p2p.recover();
                 }
             } else {
-                p2p.recoverAttempt = 0;
-                p2p.recover();
+                p2p.recoverAttempt = 0
+                delete p2p.recoveredBlocks[newBlock._id]
+                p2p.recover()
+                if (p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
+                    setTimeout(function () {
+                        if (p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
+                            p2p.addRecursive(p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
+                    }, 1)
             }
         });
     },

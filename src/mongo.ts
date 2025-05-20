@@ -183,7 +183,7 @@ export const mongo = {
             nfts: {},
             totalVoteWeight: config.masterBalance,
             votedWitnesses: [config.masterName],
-            witnessPublicKey: process.env.MASTER_PUBLIC_KEY
+            witnessPublicKey: config.masterPublicKey
         };
         await currentDb.collection<AccountDoc>('accounts').insertOne(masterAccount);
     },

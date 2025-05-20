@@ -64,7 +64,7 @@ export function isValidPubKey(key: string): boolean {
     try {
         return secp256k1.publicKeyVerify(bs58.decode(key))
     } catch (error) {
-        console.log('isValidPubKey DEBUG: error =', error);
+        logger.error('isValidPubKey DEBUG: error =', error);
         return false
     }
 }

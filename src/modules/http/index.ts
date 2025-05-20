@@ -6,7 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import logger from '../../logger.js';
 
-const http_port = process.env.API_PORT ? parseInt(process.env.API_PORT) : 3001;
+const http_port = process.env.API_PORT;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
