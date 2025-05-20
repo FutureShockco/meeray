@@ -5,9 +5,7 @@ import p2p from './p2p.js';
 import transaction from './transaction.js';
 
 export const witnessesModule = {
-    /**
-     * Generate the witness schedule for a given block.
-     */
+
     witnessSchedule: (block: any) => {
         let hash = block.hash;
         let rand = parseInt('0x' + hash.substr(hash.length - config.witnessShufflePrecision));

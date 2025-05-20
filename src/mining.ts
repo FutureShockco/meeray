@@ -216,6 +216,7 @@ export const mining = {
                 logger.warn('Slow performance detected, will not try to mine next block')
                 return
             }
+            logger.debug(`[MINING] Scheduling mining attempt for block #${chain.getLatestBlock()._id + 1} in ${mineInMs}ms`);
             chain.worker = setTimeout(function () {
                 mining.mineBlock(function (error, finalBlock) {
                     if (error)

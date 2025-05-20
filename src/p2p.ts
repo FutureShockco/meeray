@@ -281,6 +281,19 @@ export const p2p = {
                 random: random
             }
         });
+
+        const recentConnections = new Map<string, number>();
+        const peerAddress = ws._socket.remoteAddress + ':' + ws._socket.remotePort;
+        const now = Date.now();
+        const lastConnect = recentConnections.get(peerAddress) || 0;
+        
+        if (now - lastConnect < 10000) { // 10 second cooldown
+            logger.debug(`Connection attempt from ${peerAddress} rejected (too frequent)`);
+            ws.close();
+            return;
+        }
+        
+        recentConnections.set(peerAddress, now);
     },
 
     broadcastSyncStatus: (syncStatus: any | SteemSyncStatus): void => {
