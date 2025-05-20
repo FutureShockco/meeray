@@ -39,6 +39,9 @@ export function verifySignature(message: any, cb: (isValid: boolean) => void): v
     delete tmpMess.s;
     const hash = CryptoJS.SHA256(JSON.stringify(tmpMess)).toString();
     const pub = consensus.getActiveWitnessKey(name)
+    console.log('verifySignature DEBUG: hash =', hash);
+    console.log('verifySignature DEBUG: pub =', pub);
+    console.log('verifySignature DEBUG: sign =', sign);
     if (
         pub &&
         secp256k1.ecdsaVerify(
@@ -108,7 +111,7 @@ export async function isValidSignature(
                     let b58sign = bs58.decode(sign)
                     let b58pub = bs58.decode(account.witnessPublicKey)
 
-
+                    console.log('isValidSignature DEBUG: b58sign =', b58sign);
                     // Verify the signature
                     try {
 

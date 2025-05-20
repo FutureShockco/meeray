@@ -249,7 +249,7 @@ export const mining = {
                 missedBy: block.missedBy || '',
                 dist: block.dist || 0,
                 sync: block.sync,
-            }, true); 
+            }); 
 
             logger.debug(`Signing block ${block._id} with hash: ${nextHash.substring(0, 10)}...`);
 
@@ -295,17 +295,12 @@ export const mining = {
                 signResult = secp256k1.ecdsaSign(msgBuffer, privKeyBuffer);
 
                 // Combine signature and recovery ID into a single buffer
-                const combinedSignature = Buffer.alloc(signResult.signature.length + 1);
-                Buffer.from(signResult.signature).copy(combinedSignature);
-                combinedSignature[signResult.signature.length] = signResult.recid;
-
-                // Convert combined signature to base58 string format
-                const signatureString = bs58.encode(combinedSignature);
+                let signature = bs58.encode(signResult.signature)
 
                 return {
                     ...block,
                     hash: nextHash,
-                    signature: signatureString
+                    signature: signature
                 };
             } catch (e) {
                 logger.error(`Failed to sign message: ${e}`);

@@ -86,24 +86,11 @@ export function calculateHashForBlock (
         if (deleteExisting === true || 'hash' in clonedBlock || 'signature' in clonedBlock || 'missedBy' in clonedBlock) {
             delete clonedBlock.hash;
             delete clonedBlock.signature;
-            delete clonedBlock.missedBy;
         }
-        // Create a new object with fields in a specific order for consistent hashing
-        const orderedBlock = {
-            _id: clonedBlock._id,
-            blockNum: clonedBlock.blockNum,
-            phash: clonedBlock.phash,
-            timestamp: clonedBlock.timestamp,
-            steemBlockNum: clonedBlock.steemBlockNum,
-            steemBlockTimestamp: clonedBlock.steemBlockTimestamp,
-            txs: clonedBlock.txs,
-            witness: clonedBlock.witness,
-            dist: clonedBlock.dist,
-            sync: clonedBlock.sync,
-        };
+
 
         // Use a stable stringify to ensure consistent hash generation
-        const blockString = JSON.stringify(orderedBlock);
+        const blockString = JSON.stringify(deleteExisting ? clonedBlock : blockData);
         const hash = CryptoJS.SHA256(blockString).toString();
         return hash;
     } catch (error) {

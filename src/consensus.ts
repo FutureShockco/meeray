@@ -47,7 +47,6 @@ export const consensus: Consensus = {
     possBlocks: [],
     getActiveWitnessKey: (name: string) => {
         let shuffle = chain.schedule.shuffle;
-        console.log('shuffle', shuffle);
         for (let i = 0; i < shuffle.length; i++)
             if (shuffle[i].name === name)
                 return shuffle[i].witnessPublicKey;

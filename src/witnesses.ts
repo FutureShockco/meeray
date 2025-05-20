@@ -10,8 +10,8 @@ export const witnessesModule = {
      */
     witnessSchedule: (block: any) => {
         let hash = block.hash;
-        let rand = parseInt('0x' + hash.substr(hash.length - (config.witnessShufflePrecision || 8)));
-        if (p2p.recovering) logger.debug('Generating schedule... NRNG: ' + rand);
+        let rand = parseInt('0x' + hash.substr(hash.length - config.witnessShufflePrecision));
+        if (!p2p.recovering) logger.debug('Generating schedule... NRNG: ' + rand);
         let witnesses = witnessesModule.generateWitnesses(true, false, config.witnesses, 0);
         witnesses = witnesses.sort((a: any, b: any) => {
             if (a.name < b.name) return -1;
