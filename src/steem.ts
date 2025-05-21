@@ -610,24 +610,46 @@ const processBlock = async (blockNum: number): Promise<SteemBlockResult | null> 
     try {
         let steemBlock = blockCache.get(blockNum);
         if (!steemBlock) {
-            try {
-                const rawSteemBlock = await client.database.getBlock(blockNum);
-                if (rawSteemBlock) {
-                    steemBlock = {
-                        transactions: rawSteemBlock.transactions || [],
-                        timestamp: rawSteemBlock.timestamp
-                    };
-                    blockCache.set(blockNum, steemBlock);
-                    if (blockCache.size > PREFETCH_BLOCKS * 10) {
-                        const keysToDelete = Array.from(blockCache.keys()).slice(0, PREFETCH_BLOCKS);
-                        keysToDelete.forEach(key => blockCache.delete(key));
+            let fetchAttempt = 0;
+            const maxFetchAttempts = Math.max(1, apiUrls.length); // Try each endpoint at most once
+
+            while (fetchAttempt < maxFetchAttempts && !steemBlock) {
+                fetchAttempt++;
+                try {
+                    logger.debug(`[STEEM:processBlock] Attempt ${fetchAttempt}/${maxFetchAttempts} to fetch Steem block ${blockNum} using endpoint ${client.address}`);
+                    const rawSteemBlock = await client.database.getBlock(blockNum);
+                    if (rawSteemBlock) {
+                        steemBlock = {
+                            transactions: rawSteemBlock.transactions || [],
+                            timestamp: rawSteemBlock.timestamp
+                        };
+                        blockCache.set(blockNum, steemBlock);
+                        // Clean up older entries if cache is too large
+                        if (blockCache.size > PREFETCH_BLOCKS * 20) { // Increased cache size a bit
+                            const keysToDelete = Array.from(blockCache.keys()).slice(0, PREFETCH_BLOCKS * 10);
+                            keysToDelete.forEach(key => blockCache.delete(key));
+                        }
+                        resetConsecutiveErrors(); // Reset general consecutive errors on a successful fetch
+                        break; // Exit while loop on success
+                    }
+                } catch (error) {
+                    logger.warn(`[STEEM:processBlock] Failed fetch attempt ${fetchAttempt}/${maxFetchAttempts} for Steem block ${blockNum} from ${client.address}:`, error);
+                    if (fetchAttempt < maxFetchAttempts) {
+                        if (!switchToNextEndpoint()) {
+                            // No more endpoints to switch to, or only one endpoint configured.
+                            logger.error(`[STEEM:processBlock] switchToNextEndpoint failed or no other endpoints. Cannot fetch block ${blockNum}.`);
+                            incrementConsecutiveErrors(); // Still increment if all attempts on all endpoints fail for this block
+                            processingBlocks = processingBlocks.filter(b => b !== blockNum);
+                            return Promise.reject(error); // Propagate last error
+                        }
+                        // Successfully switched, loop will try next endpoint
+                    } else {
+                        // All attempts failed
+                        incrementConsecutiveErrors();
+                        processingBlocks = processingBlocks.filter(b => b !== blockNum);
+                        return Promise.reject(error); // Propagate last error
                     }
                 }
-            } catch (error) {
-                incrementConsecutiveErrors();
-                logger.error(`Failed to fetch Steem block ${blockNum} in processBlock:`, error);
-                processingBlocks = processingBlocks.filter(b => b !== blockNum);
-                return Promise.reject(error); // Propagate error for retry logic if any
             }
         }
         if (!steemBlock) {
