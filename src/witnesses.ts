@@ -34,11 +34,7 @@ export const witnessesModule = {
     },
 
 
-    /**
-     * Distribute witness rewards for block production.
-     */
     witnessRewards: (name: string, ts: number, cb: (dist: number) => void) => {
-        // Find the account to reward
         cache.findOne('accounts', { name: name }, async function (err: any, account: any) {
             if (err) {
                 logger.error('Error finding account for witness rewards:', err);

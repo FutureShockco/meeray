@@ -1,8 +1,6 @@
 import logger from './logger.js';
 import mongo from './mongo.js';
-// Removed: import { IWitnessStats } from './models/witnessStats.js';
 
-// Define IWitnessStats interface here
 interface IWitnessStats {
   _id?: string; // Witness name, corresponds to the account name
   sinceTs?: number;
@@ -13,7 +11,6 @@ interface IWitnessStats {
   last?: number; // Assuming this refers to the last block number produced
 }
 
-// Removed: const db = { ... } as any; // This placeholder is not needed
 
 interface IWitnessIndexer {
   witnesses: Record<string, Partial<IWitnessStats>>;
