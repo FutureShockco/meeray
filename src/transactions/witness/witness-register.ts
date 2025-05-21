@@ -1,5 +1,6 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
+import { AccountDoc } from '../../mongo.js';
 import { isValidPubKey } from '../../crypto.js';
 
 export interface WitnessRegisterData {
@@ -7,28 +8,31 @@ export interface WitnessRegisterData {
 }
 
 export async function validateTx(data: WitnessRegisterData, sender: string): Promise<boolean> {
+  logger.debug(`[TX_VALIDATE:WITNESS_REGISTER] Validating for sender: ${sender}, pub: ${data.pub}`);
   try {
-    // Check if account already registered
-    const account = await cache.findOnePromise('accounts', { name: sender });
-    if (!account) {
-      logger.warn(`Invalid witness register: account ${sender} not found`);
+    // Check if sender account exists
+    const senderAccount = await cache.findOnePromise('accounts', { name: sender }) as AccountDoc | null;
+    if (!senderAccount) {
+      logger.warn(`[TX_VALIDATE:WITNESS_REGISTER] Invalid: sender account ${sender} not found.`);
       return false;
     }
 
-    // Validate public key format (more permissive)
-    if (!data.pub || typeof data.pub !== 'string') {
-      logger.warn(`Invalid witness register: missing or invalid public key`);
-      return false;
-    }
-    // Check if public key is valid
-    if (!isValidPubKey(data.pub)) {
-      logger.warn(`Invalid witness register: public key too short (${data.pub.length} chars)`);
+    // Check if public key is provided and is a valid format using crypto.isValidPubKey
+    if (!data.pub || typeof data.pub !== 'string' || !isValidPubKey(data.pub)) {
+      logger.warn(`[TX_VALIDATE:WITNESS_REGISTER] Invalid: public key not provided or invalid format for sender ${sender}. Pub: ${data.pub}`);
       return false;
     }
 
+    // Optional: Check if sender is already a witness
+    const witness = await cache.findOnePromise('witnesses', { name: sender });
+    if (witness) {
+      logger.warn(`[TX_VALIDATE:WITNESS_REGISTER] Warning: sender ${sender} is already a witness`);
+    }
+
+    logger.debug(`[TX_VALIDATE:WITNESS_REGISTER] Validation successful for sender: ${sender}`);
     return true;
   } catch (error) {
-    logger.error(`Error validating witness register: ${error}`);
+    logger.error(`[TX_VALIDATE:WITNESS_REGISTER] Error validating: ${error}`);
     return false;
   }
 }
