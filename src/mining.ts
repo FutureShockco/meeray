@@ -169,9 +169,15 @@ export const mining = {
                     newBlock.txs = validTxs;
 
                     // always record the failure of others
-                    if (chain.schedule && chain.schedule.shuffle &&
-                        chain.schedule.shuffle[(newBlock._id - 1) % config.witnesses].name !== process.env.STEEM_ACCOUNT) {
-                        newBlock.missedBy = chain.schedule.shuffle[(newBlock._id - 1) % config.witnesses].name;
+                    if (chain.schedule && chain.schedule.shuffle && chain.schedule.shuffle.length > 0) {
+                        const shuffleLength = chain.schedule.shuffle.length;
+                        const missedWitnessIndex = (newBlock._id - 1) % shuffleLength;
+                        // Ensure the index is valid before accessing, though modulo shuffleLength should guarantee this.
+                        if (missedWitnessIndex < shuffleLength && chain.schedule.shuffle[missedWitnessIndex].name !== process.env.STEEM_ACCOUNT) {
+                            newBlock.missedBy = chain.schedule.shuffle[missedWitnessIndex].name;
+                        }
+                    } else {
+                        logger.warn(`[MINING:mineBlock] Witness schedule not available or shuffle array empty when trying to set missedBy for block ${newBlock._id}.`);
                     }
 
                     if (distributed) newBlock.dist = distributed;
