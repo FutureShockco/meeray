@@ -165,7 +165,7 @@ export const consensus: Consensus = {
 
             for (let r = 0; r < config.consensusRounds; r++)
                 possBlock[r] = [];
-            logger.info('New poss block ' + block._id + '/' + block.witness + '/' + block.hash.substr(0, 4));
+            logger.debug('New poss block ' + block._id + '/' + block.witness + '/' + block.hash.substr(0, 4));
             isValidNewBlock(block, true, true, (isValid: boolean) => {
                 this.validating.splice(this.validating.indexOf(possBlock.block.hash), 1);
                 if (!isValid) {

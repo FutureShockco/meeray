@@ -12,7 +12,7 @@
     "reset": "mongosh echelon --eval \"db.dropDatabase()\"",
     "reset-observer": "mongosh echelon_observer --eval \"db.dropDatabase()\"",
     "reset-producer": "mongosh echelon_producer --eval \"db.dropDatabase()\"",
-    "build": "tsc",
+    "build": "rimraf dist && tsc",
     "genkey": "tsx src/generateKeypair.ts"
   },
   "dependencies": {
@@ -50,6 +50,7 @@
     "@types/ws": "^8.18.1",
     "cross-env": "^7.0.3",
     "nodemon": "^3.0.3",
+    "rimraf": "^6.0.1",
     "ts-node": "^10.9.2",
     "tsx": "^4.19.4",
     "typescript": "^5.4.4"
