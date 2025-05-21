@@ -334,6 +334,7 @@ export const chain = {
                         p2p.broadcastBlock(block)
 
                     // process notifications and witness stats (non blocking)
+                    if (process.env.USE_NOTIFICATION === 'true')
                     notifications.processBlock(block)
 
                     // emit event to confirm new transactions in the http api

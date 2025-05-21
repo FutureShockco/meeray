@@ -91,8 +91,6 @@ const pendingBlockRequests = new Set<number>();
 const blockRequestRetries = new Map<number, { attempts: number, triedPeers: Set<string> }>();
 const MAX_BLOCK_RETRIES = 5;
 
-const RETRY_BASE_DELAY = 30 * 1000; // 30 seconds base delay
-const RETRY_MAX_DELAY = 15 * 60 * 1000; // Max 15 minutes
 
 interface RetryInfo {
     attempts: number;
