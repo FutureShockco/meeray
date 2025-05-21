@@ -6,7 +6,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### NFT Create Collection (Type 1)
 - **File**: `src/transactions/nft/nft-create-collection.ts`
-- **Purpose**: (Please describe the purpose of this transaction)
+- **Purpose**: Defines and registers a new collection of Non-Fungible Tokens (NFTs) on the blockchain.
 - **Data Structure**:
   ```typescript
   export interface NftCreateCollectionData {
@@ -27,7 +27,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### NFT Mint (Type 2)
 - **File**: `src/transactions/nft/nft-mint.ts`
-- **Purpose**: (Please describe the purpose of this transaction)
+- **Purpose**: Creates a new instance of an NFT within an existing collection.
 - **Data Structure**:
   ```typescript
   export interface NftMintData {
@@ -42,7 +42,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### NFT Transfer (Type 3)
 - **File**: `src/transactions/nft/nft-transfer.ts`
-- **Purpose**: (Please describe the purpose of this transaction)
+- **Purpose**: Transfers ownership of a specific NFT instance from one account to another.
 - **Data Structure**:
   ```typescript
   export interface NftTransferData {
@@ -55,7 +55,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### NFT List Item (Type 4)
 - **File**: `src/transactions/nft/nft-list-item.ts`
-- **Purpose**: (Please describe the purpose of this transaction)
+- **Purpose**: Lists a specific NFT instance for sale on the marketplace.
 - **Data Structure**:
   ```typescript
   export interface NftListPayload {
@@ -69,7 +69,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### NFT Delist Item (Type 5)
 - **File**: `src/transactions/nft/nft-delist-item.ts`
-- **Purpose**: (Please describe the purpose of this transaction)
+- **Purpose**: Removes a listed NFT instance from sale on the marketplace.
 - **Data Structure**:
   ```typescript
   export interface NftDelistPayload {
@@ -82,7 +82,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### NFT Buy Item (Type 6)
 - **File**: `src/transactions/nft/nft-buy-item.ts`
-- **Purpose**: (Please describe the purpose of this transaction)
+- **Purpose**: Executes the purchase of an NFT instance listed on the marketplace.
 - **Data Structure**:
   ```typescript
   export interface NftBuyPayload {
@@ -94,7 +94,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### NftListing
 - **File**: `src/transactions/nft/nft-market-interfaces.ts`
-- **Purpose**: Represents an NFT listed on the market.
+- **Purpose**: Represents an NFT currently listed for sale on the marketplace, detailing its price, seller, and status.
 - **Data Structure**:
   ```typescript
   export interface NftListing {
@@ -112,7 +112,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### NftListPayload
 - **File**: `src/transactions/nft/nft-market-interfaces.ts`
-- **Purpose**: Payload for listing an NFT.
+- **Purpose**: Defines the data structure required to list an NFT for sale.
 - **Data Structure**:
   ```typescript
   export interface NftListPayload {
@@ -126,7 +126,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### NftDelistPayload
 - **File**: `src/transactions/nft/nft-market-interfaces.ts`
-- **Purpose**: Payload for delisting an NFT.
+- **Purpose**: Defines the data structure required to remove an NFT from sale.
 - **Data Structure**:
   ```typescript
   export interface NftDelistPayload {
@@ -139,7 +139,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### NftBuyPayload
 - **File**: `src/transactions/nft/nft-market-interfaces.ts`
-- **Purpose**: Payload for buying an NFT.
+- **Purpose**: Defines the data structure required to purchase a listed NFT.
 - **Data Structure**:
   ```typescript
   export interface NftBuyPayload {
@@ -151,7 +151,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### NftUpdateMetadataData
 - **File**: `src/transactions/nft/nft-interfaces.ts`
-- **Purpose**: Data for updating NFT metadata.
+- **Purpose**: Defines the data structure for updating the metadata (properties or URI) of an existing NFT instance.
 - **Data Structure**:
   ```typescript
   export interface NftUpdateMetadataData {
@@ -166,7 +166,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### Market Create Pair (Type 7)
 - **File**: `src/transactions/market/market-create-pair.ts`
-- **Purpose**: (Please describe the purpose of this transaction)
+- **Purpose**: Establishes a new trading pair for assets on the decentralized exchange.
 - **Data Structure**:
   ```typescript
   export interface MarketCreatePairData {
@@ -183,7 +183,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### Market Place Order (Type 8)
 - **File**: `src/transactions/market/market-place-order.ts`
-- **Purpose**: (Please describe the purpose of this transaction)
+- **Purpose**: Submits a buy or sell order for a specific trading pair on the exchange.
 - **Data Structure**:
   ```typescript
   export interface MarketPlaceOrderData {
@@ -201,7 +201,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### Market Cancel Order (Type 9)
 - **File**: `src/transactions/market/market-cancel-order.ts`
-- **Purpose**: (Please describe the purpose of this transaction)
+- **Purpose**: Cancels a previously placed, open order on the exchange.
 - **Data Structure**:
   ```typescript
   export interface MarketCancelOrderData {
@@ -213,7 +213,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### TradingPair
 - **File**: `src/transactions/market/market-interfaces.ts`
-- **Purpose**: Represents a trading pair in the market.
+- **Purpose**: Represents a tradable asset pair on the market, including its symbols, issuers, and trading parameters.
 - **Data Structure**:
   ```typescript
   export interface TradingPair {
@@ -232,7 +232,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### Order
 - **File**: `src/transactions/market/market-interfaces.ts`
-- **Purpose**: Represents an order in the market.
+- **Purpose**: Represents a buy or sell order placed on the exchange, detailing its parameters, status, and fill information.
 - **Data Structure**:
   ```typescript
   export interface Order {
@@ -259,7 +259,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### Trade
 - **File**: `src/transactions/market/market-interfaces.ts`
-- **Purpose**: Represents a trade executed in the market.
+- **Purpose**: Represents an executed trade between a buyer and a seller on the exchange for a specific pair.
 - **Data Structure**:
   ```typescript
   export interface Trade {
@@ -282,7 +282,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### OrderBookLevel
 - **File**: `src/transactions/market/market-interfaces.ts`
-- **Purpose**: Represents a level in the order book.
+- **Purpose**: Represents a single price level in an order book, showing aggregated quantity and order count.
 - **Data Structure**:
   ```typescript
   export interface OrderBookLevel {
@@ -294,7 +294,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### OrderBookSnapshot
 - **File**: `src/transactions/market/market-interfaces.ts`
-- **Purpose**: A snapshot of the order book.
+- **Purpose**: Provides a snapshot of the current order book (bids and asks) for a specific trading pair.
 - **Data Structure**:
   ```typescript
   export interface OrderBookSnapshot {
@@ -310,7 +310,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### Farm Create (Type 10)
 - **File**: `src/transactions/farm/farm-create.ts`
-- **Purpose**: (Please describe the purpose of this transaction)
+- **Purpose**: Establishes a new yield farm, allowing users to stake LP tokens for rewards.
 - **Data Structure**:
   ```typescript
   export interface FarmCreateData {
@@ -328,7 +328,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### Farm Stake (Type 11)
 - **File**: `src/transactions/farm/farm-stake.ts`
-- **Purpose**: (Please describe the purpose of this transaction)
+- **Purpose**: Allows a user to stake their LP (Liquidity Provider) tokens into a specified farm to earn rewards.
 - **Data Structure**:
   ```typescript
   export interface FarmStakeData {
@@ -340,7 +340,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### Farm Unstake (Type 12)
 - **File**: `src/transactions/farm/farm-unstake.ts`
-- **Purpose**: (Please describe the purpose of this transaction)
+- **Purpose**: Allows a user to withdraw their staked LP tokens from a farm.
 - **Data Structure**:
   ```typescript
   export interface FarmUnstakeData {
@@ -353,7 +353,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### Farm Claim Rewards (Type 13)
 - **File**: `src/transactions/farm/farm-claim-rewards.ts`
-- **Purpose**: (Please describe the purpose of this transaction)
+- **Purpose**: Allows a user to claim the accumulated rewards earned from staking in a farm.
 - **Data Structure**:
   ```typescript
   export interface FarmClaimRewardsData {
@@ -366,7 +366,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### Pool Create (Type 14)
 - **File**: `src/transactions/pool/pool-create.ts`
-- **Purpose**: (Please describe the purpose of this transaction)
+- **Purpose**: Creates a new liquidity pool for a pair of tokens, enabling swaps and liquidity provision.
 - **Data Structure**:
   ```typescript
   export interface PoolCreateData {
@@ -380,7 +380,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### Pool Add Liquidity (Type 15)
 - **File**: `src/transactions/pool/pool-add-liquidity.ts`
-- **Purpose**: (Please describe the purpose of this transaction)
+- **Purpose**: Allows a user to add liquidity to an existing pool by depositing a pair of tokens.
 - **Data Structure**:
   ```typescript
   export interface PoolAddLiquidityData {
@@ -393,7 +393,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### Pool Remove Liquidity (Type 16)
 - **File**: `src/transactions/pool/pool-remove-liquidity.ts`
-- **Purpose**: (Please describe the purpose of this transaction)
+- **Purpose**: Allows a user to remove their provided liquidity from a pool by burning LP tokens.
 - **Data Structure**:
   ```typescript
   export interface PoolRemoveLiquidityData {
@@ -405,7 +405,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### Pool Swap (Type 17)
 - **File**: `src/transactions/pool/pool-swap.ts`
-- **Purpose**: (Please describe the purpose of this transaction)
+- **Purpose**: Allows a user to swap one token for another through a liquidity pool, potentially routing through multiple pools.
 - **Data Structure**:
   ```typescript
   export interface PoolSwapData {
@@ -435,7 +435,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### Token Create (Type 18)
 - **File**: `src/transactions/token/token-create.ts`
-- **Purpose**: (Please describe the purpose of this transaction)
+- **Purpose**: Registers a new fungible token on the blockchain with specified properties.
 - **Data Structure**:
   ```typescript
   export interface TokenCreateData {
@@ -454,7 +454,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### Token Mint (Type 19)
 - **File**: `src/transactions/token/token-mint.ts`
-- **Purpose**: (Please describe the purpose of this transaction)
+- **Purpose**: Creates new units of an existing mintable fungible token and assigns them to an account.
 - **Data Structure**:
   ```typescript
   export interface TokenMintData {
@@ -466,7 +466,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### Token Transfer (Type 20)
 - **File**: `src/transactions/token/token-transfer.ts`
-- **Purpose**: (Please describe the purpose of this transaction)
+- **Purpose**: Transfers a specified amount of a fungible token from one account to another.
 - **Data Structure**:
   ```typescript
   export interface TokenTransferData {
@@ -479,7 +479,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### Token Update (Type 21)
 - **File**: `src/transactions/token/token-update.ts`
-- **Purpose**: (Please describe the purpose of this transaction)
+- **Purpose**: Modifies the metadata (e.g., name, description, URLs) of an existing fungible token.
 - **Data Structure**:
   ```typescript
   export interface TokenUpdateData {
@@ -495,7 +495,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### Witness Register (Type 22)
 - **File**: `src/transactions/witness/witness-register.ts`
-- **Purpose**: (Please describe the purpose of this transaction)
+- **Purpose**: Allows an account to register as a block-producing witness candidate.
 - **Data Structure**:
   ```typescript
   export interface WitnessRegisterData {
@@ -505,7 +505,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### Witness Vote (Type 23)
 - **File**: `src/transactions/witness/witness-vote.ts`
-- **Purpose**: (Please describe the purpose of this transaction)
+- **Purpose**: Allows an account to cast a vote for a registered witness candidate.
 - **Data Structure**:
   ```typescript
   export interface WitnessVoteData {
@@ -515,7 +515,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### Witness Unvote (Type 24)
 - **File**: `src/transactions/witness/witness-unvote.ts`
-- **Purpose**: (Please describe the purpose of this transaction)
+- **Purpose**: Allows an account to retract a previously cast vote for a witness candidate.
 - **Data Structure**:
   ```typescript
   export interface WitnessUnvoteData {
@@ -527,7 +527,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### Launchpad Launch Token (Type 25)
 - **File**: `src/transactions/launchpad/launchpad-launch-token.ts`
-- **Purpose**: (Please describe the purpose of this transaction)
+- **Purpose**: Initiates a new token launch project on the launchpad, defining its tokenomics, presale, and liquidity details.
 - **Data Structure**:
   ```typescript
   export interface LaunchpadLaunchTokenData {
@@ -549,7 +549,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### Launchpad Participate Presale (Type 26)
 - **File**: `src/transactions/launchpad/launchpad-participate-presale.ts`
-- **Purpose**: (Please describe the purpose of this transaction)
+- **Purpose**: Allows a user to contribute funds to participate in the presale of a launchpad project.
 - **Data Structure**:
   ```typescript
   export interface LaunchpadParticipatePresaleData {
@@ -561,7 +561,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### Launchpad Claim Tokens (Type 27)
 - **File**: `src/transactions/launchpad/launchpad-claim-tokens.ts`
-- **Purpose**: (Please describe the purpose of this transaction)
+- **Purpose**: Allows a user to claim their allocated tokens from a launchpad project after presale or vesting.
 - **Data Structure**:
   ```typescript
   export interface LaunchpadClaimTokensData {
@@ -575,7 +575,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### VestingSchedule
 - **File**: `src/transactions/launchpad/launchpad-interfaces.ts`
-- **Purpose**: Defines the vesting schedule for tokens.
+- **Purpose**: Defines the rules and timeline for releasing tokens over a period (vesting) for launchpad projects.
 - **Data Structure**:
   ```typescript
   interface VestingSchedule {
@@ -588,7 +588,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### TokenAllocation
 - **File**: `src/transactions/launchpad/launchpad-interfaces.ts`
-- **Purpose**: Describes how tokens are allocated to different recipients.
+- **Purpose**: Describes how tokens within a launchpad project are distributed among different stakeholders (e.g., team, investors) including vesting.
 - **Data Structure**:
   ```typescript
   interface TokenAllocation {
@@ -602,7 +602,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### Tokenomics
 - **File**: `src/transactions/launchpad/launchpad-interfaces.ts`
-- **Purpose**: Defines the overall tokenomics of a project.
+- **Purpose**: Outlines the economic model of a token, including total supply, distribution, and allocation details for launchpad projects.
 - **Data Structure**:
   ```typescript
   interface Tokenomics {
@@ -614,7 +614,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### PresaleDetails
 - **File**: `src/transactions/launchpad/launchpad-interfaces.ts`
-- **Purpose**: Contains details about a token presale.
+- **Purpose**: Contains all parameters and conditions for a token presale event within a launchpad project.
 - **Data Structure**:
   ```typescript
   interface PresaleDetails {
@@ -635,7 +635,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### LiquidityProvisionDetails
 - **File**: `src/transactions/launchpad/launchpad-interfaces.ts`
-- **Purpose**: Details for providing liquidity to a DEX.
+- **Purpose**: Specifies the details for providing initial liquidity to a decentralized exchange for a token launched via the launchpad.
 - **Data Structure**:
   ```typescript
   interface LiquidityProvisionDetails {
@@ -650,7 +650,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### Token (Launchpad)
 - **File**: `src/transactions/launchpad/launchpad-interfaces.ts`
-- **Purpose**: Represents a token within the launchpad system.
+- **Purpose**: Represents a token specifically created or managed within the context of the launchpad system.
 - **Data Structure**:
   ```typescript
   interface Token {
@@ -673,7 +673,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### Launchpad
 - **File**: `src/transactions/launchpad/launchpad-interfaces.ts`
-- **Purpose**: Represents a launchpad project in the system.
+- **Purpose**: Represents a single project on the token launchpad platform, tracking its status, details, and progress.
 - **Data Structure**:
   ```typescript
   interface Launchpad {
@@ -719,7 +719,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### LiquidityPool
 - **File**: `src/transactions/pool/pool-interfaces.ts`
-- **Purpose**: Represents a liquidity pool.
+- **Purpose**: Represents a pool of two token assets, facilitating decentralized trading and earning fees for liquidity providers.
 - **Data Structure**:
   ```typescript
   export interface LiquidityPool {
@@ -740,7 +740,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### UserLiquidityPosition
 - **File**: `src/transactions/pool/pool-interfaces.ts`
-- **Purpose**: Represents a user's position in a liquidity pool.
+- **Purpose**: Represents a user's share and balance of LP tokens in a specific liquidity pool.
 - **Data Structure**:
   ```typescript
   export interface UserLiquidityPosition {
@@ -755,7 +755,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### Farm
 - **File**: `src/transactions/farm/farm-interfaces.ts`
-- **Purpose**: Represents a farm.
+- **Purpose**: Represents a yield farming contract where users can stake LP tokens to earn reward tokens.
 - **Data Structure**:
   ```typescript
   export interface Farm {
