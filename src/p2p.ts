@@ -507,6 +507,13 @@ export const p2p = {
     
         if (p2p.sockets.length >= max_peers) {
             logger.warn('Incoming handshake refused because already peered enough ' + p2p.sockets.length + '/' + max_peers);
+            const currentPeerInfo = p2p.sockets.map(s => {
+                if (s.node_status?.nodeId) return s.node_status.nodeId;
+                if (s._peerUrl) return `pending_outgoing_to:[${s._peerUrl}]`;
+                if (s._socket?.remoteAddress) return `pending_incoming_from:[${s._socket.remoteAddress}:${s._socket.remotePort}]`;
+                return 'unknown_socket_state';
+            }).join(', ');
+            logger.warn(`Current peer details: [${currentPeerInfo}]`);
             ws.close();
             return;
         }
