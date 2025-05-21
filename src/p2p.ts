@@ -448,87 +448,121 @@ export const p2p = {
     connect: (urls: string[], isInit: boolean = false) => {
         logger.debug(`[P2P:connect] Called with URLs: ${JSON.stringify(urls)}, isInit: ${isInit}. Current sockets: ${p2p.sockets.length}`);
         for (const url of urls) {
-            const normalizedFullUrl = normalizeWsUrl(url); 
-            logger.debug(`[P2P:connect] Attempting connection to: ${normalizedFullUrl}`);
+            const normalizedFullUrl = normalizeWsUrl(url);
+            logger.debug(`[P2P:connect] Processing URL: ${url} (normalized: ${normalizedFullUrl})`);
 
-            if (p2p.isConnectedTo(normalizedFullUrl)) {
-                logger.debug(`[P2P:connect] Already connected to ${normalizedFullUrl}, skipping.`);
+            if (p2p.pendingConnections.has(normalizedFullUrl)) {
+                logger.debug(`[P2P:connect] Connection attempt already pending for ${normalizedFullUrl}, skipping.`);
                 continue;
             }
+
+            let resolvedTargetIp = '';
+            let originalHost = ''; // Store original host for self-check if it was a hostname
             try {
-                const urlWithoutProtocol = url.replace(/^(ws:\/\/|wss:\/\/)/i, '');
-                const lastColonIndex = urlWithoutProtocol.lastIndexOf(':');
-                let host = urlWithoutProtocol;
-                if (lastColonIndex !== -1) {
-                    host = urlWithoutProtocol.substring(0, lastColonIndex);
+                const urlObj = new URL(normalizedFullUrl);
+                originalHost = urlObj.hostname;
+                resolvedTargetIp = originalHost.startsWith('[') && originalHost.endsWith(']') ? originalHost.slice(1, -1) : originalHost;
+                if (resolvedTargetIp.startsWith('::ffff:')) {
+                    resolvedTargetIp = resolvedTargetIp.slice(7);
                 }
-                if (host.startsWith('::ffff:')) {
-                    host = host.slice(7);
+                // If originalHost was a hostname, resolve it
+                if (!net.isIP(resolvedTargetIp)) {
+                    // Asynchronously resolve. If we need to connect, it will happen in a future tick.
+                    // This makes the connect function's loop proceed faster for other URLs.
+                    dns.lookup(resolvedTargetIp, (err, address) => {
+                        if (err) {
+                            logger.warn(`[P2P:connect] DNS lookup failed for host ${resolvedTargetIp} from URL ${url}: ${err.message}`);
+                            return;
+                        }
+                        // Call connect again with the resolved IP based URL
+                        // Ensure it's a single item array to avoid loop issues
+                        const resolvedUrl = `ws://${net.isIPv6(address) ? '['+address+']' : address}:${urlObj.port || p2p_port}`;
+                        logger.debug(`[P2P:connect] DNS resolved ${originalHost} to ${address}. Re-attempting connect with ${resolvedUrl}`);
+                        // Avoid re-adding to pendingConnections immediately, let the recursive call handle it.
+                        // Ensure this doesn't create an infinite loop if resolution keeps failing or returns original hostname.
+                        if (normalizeWsUrl(resolvedUrl) !== normalizedFullUrl) { // Prevent loop if resolve gives same non-IP
+                           p2p.connect([resolvedUrl], isInit); // Connect to the new resolved URL
+                        }
+                    });
+                    continue; // Continue the loop, DNS lookup will trigger a new connect call if successful
                 }
-                if (host.startsWith('[') && host.endsWith(']')) {
-                    host = host.slice(1, -1);
-                }
-                const portToUse = p2p_port;
-
-                const selfHostsToAvoid = ['127.0.0.1', 'localhost', '::1'];
-                const allLocalIPs = getAllLocalIPv4Addresses();
-                allLocalIPs.forEach(ip => {
-                    if (!selfHostsToAvoid.includes(ip)) {
-                        selfHostsToAvoid.push(ip);
-                    }
-                });
-
-                if (p2p_host && p2p_host !== '0.0.0.0' && p2p_host !== '::' && net.isIP(p2p_host)) {
-                    if (!selfHostsToAvoid.includes(p2p_host)) {
-                        selfHostsToAvoid.push(p2p_host);
-                    }
-                }
-
-                if (selfHostsToAvoid.includes(host) && portToUse === p2p_port) {
-                    logger.debug(`[P2P:connect] Skipping connection to self (target host '${host}' is a known self IP/loopback): ${url}`);
-                    continue;
-                }
-                if (p2p_host && p2p_host !== '0.0.0.0' && p2p_host !== '::' && !net.isIP(p2p_host) && host === p2p_host && portToUse === p2p_port) {
-                    logger.debug(`[P2P:connect] Skipping connection to self (target host '${host}' matches configured P2P_HOST hostname): ${url}`);
-                    continue;
-                }
-    
-                const wsHost = net.isIPv6(host) ? `[${host}]` : host;
-                const wsUrl = `ws://${wsHost}:${portToUse}`;
-                const effectiveNormalizedUrl = wsUrl; 
-    
-                if (p2p.isConnectedTo(effectiveNormalizedUrl)) {
-                    logger.debug(`[P2P:connect] Already connected to ${effectiveNormalizedUrl} (using standard port), skipping.`);
-                    continue;
-                }
-
-                logger.debug(`[P2P:connect] Attempting connection to: ${url} (resolved to ${wsUrl})`);
-    
-                const ws = new WebSocket(wsUrl) as EnhancedWebSocket;
-                (ws as EnhancedWebSocket)._peerUrl = wsUrl; // Store the effectively used URL
-    
-                ws.on('open', () => {
-                    logger.debug(`[P2P:connect] Successfully opened WebSocket connection to ${wsUrl}. Initiating handshake.`);
-                    p2p.handshake(ws);
-                });
-    
-                ws.on('error', (err) => {
-                    logger.warn(`[P2P:connect] Failed to connect to ${url} (normalized: ${wsUrl}): ${err.message}`);
-                    p2p.pendingConnections.delete(normalizedFullUrl);
-                });
-    
-                ws.on('close', (code, reason) => {
-                    logger.debug(`[P2P:connect] Connection closed to ${url} (normalized: ${wsUrl}). Code: ${code}, Reason: ${reason ? reason.toString() : 'N/A'}`);
-                    p2p.pendingConnections.delete(normalizedFullUrl);
-                    // p2p.sockets = p2p.sockets.filter(s => s !== ws); // This is handled in closeConnection
-                });
-
-                p2p.pendingConnections.add(normalizedFullUrl); // Add to pending before handshake completes
-
-            } catch (err: any) {
-                logger.warn(`[P2P:connect] Invalid peer URL or port for ${url}: ${err.message}`);
-                p2p.pendingConnections.delete(normalizedFullUrl);
+            } catch (e) {
+                logger.warn(`[P2P:connect] Invalid URL or failed to parse: ${normalizedFullUrl}`, e);
+                continue;
             }
+            
+            // Self-connection checks (using resolvedTargetIp and originalHost)
+            const portToConnect = parseInt(new URL(normalizedFullUrl).port, 10) || p2p_port;
+            const selfHostsToAvoid = ['127.0.0.1', 'localhost', '::1'];
+            getAllLocalIPv4Addresses().forEach(ip => {
+                if (!selfHostsToAvoid.includes(ip)) selfHostsToAvoid.push(ip);
+            });
+            if (p2p_host && p2p_host !== '0.0.0.0' && p2p_host !== '::' && net.isIP(p2p_host) && !selfHostsToAvoid.includes(p2p_host)) {
+                selfHostsToAvoid.push(p2p_host);
+            }
+            if (selfHostsToAvoid.includes(resolvedTargetIp) && portToConnect === p2p_port) {
+                logger.debug(`[P2P:connect] Skipping connection to self (resolved target IP '${resolvedTargetIp}' is a known self IP/loopback and port matches): ${url}`);
+                continue;
+            }
+            // Check if original hostname (if P2P_HOST is a hostname) matches target original hostname
+            if (p2p_host && p2p_host !== '0.0.0.0' && p2p_host !== '::' && !net.isIP(p2p_host) && originalHost === p2p_host && portToConnect === p2p_port) {
+                logger.debug(`[P2P:connect] Skipping connection to self (target original host '${originalHost}' matches configured P2P_HOST hostname and port matches): ${url}`);
+                continue;
+            }
+
+            // Check if already connected to this resolved IP
+            let alreadyConnectedToThisIp = false;
+            for (const existingSocket of p2p.sockets) {
+                let existingSockIp = '';
+                if (existingSocket._peerUrl) { // Outgoing connection
+                    try { 
+                        const u = new URL(normalizeWsUrl(existingSocket._peerUrl));
+                        existingSockIp = u.hostname.startsWith('[') && u.hostname.endsWith(']') ? u.hostname.slice(1,-1) : u.hostname;
+                         if (existingSockIp.startsWith('::ffff:')) existingSockIp = existingSockIp.slice(7);
+                    } catch {}
+                } else if (existingSocket._socket?.remoteAddress) { // Incoming connection
+                    existingSockIp = existingSocket._socket.remoteAddress;
+                    if (existingSockIp.startsWith('::ffff:')) existingSockIp = existingSockIp.slice(7);
+                }
+                if (existingSockIp && existingSockIp === resolvedTargetIp) {
+                    alreadyConnectedToThisIp = true;
+                    break;
+                }
+            }
+            if (alreadyConnectedToThisIp) {
+                logger.debug(`[P2P:connect] Already have an established connection to IP ${resolvedTargetIp} (target URL was ${url}), skipping new outgoing attempt.`);
+                continue;
+            }
+            
+            // If all checks pass, proceed to connect
+            const wsHostForUrl = net.isIPv6(resolvedTargetIp) ? `[${resolvedTargetIp}]` : resolvedTargetIp;
+            const finalWsUrl = `ws://${wsHostForUrl}:${portToConnect}`;
+            // Use normalizedFullUrl for pendingConnections key if original was a hostname, to match initial check.
+            // Or, use finalWsUrl if original was already an IP or resolved to this.
+            const pendingKey = (originalHost !== resolvedTargetIp && !net.isIP(originalHost)) ? normalizedFullUrl : finalWsUrl;
+
+            logger.debug(`[P2P:connect] Attempting new WebSocket connection to: ${finalWsUrl} (original URL: ${url}, pendingKey: ${pendingKey})`);
+            
+            p2p.pendingConnections.add(pendingKey);
+            const ws = new WebSocket(finalWsUrl) as EnhancedWebSocket;
+            ws._peerUrl = finalWsUrl; 
+    
+            ws.on('open', () => {
+                logger.debug(`[P2P:connect] Successfully opened WebSocket connection to ${finalWsUrl}. Initiating handshake.`);
+                p2p.pendingConnections.delete(pendingKey); // Remove from pending once successfully opened
+                p2p.handshake(ws);
+            });
+    
+            ws.on('error', (err) => {
+                logger.warn(`[P2P:connect] Failed to connect to ${finalWsUrl}: ${err.message}`);
+                p2p.pendingConnections.delete(pendingKey);
+            });
+    
+            ws.on('close', (code, reason) => {
+                logger.debug(`[P2P:connect] Connection closed to ${finalWsUrl}. Code: ${code}, Reason: ${reason ? reason.toString() : 'N/A'}`);
+                p2p.pendingConnections.delete(pendingKey);
+            });
+
         }
     },
 
