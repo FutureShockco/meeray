@@ -43,8 +43,7 @@ export enum MessageType {
     QUERY_BLOCKS = 7,
     BLOCKS = 8,
     QUERY_PEER_LIST = 9,
-    PEER_LIST = 10,
-    HANDSHAKE = 11
+    PEER_LIST = 10
 }
 
 
@@ -406,41 +405,31 @@ export const p2p = {
             return;
         }
 
-        // Temporary socket ID until we get handshake info
-        const remoteAddr = ws._socket.remoteAddress?.replace('::ffff:', '') || 'unknown';
-        const remotePort = ws._socket.remotePort;
-        const tempSocketId = `${remoteAddr}:${remotePort}`;
+        for (let i = 0; i < p2p.sockets.length; i++)
+            if (p2p.sockets[i]._socket.remoteAddress === ws._socket.remoteAddress
+                && p2p.sockets[i]._socket.remotePort === ws._socket.remotePort) {
+                ws.close();
+                return;
+            }
 
-        logger.debug('Handshaking new peer', tempSocketId);
-
-        const random = randomBytes(config.read(0).randomBytesLength).toString('hex');
+        logger.debug('Handshaking new peer', ws.url || ws._socket.remoteAddress + ':' + ws._socket.remotePort);
+        let random = randomBytes(config.read(0).randomBytesLength).toString('hex');
         ws.challengeHash = random;
 
-        // Set up timeout for unresponsive peers
         ws.pendingDisconnect = setTimeout(() => {
-            if (p2p.sockets.includes(ws)) {
-                ws.close();
-                logger.warn('A peer did not reply to NODE_STATUS');
-            }
+            for (let i = 0; i < p2p.sockets.length; i++)
+                if (p2p.sockets[i].challengeHash === random) {
+                    p2p.sockets[i].close();
+                    logger.warn('A peer did not reply to NODE_STATUS');
+                    continue;
+                }
         }, 1000);
 
-        // Push to socket list immediately so we can track it
         p2p.sockets.push(ws);
         p2p.messageHandler(ws);
         p2p.errorHandler(ws);
 
-        // Send handshake message with our declared address
-        const myAddress = `ws://${ws._socket.remoteAddress?.replace('::ffff:', '')}:${6001}`;
-        p2p.sendJSON(ws, {
-            t: MessageType.HANDSHAKE,
-            d: {
-                address: myAddress,
-                nodeId: p2p.nodeId?.pub,
-                random: random
-            }
-        });
-
-        // Send QUERY_NODE_STATUS immediately
+        // Send initial node status query
         p2p.sendJSON(ws, {
             t: MessageType.QUERY_NODE_STATUS,
             d: {
@@ -449,13 +438,13 @@ export const p2p = {
             }
         });
 
-        // Ask for peer list after short delay
+        // After a short delay, query their peer list to discover more peers
         setTimeout(() => {
             p2p.sendJSON(ws, {
                 t: MessageType.QUERY_PEER_LIST,
                 d: {}
             });
-        }, 1500);
+        }, 1500);  // 1.5 seconds delay to avoid flooding
     },
 
     broadcastSyncStatus: (syncStatus: number | SteemSyncStatus): void => {
@@ -785,28 +774,6 @@ export const p2p = {
                         }
                     }
                     break;
-
-                case MessageType.HANDSHAKE: {
-                    const { address } = message.d;
-                    if (address) {
-                        try {
-                            const url = new URL(address);
-                            ws._peerUrl = `ws://${url.hostname}:${url.port}`;
-
-                            // Check if already connected to this declared peer URL
-                            if (p2p.isConnectedTo(ws._peerUrl)) {
-                                logger.debug(`Peer ${ws._peerUrl} already connected. Closing duplicate.`);
-                                ws.close();
-                                return;
-                            }
-
-                            logger.info(`Handshake received from ${ws._peerUrl}`);
-                        } catch (err) {
-                            logger.warn(`Invalid peer address in handshake: ${address}`);
-                        }
-                    }
-                    break;
-                }
             }
         });
     },
