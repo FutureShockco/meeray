@@ -61,11 +61,13 @@ export interface NodeStatus {
 
 export interface EnhancedWebSocket extends WebSocket {
     _socket: net.Socket;
+    _peerUrl?: string;  // custom property for peer URL
     challengeHash?: string;
     pendingDisconnect?: NodeJS.Timeout;
     node_status?: NodeStatus;
     sentUs?: [string, number][];
     steemSyncStatus?: SteemSyncStatus;
+    isConnectedTo?: (address: string) => boolean;
 }
 
 export interface SteemSyncStatus {
@@ -89,6 +91,27 @@ const pendingBlockRequests = new Set<number>();
 const blockRequestRetries = new Map<number, { attempts: number, triedPeers: Set<string> }>();
 const MAX_BLOCK_RETRIES = 5;
 
+function normalizeWsUrl(url: string): string {
+    const protocolMatch = url.match(/^(ws:\/\/|wss:\/\/)/i);
+    if (!protocolMatch) return url;
+
+    const protocol = protocolMatch[1];
+    let rest = url.slice(protocol.length);
+
+    // If IPv6 literal without brackets (i.e. multiple colons in address part)
+    // wrap the address in brackets before the port
+    const lastColonIndex = rest.lastIndexOf(':');
+    if (lastColonIndex === -1) return url;
+
+    const addressPart = rest.substring(0, lastColonIndex);
+    const portPart = rest.substring(lastColonIndex + 1);
+
+    if (addressPart.includes(':') && !addressPart.startsWith('[')) {
+        rest = `[${addressPart}]` + ':' + portPart;
+    }
+
+    return protocol + rest;
+}
 
 export const p2p = {
     sockets: [] as EnhancedWebSocket[],
@@ -100,10 +123,8 @@ export const p2p = {
     recentConnectionAttempts: {} as Record<string, number>,
     isConnectedTo(address: string) {
         return this.sockets.some(ws => {
-            let ip = ws._socket.remoteAddress;
-            if (!ip) return false;
-            if (ip.startsWith('::ffff:')) ip = ip.slice(7);
-            return ip === address;
+            const peerUrl = (ws as EnhancedWebSocket)._peerUrl || `ws://${ws._socket.remoteAddress}:${ws._socket.remotePort}`;
+            return peerUrl === address;
         });
     },
     init: async (): Promise<void> => {
@@ -281,14 +302,39 @@ export const p2p = {
         setTimeout(() => p2p.keepAlive(), keep_alive_interval);
     },
 
-    connect: (newPeers: string[], isInit: boolean = false): void => {
-        newPeers.forEach((peer) => {
-            const socket = new WebSocket(peer) as EnhancedWebSocket;
-            socket.on('open', () => p2p.handshake(socket));
-            socket.on('error', () => {
-                logger[isInit ? 'warn' : 'debug']('peer connection failed', peer);
-            });
-        });
+    connect: (urls: string[], isInit: boolean = false) => {
+        for (const url of urls) {
+            try {
+                const fixedUrl = normalizeWsUrl(url);
+                if (p2p.isConnectedTo(fixedUrl)) {
+                    logger.debug(`Already connected to ${fixedUrl}, skipping`);
+                    continue;
+                }
+
+                const ws = new WebSocket(fixedUrl) as EnhancedWebSocket;
+                (ws as EnhancedWebSocket)._peerUrl = fixedUrl;
+
+                ws.on('open', () => {
+                    logger.info(`Connected to peer ${fixedUrl}`);
+                    p2p.handshake(ws);
+                });
+
+                ws.on('error', (err) => {
+                    logger.warn(`Failed to connect to ${fixedUrl}: ${err.message}`);
+                });
+
+                ws.on('close', () => {
+                    logger.info(`Connection closed: ${fixedUrl}`);
+                    p2p.sockets = p2p.sockets.filter(s => s !== ws);
+                });
+
+                p2p.messageHandler(ws);
+                p2p.errorHandler(ws);
+
+            } catch (err) {
+                logger.error(`Exception connecting to ${url}: ${err}`);
+            }
+        }
     },
 
     handshake: (ws: EnhancedWebSocket): void => {
@@ -297,24 +343,24 @@ export const p2p = {
             ws.close();
             return;
         }
-    
+
         if (p2p.sockets.length >= max_peers) {
             logger.warn('Incoming handshake refused because already peered enough ' + p2p.sockets.length + '/' + max_peers);
             ws.close();
             return;
         }
-    
+
         for (let i = 0; i < p2p.sockets.length; i++)
             if (p2p.sockets[i]._socket.remoteAddress === ws._socket.remoteAddress
                 && p2p.sockets[i]._socket.remotePort === ws._socket.remotePort) {
                 ws.close();
                 return;
             }
-    
+
         logger.debug('Handshaking new peer', ws.url || ws._socket.remoteAddress + ':' + ws._socket.remotePort);
         let random = randomBytes(config.read(0).randomBytesLength).toString('hex');
         ws.challengeHash = random;
-    
+
         ws.pendingDisconnect = setTimeout(() => {
             for (let i = 0; i < p2p.sockets.length; i++)
                 if (p2p.sockets[i].challengeHash === random) {
@@ -323,11 +369,11 @@ export const p2p = {
                     continue;
                 }
         }, 1000);
-    
+
         p2p.sockets.push(ws);
         p2p.messageHandler(ws);
         p2p.errorHandler(ws);
-    
+
         // Send initial node status query
         p2p.sendJSON(ws, {
             t: MessageType.QUERY_NODE_STATUS,
@@ -336,7 +382,7 @@ export const p2p = {
                 random: random
             }
         });
-    
+
         // After a short delay, query their peer list to discover more peers
         setTimeout(() => {
             p2p.sendJSON(ws, {
@@ -654,17 +700,21 @@ export const p2p = {
                     break;
                 // On receiving QUERY_PEER_LIST:
                 case MessageType.QUERY_PEER_LIST:
-                    // Respond with known peer list
-                    const knownPeers = p2p.sockets.map(s => s._socket.remoteAddress + ':' + s._socket.remotePort);
+                    // Send list of peer ws URLs (from existing sockets)
+                    const knownPeers = p2p.sockets
+                        .map(s => s.url || `ws://${s._socket.remoteAddress}:${s._socket.remotePort}`)
+                        .filter(Boolean); // just in case
+
                     p2p.sendJSON(ws, { t: MessageType.PEER_LIST, d: { peers: knownPeers } });
                     break;
 
                 // On receiving PEER_LIST:
                 case MessageType.PEER_LIST:
                     if (Array.isArray(message.d.peers)) {
-                        for (const peerAddress of message.d.peers) {
-                            if (!p2p.isConnectedTo(peerAddress)) {
-                                p2p.connect([peerAddress], false);
+                        for (const peerUrl of message.d.peers) {
+                            // Skip if already connected
+                            if (!p2p.isConnectedTo(peerUrl)) {
+                                p2p.connect([peerUrl], false);
                             }
                         }
                     }
