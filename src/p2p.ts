@@ -373,14 +373,33 @@ export const p2p = {
                 // Remove potential brackets if IPv6 address was already wrapped
                 if (host.startsWith('[') && host.endsWith(']')) {
                     host = host.slice(1, -1);
-                }    
+                }
 
                 // ALWAYS use the defined p2p_port, ignore port from peer list URL
-                const portToUse = p2p_port; 
+                const portToUse = p2p_port;
 
-                // Prevent connecting to self via loopback addresses
-                if ((host === '127.0.0.1' || host === 'localhost' || host === '::1') && portToUse === p2p_port) {
-                    logger.debug(`[P2P:connect] Skipping connection to self (loopback address): ${url}`);
+                // Prevent connecting to self via known local/configured addresses
+                const selfHostsToAvoid = ['127.0.0.1', 'localhost', '::1'];
+                const primaryLocalIP = ip.address(); // Gets primary local IP, e.g., 192.168.x.x
+                if (primaryLocalIP) {
+                    selfHostsToAvoid.push(primaryLocalIP);
+                }
+
+                // If P2P_HOST is a specific IP we are listening on, add it.
+                if (p2p_host && p2p_host !== '0.0.0.0' && p2p_host !== '::' && net.isIP(p2p_host)) {
+                    selfHostsToAvoid.push(p2p_host);
+                }
+
+                // Check if the target host (after normalization) is one of our known self hosts.
+                if (selfHostsToAvoid.includes(host) && portToUse === p2p_port) {
+                    logger.debug(`[P2P:connect] Skipping connection to self (target host '${host}' is a known self IP/loopback): ${url}`);
+                    continue;
+                }
+
+                // Additionally, if P2P_HOST is a specific hostname we are listening on,
+                // and the target 'host' string exactly matches this configured P2P_HOST hostname.
+                if (p2p_host && p2p_host !== '0.0.0.0' && p2p_host !== '::' && !net.isIP(p2p_host) && host === p2p_host && portToUse === p2p_port) {
+                    logger.debug(`[P2P:connect] Skipping connection to self (target host '${host}' matches configured P2P_HOST hostname): ${url}`);
                     continue;
                 }
     

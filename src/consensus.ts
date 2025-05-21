@@ -182,7 +182,6 @@ export const consensus: Consensus = {
                         }
                     for (let i = 0; i < this.queue.length; i++) {
                         if (this.queue[i].d.b.hash === possBlock.block.hash) {
-                            logger.warn('From Queue: ' + consensus.queue[i].d.b.hash)
                             this.remoteRoundConfirm(this.queue[i]);
                             this.queue.splice(i, 1);
                             i--;
