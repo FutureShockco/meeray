@@ -290,9 +290,10 @@ export const mining = {
             // Performance check
             if (steem.isInSyncMode()) {
                 const syncSkipThreshold = Math.max(20, blockTime / 100); // 1% of syncBlockTime, or 20ms minimum
-                if (mineInMs < syncSkipThreshold) {
-                    logger.warn(`[MINING:minerWorker] In Sync: mineInMs (${mineInMs}ms) is below threshold (${syncSkipThreshold}ms). Scheduling to mine ASAP.`);
-                    mineInMs = 10; // Schedule in 10ms - DO NOT SKIP
+                if (mineInMs < syncSkipThreshold) { // This includes negative mineInMs
+                    const newCalculatedDelay = Math.max(50, Math.floor(blockTime / 4)); // 25% of sync block time, or 50ms minimum
+                    logger.warn(`[MINING:minerWorker] In Sync: mineInMs (${mineInMs}ms) is below threshold (${syncSkipThreshold}ms). Calculated new delay: ${newCalculatedDelay}ms.`);
+                    mineInMs = newCalculatedDelay;
                 }
             } else { // Normal Mode
                 const postSyncGracePeriod = (config as any).postSyncGracePeriodMs || 120000; // Default 2 minutes
