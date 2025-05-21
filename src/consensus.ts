@@ -96,7 +96,7 @@ export const consensus: Consensus = {
         }
         for (let i = 0; i < this.possBlocks.length; i++) {
             const possBlock = this.possBlocks[i];
-            logger.cons('T'+Math.ceil(threshold)+' R0-'+possBlock[0].length+' R1-'+possBlock[1].length)
+            //logger.cons('T'+Math.ceil(threshold)+' R0-'+possBlock[0].length+' R1-'+possBlock[1].length)
             if (
                 possBlock[(config.consensusRounds || 2) - 1].length > threshold &&
                 !this.finalizing &&
