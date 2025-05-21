@@ -191,46 +191,59 @@ export const p2p = {
         logger.info('P2P ID: ' + p2p.nodeId.pub);
     },
 
-    discoveryWorker: (isInit: boolean = false): void => {
+    discoveryWorker: async (isInit: boolean = false): Promise<void> => {
         const configBlock = config.read(0);
         const maxPeers = max_peers;
-
-        // Generate witnesses, assuming generateWitnesses returns array of { name: string, ws: string | undefined }
+    
         let witnesses = witnessesModule.generateWitnesses(false, true, configBlock.witnesses * 3, 0);
         if (!Array.isArray(witnesses) || witnesses.length === 0) {
             logger.warn('No witnesses found for discovery.');
             return;
         }
-
+    
+        const excluded = process.env.DISCOVERY_EXCLUDE ? process.env.DISCOVERY_EXCLUDE.split(',') : [];
+    
         for (const witness of witnesses) {
             if (p2p.sockets.length >= maxPeers) {
                 logger.debug(`Max peers reached: ${p2p.sockets.length}/${maxPeers}`);
                 break;
             }
-
-            if (!witness.ws) continue;
-
-            const excluded = process.env.DISCOVERY_EXCLUDE ? process.env.DISCOVERY_EXCLUDE.split(',') : [];
-            if (excluded.includes(witness.name)) continue;
-
+    
+            if (!witness.ws || excluded.includes(witness.name)) continue;
+    
             let isConnected = false;
-
+    
+            let witnessHost: string;
+            try {
+                witnessHost = new URL(witness.ws).hostname;
+            } catch (e) {
+                logger.debug(`Invalid witness ws url: ${witness.ws} for witness ${witness.name}`, e);
+                continue;
+            }
+    
             for (const socket of p2p.sockets) {
-                let ip = socket._socket.remoteAddress || '';
+                let ip = socket._socket?.remoteAddress || '';
                 if (ip.startsWith('::ffff:')) ip = ip.slice(7);
-
+    
+                if (ip === witnessHost) {
+                    logger.warn(`Already connected to witness ${witness.name} (${witness.ws})`);
+                    isConnected = true;
+                    break;
+                }
+    
                 try {
-                    const witnessIp = new URL(witness.ws).hostname;
-                    if (witnessIp === ip) {
+                    // In case witnessHost is a hostname, resolve it to IP
+                    const resolved = await dns.promises.lookup(witnessHost);
+                    if (resolved.address === ip) {
                         logger.warn(`Already connected to witness ${witness.name} (${witness.ws})`);
                         isConnected = true;
                         break;
                     }
                 } catch (e) {
-                    logger.debug(`Invalid witness ws url: ${witness.ws} for witness ${witness.name}`, e);
+                    logger.debug(`DNS resolution failed for ${witnessHost}: ${e instanceof Error ? e.message : e}`);
                 }
             }
-
+    
             if (!isConnected) {
                 logger[isInit ? 'info' : 'debug'](`Connecting to witness ${witness.name} at ${witness.ws}`);
                 p2p.connect([witness.ws], isInit);
@@ -244,9 +257,9 @@ export const p2p = {
             setTimeout(() => p2p.keepAlive(), keep_alive_interval);
             return;
         }
-
+    
         const currentTime = Date.now();
-
+    
         // Clean up old connection attempts (older than 5 minutes)
         for (const peer in p2p.recentConnectionAttempts) {
             const retryInfo = p2p.recentConnectionAttempts[peer];
@@ -254,27 +267,28 @@ export const p2p = {
                 delete p2p.recentConnectionAttempts[peer];
             }
         }
-
+    
         let peers = process.env.PEERS ? process.env.PEERS.split(',') : [];
         let toConnect: string[] = [];
-
+    
         const maxAttemptsPerCycle = 2;
-
+    
         for (const peer of peers) {
             if (toConnect.length >= maxAttemptsPerCycle) break;
-
+    
             const retryInfo = p2p.recentConnectionAttempts[peer];
             if (retryInfo && currentTime - retryInfo.lastAttempt < 60000) { // skip if last attempt < 1 min ago
                 logger.debug(`Skipping recent connection attempt to ${peer}`);
                 continue;
             }
-
+    
             let connected = false;
             const urlWithoutProtocol = peer.replace(/^ws:\/\//, '');
             const colonSplit = urlWithoutProtocol.split(':');
-            const port = parseInt(colonSplit.pop() || '0', 10);
-            let address = colonSplit.join(':').replace(/^\[|\]$/g, ''); // strip brackets for IPv6
-
+            // Ignore the port in peer string since your nodes always use 6001
+            // Just parse IP portion
+            let address = colonSplit.slice(0, colonSplit.length - 1).join(':').replace(/^\[|\]$/g, ''); 
+    
             if (!net.isIP(address)) {
                 try {
                     address = (await dns.promises.lookup(address)).address;
@@ -286,27 +300,26 @@ export const p2p = {
                         errorMessage = String(e);
                     }
                     logger.debug(`DNS lookup failed for ${address}: ${errorMessage}`);
-                    // Record failed attempt with lastAttempt timestamp and reset attempts to 1
                     p2p.recentConnectionAttempts[peer] = { attempts: 1, lastAttempt: currentTime };
                     continue;
                 }
             }
-
+    
             for (const sock of p2p.sockets) {
                 if (!sock._socket) continue;
                 let remoteAddress = sock._socket.remoteAddress || '';
                 if (remoteAddress.startsWith('::ffff:')) {
                     remoteAddress = remoteAddress.slice(7);
                 }
-                if (remoteAddress === address && sock._socket.remotePort === port) {
+                // ONLY compare IP, ignoring remotePort because ephemeral ports change
+                if (remoteAddress === address) {
                     connected = true;
                     break;
                 }
             }
-
+    
             if (!connected) {
                 toConnect.push(peer);
-                // Record this connection attempt or update attempt count if exists
                 if (retryInfo) {
                     p2p.recentConnectionAttempts[peer] = { attempts: retryInfo.attempts + 1, lastAttempt: currentTime };
                 } else {
@@ -314,12 +327,12 @@ export const p2p = {
                 }
             }
         }
-
+    
         if (toConnect.length > 0) {
             logger.debug(`Keep-alive: attempting to connect to ${toConnect.length} peer(s)`);
             p2p.connect(toConnect);
         }
-
+    
         setTimeout(() => p2p.keepAlive(), keep_alive_interval);
     },
 
