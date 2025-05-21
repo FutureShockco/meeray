@@ -902,70 +902,63 @@ export const p2p = {
     recover: (): void => {
         if (!p2p.sockets || p2p.sockets.length === 0) return;
         if (Object.keys(p2p.recoveredBlocks).length + p2p.recoveringBlocks.length > max_blocks_buffer) return;
-        if (!p2p.recovering) p2p.recovering = chain.getLatestBlock()._id;
-        const latestBlockId = chain.getLatestBlock()._id;
-        let peersAhead: EnhancedWebSocket[] = [];
-        for (let i = 0; i < p2p.sockets.length; i++) {
-            const ns = p2p.sockets[i].node_status;
-            if (
-                ns &&
-                ns.head_block !== undefined && ns.head_block > latestBlockId &&
-                ns.origin_block === config.read(0).originHash
-            ) {
-                peersAhead.push(p2p.sockets[i]);
-            }
-        }
-        if (peersAhead.length === 0) {
-            logger.debug(`No peers ahead. My head: ${latestBlockId}, peers: ${p2p.sockets.map(s => s.node_status?.head_block).join(', ')}`);
-            p2p.recovering = false;
-            return;
-        }
-        const nextBlockToRecover = (p2p.recovering as number) + 1;
-        if (nextBlockToRecover <= latestBlockId) {
-            logger.warn(`Attempted to recover block ${nextBlockToRecover} that is not ahead of our chain. Resetting recovery.`);
-            p2p.recovering = latestBlockId;
-            return;
-        }
-        let retryInfo = blockRequestRetries.get(nextBlockToRecover);
-        if (!retryInfo) {
-            retryInfo = { attempts: 0, triedPeers: new Set() };
-            blockRequestRetries.set(nextBlockToRecover, retryInfo);
-        }
-        const availablePeers = peersAhead.filter(
-            peer => peer.node_status?.nodeId && !retryInfo!.triedPeers.has(peer.node_status.nodeId)
-        );
-        let peerToTry: EnhancedWebSocket | undefined = availablePeers.length > 0
-            ? availablePeers[Math.floor(Math.random() * availablePeers.length)]
-            : undefined;
-        if (!peerToTry) {
-            retryInfo.attempts++;
-            retryInfo.triedPeers.clear();
-            if (retryInfo.attempts > MAX_BLOCK_RETRIES) {
-                logger.error(`Failed to recover block ${nextBlockToRecover} after ${MAX_BLOCK_RETRIES} attempts. Skipping.`);
-                blockRequestRetries.delete(nextBlockToRecover);
-                pendingBlockRequests.delete(nextBlockToRecover);
-                p2p.recovering = false;
-                return;
-            }
-            peerToTry = peersAhead[Math.floor(Math.random() * peersAhead.length)];
-        }
-        if (!pendingBlockRequests.has(nextBlockToRecover)) {
-            pendingBlockRequests.add(nextBlockToRecover);
-            retryInfo!.triedPeers.add(peerToTry.node_status?.nodeId || '');
-            logger.debug(`Requesting block ${nextBlockToRecover} from peer ${peerToTry.node_status?.nodeId}, attempt ${retryInfo.attempts + 1}`);
-            (p2p.recovering as number)++;
-            p2p.sendJSON(peerToTry, { t: MessageType.QUERY_BLOCK, d: p2p.recovering });
-            if (!p2p.recoveringBlocks.includes(p2p.recovering as number))
-                p2p.recoveringBlocks.push(p2p.recovering as number);
-            setTimeout(() => {
-                pendingBlockRequests.delete(nextBlockToRecover);
-                // Immediately retry if still behind
-                if (p2p.recovering && p2p.recovering >= latestBlockId) {
-                    p2p.recover();
-                }
-            }, 10000);
+
+        let currentRecoveryBlockNum: number;
+        if (typeof p2p.recovering === 'number') {
+            currentRecoveryBlockNum = p2p.recovering;
         } else {
-            logger.debug(`Block ${nextBlockToRecover} request already pending, not resending.`);
+            // Not actively recovering a specific block sequence, so start from latest block
+            currentRecoveryBlockNum = chain.getLatestBlock()._id;
+            p2p.recovering = currentRecoveryBlockNum; // Initialize to a number
+        }
+        
+        let peersAhead = [];
+        for (let i = 0; i < p2p.sockets.length; i++) {
+            const peerNodeStatus = p2p.sockets[i].node_status;
+            if (peerNodeStatus 
+            && peerNodeStatus.head_block > chain.getLatestBlock()._id // Check against actual latest block, not potentially stale p2p.recovering
+            && peerNodeStatus.origin_block === config.read(0).originHash)
+                peersAhead.push(p2p.sockets[i]);
+        }
+
+        if (peersAhead.length === 0) {
+            p2p.recovering = false; // No peers ahead, stop recovery process
+            return;
+        }
+
+        let champion = peersAhead[Math.floor(Math.random()*peersAhead.length)];
+        const nextBlockToFetch = currentRecoveryBlockNum + 1;
+
+        if (champion.node_status && nextBlockToFetch <= champion.node_status.head_block) {
+            p2p.recovering = nextBlockToFetch; // Update p2p.recovering to the block number we are now trying to fetch
+            
+            p2p.sendJSON(champion, {t: MessageType.QUERY_BLOCK, d: p2p.recovering });
+            if (!p2p.recoveringBlocks.includes(p2p.recovering as number)) { 
+                p2p.recoveringBlocks.push(p2p.recovering as number);
+            }
+            logger.debug('query block #'+p2p.recovering+' from ' + (champion._peerUrl || champion.node_status?.nodeId) + ' -- champion head block: '+champion.node_status.head_block);
+            
+            // If the new p2p.recovering (block we just requested) is odd, try to get the next one too.
+            if ((p2p.recovering as number) % 2 !== 0) { // Ensure it's not 0 for the odd check, and ensure it's odd
+                // Check if we are still behind the champion before recursively calling
+                if (p2p.recovering < champion.node_status.head_block) {
+                    p2p.recover(); 
+                } else {
+                    p2p.recovering = false; // Champion doesn't have more blocks
+                }
+            } else if (p2p.recovering >= champion.node_status.head_block) {
+                 p2p.recovering = false; // Reached champion's head or caught up with it
+            }
+        } else if (peersAhead.length > 1) {
+            const championIdentifier = champion._peerUrl || champion.node_status?.nodeId || 'unknown_champion';
+            const championHeadBlock = champion.node_status?.head_block || 'N/A';
+            logger.warn(`Champion peer ${championIdentifier} (head: ${championHeadBlock}) could not be used or doesn't have block ${nextBlockToFetch}. Retrying recover for a different peer.`);
+            p2p.recover(); // Try with a different champion
+        } else {
+            const championIdentifier = champion._peerUrl || champion.node_status?.nodeId || 'unknown_champion';
+            const championHeadBlock = champion.node_status?.head_block || 'N/A';
+            logger.debug(`No suitable champion found (peer: ${championIdentifier}, head: ${championHeadBlock}) or champion doesn't have block ${nextBlockToFetch}. Stopping recovery for now.`);
+            p2p.recovering = false; 
         }
     },
 
