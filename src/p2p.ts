@@ -358,33 +358,40 @@ export const p2p = {
     
                 // Find the last colon to correctly separate host and port
                 const lastColonIndex = urlWithoutProtocol.lastIndexOf(':');
-                if (lastColonIndex === -1) {
-                    logger.warn(`[P2P:connect] Invalid URL format (missing port?): ${url}`);
-                    continue;
+                // We will ignore the port from the URL and always use the configured p2p_port
+                // But we still need to extract the host correctly.
+                let host = urlWithoutProtocol;
+                if (lastColonIndex !== -1) {
+                    host = urlWithoutProtocol.substring(0, lastColonIndex);
                 }
-    
-                let host = urlWithoutProtocol.substring(0, lastColonIndex);
-                const portStr = urlWithoutProtocol.substring(lastColonIndex + 1);
     
                 // Strip IPv4-mapped IPv6 prefix if present from the host
                 if (host.startsWith('::ffff:')) {
                     host = host.slice(7);
                 }
-                // Remove potential brackets if IPv6 address was already wrapped (e.g. from normalizeWsUrl)
+                // Remove potential brackets if IPv6 address was already wrapped
                 if (host.startsWith('[') && host.endsWith(']')) {
                     host = host.slice(1, -1);
-                }   
-    
-                const port = parseInt(portStr, 10);
-                if (isNaN(port)) {
-                    logger.warn(`[P2P:connect] Invalid port parsed from ${url} (port string was: ${portStr})`);
-                    continue;
-                }
+                }    
+
+                // ALWAYS use the defined p2p_port, ignore port from peer list URL
+                const portToUse = p2p_port; 
     
                 // Construct proper ws URL. Ensure IPv6 literals are bracketed for WebSocket constructor.
-                // The normalizeWsUrl function should ideally handle this, but let's be safe.
                 const wsHost = net.isIPv6(host) ? `[${host}]` : host;
-                const wsUrl = `ws://${wsHost}:${port}`;
+                const wsUrl = `ws://${wsHost}:${portToUse}`;
+
+                // Update normalizedFullUrl to reflect the URL we are actually going to use (with the correct port)
+                // This is important for the isConnectedTo check.
+                const effectiveNormalizedUrl = wsUrl; 
+    
+                // Check if already connected to the effective URL (IP + standard port)
+                if (p2p.isConnectedTo(effectiveNormalizedUrl)) {
+                    logger.debug(`[P2P:connect] Already connected to ${effectiveNormalizedUrl} (using standard port), skipping.`);
+                    continue;
+                }
+
+                logger.debug(`[P2P:connect] Attempting connection to: ${url} (resolved to ${wsUrl})`);
     
                 const ws = new WebSocket(wsUrl) as EnhancedWebSocket;
                 (ws as EnhancedWebSocket)._peerUrl = wsUrl; // Store the effectively used URL
