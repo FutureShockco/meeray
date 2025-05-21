@@ -131,10 +131,25 @@ export const p2p = {
     recentConnectionAttempts: {} as Record<string, RetryInfo>,
     pendingConnections: new Set<string>(),
     isConnectedTo(address: string) {
-        return this.sockets.some(ws => {
-            const peerUrl = (ws as EnhancedWebSocket)._peerUrl || `ws://${ws._socket.remoteAddress}:${ws._socket.remotePort}`;
-            return peerUrl === address;
-        });
+        try {
+            const target = new URL(address);
+            const targetHost = target.hostname.replace('::ffff:', '');
+            const targetPort = target.port;
+    
+            return this.sockets.some(ws => {
+                const peerUrl = (ws as EnhancedWebSocket)._peerUrl;
+                if (!peerUrl) return false;
+    
+                const current = new URL(peerUrl);
+                const currentHost = current.hostname.replace('::ffff:', '');
+                const currentPort = current.port;
+    
+                return currentHost === targetHost && currentPort === targetPort;
+            });
+        } catch (err) {
+            logger.warn(`Invalid address passed to isConnectedTo: ${address}`);
+            return false;
+        }
     },
     init: async (): Promise<void> => {
         p2p.generateNodeId();
