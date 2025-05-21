@@ -167,7 +167,7 @@ const transaction: TransactionModule = {
 
     isValidTxData: (tx: TransactionInterface, ts: number, legitUser: string, cb: ValidationCallback): void => {
         const handler = transactionHandlers[tx.type as TransactionType];
-        if (handler)
+        if (handler && typeof handler.validate === 'function') {
             handler.validate(tx.data, tx.sender)
                 .then((isValidSpecific: boolean) => {
                     if (!isValidSpecific) {
@@ -181,6 +181,12 @@ const transaction: TransactionModule = {
                     const errorMessage = error instanceof Error ? error.message : String(error);
                     cb(false, `Validation error for ${TransactionType[tx.type as TransactionType]}: ${errorMessage}`); // Error = true
                 });
+        } else {
+            // If no handler or validate function is not found, consider it invalid and call the callback
+            const reason = handler ? `Validate function missing for handler type ${tx.type}` : `Unknown transaction type handler for type ${tx.type}`;
+            logr.warn(`[transaction.isValidTxData] ${reason}`);
+            cb(false, reason);
+        }
     },
 
     execute: (tx: TransactionInterface, ts: number, cb: ExecutionCallback): void => {
