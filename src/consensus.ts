@@ -75,91 +75,63 @@ export const consensus: Consensus = {
         return actives;
     },
     tryNextStep: function () {
-        const currentChainHeadId = chain.getLatestBlock?.()._id;
-        if (typeof currentChainHeadId !== 'number') {
-            logger.warn("[CONSENSUS:tryNextStep] Could not get current chain head ID.");
-            return;
-        }
-        const targetBlockId = currentChainHeadId + 1;
-
         const consensus_size = this.activeWitnesses().length;
-        if (consensus_size === 0) {
-            logger.warn("[CONSENSUS:tryNextStep] No active witnesses found. Consensus cannot proceed.");
-            return;
-        }
         let threshold = consensus_size * consensus_threshold;
-        if (!this.isActive()) threshold += 1; // Observer nodes need one more confirmation
-
-        // Filter for blocks at the target height that have enough final round confirmations
-        let candidatePossBlocks = this.possBlocks.filter(pb => 
-            pb.block._id === targetBlockId &&
-            pb[(config.consensusRounds || 2) - 1].length > threshold
-        );
-
-        if (candidatePossBlocks.length === 0) {
-            // No block meets the criteria yet.
-            // Still need to process other rounds for blocks that might become candidates later.
+        if (!this.isActive()) threshold += 1;
+        let possBlocksById: Record<string, any[]> = {};
+        if (this.possBlocks.length > 1) {
             for (let i = 0; i < this.possBlocks.length; i++) {
-                const possBlock = this.possBlocks[i];
-                if (possBlock.block._id === targetBlockId) { // Only consider for current height
-                    for (let y = 0; y < (config.consensusRounds || 2) - 1; y++) { // Iterate through non-final rounds
-                        if (possBlock[y].length > threshold && // If a non-final round has enough confirmations
-                           this.isActive() && // Only active witnesses should try to advance rounds this way
-                           possBlock[y+1].indexOf(process.env.STEEM_ACCOUNT || '') === -1 ) { // And this node hasn't confirmed the *next* round yet for this block
-                            this.round(y + 1, possBlock.block);
-                        }
-                    }
-                }
+                const blockId = this.possBlocks[i].block._id;
+                if (possBlocksById[blockId])
+                    possBlocksById[blockId].push(this.possBlocks[i]);
+                else
+                    possBlocksById[blockId] = [this.possBlocks[i]];
             }
-            return;
-        }
-
-        // If there are candidates, sort them to pick the winner
-        candidatePossBlocks.sort((a, b) => {
-            if (a.block.timestamp !== b.block.timestamp) {
-                return a.block.timestamp - b.block.timestamp; // Oldest timestamp first
-            }
-            return a.block.hash < b.block.hash ? -1 : 1; // Smallest hash first for tie-breaking
-        });
-
-        const winningPossBlock = candidatePossBlocks[0]; // The first one after sorting is the winner
-
-        if (!this.finalizing) { // Ensure we only attempt to finalize one block at a time
-            this.finalizing = true;
-            
-            let possBlocksByIdForLogging: Record<string, any[]> = {};
-            if (this.possBlocks.length > 1) {
-                 for (let pb of this.possBlocks) {
-                     const blockId = pb.block._id;
-                     if (blockId === targetBlockId) { 
-                        if (possBlocksByIdForLogging[blockId]) {
-                            possBlocksByIdForLogging[blockId].push(pb);
-                        } else {
-                            possBlocksByIdForLogging[blockId] = [pb];
-                        }
-                     }
-                 }
-            }
-
-            if (possBlocksByIdForLogging[targetBlockId] && possBlocksByIdForLogging[targetBlockId].length > 1) {
-                let collisions = possBlocksByIdForLogging[targetBlockId].map(pb => [pb.block.witness, pb.block.timestamp, pb.block.hash.substr(0,4)]);
-                logger.warn(`Block collision detected at height ${targetBlockId}, proposals considered:`, collisions);
-                logger.warn(`Winning block chosen by deterministic sort: ${targetBlockId}#${winningPossBlock.block.hash.substr(0, 4)} by ${winningPossBlock.block.witness} with timestamp ${winningPossBlock.block.timestamp}`);
-            } else {
-                logger.debug(`Block ${targetBlockId}#${winningPossBlock.block.hash.substr(0, 4)} got finalized by ${winningPossBlock.block.witness}`);
-            }
-
-            chain.validateAndAddBlock(winningPossBlock.block, false, (err: any) => {
-                if (err) {
-                    logger.error(`[CONSENSUS-TRYSTEP] Error validating/adding winning block ${winningPossBlock.block?._id}:`, err);
-                }
-                this.possBlocks = this.possBlocks.filter(pb => pb.block._id > winningPossBlock.block._id);
-                this.finalizing = false;
-                if(this.queue.length > 0 || this.possBlocks.length > 0) {
-                     // Use setTimeout to avoid potential deep recursion if tryNextStep leads to another immediate finalization
-                    setTimeout(() => this.tryNextStep(), 0); 
-                }
+            this.possBlocks.sort((a, b) => {
+                if (a.block.timestamp !== b.block.timestamp)
+                    return a.block.timestamp - b.block.timestamp;
+                else
+                    return a.block.hash < b.block.hash ? -1 : 1;
             });
+        }
+        for (let i = 0; i < this.possBlocks.length; i++) {
+            const possBlock = this.possBlocks[i];
+            // logger.cons('T'+Math.ceil(threshold)+' R0-'+possBlock[0].length+' R1-'+possBlock[1].length)
+            if (
+                possBlock[(config.consensusRounds || 2) - 1].length > threshold &&
+                !this.finalizing &&
+                possBlock.block._id === chain.getLatestBlock?.()._id + 1 &&
+                possBlock[0] && possBlock[0].indexOf(process.env.STEEM_ACCOUNT) !== -1
+            ) {
+                this.finalizing = true;
+                // log which block got applied if collision exists
+                if (possBlocksById[possBlock.block._id] && possBlocksById[possBlock.block._id].length > 1) {
+                    let collisions = [];
+                    for (let j = 0; j < possBlocksById[possBlock.block._id].length; j++)
+                        collisions.push([
+                            possBlocksById[possBlock.block._id][j].block.witness,
+                            possBlocksById[possBlock.block._id][j].block.timestamp,
+                        ]);
+                    logger.info('Block collision detected at height ' + possBlock.block._id + ', the witnesses are:', collisions);
+                    logger.info('Applying block ' + possBlock.block._id + '#' + possBlock.block.hash.substr(0, 4) + ' by ' + possBlock.block.witness + ' with timestamp ' + possBlock.block.timestamp);
+                } else {
+                    logger.info('block ' + possBlock.block._id + '#' + possBlock.block.hash.substr(0, 4) + ' got finalized');
+                }
+                chain.validateAndAddBlock(possBlock.block, false, (err: any) => {
+                    if (err) {
+                        logger.error(`[CONSENSUS-TRYSTEP] Error for block ${possBlock.block?._id}:`, err);
+                    }
+                    let newPossBlocks = [];
+                    for (let y = 0; y < this.possBlocks.length; y++)
+                        if (possBlock.block._id < this.possBlocks[y].block._id)
+                            newPossBlocks.push(this.possBlocks[y]);
+                    this.possBlocks = newPossBlocks;
+                    this.finalizing = false; // Reset finalizing status here.
+                });
+            }
+            else for (let y = 0; y < (config.consensusRounds || 2) - 1; y++)
+                if (possBlock[y].length > threshold)
+                    this.round(y + 1, possBlock.block);
         }
     },
     round: function (round: number, block: any, cb?: (result: number) => void) {
