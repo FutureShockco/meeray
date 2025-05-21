@@ -18,17 +18,19 @@ export const mining = {
      * Prepare a new block with transactions from the mempool.
      */
     prepareBlock: (cb: (err: any, newBlock?: any) => void) => {
+        logger.debug('[MINING:prepareBlock] Entered.');
         let previousBlock = chain.getLatestBlock();
         let nextIndex = previousBlock._id + 1;
         let nextTimestamp = new Date().getTime();
         let nextSteemBlockNum = previousBlock.steemBlockNum + 1;
         let nextSteemBlockTimestamp = previousBlock.steemBlockTimestamp + config.blockTime;
 
+        logger.debug(`[MINING:prepareBlock] Attempting to process Steem block ${nextSteemBlockNum}.`);
         steem.processBlock(nextSteemBlockNum).then((transactions) => {
             if (!transactions) {
                 // Handle the case where the Steem block doesn't exist yet
                 if (steem.getBehindBlocks() <= 0) {
-                    logger.debug(`Cannot prepare block - Steem block ${nextSteemBlockNum} not found, but we're caught up with Steem head. Retrying in 1 second...`)
+                    logger.debug(`[MINING:prepareBlock] Steem block ${nextSteemBlockNum} not found, but caught up. Retrying.`);
 
                     // If we're at the head of Steem, wait a bit and let the caller retry
                     setTimeout(() => {
@@ -37,10 +39,11 @@ export const mining = {
                     return; // Add explicit return to prevent further execution
                 }
 
-                logger.warn(`Cannot prepare block - Steem block ${nextSteemBlockNum} not found, behind by ${steem.getBehindBlocks()} blocks`)
+                logger.warn(`[MINING:prepareBlock] Steem block ${nextSteemBlockNum} not found, behind by ${steem.getBehindBlocks()} blocks. Cannot prepare Echelon block.`);
                 cb(true, null)
                 return; // Add explicit return to prevent further execution
             }
+            logger.debug(`[MINING:prepareBlock] Successfully processed Steem block ${nextSteemBlockNum}. Transactions found: ${transactions.transactions.length}`);
 
             // Add mempool transactions
             let txs = []
@@ -70,6 +73,8 @@ export const mining = {
 
             transaction.removeFromPool(txs)
 
+            logger.debug(`[MINING:prepareBlock] Added ${txs.length} transactions from mempool.`);
+
             // Create the initial block
             let newBlock: Block = {
                 _id: nextIndex,
@@ -89,10 +94,10 @@ export const mining = {
             if (config.witnessReward > 0) {
                 newBlock.dist = config.witnessReward
             }
-
+            logger.debug(`[MINING:prepareBlock] Prepared Echelon block candidate for _id ${newBlock._id}: ${JSON.stringify(newBlock)}`);
             cb(null, newBlock)
         }).catch((error) => {
-            logger.error(`Error processing Steem block ${nextSteemBlockNum}:`, error)
+            logger.error(`[MINING:prepareBlock] Error processing Steem block ${nextSteemBlockNum}:`, error)
             cb(true, null)
         })
     },
@@ -101,14 +106,18 @@ export const mining = {
      * Check if this node can mine the next block.
      */
     canMineBlock: (cb: (err: boolean | null, newBlock?: any) => void) => {
+        logger.debug('[MINING:canMineBlock] Entered.');
         if ((chain as any).shuttingDown) {
+            logger.warn('[MINING:canMineBlock] Chain shutting down, aborting.');
             cb(true, null); return;
         }
         mining.prepareBlock((err, newBlock) => {
+            logger.debug(`[MINING:canMineBlock] prepareBlock result - err: ${err}, newBlock._id: ${newBlock?._id}`);
             if (newBlock === null || newBlock === undefined) {
                 cb(true, null); return;
             }
             isValidNewBlock(newBlock, false, false, function (isValid: boolean) {
+                logger.debug(`[MINING:canMineBlock] isValidNewBlock for _id ${newBlock._id} result: ${isValid}`);
                 if (!isValid) {
                     cb(true, newBlock); return;
                 }
@@ -121,15 +130,22 @@ export const mining = {
      * Mine a new block and propose it to consensus.
      */
     mineBlock: (cb: (err: boolean | null, newBlock?: any) => void) => {
-        if ((chain as any).shuttingDown) return;
+        logger.debug('[MINING:mineBlock] Entered.');
+        if ((chain as any).shuttingDown) {
+            logger.warn('[MINING:mineBlock] Chain shutting down, aborting.');
+            return;
+        }
         mining.canMineBlock(function (err, newBlock) {
+            logger.debug(`[MINING:mineBlock] canMineBlock result - err: ${err}, newBlock._id: ${newBlock?._id}`);
             if (err) {
                 cb(true, newBlock); return;
             }
             // at this point transactions in the pool seem all validated
             // BUT with a different ts and without checking for double spend
             // so we will execute transactions in order and revalidate after each execution
+            logger.debug(`[MINING:mineBlock] Before executeBlockTransactions for _id ${newBlock._id}. Initial Txs: ${newBlock.txs?.length}`);
             chain.executeBlockTransactions(newBlock, true, function (validTxs: Transaction[], distributed: number) {
+                logger.debug(`[MINING:mineBlock] After executeBlockTransactions for _id ${newBlock._id}. Valid Txs: ${validTxs?.length}, Distributed: ${distributed}`);
                 try {
                     cache.rollback()
                     // Assign the executed transactions to the block (fix)
@@ -143,8 +159,9 @@ export const mining = {
 
                     if (distributed) newBlock.dist = distributed;
 
-                    // hash and sign the block with our private key
+                    logger.debug(`[MINING:mineBlock] Before hashAndSignBlock for _id ${newBlock._id}.`);
                     newBlock = mining.hashAndSignBlock(newBlock);
+                    logger.debug(`[MINING:mineBlock] After hashAndSignBlock for _id ${newBlock._id}. Hash: ${newBlock.hash}`);
 
                     // Add this check before proposing to consensus
                     if (newBlock.phash !== chain.getLatestBlock().hash) {
@@ -160,7 +177,7 @@ export const mining = {
                     for (let r = 0; r < config.consensusRounds; r++)
                         possBlock[r] = [];
 
-                    logger.debug('Mined a new block, proposing to consensus');
+                    logger.debug(`[MINING:mineBlock] Proposing block _id ${newBlock._id} to consensus. Witness: ${process.env.STEEM_ACCOUNT}`);
                     possBlock[0].push(process.env.STEEM_ACCOUNT);
                     consensus.possBlocks.push(possBlock);
                     consensus.endRound(0, newBlock);
@@ -177,6 +194,7 @@ export const mining = {
      * Worker function to schedule mining attempts.
      */
     minerWorker: (block: Block): void => {
+        logger.debug(`[MINING:minerWorker] Entered. Current chain head _id: ${block._id}. p2p.recovering: ${p2p.recovering}`);
         if (p2p.recovering) return
         clearTimeout(chain.worker)
 
@@ -221,10 +239,7 @@ export const mining = {
             // Add a small buffer to avoid clock differences causing delays
             mineInMs += 30
 
-
-
-            logger.debug('Trying to mine in ' + mineInMs + 'ms' + ' (sync: ' + steem.isInSyncMode() +
-                '), time since last block: ' + timeSinceLastBlock + 'ms')
+            logger.debug(`[MINING:minerWorker] Calculated mineInMs: ${mineInMs}. Will try to mine for block _id ${block._id + 1}. (sync: ${steem.isInSyncMode()}), timeSinceLastBlock: ${timeSinceLastBlock}ms`);
             consensus.observer = false
 
             // More lenient performance check during sync mode
@@ -243,10 +258,14 @@ export const mining = {
             if (steem && steem.setReadyToReceiveTransactions)
                 steem.setReadyToReceiveTransactions(true)
 
+            logger.debug(`[MINING:minerWorker] Scheduling mineBlock call in ${mineInMs}ms.`);
             chain.worker = setTimeout(function () {
+                logger.debug('[MINING:minerWorker] setTimeout triggered, calling mineBlock.');
                 mining.mineBlock(function (error, finalBlock) {
                     if (error)
-                        logger.warn('miner worker trying to mine but couldnt', finalBlock)
+                        logger.warn(`[MINING:minerWorker] mineBlock callback - Error mining block. finalBlock._id: ${finalBlock?._id}`, finalBlock ? '' : '(No block object)');
+                    else
+                        logger.info(`[MINING:minerWorker] mineBlock callback - Successfully processed/proposed block. finalBlock._id: ${finalBlock?._id}`);
                 })
             }, mineInMs)
         }
