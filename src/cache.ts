@@ -235,6 +235,13 @@ const cache: CacheType = {
 
     findOne: function (collection, query, cb, skipClone) {
         const collectionName = collection as keyof CacheMainDataCollections;
+        
+        // DEBUGGING LOGS START
+        logger.debug(`[CACHE findOne] Checking collection: '${collection}', cast to collectionName: '${collectionName}'`);
+        logger.debug(`[CACHE findOne] this.copy object keys: ${Object.keys(this.copy).join(', ')}`);
+        logger.debug(`[CACHE findOne] Value of this.copy['${collectionName}']: ${JSON.stringify(this.copy[collectionName as keyof CacheCopyCollections])}`);
+        // DEBUGGING LOGS END
+
         if (!this.copy[collectionName as keyof CacheCopyCollections]) { // Check against known copy collections
             return cb(new Error('invalid collection in copy'));
         }

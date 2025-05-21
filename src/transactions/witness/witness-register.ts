@@ -23,11 +23,13 @@ export async function validateTx(data: WitnessRegisterData, sender: string): Pro
       return false;
     }
 
-    // Optional: Check if sender is already a witness
-    const witness = await cache.findOnePromise('witnesses', { name: sender });
-    if (witness) {
-      logger.warn(`[TX_VALIDATE:WITNESS_REGISTER] Warning: sender ${sender} is already a witness`);
-    }
+    // Optional: Check if the public key is already in use by another witness - (already commented out)
+    // This would require querying all witness accounts.
+    // const existingWitnessWithKey = await cache.findOnePromise('accounts', { witnessPubKey: data.pub, name: { $ne: sender } });
+    // if (existingWitnessWithKey) {
+    //    logger.warn(`[TX_VALIDATE:WITNESS_REGISTER] Invalid: public key ${data.pub} already in use by ${existingWitnessWithKey.name}.`);
+    //    return false;
+    // }
 
     logger.debug(`[TX_VALIDATE:WITNESS_REGISTER] Validation successful for sender: ${sender}`);
     return true;
