@@ -342,25 +342,13 @@ export const p2p = {
                 logger.debug(`Already connected to ${url}, skipping`);
                 continue;
             }
+    
             try {
-                // Remove 'ws://' prefix first
-                const urlWithoutProtocol = url.replace(/^ws:\/\//, '');
+                const parsed = new URL(url);
     
-                // Split IP and port
-                let [ip, portStr] = urlWithoutProtocol.split(':');
+                const ip = parsed.hostname.replace(/^::ffff:/, ''); // IPv4-mapped IPv6 fix
+                const port = parsed.port || '6001'; // Default fallback
     
-                // Strip IPv4-mapped IPv6 prefix if present
-                if (ip.startsWith('::ffff:')) {
-                    ip = ip.slice(7);
-                }
-    
-                const port = parseInt(portStr, 10);
-                if (isNaN(port)) {
-                    logger.warn(`Invalid port parsed from ${url}`);
-                    continue;
-                }
-    
-                // Construct proper ws URL
                 const wsUrl = `ws://${ip}:${port}`;
     
                 const ws = new WebSocket(wsUrl) as EnhancedWebSocket;
@@ -384,7 +372,9 @@ export const p2p = {
                 p2p.errorHandler(ws);
     
             } catch (err) {
-                logger.error(`Exception connecting to ${url}: ${err}`);
+                logger.warn(`Invalid peer URL or port: ${url}`);
+                logger.debug(`Error details: ${err}`);
+                continue;
             }
         }
     },
