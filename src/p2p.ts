@@ -353,28 +353,41 @@ export const p2p = {
                 continue;
             }
             try {
-                // Remove 'ws://' prefix first
-                const urlWithoutProtocol = url.replace(/^ws:\/\//, '');
+                // Remove 'ws://' or 'wss://' prefix first
+                const urlWithoutProtocol = url.replace(/^(ws:\/\/|wss:\/\/)/i, '');
     
-                // Split IP and port
-                let [ip, portStr] = urlWithoutProtocol.split(':');
-    
-                // Strip IPv4-mapped IPv6 prefix if present
-                if (ip.startsWith('::ffff:')) {
-                    ip = ip.slice(7);
-                }
-    
-                const port = parseInt(portStr, 10);
-                if (isNaN(port)) {
-                    logger.warn(`Invalid port parsed from ${url}`);
+                // Find the last colon to correctly separate host and port
+                const lastColonIndex = urlWithoutProtocol.lastIndexOf(':');
+                if (lastColonIndex === -1) {
+                    logger.warn(`[P2P:connect] Invalid URL format (missing port?): ${url}`);
                     continue;
                 }
     
-                // Construct proper ws URL
-                const wsUrl = `ws://${ip}:${port}`;
+                let host = urlWithoutProtocol.substring(0, lastColonIndex);
+                const portStr = urlWithoutProtocol.substring(lastColonIndex + 1);
+    
+                // Strip IPv4-mapped IPv6 prefix if present from the host
+                if (host.startsWith('::ffff:')) {
+                    host = host.slice(7);
+                }
+                // Remove potential brackets if IPv6 address was already wrapped (e.g. from normalizeWsUrl)
+                if (host.startsWith('[') && host.endsWith(']')) {
+                    host = host.slice(1, -1);
+                }   
+    
+                const port = parseInt(portStr, 10);
+                if (isNaN(port)) {
+                    logger.warn(`[P2P:connect] Invalid port parsed from ${url} (port string was: ${portStr})`);
+                    continue;
+                }
+    
+                // Construct proper ws URL. Ensure IPv6 literals are bracketed for WebSocket constructor.
+                // The normalizeWsUrl function should ideally handle this, but let's be safe.
+                const wsHost = net.isIPv6(host) ? `[${host}]` : host;
+                const wsUrl = `ws://${wsHost}:${port}`;
     
                 const ws = new WebSocket(wsUrl) as EnhancedWebSocket;
-                (ws as EnhancedWebSocket)._peerUrl = wsUrl;
+                (ws as EnhancedWebSocket)._peerUrl = wsUrl; // Store the effectively used URL
     
                 ws.on('open', () => {
                     logger.debug(`[P2P:connect] Successfully opened WebSocket connection to ${wsUrl}. Initiating handshake.`);
