@@ -136,7 +136,7 @@ export const p2p = {
     },
     init: async (): Promise<void> => {
         p2p.generateNodeId();
-
+        logger.info(`[P2P:init] P2P module initialized. Max peers: ${max_peers}. Listening on ${p2p_host}:${p2p_port}`);
 
         // Dynamically import the 'ws' module
         const wsModule = await import('ws');
@@ -250,8 +250,9 @@ export const p2p = {
     },
 
     keepAlive: async (): Promise<void> => {
+        logger.debug(`[P2P:keepAlive] Entered. Current sockets: ${p2p.sockets.length}/${max_peers}`);
         if (p2p.sockets.length >= max_peers) {
-            logger.debug(`Already at max peers (${p2p.sockets.length}/${max_peers}), skipping keep-alive check`);
+            logger.debug(`[P2P:keepAlive] Already at max peers (${p2p.sockets.length}/${max_peers}), skipping keep-alive check`);
             setTimeout(() => p2p.keepAlive(), keep_alive_interval);
             return;
         }
@@ -268,6 +269,8 @@ export const p2p = {
 
         let peers = process.env.PEERS ? process.env.PEERS.split(',') : [];
         let toConnect: string[] = [];
+
+        logger.debug(`[P2P:keepAlive] Processing PEERS list: ${JSON.stringify(peers)}. Sockets: ${p2p.sockets.length}`);
 
         const maxAttemptsPerCycle = 2;
 
@@ -327,7 +330,7 @@ export const p2p = {
         }
 
         if (toConnect.length > 0) {
-            logger.debug(`Keep-alive: attempting to connect to ${toConnect.length} peer(s)`);
+            logger.info(`[P2P:keepAlive] Attempting to connect to ${toConnect.length} peer(s) from PEERS list: ${JSON.stringify(toConnect)}`);
             p2p.connect(toConnect);
         }
 
@@ -335,9 +338,13 @@ export const p2p = {
     },
 
     connect: (urls: string[], isInit: boolean = false) => {
+        logger.debug(`[P2P:connect] Called with URLs: ${JSON.stringify(urls)}, isInit: ${isInit}. Current sockets: ${p2p.sockets.length}`);
         for (const url of urls) {
-            if (p2p.isConnectedTo(url)) {
-                logger.debug(`Already connected to ${url}, skipping`);
+            const normalizedFullUrl = normalizeWsUrl(url); // Normalize the full URL including ws://
+            logger.info(`[P2P:connect] Attempting connection to: ${normalizedFullUrl}`);
+
+            if (p2p.isConnectedTo(normalizedFullUrl)) {
+                logger.debug(`[P2P:connect] Already connected to ${normalizedFullUrl}, skipping.`);
                 continue;
             }
             try {
@@ -365,31 +372,42 @@ export const p2p = {
                 (ws as EnhancedWebSocket)._peerUrl = wsUrl;
     
                 ws.on('open', () => {
-                    logger.info(`Connected to peer ${url}`);
+                    logger.info(`[P2P:connect] Successfully opened WebSocket connection to ${wsUrl}. Initiating handshake.`);
                     p2p.handshake(ws);
                 });
     
                 ws.on('error', (err) => {
-                    logger.warn(`Failed to connect to ${url}: ${err.message}`);
+                    logger.warn(`[P2P:connect] Failed to connect to ${url} (normalized: ${wsUrl}): ${err.message}`);
+                    p2p.pendingConnections.delete(normalizedFullUrl);
                 });
     
-                ws.on('close', () => {
-                    logger.info(`Connection closed: ${url}`);
-                    p2p.sockets = p2p.sockets.filter(s => s !== ws);
+                ws.on('close', (code, reason) => {
+                    logger.info(`[P2P:connect] Connection closed to ${url} (normalized: ${wsUrl}). Code: ${code}, Reason: ${reason ? reason.toString() : 'N/A'}`);
+                    p2p.pendingConnections.delete(normalizedFullUrl);
+                    // p2p.sockets = p2p.sockets.filter(s => s !== ws); // This is handled in closeConnection
                 });
-    
-                p2p.messageHandler(ws);
-                p2p.errorHandler(ws);
-    
-            } catch (err) {
-                logger.error(`Exception connecting to ${url}: ${err}`);
+
+                p2p.pendingConnections.add(normalizedFullUrl); // Add to pending before handshake completes
+
+            } catch (err: any) {
+                logger.warn(`[P2P:connect] Invalid peer URL or port for ${url}: ${err.message}`);
+                p2p.pendingConnections.delete(normalizedFullUrl);
             }
         }
     },
 
     handshake: (ws: EnhancedWebSocket): void => {
+        const remoteAddr = ws._socket?.remoteAddress?.replace('::ffff:', '') || 'unknown_incoming_ip';
+        const remotePort = ws._socket?.remotePort;
+        const localAddr = ws._socket?.localAddress?.replace('::ffff:', '') || 'unknown_local_ip';
+        const localPort = ws._socket?.localPort;
+        const connectionType = ws._peerUrl ? 'Outgoing' : 'Incoming';
+        const peerIdentifier = ws._peerUrl || `${remoteAddr}:${remotePort}`;
+
+        logger.info(`[P2P:handshake] ${connectionType} connection. Peer: ${peerIdentifier}. Local: ${localAddr}:${localPort}. Remote: ${remoteAddr}:${remotePort}. Current sockets: ${p2p.sockets.length}`);
+
         if (process.env.OFFLINE) {
-            logger.warn('Incoming handshake refused because OFFLINE');
+            logger.warn('[P2P:handshake] Incoming handshake refused because OFFLINE');
             ws.close();
             return;
         }
@@ -905,24 +923,33 @@ export const p2p = {
     },
 
     closeConnection: (ws: EnhancedWebSocket): void => {
+        const peerIdentifier = ws.node_status?.nodeId || ws._peerUrl || (ws._socket ? `${ws._socket.remoteAddress?.replace('::ffff:', '')}:${ws._socket.remotePort}` : 'unknown_peer');
         const index = p2p.sockets.indexOf(ws);
         if (index > -1) {
             p2p.sockets.splice(index, 1);
-            logger.debug('a peer disconnected, ' + p2p.sockets.length + ' peers left');
+            logger.info(`[P2P:closeConnection] Peer ${peerIdentifier} disconnected. Sockets remaining: ${p2p.sockets.length}`);
+        } else {
+            logger.warn(`[P2P:closeConnection] Attempted to close connection for a peer not in sockets list: ${peerIdentifier}`);
+        }
+        // Remove from pending if it was there
+        if (ws._peerUrl) {
+            p2p.pendingConnections.delete(ws._peerUrl);
         }
     },
 
     sendJSON: (ws: EnhancedWebSocket, d: { t: number, d: any, s?: any }): void => {
+        const peerIdentifier = ws.node_status?.nodeId || ws._peerUrl || (ws._socket ? `${ws._socket.remoteAddress?.replace('::ffff:', '')}:${ws._socket.remotePort}` : 'unknown_peer');
         try {
             let data = JSON.stringify(d);
             // logger.debug('P2P-OUT:', d.t)
             ws.send(data);
-        } catch (error) {
-            logger.warn('Tried sending p2p message and failed');
+        } catch (error: any) {
+            logger.warn(`[P2P:sendJSON] Failed to send message type ${d.t} to peer ${peerIdentifier}: ${error.message}`);
         }
     },
 
     broadcastNotSent: (d: any): void => {
+        logger.debug(`[P2P:broadcastNotSent] Broadcasting message type ${d.t} to eligible peers. Current sockets: ${p2p.sockets.length}`);
         firstLoop:
         for (let i = 0; i < p2p.sockets.length; i++) {
             if (!p2p.sockets[i].sentUs) {
@@ -939,10 +966,13 @@ export const p2p = {
         }
     },
 
-    broadcast: (d: any): void => p2p.sockets.forEach(ws => p2p.sendJSON(ws, d)),
+    broadcast: (d: any): void => {
+        logger.debug(`[P2P:broadcast] Broadcasting message type ${d.t} to ALL ${p2p.sockets.length} peers.`);
+        p2p.sockets.forEach(ws => p2p.sendJSON(ws, d))
+    },
 
     broadcastBlock: (block: Block): void => {
-        logger.info(`[P2P] Broadcasting block #${block._id} with ${block.txs?.length ?? 0} txs`);
+        logger.info(`[P2P:broadcastBlock] Broadcasting block #${block._id} with ${block.txs?.length ?? 0} txs to ${p2p.sockets.length} peers.`);
         p2p.broadcast({ t: MessageType.NEW_BLOCK, d: block });
     },
 
