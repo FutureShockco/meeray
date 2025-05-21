@@ -401,7 +401,7 @@ export const chain = {
                 logger.warn(`[validateAndAddBlock] Block ID: ${block?._id} failed isValidNewBlock. Witness: ${block?.witness}`);
                 return cb(true, block);
             }
-            logger.info(`Block ID: ${block?._id} passed isValidNewBlock. Witness: ${block?.witness}`); // Changed from console.log
+            logger.debug(`Block ID: ${block?._id} passed isValidNewBlock. Witness: ${block?.witness}`); // Changed from console.log
             // straight execution
             chain.executeBlockTransactions(block, false, function (validTxs: any[], distributed: number) {
                 logger.debug(`[validateAndAddBlock] executeBlockTransactions for Block ID: ${block?._id} completed. Valid Txs: ${validTxs?.length}/${block?.txs?.length}, Distributed: ${distributed}`);

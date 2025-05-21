@@ -201,49 +201,82 @@ export const mining = {
             ? config.syncBlockTime
             : config.blockTime
 
+        const currentTime = new Date().getTime();
+        const lastBlockTimestamp = block.timestamp;
+        const lastSyncExitTime = steem.getLastSyncExitTime() || 0;
+        const justExitedSync = !steem.isInSyncMode() && (currentTime - lastSyncExitTime < (config.blockTime * 2)); // Check if within ~2 normal block times of exiting sync
+
         // Log which block time we're using for clarity
         if (steem.isInSyncMode()) {
-            logger.debug(`Using sync block time: ${blockTime}ms`)
-        } else if (steem.getLastSyncExitTime() && new Date().getTime() - (steem.getLastSyncExitTime() || 0) < 5000) {
-            logger.warn(`Recently exited sync mode, using normal block time: ${blockTime}ms`)
+            logger.debug(`[MINING:minerWorker] Using sync block time: ${blockTime}ms (Currently in sync mode)`);
+        } else if (justExitedSync) {
+            logger.info(`[MINING:minerWorker] Recently exited sync mode. Ensuring next block respects normal blockTime (${config.blockTime}ms) relative to last block.`);
+            // blockTime is already config.blockTime here
+        } else {
+            logger.debug(`[MINING:minerWorker] Using normal block time: ${blockTime}ms`);
         }
 
         // if we are the next scheduled witness, try to mine in time
-        if (chain.schedule.shuffle[(block._id) % config.witnesses].name === process.env.STEEM_ACCOUNT)
-            mineInMs = blockTime
+        if (chain.schedule.shuffle[(block._id) % config.witnesses].name === process.env.STEEM_ACCOUNT) {
+            if (justExitedSync) {
+                // Ensure the first block after sync adheres to the normal blockTime from the *actual* last block's timestamp
+                const targetTimestamp = lastBlockTimestamp + config.blockTime; // Normal block time interval
+                mineInMs = targetTimestamp - currentTime;
+                logger.debug(`[MINING:minerWorker] Post-sync transition: Scheduled as next witness. Target: ${new Date(targetTimestamp).toISOString()}. Current: ${new Date(currentTime).toISOString()}. Calculated mineInMs: ${mineInMs}`);
+            } else {
+                mineInMs = blockTime; // Standard calculation if not just exited sync or if still in sync
+            }
+        }
         // else if the scheduled witnesses miss blocks
         // backups witnesses are available after each block time intervals
-        else for (let i = 1; i < 2 * config.witnesses; i++)
-            if (chain.recentBlocks[chain.recentBlocks.length - i]
-                && chain.recentBlocks[chain.recentBlocks.length - i].witness === process.env.STEEM_ACCOUNT) {
-                mineInMs = (i + 1) * blockTime
-                break
+        else {
+            for (let i = 1; i < 2 * config.witnesses; i++) {
+                // Check if this node was the witness for a recent block that might have been missed by others
+                // This logic seems to be about becoming a backup witness
+                if (chain.recentBlocks[chain.recentBlocks.length - i]
+                    && chain.recentBlocks[chain.recentBlocks.length - i].witness === process.env.STEEM_ACCOUNT) {
+                    
+                    if (justExitedSync) {
+                        // If just exited sync and acting as backup, base it on when the missed slot *should have* occurred after last actual block
+                        const missedSlotTargetTimestamp = lastBlockTimestamp + ((i + 1) * config.blockTime);
+                        mineInMs = missedSlotTargetTimestamp - currentTime;
+                        logger.debug(`[MINING:minerWorker] Post-sync transition: Acting as backup for slot ${i+1}. Target: ${new Date(missedSlotTargetTimestamp).toISOString()}. Current: ${new Date(currentTime).toISOString()}. Calculated mineInMs: ${mineInMs}`);
+                    } else {
+                        mineInMs = (i + 1) * blockTime; // Standard backup calculation
+                    }
+                    break;
+                }
             }
+        }
 
-        if (mineInMs) {
+        if (mineInMs !== null) { // Check if mineInMs was set (i.e., it's our turn or a backup slot)
             // Calculate time since last block, accounting for possible clock drift
-            const currentTime = new Date().getTime()
-            const timeSinceLastBlock = currentTime - block.timestamp
+            const timeSinceLastBlock = currentTime - lastBlockTimestamp;
 
-            // Adjust mining time - add a small buffer to ensure we mine on time
-            mineInMs -= timeSinceLastBlock
+            if (!justExitedSync) { // For normal operation or sync mode, adjust by timeSinceLastBlock
+                 mineInMs -= timeSinceLastBlock;
+            }
+            // If justExitedSync, mineInMs is already calculated relative to currentTime and target, so no timeSinceLastBlock adjustment needed here.
 
             // Add a small buffer to avoid clock differences causing delays
-            mineInMs += 30
+            mineInMs += 30;
 
             logger.debug(`[MINING:minerWorker] Calculated mineInMs: ${mineInMs}. Will try to mine for block _id ${block._id + 1}. (sync: ${steem.isInSyncMode()}), timeSinceLastBlock: ${timeSinceLastBlock}ms`);
             consensus.observer = false
 
             // More lenient performance check during sync mode
             if (steem.isInSyncMode()) {
-                // During sync, only skip if extremely slow (less than 20% of block time)
-                if (mineInMs < blockTime / 20) {
-                    logger.warn('Extremely slow performance during sync, skipping block')
-                    return
+                // During sync, allow mining even if it takes almost the entire syncBlockTime.
+                // Skip only if mineInMs is excessively small (e.g., less than a very small fixed buffer like 50ms, or a much smaller fraction of blockTime)
+                // Let's use 1% of blockTime as the threshold, or a minimum of, say, 20ms.
+                const syncSkipThreshold = Math.max(20, blockTime / 100); // 1% of syncBlockTime, or 20ms minimum
+                if (mineInMs < syncSkipThreshold) {
+                    logger.warn(`[MINING:minerWorker] Extremely slow performance during sync (mineInMs: ${mineInMs}ms < threshold: ${syncSkipThreshold}ms), skipping block for _id ${block._id + 1}`);
+                    return;
                 }
-            } else if (mineInMs < blockTime / 2) {
-                logger.warn('Slow performance detected, will not try to mine next block')
-                return
+            } else if (mineInMs < blockTime / 2) { // For normal mode, keep the 50% threshold
+                logger.warn(`[MINING:minerWorker] Slow performance detected in normal mode (mineInMs: ${mineInMs}ms < threshold: ${blockTime / 2}ms), will not try to mine block for _id ${block._id + 1}`);
+                return;
             }
 
             // Make sure the node is marked as ready to receive transactions now that we're mining
