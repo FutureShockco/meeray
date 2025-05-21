@@ -158,10 +158,53 @@ export const p2p = {
     nodeId: null as NodeKeyPair | null,
     recentConnectionAttempts: {} as Record<string, RetryInfo>,
     pendingConnections: new Set<string>(),
-    isConnectedTo(address: string) {
+    isConnectedTo(targetUrl: string): boolean {
+        let targetIp = '';
+        try {
+            // Normalize and parse the target URL to get the IP
+            // URL constructor handles IPv6 bracket removal in hostname
+            const urlObj = new URL(normalizeWsUrl(targetUrl)); 
+            targetIp = urlObj.hostname;
+            if (targetIp.startsWith('::ffff:')) {
+                targetIp = targetIp.slice(7);
+            }
+        } catch (e) {
+            logger.error(`[P2P:isConnectedTo] Invalid targetUrl format: ${targetUrl}`, e);
+            return false; // Cannot determine, assume not connected to be safe or handle error as preferred
+        }
+
+        // If targetIp is not a valid IP (e.g., was a hostname that failed to resolve earlier, though connect tries to resolve first),
+        // we can only reliably check against exact _peerUrl matches for hostnames.
+        if (!net.isIP(targetIp)) { 
+            logger.debug(`[P2P:isConnectedTo] Target ${targetUrl} (parsed host: ${targetIp}) is not an IP. Falling back to exact _peerUrl match.`);
+            return this.sockets.some(ws => ws._peerUrl === normalizeWsUrl(targetUrl));
+        }
+
         return this.sockets.some(ws => {
-            const peerUrl = (ws as EnhancedWebSocket)._peerUrl || `ws://${ws._socket.remoteAddress}:${ws._socket.remotePort}`;
-            return peerUrl === address;
+            // Check 1: Our outgoing connection to the exact same targetUrl (already normalized)
+            if (ws._peerUrl && normalizeWsUrl(ws._peerUrl) === normalizeWsUrl(targetUrl)) {
+                return true;
+            }
+
+            // Check 2: Existing connection (incoming or outgoing) to the same resolved IP
+            let existingSockIp = '';
+            if (ws._peerUrl) { // It's an outgoing connection we made
+                try {
+                    const u = new URL(normalizeWsUrl(ws._peerUrl));
+                    existingSockIp = u.hostname;
+                    if (existingSockIp.startsWith('::ffff:')) {
+                        existingSockIp = existingSockIp.slice(7);
+                    }
+                } catch { /* ignore parsing error for _peerUrl */ }
+            } else if (ws._socket?.remoteAddress) { // It's an incoming connection
+                existingSockIp = ws._socket.remoteAddress;
+                if (existingSockIp.startsWith('::ffff:')) {
+                    existingSockIp = existingSockIp.slice(7);
+                }
+            }
+            
+            // Compare resolved IPs
+            return existingSockIp && existingSockIp === targetIp;
         });
     },
     init: async (): Promise<void> => {
