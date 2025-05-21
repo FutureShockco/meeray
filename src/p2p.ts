@@ -15,7 +15,7 @@ import steem from './steem.js';
 import witnessesModule from './witnesses.js';
 import { getNewKeyPair, verifySignature } from './crypto.js';
 import mongo from './mongo.js';
-import ip from 'ip';
+import { internalIpV4Sync } from 'internal-ip';
 
 const bs58 = baseX(config.b58Alphabet || '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz');
 
@@ -380,7 +380,7 @@ export const p2p = {
 
                 // Prevent connecting to self via known local/configured addresses
                 const selfHostsToAvoid = ['127.0.0.1', 'localhost', '::1'];
-                const primaryLocalIP = ip.address(); // Gets primary local IP, e.g., 192.168.x.x
+                const primaryLocalIP = internalIpV4Sync(); // Replaced ip.address()
                 if (primaryLocalIP) {
                     selfHostsToAvoid.push(primaryLocalIP);
                 }
@@ -866,7 +866,7 @@ export const p2p = {
                     logger.debug(`[P2P:messageHandler] ${ws._peerUrl || (ws._socket ? `${ws._socket.remoteAddress?.replace('::ffff:', '')}:${ws._socket.remotePort}` : 'unknown_peer')}: Received PEER_LIST with ${receivedPeers.length} peers.`);
 
                     const selfP2PPort = p2p_port; // The port this node listens on
-                    const selfIPs = [ip.address(), '127.0.0.1', '::1', 'localhost']; // Common local addresses
+                    const selfIPs = [internalIpV4Sync(), '127.0.0.1', '::1', 'localhost']; // Common local addresses
                     if (p2p_host !== '::' && p2p_host !== '0.0.0.0') {
                         selfIPs.push(p2p_host); // Add specific listen host if configured
                     }
