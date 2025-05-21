@@ -19,7 +19,7 @@ const config = {
   steemSyncThreshold: 5, // blocks behind Steem to trigger sync mode
   steemSyncCheckInterval: 30000, // ms - how often to check if we need sync mode
   witnessReward: 1,
-  steemStartBlock: 95599458, // starting Steem block for sidechain
+  steemStartBlock: 95762370, // starting Steem block for sidechain
   steemBlockDelay: 2, // blocks - delay between Steem blocks
   mongoUri:
     process.env.MONGO_URL && process.env.MONGO_DB
