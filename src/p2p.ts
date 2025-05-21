@@ -32,6 +32,10 @@ const keep_history_for = 20000;
 const p2p_port = Number(process.env.P2P_PORT) || default_port;
 const p2p_host = process.env.P2P_HOST || '::';
 
+// Constants for peer query
+const PEER_QUERY_BASE_INTERVAL = 5 * 60 * 1000; // 5 minutes
+const PEER_QUERY_JITTER = 30 * 1000; // 30 seconds
+
 export enum MessageType {
     QUERY_NODE_STATUS = 0,
     NODE_STATUS = 1,
@@ -68,6 +72,7 @@ export interface EnhancedWebSocket extends WebSocket {
     sentUs?: [string, number][];
     steemSyncStatus?: SteemSyncStatus;
     isConnectedTo?: (address: string) => boolean;
+    peerQueryIntervalId?: NodeJS.Timeout; // For recurring peer list query
 }
 
 export interface SteemSyncStatus {
@@ -459,12 +464,34 @@ export const p2p = {
         });
     
         // After a short delay, query their peer list to discover more peers
+        // Schedule initial peer query with a small delay + jitter
+        const initialPeerQueryDelay = 3000 + Math.floor(Math.random() * 2000); // 3-5 seconds
         setTimeout(() => {
-            p2p.sendJSON(ws, {
-                t: MessageType.QUERY_PEER_LIST,
-                d: {}
-            });
-        }, 1500);  // 1.5 seconds delay to avoid flooding
+            if (ws.readyState === WebSocket.OPEN) { // Check if socket is still open
+                p2p.sendJSON(ws, {
+                    t: MessageType.QUERY_PEER_LIST,
+                    d: {}
+                });
+            }
+
+            // Setup recurring peer list query with jitter
+            if (ws.readyState === WebSocket.OPEN) { // Check again before setting interval
+                ws.peerQueryIntervalId = setInterval(() => {
+                    if (ws.readyState === WebSocket.OPEN) {
+                        p2p.sendJSON(ws, {
+                            t: MessageType.QUERY_PEER_LIST,
+                            d: {}
+                        });
+                    } else {
+                        // If socket is not open, clear interval
+                        if (ws.peerQueryIntervalId) {
+                            clearInterval(ws.peerQueryIntervalId);
+                            ws.peerQueryIntervalId = undefined;
+                        }
+                    }
+                }, PEER_QUERY_BASE_INTERVAL + (Math.random() * PEER_QUERY_JITTER * 2) - PEER_QUERY_JITTER);
+            }
+        }, initialPeerQueryDelay);
     },
 
     broadcastSyncStatus: (syncStatus: number | SteemSyncStatus): void => {
@@ -934,6 +961,12 @@ export const p2p = {
         // Remove from pending if it was there
         if (ws._peerUrl) {
             p2p.pendingConnections.delete(ws._peerUrl);
+        }
+        // Clear the recurring peer query interval if it exists
+        if (ws.peerQueryIntervalId) {
+            clearInterval(ws.peerQueryIntervalId);
+            ws.peerQueryIntervalId = undefined;
+            logger.debug(`[P2P:closeConnection] Cleared peer query interval for ${peerIdentifier}`);
         }
     },
 

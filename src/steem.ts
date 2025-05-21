@@ -113,7 +113,7 @@ const isTestnet = process.env.NODE_ENV === 'development';
 
 client = new DsteemClient(apiUrls[currentEndpointIndex], {
     addressPrefix: 'STM',
-    chainId: (config as any).steemChainId || '0000000000000000000000000000000000000000000000000000000000000000',
+    chainId: config.steemChainId || '0000000000000000000000000000000000000000000000000000000000000000',
     timeout: 15000  // Increased timeout for better reliability
 });
 
@@ -122,10 +122,10 @@ let nextSteemBlock = 0;
 const peerSyncStatuses: Record<string, SyncStatus> = {};
 
 const SYNC_MODE_BLOCK_FETCH_BATCH = 10; // Number of blocks to fetch at once in sync mode
-const NORMAL_MODE_BLOCK_FETCH_BATCH = 5; // Number of blocks to fetch at once in normal mode
+const NORMAL_MODE_BLOCK_FETCH_BATCH = 1; // Number of blocks to fetch at once in normal mode
 
-const STEEM_HEAD_POLLING_INTERVAL = (config as any).steemHeadPollingInterval || 3000;
-const SYNC_MODE_POLLING_INTERVAL = (config as any).syncModePollingInterval || 1000;
+const STEEM_HEAD_POLLING_INTERVAL = (config as any).steemHeadPollingInterval || 10000;
+const SYNC_MODE_POLLING_INTERVAL = (config as any).syncModePollingInterval || 3000;
 let steemBlockPollingInterval: NodeJS.Timeout | null = null;
 
 let statusBroadcastCounter = 0;
@@ -148,7 +148,7 @@ const initSteemSync = (blockNum: number): void => {
         clearInterval(steemBlockPollingInterval);
         steemBlockPollingInterval = null;
     }
-    
+
     getLatestSteemBlockNum().then(latestBlock => {
         if (latestBlock) {
             let lastProcessedSteemBlock = 0;
@@ -167,16 +167,16 @@ const initSteemSync = (blockNum: number): void => {
             if (behindBlocks > 0) {
                 prefetchBlocks(lastProcessedSteemBlock + 1);
             }
-            
+
             updateSteemBlockPolling();
-            
-            if (behindBlocks > config.steemBlockDelay && !isSyncing) {
+
+            if (behindBlocks > config.steemBlockDelay * 3 && !isSyncing) {
                 logger.info(`Already ${behindBlocks} blocks behind (threshold ${config.steemBlockDelay}), entering sync mode immediately`);
                 enterSyncMode();
             }
         } else {
-             logger.warn('Failed to get latest Steem block for initSteemSync, will retry with polling.');
-             updateSteemBlockPolling();
+            logger.warn('Failed to get latest Steem block for initSteemSync, will retry with polling.');
+            updateSteemBlockPolling();
         }
     }).catch(err => {
         logger.error('Error initializing behind blocks count in initSteemSync:', err);
@@ -190,7 +190,7 @@ const initSteemSync = (blockNum: number): void => {
  */
 const init = (blockNum: number): void => {
     nextSteemBlock = blockNum;
-    currentSteemBlock = blockNum -1;
+    currentSteemBlock = blockNum - 1;
     if (syncInterval) clearInterval(syncInterval);
     logger.info('Initializing Steem module for block', nextSteemBlock);
     setReadyToReceiveTransactions(false);
@@ -263,7 +263,7 @@ const switchToNextEndpoint = (): boolean => {
         logger.info(`Switching to better Steem API endpoint: ${bestEndpoint}`);
         client = new DsteemClient(bestEndpoint, {
             addressPrefix: 'STM',
-            chainId: (config as any).steemChainId || '0000000000000000000000000000000000000000000000000000000000000000',
+            chainId: config.steemChainId || '0000000000000000000000000000000000000000000000000000000000000000',
             timeout: 15000
         });
         return true;
@@ -273,7 +273,7 @@ const switchToNextEndpoint = (): boolean => {
     logger.info(`Switching to next Steem API endpoint: ${newEndpoint}`);
     client = new DsteemClient(newEndpoint, {
         addressPrefix: 'STM',
-        chainId: (config as any).steemChainId || '0000000000000000000000000000000000000000000000000000000000000000',
+        chainId: config.steemChainId || '0000000000000000000000000000000000000000000000000000000000000000',
         timeout: 15000
     });
     return true;
@@ -310,7 +310,7 @@ function broadcastSyncStatusLoop(): void {
         steemBlock: currentSteemBlock,
         isSyncing: isSyncing,
         blockId: chain.getLatestBlock()?._id || 0,
-        consensusBlocks: {}, 
+        consensusBlocks: {},
         exitTarget: syncExitTargetBlock,
         timestamp: Date.now()
     };
@@ -346,7 +346,7 @@ function enterSyncMode(): void {
     statusBroadcastCounter = 0;
     // Broadcast current status immediately
     if (p2p.nodeId && p2p.sockets && p2p.sockets.length > 0) {
-         const currentStatus: SyncStatus = {
+        const currentStatus: SyncStatus = {
             nodeId: p2p.nodeId?.pub || 'unknown',
             behindBlocks: behindBlocks,
             steemBlock: currentSteemBlock,
@@ -372,7 +372,7 @@ function exitSyncMode(currentBlockId: number, currentSteemBlockNum: number): voi
     postSyncLenientUntil = currentBlockId + POST_SYNC_LENIENT_BLOCKS;
     logger.info(`Setting lenient validation until block ${postSyncLenientUntil}`);
     lastSyncExitTime = Date.now();
-    
+
     // Broadcast exit status immediately and ensure it's received
     if (p2p.nodeId && p2p.sockets && p2p.sockets.length > 0) {
         const exitStatus: SyncStatus = {
@@ -434,50 +434,49 @@ const isNetworkReadyToExitSyncMode = (): boolean => {
     networkSyncStatus.forEach((status, nodeId) => {
         if (activePeerNodeIds.has(nodeId) && now - status.timestamp < STEEM_HEIGHT_EXPIRY) {
             const peerAccount = (p2p as any).getPeerAccount ? (p2p as any).getPeerAccount(nodeId) : null;
-            let isRelevantPeer = (witnessAccounts.size === 0) || 
-                                 (peerAccount && witnessAccounts.has(peerAccount)) ||
-                                 ((config as any).activeWitnesses || []).includes(peerAccount);
+            let isRelevantPeer = (witnessAccounts.size === 0) ||
+                (peerAccount && witnessAccounts.has(peerAccount));
 
             if (isRelevantPeer) {
                 consideredNodes++;
                 if ((!status.isSyncing && status.behindBlocks <= SYNC_EXIT_THRESHOLD) ||
-                    (status.isSyncing && status.behindBlocks <= SYNC_EXIT_THRESHOLD) || 
-                    (status.exitTarget !== null && status.exitTarget <= (chain.getLatestBlock()?._id || 0) + SYNC_EXIT_THRESHOLD )) {
+                    (status.isSyncing && status.behindBlocks <= SYNC_EXIT_THRESHOLD) ||
+                    (status.exitTarget !== null && status.exitTarget <= (chain.getLatestBlock()?._id || 0) + SYNC_EXIT_THRESHOLD)) {
                     nodesReadyToExit++;
                 }
             }
         }
     });
-    
+
     const selfAccount = process.env.STEEM_ACCOUNT || "";
-    const selfIsWitnessOrNoWitnessList = witnessAccounts.size === 0 || 
-                                       witnessAccounts.has(selfAccount) || 
-                                       ((config as any).activeWitnesses || []).includes(selfAccount);
+    const selfIsWitnessOrNoWitnessList = witnessAccounts.size === 0 ||
+        witnessAccounts.has(selfAccount)
+
 
     if (isSyncing && selfIsWitnessOrNoWitnessList) {
-         let selfAlreadyCountedAsPeer = false;
-         if (p2p.nodeId?.pub && networkSyncStatus.has(p2p.nodeId.pub)) {
-             const selfStatusInMap = networkSyncStatus.get(p2p.nodeId.pub)!;
-             const peerAccount = (p2p as any).getPeerAccount ? (p2p as any).getPeerAccount(p2p.nodeId.pub) : null;
-             let isRelevantPeer = (witnessAccounts.size === 0) || (peerAccount && witnessAccounts.has(peerAccount)) || ((config as any).activeWitnesses || []).includes(peerAccount);
-             if (isRelevantPeer) selfAlreadyCountedAsPeer = true;
-         }
+        let selfAlreadyCountedAsPeer = false;
+        if (p2p.nodeId?.pub && networkSyncStatus.has(p2p.nodeId.pub)) {
+            const selfStatusInMap = networkSyncStatus.get(p2p.nodeId.pub)!;
+            const peerAccount = (p2p as any).getPeerAccount ? (p2p as any).getPeerAccount(p2p.nodeId.pub) : null;
+            let isRelevantPeer = (witnessAccounts.size === 0) || (peerAccount && witnessAccounts.has(peerAccount));
+            if (isRelevantPeer) selfAlreadyCountedAsPeer = true;
+        }
 
-         if (!selfAlreadyCountedAsPeer) {
-            consideredNodes++; 
+        if (!selfAlreadyCountedAsPeer) {
+            consideredNodes++;
             if (behindBlocks <= SYNC_EXIT_THRESHOLD) {
                 nodesReadyToExit++;
             }
-         } else {
+        } else {
             // Self was already processed as a peer. Ensure its current status didn't make it "not ready" if it should be.
             // This edge case is complex. Primarily rely on timely broadcasts of local status.
             // If the map says self is NOT ready, but local IS, and self was only one holding back quorum...
             // This is an unlikely scenario if broadcasts are frequent enough.
-         }
+        }
     }
-    
+
     if (consideredNodes === 0) {
-        return behindBlocks <= SYNC_EXIT_THRESHOLD; 
+        return behindBlocks <= SYNC_EXIT_THRESHOLD;
     }
 
     const percentageReady = (nodesReadyToExit / consideredNodes) * 100;
@@ -593,7 +592,7 @@ const processBlock = async (blockNum: number): Promise<SteemBlockResult | null> 
         return Promise.resolve(null);
     }
     // currentSteemBlock here refers to the last successfully processed Steem block by the sidechain
-    const lastProcessedSteemBlockBySidechain = chain.getLatestBlock()?.steemBlockNum || 0; 
+    const lastProcessedSteemBlockBySidechain = chain.getLatestBlock()?.steemBlockNum || 0;
     if (blockNum !== lastProcessedSteemBlockBySidechain + 1) {
         logger.warn(`Attempting to process Steem block ${blockNum} out of order. Expected: ${lastProcessedSteemBlockBySidechain + 1}. Skipping.`);
         // If significantly ahead, might indicate a need to prefetch or adjust nextSteemBlock
@@ -638,7 +637,7 @@ const processBlock = async (blockNum: number): Promise<SteemBlockResult | null> 
         }
         const steemBlockResult = await parseSteemTransactions(steemBlock, blockNum);
         // currentSteemBlock = Math.max(currentSteemBlock, blockNum); // This was causing issues. currentSteemBlock should reflect sidechain's state.
-                                                              // The sidechain's latest Steem block is updated when a sidechain block is made.
+        // The sidechain's latest Steem block is updated when a sidechain block is made.
         resetConsecutiveErrors();
         if (steemBlockResult.transactions.length > 0) {
             transaction.addToPool(steemBlockResult.transactions);
@@ -681,12 +680,12 @@ const getNetworkSyncStatus = (): NetworkSyncStatus => {
     // Consider self for sync count
     if (!isSyncing || (isSyncing && behindBlocks <= SYNC_EXIT_THRESHOLD)) {
         if (totalConsideredNodes === 0 || !activePeerNodeIds.has(p2p.nodeId?.pub || '')) { // Avoid double counting if self is a peer
-             // nodesInSyncCount++; // This might inflate if self is the only node.
+            // nodesInSyncCount++; // This might inflate if self is the only node.
         }
     }
     // If no peers reporting, reference doesn't exist for external nodes
-    if (totalConsideredNodes === 0 && !p2p.recovering ) { // && !activePeerNodeIds.has(p2p.nodeId?.pub || '')
-         hasReference = false; // No *external* reference
+    if (totalConsideredNodes === 0 && !p2p.recovering) { // && !activePeerNodeIds.has(p2p.nodeId?.pub || '')
+        hasReference = false; // No *external* reference
     }
 
     const median = activePeerBlocks.length > 0 ? getMedian(activePeerBlocks) : highestKnownBlock;
@@ -731,7 +730,7 @@ const incrementConsecutiveErrors = (): void => {
     if (consecutiveErrors >= CIRCUIT_BREAKER_THRESHOLD && !circuitBreakerOpen) {
         circuitBreakerOpen = true;
         logger.error(`Circuit breaker opened after ${consecutiveErrors} consecutive errors. Forcing sync mode.`);
-        if(!isSyncing) enterSyncMode(); // Force sync mode
+        if (!isSyncing) enterSyncMode(); // Force sync mode
     }
 };
 
@@ -759,14 +758,14 @@ const fetchMissingBlock = async (blockNum: number): Promise<SteemBlock | undefin
                 if (rawSteemBlock) break;
                 // If null but no error, it means block doesn't exist or RPC is lagging.
                 logger.warn(`getBlock(${blockNum}) returned null. Retries left: ${retries - 1}`);
-                 await new Promise(resolve => setTimeout(resolve, 1000)); // Wait before retry
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Wait before retry
             } catch (err) {
                 logger.warn(`Error fetching block ${blockNum} (${retries} retries left): ${err}`)
                 if (retries <= 3) { // Try switching endpoint after a few fails on current one
                     switchToNextEndpoint();
                     logger.info(`Switched RPC endpoint while fetching missing block ${blockNum}`);
                 }
-                await new Promise(resolve => setTimeout(resolve, 2000 * (5 - retries + 1) )); // Exponential backoff for retries
+                await new Promise(resolve => setTimeout(resolve, 2000 * (5 - retries + 1))); // Exponential backoff for retries
             }
             retries--;
         }
@@ -858,7 +857,7 @@ const checkNetworkSyncStatus = async (): Promise<void> => {
         // Use sidechain's last processed Steem block
         const lastProcessedSteemBlockOnSidechain = chain?.getLatestBlock()?.steemBlockNum || 0;
         behindBlocks = Math.max(0, latestSteemBlock - lastProcessedSteemBlockOnSidechain);
-        
+
         const now = Date.now();
         for (const [nodeId, status] of networkSteemHeights.entries()) {
             if (now - status.timestamp > 120000) { // 2 minutes expiry
@@ -867,8 +866,8 @@ const checkNetworkSyncStatus = async (): Promise<void> => {
         }
         const networkStatus = getNetworkSyncStatus();
         logger.debug(`Network sync status: Highest Sidechain Block: ${networkStatus.highestBlock}, Ref Node: ${networkStatus.referenceNodeId}, Nodes In Sync: ${networkStatus.nodesInSync}/${networkStatus.totalNodes}, Median Sidechain Block: ${networkStatus.medianBlock}, Our Sidechain Block: ${chain?.getLatestBlock()?._id || 0}, Behind Steem: ${behindBlocks} blocks`);
-        
-        if (networkStatus.referenceExists && 
+
+        if (networkStatus.referenceExists &&
             networkStatus.referenceNodeId !== 'self' &&
             networkStatus.highestBlock > (chain?.getLatestBlock()?._id || 0) + 10) { // 10 blocks behind network
             logger.warn(`Significantly behind network: our block ${chain?.getLatestBlock()?._id || 0} vs network ${networkStatus.highestBlock}`);
@@ -960,7 +959,7 @@ const isOnSteemBlock = async (block: Block): Promise<boolean> => {
                                     JSON.stringify(jsonData.payload) === JSON.stringify(tx.data?.payload || {})) {
                                     foundOnSteem = true;
                                     logger.debug(`Block ${block._id}, tx #${i} (hash: ${tx.hash}): Found matching transaction in Steem block ${block.steemBlockNum}`);
-                                    break; 
+                                    break;
                                 }
                             } catch (parseErr) {
                                 logger.error(`Error parsing JSON in Steem operation for block ${block.steemBlockNum}, tx ${tx.hash}:`, parseErr);
@@ -1023,47 +1022,47 @@ function updateSteemBlockPolling(): void {
     steemBlockPollingInterval = setInterval(async () => {
         try {
             // Smart skipping: if not syncing, caught up, and few peers or peers are also caught up.
-            if (!isSyncing && behindBlocks === 0 && Math.random() > 0.7) { 
-                 const networkState = getNetworkSyncStatus(); // Check if network is also calm
-                 if(networkState.totalNodes === 0 || (networkState.nodesInSync === networkState.totalNodes && networkState.medianBlock !== undefined && networkState.medianBlock >= (chain.getLatestBlock()?._id || 0) -1 ) ){
+            if (!isSyncing && behindBlocks === 0 && Math.random() > 0.7) {
+                const networkState = getNetworkSyncStatus(); // Check if network is also calm
+                if (networkState.totalNodes === 0 || (networkState.nodesInSync === networkState.totalNodes && networkState.medianBlock !== undefined && networkState.medianBlock >= (chain.getLatestBlock()?._id || 0) - 1)) {
                     logger.debug('Skipping Steem block check - system appears stable and caught up.');
                     return;
-                 }
+                }
             }
-            
+
             const latestBlockOnSteem = await getLatestSteemBlockNum(); // Renamed for clarity
             if (latestBlockOnSteem) {
                 const lastSteemBlockInSidechain = chain?.getLatestBlock()?.steemBlockNum || 0; // Renamed
                 const newBehindBlocks = Math.max(0, latestBlockOnSteem - lastSteemBlockInSidechain);
-                
+
                 if (newBehindBlocks !== behindBlocks) {
                     // logger.debug(`Steem behind count changed: ${behindBlocks} -> ${newBehindBlocks} (Steem: ${latestBlockOnSteem}, Sidechain: ${lastSteemBlockInSidechain})`);
                     behindBlocks = newBehindBlocks; // Update global
                     // Potentially adjust polling frequency if change is significant
-                    if (Math.abs(newBehindBlocks - behindBlocks) > SYNC_EXIT_THRESHOLD + 2 ) { // If change is more than a few blocks
+                    if (Math.abs(newBehindBlocks - behindBlocks) > SYNC_EXIT_THRESHOLD + 2) { // If change is more than a few blocks
                         updateSteemBlockPolling(); // Re-evaluate interval
-                        return; 
+                        return;
                     }
                 }
-                
+
                 // Entry logic
-                const entryThreshold = (config as any).steemBlockDelay || 10;
+                const entryThreshold = config.steemBlockDelay || 10;
                 if (behindBlocks > entryThreshold && !isSyncing) {
-                     if(isNetworkReadyToEnterSyncMode(behindBlocks)){
+                    if (isNetworkReadyToEnterSyncMode(behindBlocks)) {
                         logger.info(`Local node ${behindBlocks} blocks behind Steem (threshold ${entryThreshold}) AND network ready. Entering sync mode.`);
                         enterSyncMode();
-                     } else {
+                    } else {
                         logger.info(`Local node ${behindBlocks} blocks behind Steem. Network not yet ready for sync mode.`);
-                     }
+                    }
                 }
-                
+
                 // Exit logic
                 if (isSyncing && behindBlocks <= SYNC_EXIT_THRESHOLD) {
                     if (shouldExitSyncMode(chain?.getLatestBlock()?._id || 0)) { // Calls the corrected shouldExitSyncMode
                         exitSyncMode(chain?.getLatestBlock()?._id || 0, lastSteemBlockInSidechain); // Pass current sidechain's steem block
                     }
                 }
-                
+
                 // Trigger prefetch if behind but not already prefetching
                 if (behindBlocks > 0 && !prefetchInProgress && !isSyncing) { // Only prefetch if not already syncing (sync has its own prefetch)
                     prefetchBlocks(lastSteemBlockInSidechain + 1);
@@ -1091,22 +1090,22 @@ const updateLocalSteemState = (localDelay: number, headSteemBlock: number): void
 const getNetworkOverallBehindBlocks = (): { maxBehind: number; medianBehind: number; numReporting: number; numWitnessesReporting: number; witnessesBehindThreshold: number } => {
     const now = Date.now();
     const relevantBehindValues: number[] = [];
-    const witnessSteemAccounts = new Set(chain.schedule.active_witnesses || (config as any).activeWitnesses || []);
+    const witnessSteemAccounts = new Set(chain.schedule.active_witnesses || []);
     let witnessesReportingCount = 0;
     let witnessesConsideredBehindCount = 0;
-    const behindThresholdForWitness = (config as any).steemBlockDelayWitnessLagThreshold || ((config as any).steemBlockDelay || 10);
+    const behindThresholdForWitness = config.steemBlockDelay || 10;
     const activePeerNodeIds = new Set(p2p.sockets.filter(s => s.node_status && s.node_status.nodeId).map(s => s.node_status!.nodeId));
 
     networkSyncStatus.forEach((status, nodeId) => {
         if (activePeerNodeIds.has(nodeId) && now - status.timestamp < STEEM_HEIGHT_EXPIRY * 2) { // Consider statuses up to 60s old
             relevantBehindValues.push(status.behindBlocks);
-            const peerAccount = (p2p as any).getPeerAccount ? (p2p as any).getPeerAccount(nodeId) : null; 
+            const peerAccount = (p2p as any).getPeerAccount ? (p2p as any).getPeerAccount(nodeId) : null;
             if (peerAccount && witnessSteemAccounts.has(peerAccount)) {
                 witnessesReportingCount++;
                 if (status.behindBlocks > behindThresholdForWitness) {
                     witnessesConsideredBehindCount++;
                 }
-            } else if (witnessSteemAccounts.size === 0) { 
+            } else if (witnessSteemAccounts.size === 0) {
                 // If no witness list, any reporting node contributes to a general "witness-like" pool for this metric
                 // This part might need refinement based on how strictly "witness" status should be enforced
             }
@@ -1121,9 +1120,9 @@ const getNetworkOverallBehindBlocks = (): { maxBehind: number; medianBehind: num
         let selfInNetworkMapAsWitness = false;
         if (p2p.nodeId?.pub && networkSyncStatus.has(p2p.nodeId.pub)) {
             const selfStatus = networkSyncStatus.get(p2p.nodeId.pub)!;
-             const peerAccount = (p2p as any).getPeerAccount ? (p2p as any).getPeerAccount(p2p.nodeId.pub) : null;
-            if (peerAccount && witnessSteemAccounts.has(peerAccount) && (now - selfStatus.timestamp < STEEM_HEIGHT_EXPIRY *2) ) {
-                 selfInNetworkMapAsWitness = true; // Self is already counted in the loop
+            const peerAccount = (p2p as any).getPeerAccount ? (p2p as any).getPeerAccount(p2p.nodeId.pub) : null;
+            if (peerAccount && witnessSteemAccounts.has(peerAccount) && (now - selfStatus.timestamp < STEEM_HEIGHT_EXPIRY * 2)) {
+                selfInNetworkMapAsWitness = true; // Self is already counted in the loop
             }
         }
         if (!selfInNetworkMapAsWitness) {
@@ -1138,7 +1137,7 @@ const getNetworkOverallBehindBlocks = (): { maxBehind: number; medianBehind: num
 
     if (relevantBehindValues.length === 0) { // No peers reporting, only self matters if it's a witness
         if (selfIsReportingWitness) {
-             return { maxBehind: behindBlocks, medianBehind: behindBlocks, numReporting: 1, numWitnessesReporting: 1, witnessesBehindThreshold: behindBlocks > behindThresholdForWitness ? 1 : 0 };
+            return { maxBehind: behindBlocks, medianBehind: behindBlocks, numReporting: 1, numWitnessesReporting: 1, witnessesBehindThreshold: behindBlocks > behindThresholdForWitness ? 1 : 0 };
         } // If self is not a witness and no peers, then all zero.
         return { maxBehind: 0, medianBehind: 0, numReporting: 0, numWitnessesReporting: 0, witnessesBehindThreshold: 0 };
     }
@@ -1161,10 +1160,10 @@ const isNetworkReadyToEnterSyncMode = (localNodeBehindBlocks: number): boolean =
     const now = Date.now();
     let nodesIndicatingSyncNeeded = 0; // Nodes that are syncing OR significantly behind
     let consideredPeersForEntry = 0;
-    const witnessAccounts = new Set(chain.schedule.active_witnesses || (config as any).activeWitnesses || []);
+    const witnessAccounts = new Set(chain.schedule.active_witnesses || []);
     let witnessPeersIndicatingSync = 0;
     let consideredWitnessPeersForEntry = 0;
-    const delayThreshold = (config as any).steemBlockDelay || 10;
+    const delayThreshold = config.steemBlockDelay || 10;
     const activePeerNodeIds = new Set(p2p.sockets.filter(s => s.node_status && s.node_status.nodeId).map(s => s.node_status!.nodeId));
 
     networkSyncStatus.forEach((status, nodeId) => {
@@ -1184,7 +1183,7 @@ const isNetworkReadyToEnterSyncMode = (localNodeBehindBlocks: number): boolean =
                 if (isWitnessPeer) {
                     witnessPeersIndicatingSync++;
                 } else if (witnessAccounts.size === 0) {
-                     witnessPeersIndicatingSync++;
+                    witnessPeersIndicatingSync++;
                 }
             }
         }
@@ -1196,7 +1195,7 @@ const isNetworkReadyToEnterSyncMode = (localNodeBehindBlocks: number): boolean =
 
     // Add self to consideration if not already counted via loopback peer
     let selfAlreadyCounted = false;
-    if (p2p.nodeId?.pub && networkSyncStatus.has(p2p.nodeId.pub) && (now - (networkSyncStatus.get(p2p.nodeId.pub)?.timestamp || 0) < STEEM_HEIGHT_EXPIRY * 2) ) {
+    if (p2p.nodeId?.pub && networkSyncStatus.has(p2p.nodeId.pub) && (now - (networkSyncStatus.get(p2p.nodeId.pub)?.timestamp || 0) < STEEM_HEIGHT_EXPIRY * 2)) {
         selfAlreadyCounted = true;
     }
 
@@ -1215,7 +1214,7 @@ const isNetworkReadyToEnterSyncMode = (localNodeBehindBlocks: number): boolean =
 
 
     if (consideredPeersForEntry === 0) { // No peers, decision is local
-        if (localNodeBehindBlocks >= ((config as any).steemBlockDelayCritical || delayThreshold * 2)) { // Critically behind
+        if (localNodeBehindBlocks >= (config.steemBlockDelay * 5 || delayThreshold * 2)) { // Critically behind
             logger.warn(`No recent peer sync status, but local node is critically behind (${localNodeBehindBlocks} blocks). Allowing sync mode entry.`);
             return true;
         }

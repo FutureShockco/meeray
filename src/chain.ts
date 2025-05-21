@@ -110,80 +110,108 @@ export const chain = {
         if (block.missedBy && !rebuilding)
             outputLog += '  MISS: ' + block.missedBy;
 
+        // Add sync status information
         if (!rebuilding && !p2p.recovering) {
             const checkInterval = steem.isInSyncMode() ? SYNC_MODE_BROADCAST_INTERVAL_BLOCKS : NORMAL_MODE_BROADCAST_INTERVAL_BLOCKS;
-            if (block._id % checkInterval === 0 || steem.isInSyncMode()) {
+            // Always try to update and log sync status if in sync mode, or at the defined interval for normal mode.
+            if (steem.isInSyncMode() || block._id % checkInterval === 0) {
                 try {
                     const currentSteemHead = await steem.getLatestSteemBlockNum();
                     const ourLastProcessedSteemBlock = block.steemBlockNum;
-                    console.log(currentSteemHead,ourLastProcessedSteemBlock)
+
                     if (currentSteemHead && ourLastProcessedSteemBlock) {
                         const localSteemDelayCorrected = Math.max(0, currentSteemHead - ourLastProcessedSteemBlock);
-                        steem.updateLocalSteemState(localSteemDelayCorrected, currentSteemHead);
+                        steem.updateLocalSteemState(localSteemDelayCorrected, currentSteemHead); // Inform steem.ts of local lag
 
                         const networkOverall = steem.getNetworkOverallBehindBlocks();
 
-                        let syncDecisionLog = `Steem Head: ${currentSteemHead}, Sidechain Steem Block: ${ourLastProcessedSteemBlock}. Local Delay: ${localSteemDelayCorrected}. `;
+                        let syncDecisionLog = `Steem Head: ${currentSteemHead}, Sidechain Steem Block: ${ourLastProcessedSteemBlock}. Local Lag: ${localSteemDelayCorrected}. `;
                         syncDecisionLog += `Net (rpt: ${networkOverall.numReporting}): MaxLag: ${networkOverall.maxBehind}, MedLag: ${networkOverall.medianBehind}. `;
                         syncDecisionLog += `Witnesses (rpt: ${networkOverall.numWitnessesReporting}, behind: ${networkOverall.witnessesBehindThreshold}).`;
-                        logger.info(syncDecisionLog);
+                        // logger.info(syncDecisionLog); // This can be very verbose, let's integrate parts into main outputLog
 
                         if (steem.isInSyncMode()) {
+                            outputLog += ' (SYNCING - ';
+                            if (localSteemDelayCorrected > 0) {
+                                outputLog += `${localSteemDelayCorrected} blocks behind Steem`;
+
+                                const processingRate = 1;  // blocks per second in sync mode
+                                const steemProductionRate = 1 / 3;  // Steem blocks per second
+                                const netCatchupRate = processingRate - steemProductionRate;
+
+                                if (netCatchupRate > 0) {
+                                    const secondsToSync = Math.ceil(localSteemDelayCorrected / netCatchupRate);
+                                    const minutesToSync = Math.ceil(secondsToSync / 60);
+
+                                    if (minutesToSync < 2) {
+                                        outputLog += ` ~${secondsToSync}s to sync`;
+                                    } else if (minutesToSync < 120) {
+                                        outputLog += ` ~${minutesToSync}m to sync`;
+                                    } else {
+                                        const hoursToSync = Math.floor(minutesToSync / 60);
+                                        const remainingMinutes = minutesToSync % 60;
+                                        outputLog += ` ~${hoursToSync}h ${remainingMinutes}m to sync`;
+                                    }
+                                } else {
+                                    outputLog += ' - catch-up rate non-positive';
+                                }
+                            } else {
+                                outputLog += 'Caught up with Steem';
+                            }
+                            outputLog += ')';
+
                             if (steem.shouldExitSyncMode(block._id)) {
                                 logger.info(`CONDITIONS MET TO EXIT SYNC MODE. Local delay: ${localSteemDelayCorrected}. Network consensus for exit is YES. Attempting exit.`);
-                                steem.exitSyncMode(block._id, currentSteemHead);
+                                steem.exitSyncMode(block._id, currentSteemHead); // Pass current Steem head
                                 outputLog += ' (Exiting Sync Mode)';
                             } else {
-                                logger.info(`Still in SYNC MODE. Local delay: ${localSteemDelayCorrected}. Network consensus for exit is NO.`);
-                                outputLog += ' (In Sync Mode)';
+                                // logger.info(`Still in SYNC MODE. Local delay: ${localSteemDelayCorrected}. Network consensus for exit is NO.`);
                             }
-                        } else {
-                            // Not in sync mode, evaluate entry conditions
+                        } else { // Not in sync mode
+                            // Evaluate entry conditions
                             const criticalLocalDelayThreshold = (config as any).steemBlockDelayCritical || 20;
-                            const networkMedianEntryThreshold = (config as any).steemBlockDelayNetworkEntry || Math.max(10, ((config as any).steemBlockDelay || 10) * 1.5); // e.g. 1.5x normal delay or 10
+                            const networkMedianEntryThreshold = (config as any).steemBlockDelayNetworkEntry || Math.max(10, ((config as any).steemBlockDelay || 10) * 1.5);
                             const witnessLagThreshold = (config as any).steemBlockDelayWitnessLagThreshold || ((config as any).steemBlockDelay || 10);
                             
                             const activeWitnessAccounts = chain.schedule?.active_witnesses || (config as any).activeWitnesses || [];
-                            // Minimum number of witnesses that need to be lagging for it to be a factor for sync entry, e.g., 30% of active witnesses, but at least 1 if list is small.
                             const minWitnessesLaggingForEntryFactor = activeWitnessAccounts.length > 0 ? Math.max(1, Math.ceil(activeWitnessAccounts.length * ((config as any).syncEntryWitnessQuorumMinPercentForFactor || 0.3))) : 0;
 
                             const isLocallyCritical = localSteemDelayCorrected > criticalLocalDelayThreshold;
                             const isNetworkMedianLagHigh = networkOverall.medianBehind > networkMedianEntryThreshold;
-                            // networkOverall.witnessesBehindThreshold counts witnesses whose own behindBlocks > steemBlockDelayWitnessLagThreshold
                             const areEnoughWitnessesLagging = activeWitnessAccounts.length > 0 && networkOverall.witnessesBehindThreshold >= minWitnessesLaggingForEntryFactor;
 
                             let entryReason = "";
-                            if (isLocallyCritical) entryReason += "Local node is critically lagging. ";
-                            if (isNetworkMedianLagHigh) entryReason += "Network median Steem lag is high. ";
-                            if (areEnoughWitnessesLagging) entryReason += "Sufficient active witnesses are lagging. ";
+                            if (isLocallyCritical) entryReason += "Local node critically lagging. ";
+                            if (isNetworkMedianLagHigh) entryReason += "Network median Steem lag high. ";
+                            if (areEnoughWitnessesLagging) entryReason += "Sufficient active witnesses lagging. ";
 
                             if (isLocallyCritical || isNetworkMedianLagHigh || areEnoughWitnessesLagging) {
-                                logger.info(`Primary condition(s) for sync mode met: ${entryReason}Local Delay: ${localSteemDelayCorrected}, Network Median: ${networkOverall.medianBehind}, Reporting Witnesses Lagging: ${networkOverall.witnessesBehindThreshold}/${minWitnessesLaggingForEntryFactor} (threshold: >${witnessLagThreshold}).`);
+                                logger.info(`Primary condition(s) for sync mode met: ${entryReason}Local Lag: ${localSteemDelayCorrected}, Network Median: ${networkOverall.medianBehind}, Reporting Witnesses Lagging: ${networkOverall.witnessesBehindThreshold}/${minWitnessesLaggingForEntryFactor} (threshold: >${witnessLagThreshold}).`);
                                 if (steem.isNetworkReadyToEnterSyncMode(localSteemDelayCorrected)) {
                                     logger.info("Network IS ready for coordinated sync mode entry. Attempting entry.");
                                     steem.enterSyncMode();
-                                    outputLog += ' (Entering Sync Mode)';
+                                    outputLog += ` (Entering Sync - Lag: ${localSteemDelayCorrected}, NetMedLag: ${networkOverall.medianBehind})`;
                                 } else {
                                     logger.info("Network is NOT YET ready for coordinated sync mode entry (quorum pending).");
-                                    outputLog += ' (Sync entry conditions met, but network quorum pending)';
+                                    outputLog += ` (Sync entry pending quorum - Lag: ${localSteemDelayCorrected}, NetMedLag: ${networkOverall.medianBehind})`;
                                 }
                             } else {
-                                // No primary condition met, stay in normal mode
-                                outputLog += ` (Normal Mode - Local Steem Lag: ${localSteemDelayCorrected}, Net Median Steem Lag: ${networkOverall.medianBehind})`;
+                                outputLog += ` (NORMAL - Lag: ${localSteemDelayCorrected}, NetMedLag: ${networkOverall.medianBehind})`;
                             }
                         }
                     } else {
-                        logger.warn('Could not get currentSteemHead or ourLastProcessedSteemBlock for sync decision.');
-                        outputLog += ' (Sync check skipped - missing Steem block data)';
+                        logger.warn('Could not get currentSteemHead or ourLastProcessedSteemBlock for sync decision in chain.output.');
+                        outputLog += ' (Sync check skipped - missing Steem data)';
                     }
                 } catch (error) {
-                    logger.error('Error in sync mode decision logic:', error);
+                    logger.error('Error in sync mode decision logic within chain.output:', error);
                     outputLog += ' (Error in sync check)';
                 }
-            } else {
-                const localSteemDelayCorrected = Math.max(0, (chain.latestSteemBlock || block.steemBlockNum) - block.steemBlockNum);
-                const currentNetworkMedianLag = steem.getNetworkOverallBehindBlocks().medianBehind;
-                outputLog += ` (Net Median Lag: ${currentNetworkMedianLag}, Local Lag: ${localSteemDelayCorrected})`;
+            } else { // Not in sync mode and not a checkInterval block
+                // Provide a lighter log for non-check intervals in normal mode
+                const localLag = steem.getBehindBlocks(); // Use the last known lag from steem.ts
+                const netMedian = steem.getNetworkOverallBehindBlocks().medianBehind; // Get current network median
+                outputLog += ` (NORMAL - KnownLag: ${localLag}, NetMedLag: ${netMedian})`;
             }
         }
 
