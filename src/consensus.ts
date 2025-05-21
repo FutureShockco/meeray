@@ -34,11 +34,15 @@ export const consensus: Consensus = {
     finalizing: false,
     possBlocks: [],
     getActiveWitnessKey: (name: string) => {
+        if (!chain.schedule || !chain.schedule.shuffle) {
+            logger.warn(`[CONSENSUS:getActiveWitnessKey] Witness schedule or shuffle is not available when checking for witness: ${name}.`);
+            return undefined;
+        }
         let shuffle = chain.schedule.shuffle;
         for (let i = 0; i < shuffle.length; i++)
             if (shuffle[i].name === name)
                 return shuffle[i].witnessPublicKey;
-        return;
+        return undefined; // Name not found in shuffle
     },
     isActive: function () {
         if (this.observer) return false;
