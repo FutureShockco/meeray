@@ -204,7 +204,7 @@ export const mining = {
         // Log which block time we're using for clarity
         if (steem.isInSyncMode()) {
             logger.debug(`Using sync block time: ${blockTime}ms`)
-        } else if (steem.lastSyncExitTime && new Date().getTime() - steem.lastSyncExitTime < 5000) {
+        } else if (steem.getLastSyncExitTime() && new Date().getTime() - (steem.getLastSyncExitTime() || 0) < 5000) {
             logger.warn(`Recently exited sync mode, using normal block time: ${blockTime}ms`)
         }
 

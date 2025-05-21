@@ -5,6 +5,7 @@ import cache from './cache.js';
 import logger from './logger.js';
 import chain from './chain.js';
 import { isValidSignature } from './crypto.js';
+import steem from './steem.js';
 
 
 export class Block {
@@ -194,8 +195,9 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
         logger.error('unauthorized witness');
         return cb(false);
     }
+    const blockTime = steem.isInSyncMode() ? config.syncBlockTime : config.blockTime;
     // Check block is not too early for backup
-    if (previousBlock && (newBlock.timestamp - previousBlock.timestamp < witnessPriority * config.blockTime)) {
+    if (previousBlock && (newBlock.timestamp - previousBlock.timestamp < witnessPriority * blockTime)) {
         logger.error('block too early for witness with priority #' + witnessPriority);
         return cb(false);
     }

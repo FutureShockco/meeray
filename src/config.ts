@@ -21,7 +21,6 @@ const config = {
   witnessReward: 1,
   steemStartBlock: 95599458, // starting Steem block for sidechain
   steemBlockDelay: 2, // blocks - delay between Steem blocks
-  // Node/environment-specific (from .env)
   mongoUri:
     process.env.MONGO_URL && process.env.MONGO_DB
       ? `${process.env.MONGO_URL.replace(/\/$/, '')}/${process.env.MONGO_DB}`
