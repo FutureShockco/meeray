@@ -296,27 +296,31 @@ export const chain = {
     },
     validateAndAddBlock: async (block: any, revalidate: boolean, cb: (err: any, newBlock: any) => void) => {
         if (chain.shuttingDown) return
+        logger.debug(`[validateAndAddBlock] Entered. Block ID: ${block?._id}, Revalidate: ${revalidate}, Witness: ${block?.witness}`);
+
         // Log the received block before validation begins
         isValidNewBlock(block, revalidate, false, function (isValid: boolean) {
+            logger.debug(`[validateAndAddBlock] isValidNewBlock for Block ID: ${block?._id} returned: ${isValid}`);
             if (!isValid) {
+                logger.warn(`[validateAndAddBlock] Block ID: ${block?._id} failed isValidNewBlock. Witness: ${block?.witness}`);
                 return cb(true, block);
             }
-            console.log('block is valid')
+            logger.info(`Block ID: ${block?._id} passed isValidNewBlock. Witness: ${block?.witness}`); // Changed from console.log
             // straight execution
             chain.executeBlockTransactions(block, false, function (validTxs: any[], distributed: number) {
+                logger.debug(`[validateAndAddBlock] executeBlockTransactions for Block ID: ${block?._id} completed. Valid Txs: ${validTxs?.length}/${block?.txs?.length}, Distributed: ${distributed}`);
                 // if any transaction is wrong, thats a fatal error
                 if (block.txs.length !== validTxs.length) {
-                    logger.error('Invalid tx(s) in block')
+                    logger.error(`[validateAndAddBlock] Invalid tx(s) in Block ID: ${block?._id}. Expected: ${block.txs.length}, Got: ${validTxs.length}`);
                     cb(true, block); return
                 }
 
                 // error if distributed computed amounts are different than the reported one
                 let blockDist = block.dist || 0
                 if (blockDist !== distributed) {
-                    logger.error('Wrong dist amount', blockDist, distributed)
+                    logger.error(`[validateAndAddBlock] Wrong dist amount for Block ID: ${block?._id}. Expected: ${blockDist}, Got: ${distributed}`);
                     cb(true, block); return
                 }
-
 
                 // add txs to recents
                 chain.addRecentTxsInBlock(block.txs)
