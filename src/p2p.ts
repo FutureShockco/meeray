@@ -376,6 +376,12 @@ export const p2p = {
 
                 // ALWAYS use the defined p2p_port, ignore port from peer list URL
                 const portToUse = p2p_port; 
+
+                // Prevent connecting to self via loopback addresses
+                if ((host === '127.0.0.1' || host === 'localhost' || host === '::1') && portToUse === p2p_port) {
+                    logger.debug(`[P2P:connect] Skipping connection to self (loopback address): ${url}`);
+                    continue;
+                }
     
                 // Construct proper ws URL. Ensure IPv6 literals are bracketed for WebSocket constructor.
                 const wsHost = net.isIPv6(host) ? `[${host}]` : host;
