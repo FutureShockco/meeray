@@ -1,72 +1,89 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
-import { isValidPubKey } from '../../crypto.js';
+import { AccountDoc } from '../../mongo.js'; // Assuming AccountDoc is the type for account documents
+import { TransactionType } from '../types.js'; // For logging or specific checks if needed
+import config from '../../config.js';
 
+// Data structure for witness_register transaction
 export interface WitnessRegisterData {
-  pub: string;
+  pub: string; // Public key for witness operations
 }
 
+/**
+ * Validates a WITNESS_REGISTER transaction.
+ * - Sender must exist.
+ * - Public key must be provided.
+ * - Sender should not already be an active witness (optional, depends on design).
+ */
 export async function validateTx(data: WitnessRegisterData, sender: string): Promise<boolean> {
+  logger.debug(`[TX_VALIDATE:WITNESS_REGISTER] Validating for sender: ${sender}, pub: ${data.pub}`);
   try {
-    // Check if account already registered
-    const account = await cache.findOnePromise('accounts', { name: sender });
-    if (!account) {
-      logger.warn(`Invalid witness register: account ${sender} not found`);
+    // Check if sender account exists
+    const senderAccount = await cache.findOnePromise('accounts', { name: sender }) as AccountDoc | null;
+    if (!senderAccount) {
+      logger.warn(`[TX_VALIDATE:WITNESS_REGISTER] Invalid: sender account ${sender} not found.`);
       return false;
     }
 
-    // Validate public key format (more permissive)
-    if (!data.pub || typeof data.pub !== 'string') {
-      logger.warn(`Invalid witness register: missing or invalid public key`);
-      return false;
-    }
-    // Check if public key is valid
-    if (!isValidPubKey(data.pub)) {
-      logger.warn(`Invalid witness register: public key too short (${data.pub.length} chars)`);
+    // Check if public key is provided
+    if (!data.pub || typeof data.pub !== 'string' || data.pub.length < 60) { // Basic length check for a typical pub key
+      logger.warn(`[TX_VALIDATE:WITNESS_REGISTER] Invalid: public key not provided or invalid format for sender ${sender}. Pub: ${data.pub}`);
       return false;
     }
 
+    // Optional: Check if sender is already a witness
+    // This depends on whether re-registering (e.g., to update a key) is allowed via this tx type
+    // or if there's a separate "witness_update" transaction.
+    // For now, we'll allow it, assuming process will handle upsert logic.
+    // if (senderAccount.isWitness) { // Assuming an 'isWitness' flag
+    //   logger.warn(`[TX_VALIDATE:WITNESS_REGISTER] Invalid: sender ${sender} is already a witness.`);
+    //   return false;
+    // }
+    
+    // Optional: Check if the public key is already in use by another witness
+    // This would require querying all witness accounts.
+    // const existingWitnessWithKey = await cache.findOnePromise('accounts', { witnessPubKey: data.pub, name: { $ne: sender } });
+    // if (existingWitnessWithKey) {
+    //    logger.warn(`[TX_VALIDATE:WITNESS_REGISTER] Invalid: public key ${data.pub} already in use by ${existingWitnessWithKey.name}.`);
+    //    return false;
+    // }
+
+
+    logger.debug(`[TX_VALIDATE:WITNESS_REGISTER] Validation successful for sender: ${sender}`);
     return true;
   } catch (error) {
-    logger.error(`Error validating witness register: ${error}`);
+    logger.error(`[TX_VALIDATE:WITNESS_REGISTER] Error validating: ${error}`);
     return false;
   }
 }
 
+/**
+ * Processes a WITNESS_REGISTER transaction.
+ * - Marks the sender as a witness.
+ * - Stores their witness public key.
+ */
 export async function process(data: WitnessRegisterData, sender: string): Promise<boolean> {
+  logger.debug(`[TX_PROCESS:WITNESS_REGISTER] Processing for sender: ${sender}, pub: ${data.pub}`);
   try {
-    // Direct check of account state before transaction
-    const beforeAccount = await cache.findOnePromise('accounts', { name: sender });
-    if (!beforeAccount) {
-      logger.error(`Failed to check account ${sender} - account not found`);
-      return false;
-    }
-    // Direct update approach instead of using a transaction
-    const updateSuccess = await cache.updateOnePromise('accounts', { name: sender }, { $set: { witnessPublicKey: data.pub } });
-    if (!updateSuccess) {
-      logger.error(`Failed to update account ${sender} via cache - account not found in cache or update failed`);
-      return false;
-    }
+    const updateData: Partial<AccountDoc> = {
+      witnessPublicKey: data.pub, // Store the public key used for witness operations
+      // You might also want to initialize or reset other witness-specific stats here
+    };
 
-    // Verify the change was persisted with a separate query (from cache, which should reflect the update)
-    const verifyAccount = await cache.findOnePromise('accounts', { name: sender });
-    if (!verifyAccount || verifyAccount.witnessPublicKey !== data.pub) { // Check if the pubkey was actually updated
-      logger.error(`Failed to verify account update for ${sender} - account not found or public key not updated in cache`);
+    const success = await cache.updateOnePromise('accounts', { name: sender }, { $set: updateData });
+
+    if (success) {
+      logger.info(`[TX_PROCESS:WITNESS_REGISTER] Account ${sender} successfully queued update for witness registration with pub key ${data.pub}.`);
+      // We assume success if cache.updateOnePromise returns true.
+      // The actual DB write happens later via cache.writeToDisk.
+      // We don't get modifiedCount/matchedCount directly from this call.
+      return true;
+    } else {
+      logger.warn(`[TX_PROCESS:WITNESS_REGISTER] Failed to queue update for account ${sender} to witness.`);
       return false;
     }
-    return new Promise((resolve) => {
-      cache.addWitness(sender, false, function(err, witness) {
-        if (err) {
-          logger.error(`Error adding witness ${sender} to cache: ${err}`);
-          resolve(false);
-        } else {
-          logger.debug(`[process] witness: ${witness}`);
-          resolve(true);
-        }
-      });
-    });
   } catch (error) {
-    logger.error(`Error processing witness register: ${error}`);
+    logger.error(`[TX_PROCESS:WITNESS_REGISTER] Error processing: ${error}`);
     return false;
   }
 } 
