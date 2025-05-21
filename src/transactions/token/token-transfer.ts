@@ -1,12 +1,11 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
-import validate from '../../validation/index.js'; // Shared validation module
-import config from '../../config.js'; // To identify the native token
+import validate from '../../validation/index.js'; 
+import config from '../../config.js'; 
 import transaction from '../../transaction.js'; 
-import { TokenTransferData } from './token-interfaces.js'; // Import from new interfaces file
+import { TokenTransferData } from './token-interfaces.js'; 
 
-// TODO: Replace 'null' with config.burnAccountName || 'null' once burnAccountName is added to config type and value
-const BURN_ACCOUNT_NAME = 'null'; 
+const BURN_ACCOUNT_NAME = config.burnAccountName || 'null'; 
 
 export async function validateTx(data: TokenTransferData, sender: string): Promise<boolean> {
   try {

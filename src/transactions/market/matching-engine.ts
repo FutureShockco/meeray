@@ -1,4 +1,3 @@
-// Placeholder for Matching Engine Logic
 import { Order, Trade, TradingPair, OrderStatus, OrderSide, OrderType } from './market-interfaces.js';
 import { OrderBook, OrderBookMatchResult } from './orderbook.js';
 import logger from '../../logger.js';

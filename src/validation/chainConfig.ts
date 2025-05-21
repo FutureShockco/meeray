@@ -52,11 +52,6 @@ const groupsInv: Record<string, string> = (() => {
  * Chain parameters with their validation functions
  */
 const parameters: Record<string, ValidationType> = {
-    accountPriceBase: types.posNonZeroInt,
-    accountPriceCharMult: types.posFloat,
-    accountPriceChars: types.posNonZeroInt,
-    accountPriceMin: types.posInt,
-
     ecoStartRent: types.posFloat,
     ecoBaseRent: types.posFloat,
     ecoDvRentFactor: types.posFloat,
@@ -64,14 +59,7 @@ const parameters: Record<string, ValidationType> = {
     ecoRentStartTime: types.posNonZeroInt,
     ecoRentEndTime: types.posNonZeroInt,
     ecoClaimTime: types.posNonZeroInt,
-
-    rewardPoolMaxShare: types.posFloat,
-    rewardPoolAmount: types.posNonZeroInt,
-
     masterFee: types.posInt,
-    preloadVt: types.posInt,
-    preloadBwGrowth: types.posFloat,
-
     chainUpdateFee: types.posNonZeroInt,
     chainUpdateMaxParams: types.posNonZeroInt,
     chainUpdateGracePeriodSeconds: types.posNonZeroInt,

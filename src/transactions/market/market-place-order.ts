@@ -6,7 +6,6 @@ import { getAccount, adjustBalance } from '../../utils/account-utils.js';
 import { matchingEngine } from './matching-engine.js'; // Will be created later
 import crypto from 'crypto';
 
-// Placeholder for generating unique order IDs
 function generateOrderId(): string {
   return crypto.randomBytes(16).toString('hex'); // Example: 32-char hex string
 }

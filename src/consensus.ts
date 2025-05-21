@@ -2,7 +2,6 @@ import logger from './logger.js';
 import config from './config.js';
 import { chain } from './chain.js';
 import p2p, { MessageType } from './p2p.js';
-import baseX from 'base-x';
 import { isValidNewBlock } from './block.js';
 import { signMessage } from './crypto.js';
 import steem from './steem.js';

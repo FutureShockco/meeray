@@ -1,6 +1,3 @@
-// Full direct port of cache.js to TypeScript
-// All logic and behavior matches the original JS
-
 import parallel from 'run-parallel';
 import cloneDeep from 'clone-deep';
 import ProcessingQueue from './processingQueue.js';

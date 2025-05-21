@@ -1,12 +1,9 @@
-// TODO: Uncomment and install these dependencies as you migrate the rest of the Echelon codebase
 import fs from 'fs';
 import assert from 'assert';
 import * as BSON from 'bson';
 import logger from './logger.js';
 import config from './config.js';
-// import mongo from './mongo';
-// import chain from './chain';
-// import eco from './economics';
+
 
 const isRebuild = process.env.REBUILD_STATE === '1';
 

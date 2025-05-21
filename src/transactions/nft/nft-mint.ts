@@ -90,9 +90,6 @@ export async function validateTx(data: NftMintData, sender: string): Promise<boo
       logger.warn(`[nft-mint] Owner account ${data.owner} not found.`);
       return false;
     }
-    
-    // TODO: Validate data.properties against collection.schema if schema exists.
-    // TODO: Fee validation if applicable (e.g., config.nftMintFee)
 
     return true;
   } catch (error) {
@@ -128,7 +125,6 @@ export async function process(data: NftMintData, sender: string): Promise<boolea
       // immutableProperties: data.immutableProperties === undefined ? false : data.immutableProperties, // If added to interface
     };
 
-    // TODO: Deduct nftMintFee from sender's balance
 
     const createNftSuccess = await new Promise<boolean>((resolve) => {
       cache.insertOne('nfts', nftDocument, (err, result) => {

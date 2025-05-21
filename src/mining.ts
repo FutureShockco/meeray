@@ -14,9 +14,7 @@ import p2p from './p2p.js';
 const bs58 = baseX(config.b58Alphabet);
 
 export const mining = {
-    /**
-     * Prepare a new block with transactions from the mempool.
-     */
+
     prepareBlock: (cb: (err: any, newBlock?: any) => void) => {
         logger.debug('[MINING:prepareBlock] Entered.');
         let previousBlock = chain.getLatestBlock();
@@ -126,9 +124,6 @@ export const mining = {
         });
     },
 
-    /**
-     * Mine a new block and propose it to consensus.
-     */
     mineBlock: (cb: (err: boolean | null, newBlock?: any) => void) => {
         logger.debug('[MINING:mineBlock] Entered.');
         if ((chain as any).shuttingDown) {
@@ -190,9 +185,6 @@ export const mining = {
         });
     },
 
-    /**
-     * Worker function to schedule mining attempts.
-     */
     minerWorker: (block: Block): void => {
         logger.debug(`[MINING:minerWorker] Entered. Current chain head _id: ${block._id}. p2p.recovering: ${p2p.recovering}`);
         if (p2p.recovering) return

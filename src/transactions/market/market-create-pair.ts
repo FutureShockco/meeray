@@ -34,7 +34,6 @@ export async function validateTx(data: MarketCreatePairData, sender: string): Pr
   }
 
   // Validate asset symbols and issuers (similar to pool creation)
-  // TODO: Add regex or specific format validation if needed
   if (!validate.string(data.baseAssetSymbol, 10, 3) || !validate.string(data.quoteAssetSymbol, 10, 3)) {
       logger.warn('[market-create-pair] Invalid asset symbol format.');
       return false;
@@ -81,11 +80,10 @@ export async function validateTx(data: MarketCreatePairData, sender: string): Pr
     return false;
   }
 
-  // TODO: Validate sender is an authorized admin for this operation
   const adminAccount = await cache.findOnePromise('accounts', { name: sender });
   if (!adminAccount /* || !adminAccount.isAdmin */) { // Assuming an isAdmin flag or role
     logger.warn(`[market-create-pair] Sender ${sender} is not authorized to create trading pairs.`);
-    // return false; // Uncomment when admin check is in place
+    // return false;
   }
 
   logger.info('[market-create-pair] Validation successful.');

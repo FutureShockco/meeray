@@ -1,16 +1,9 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import { getAccount, adjustBalance } from '../../utils/account-utils.js';
-import { Launchpad, LaunchpadStatus, PresaleDetails, Token } from './launchpad-launch-token.js'; // Import shared types
+import { Launchpad, LaunchpadStatus, PresaleDetails, Token, LaunchpadParticipatePresaleData } from './launchpad-interfaces.js'; // Import shared types
 
 // --------------- TRANSACTION DATA INTERFACE ---------------
-
-export interface LaunchpadParticipatePresaleData {
-  userId: string; // User participating
-  launchpadId: string; // ID of the launchpad project
-  contributionAmount: number; // Amount of quote currency user is contributing
-  // contributionTokenSymbol and Issuer are derived from the PresaleDetails of the Launchpad
-}
 
 // --------------- TRANSACTION LOGIC ---------------
 

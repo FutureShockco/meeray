@@ -1,9 +1,5 @@
-// Ported for witness system: terminology and architecture match
 import cloneDeep from 'clone-deep'
-// If you have a transaction/block model, import them here:
-// import { Transaction, Block } from '../models'
 
-// Minimal interfaces if not available
 interface Transaction {
   hash: string;
   sender?: string;
@@ -21,7 +17,6 @@ interface Block {
   [key: string]: any;
 }
 
-// Placeholder for db, replace with actual import if available
 declare const db: any;
 
 const txHistory = {

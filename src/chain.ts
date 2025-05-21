@@ -1,13 +1,7 @@
-// TODO: Uncomment and install these dependencies as you migrate the rest of the Echelon codebase
-// import ... (other dependencies)
-
-// TODO: Add proper types for chain logic, blocks, state, etc.
-
-import { Block, calculateHashForBlock, isValidNewBlock } from './block.js';
+import { Block, isValidNewBlock } from './block.js';
 import config from './config.js';
 import { blocks } from './blockStore.js';
 import logger from './logger.js';
-import secp256k1 from 'secp256k1';
 import baseX from 'base-x';
 // @ts-ignore
 import series from 'run-series';
@@ -23,9 +17,6 @@ import notifications from './modules/notifications.js';
 import mongo from './mongo.js';
 import steem from './steem.js';
 import { upsertAccountsReferencedInTx } from './account.js';
-
-
-const bs58 = baseX(config.b58Alphabet);
 
 // Add constants for block-based broadcasting
 const SYNC_MODE_BROADCAST_INTERVAL_BLOCKS = 3; // Broadcast every 3 blocks in sync mode
@@ -83,7 +74,6 @@ export const chain = {
     },
 
     cleanMemoryBlocks: () => {
-        // TODO: config.ecoBlocksIncreasesSoon logic
         let extraBlocks = chain.recentBlocks.length - (config.ecoBlocks || 10000);
         while (extraBlocks > 0) {
             chain.recentBlocks.shift();
@@ -137,7 +127,6 @@ export const chain = {
                 chain.blocksToRebuild = blocks.readRange(blockNum, blockNum + 9999);
                 cb(chain.blocksToRebuild.shift());
             } else {
-                // TODO: MongoDB fallback
                 cb(undefined);
             }
         else cb(chain.blocksToRebuild.shift());

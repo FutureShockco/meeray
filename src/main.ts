@@ -1,11 +1,4 @@
 import 'dotenv/config';
-
-// TODO: Uncomment and install these dependencies as you migrate the rest of the Echelon codebase
-// import config from './config.js';
-// import logger from './logger.js';
-// import ... (other dependencies)
-
-// TODO: Add proper types for main logic, state, etc.
 import http from './modules/http/index.js';
 import logger from './logger.js';
 import config from './config.js';
@@ -17,12 +10,10 @@ import { setMongoDbInstance as setCacheMongoDbInstance } from './cache.js'; // I
 import { witnessesStats } from './witnessesStats.js';
 
 import { blocks } from './blockStore.js';
-import { mongo, StateDoc } from './mongo.js'; // Ensure StateDoc is imported
-// import validate from './validate.js'; // Uncomment when available
+import { mongo, StateDoc } from './mongo.js'; 
 import witnessesModule from './witnesses.js';
 import { initializeModules } from './initialize.js';
-// import rpc from './rpc.js'; // Removed for now, investigate separately if needed
-import { Block } from './block.js'; // Ensure Block is imported
+import { Block } from './block.js';
 
 process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
     console.error('CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
@@ -178,13 +169,12 @@ export async function main() {
         }
 
         logger.info(`#${block._id} is the latest block in our db`);
-        // currentConfig is already updated based on this block few lines above
 
         if (blocks.isOpen) {
-            blocks.fillInMemoryBlocks(); // Fill based on its current state
+            blocks.fillInMemoryBlocks(); 
             await startDaemon(currentConfig);
         } else {
-            await mongo.fillInMemoryBlocks(async () => { // Ensure cb for fillInMemoryBlocks is async if it needs to await startDaemon
+            await mongo.fillInMemoryBlocks(async () => { 
                 await startDaemon(currentConfig);
             });
         }

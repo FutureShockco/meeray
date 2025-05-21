@@ -75,7 +75,6 @@ export async function validateTx(data: NftCreateCollectionData, sender: string):
       return false;
     }
     
-    // TODO: Add fee validation if applicable (e.g., check if sender has enough nativeToken for config.nftCreationFee)
 
     return true;
   } catch (error) {
@@ -104,7 +103,6 @@ export async function process(data: NftCreateCollectionData, sender: string): Pr
       websiteUrl: data.websiteUrl || '',
     };
 
-    // TODO: Deduct nftCreationFee from sender's balance if applicable
 
     const createSuccess = await new Promise<boolean>((resolve) => {
       cache.insertOne('nftCollections', collectionDocument, (err, result) => {

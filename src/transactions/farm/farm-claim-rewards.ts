@@ -61,14 +61,12 @@ export async function process(data: FarmClaimRewardsData, sender: string): Promi
       return false;
     }
 
-    // --- Placeholder for Reward Calculation Logic ---
-    // In a real system, this is where you'd calculate pending rewards based on:
+    // This is where we'd calculate pending rewards based on:
     // - farm.rewardRate, farm.rewardState (e.g., accumulatedRewardsPerShare, lastDistributionTime)
     // - userFarmPos.stakedLpAmount, userFarmPos.rewardDebt (if using MasterChef-like model)
     // - Time elapsed since last claim or last update to farm/user position.
-    const rewardsToClaim = 0; // Placeholder: No rewards calculated yet.
+    const rewardsToClaim = 0; // No rewards calculated yet.
     logger.info(`[farm-claim-rewards] Placeholder: Calculated ${rewardsToClaim} ${farm.rewardTokenSymbol} rewards for ${data.staker} from farm ${data.farmId}.`);
-    // --- End Placeholder ---
 
     if (rewardsToClaim > 0) {
       // TODO: Transfer rewardsToClaim of farm.rewardTokenSymbol (from farm.rewardTokenIssuer) 

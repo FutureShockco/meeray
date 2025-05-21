@@ -1,11 +1,6 @@
-/**
- * This file handles initialization of modules in the correct order to avoid circular dependencies
- */
 
 import logger from './logger.js';
-import cache  from './cache.js';
-import txHistory from './txHistory.js';
-import { transactionHandlers, discoverTransactionHandlers } from './transactions/index.js';
+import { discoverTransactionHandlers } from './transactions/index.js';
 
 /**
  * Initialize all modules in the correct order

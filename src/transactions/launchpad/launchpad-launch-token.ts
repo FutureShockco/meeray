@@ -3,194 +3,21 @@ import cache from '../../cache.js';
 // import validate from '../../validation/index.js'; // Assuming a validation library might be used
 import { getAccount, adjustBalance } from '../../utils/account-utils.js'; // Assuming account utilities
 import crypto from 'crypto';
+import {
+  TokenStandard,
+  VestingType,
+  VestingSchedule,
+  TokenDistributionRecipient,
+  TokenAllocation,
+  Tokenomics,
+  PresaleDetails,
+  LiquidityProvisionDetails,
+  LaunchpadLaunchTokenData,
+  LaunchpadStatus,
+  Token,
+  Launchpad
+} from './launchpad-interfaces.js';
 
-// --------------- ENUMS & TYPES ---------------
-
-export enum TokenStandard {
-  NATIVE = 'NATIVE', // e.g., a new token on a proprietary chain
-  WRAPPED_NATIVE_LIKE = 'WRAPPED_NATIVE_LIKE', // For tokens that behave like native assets but are contract based
-  // Add other standards as needed, e.g., ERC20, BEP20, SPL if interacting with other chains or representing them
-}
-
-export enum VestingType {
-  NONE = 'NONE',
-  LINEAR_MONTHLY = 'LINEAR_MONTHLY',
-  LINEAR_DAILY = 'LINEAR_DAILY',
-  CLIFF = 'CLIFF',
-  CUSTOM = 'CUSTOM', // Requires more detailed schedule
-}
-
-export interface VestingSchedule {
-  type: VestingType;
-  cliffMonths?: number; // For CLIFF or as initial lock-up period
-  durationMonths: number; // Total vesting duration
-  initialUnlockPercentage?: number; // Percentage unlocked at TGE (Token Generation Event)
-  // For CUSTOM, might need an array of { date: string, percentage: number }
-}
-
-export enum TokenDistributionRecipient {
-  PROJECT_TEAM = 'PROJECT_TEAM',
-  ADVISORS = 'ADVISORS',
-  MARKETING_OPERATIONS = 'MARKETING_OPERATIONS',
-  ECOSYSTEM_DEVELOPMENT = 'ECOSYSTEM_DEVELOPMENT',
-  LIQUIDITY_POOL = 'LIQUIDITY_POOL',
-  PRESALE_PARTICIPANTS = 'PRESALE_PARTICIPANTS',
-  PUBLIC_SALE = 'PUBLIC_SALE',
-  AIRDROP_REWARDS = 'AIRDROP_REWARDS',
-  TREASURY_RESERVE = 'TREASURY_RESERVE',
-  STAKING_REWARDS = 'STAKING_REWARDS',
-}
-
-export interface TokenAllocation {
-  recipient: TokenDistributionRecipient;
-  percentage: number; // Percentage of total supply
-  vestingSchedule?: VestingSchedule;
-  lockupMonths?: number; // Additional lockup beyond vesting cliff, if any
-  customRecipientAddress?: string; // For specific allocations not tied to a generic pool
-}
-
-export interface Tokenomics {
-  totalSupply: number; // Total number of tokens to be minted
-  tokenDecimals: number;
-  allocations: TokenAllocation[];
-  // Could add maxSupply if different from initial totalSupply (e.g. for mintable tokens)
-}
-
-export interface PresaleDetails {
-  presaleTokenAllocationPercentage: number; // % of total supply for presale
-  pricePerToken: number; // In terms of quoteAssetForPresale
-  quoteAssetForPresaleSymbol: string; // e.g., USDT, USDC, ETH
-  quoteAssetForPresaleIssuer?: string; // Required if not native/chain asset
-  minContributionPerUser: number; // In terms of quoteAssetForPresale
-  maxContributionPerUser: number; // In terms of quoteAssetForPresale
-  startTime: string; // ISO Date string
-  endTime: string; // ISO Date string
-  hardCap: number; // Max total to raise in terms of quoteAssetForPresale
-  softCap?: number; // Min total to raise for project to proceed
-  whitelistRequired?: boolean;
-  fcfsAfterReservedAllocation?: boolean; // First-come, first-served after an initial reserved phase
-}
-
-export interface LiquidityProvisionDetails {
-  dexIdentifier: string; // e.g., 'InternalDEX', 'UniswapV2Fork', 'SerumFork'
-  liquidityTokenAllocationPercentage: number; // % of total supply for initial liquidity
-  quoteAssetForLiquiditySymbol: string; // The other token in the pair (e.g., USDT, ETH)
-  quoteAssetForLiquidityIssuer?: string; // Required if not native/chain asset
-  initialQuoteAmountProvidedByProject?: number; // Amount of quote asset project provides to pair with its tokens
-  // Price will be derived from liquidityTokenAllocationPercentage tokens + initialQuoteAmountProvidedByProject
-  lpTokenLockupMonths?: number; // How long the initial LP tokens are locked
-}
-
-// --------------- TRANSACTION DATA INTERFACE ---------------
-
-export interface LaunchpadLaunchTokenData {
-  userId: string; // User initiating the launch (must have permissions)
-  // launchpadId?: string; // If using a pre-configured launchpad profile, otherwise details below define it
-  
-  tokenName: string;
-  tokenSymbol: string; // e.g., "MYT"
-  tokenStandard: TokenStandard;
-  tokenDescription?: string;
-  tokenLogoUrl?: string;
-  projectWebsite?: string;
-  projectSocials?: { [platform: string]: string }; // e.g., { twitter: "...", telegramGroup: "..." }
-
-  tokenomics: Tokenomics;
-  presaleDetails?: PresaleDetails;
-  liquidityProvisionDetails?: LiquidityProvisionDetails;
-
-  launchFeeTokenSymbol: string; // Token to pay for the launch
-  launchFeeTokenIssuer?: string; // Issuer if fee token is not native
-  // Fee amount might be dynamic or fixed, determined by system config or launchpad settings
-  // For now, assume it's known/calculated by the client or a prior step.
-}
-
-// --------------- SYSTEM/DB INTERFACES ---------------
-
-export enum LaunchpadStatus {
-  PENDING_VALIDATION = 'PENDING_VALIDATION',
-  VALIDATION_FAILED = 'VALIDATION_FAILED',
-  UPCOMING = 'UPCOMING', // Approved, before presale starts
-  PRESALE_SCHEDULED = 'PRESALE_SCHEDULED',
-  PRESALE_ACTIVE = 'PRESALE_ACTIVE',
-  PRESALE_PAUSED = 'PRESALE_PAUSED',
-  PRESALE_ENDED = 'PRESALE_ENDED', // Presale period finished, tallying results
-  PRESALE_SUCCEEDED_SOFTCAP_MET = 'PRESALE_SUCCEEDED_SOFTCAP_MET',
-  PRESALE_SUCCEEDED_HARDCAP_MET = 'PRESALE_SUCCEEDED_HARDCAP_MET',
-  PRESALE_FAILED_SOFTCAP_NOT_MET = 'PRESALE_FAILED_SOFTCAP_NOT_MET',
-  TOKEN_GENERATION_EVENT = 'TOKEN_GENERATION_EVENT', // TGE, minting/distributing
-  LIQUIDITY_PROVISIONING = 'LIQUIDITY_PROVISIONING',
-  TRADING_LIVE = 'TRADING_LIVE',
-  COMPLETED = 'COMPLETED', // Post-launch, all distributions done
-  CANCELLED = 'CANCELLED', // Cancelled by project or admin
-}
-
-// Represents the newly created token's metadata in the system
-export interface Token {
-  _id: string; // Unique token ID (e.g., SYMBOL@ISSUER or internal UUID)
-  name: string;
-  symbol: string;
-  standard: TokenStandard;
-  decimals: number;
-  totalSupply: number; // Current total supply
-  maxSupply?: number; // Max possible supply if mintable
-  owner: string; // Creator/controller of the token contract/minting rights
-  description?: string;
-  logoUrl?: string;
-  website?: string;
-  socials?: { [platform: string]: string };
-  createdAt: string;
-  launchpadId: string; // Link back to the launchpad project
-}
-
-// Represents a launchpad project in the system/DB
-export interface Launchpad {
-  _id: string; // Unique ID for the launchpad project, generated on creation
-  projectId: string; // Could be same as _id or a more human-readable one
-  status: LaunchpadStatus;
-  tokenToLaunch: { // Details of the token being launched
-    name: string;
-    symbol: string;
-    standard: TokenStandard;
-    decimals: number;
-    totalSupply: number; // As defined in tokenomics
-  };
-  tokenomicsSnapshot: Tokenomics; // Store the agreed tokenomics
-  presaleDetailsSnapshot?: PresaleDetails;
-  liquidityProvisionDetailsSnapshot?: LiquidityProvisionDetails;
-  
-  launchedByUserId: string;
-  createdAt: string;
-  updatedAt: string;
-
-  // Dynamic data updated during the launch lifecycle
-  presale?: {
-    startTimeActual?: string;
-    endTimeActual?: string;
-    totalQuoteRaised: number;
-    participants: Array<{
-      userId: string;
-      quoteAmountContributed: number;
-      tokensAllocated?: number; // Calculated after presale ends
-      claimed: boolean;
-    }>;
-    status: 'NOT_STARTED' | 'ACTIVE' | 'ENDED_PENDING_CLAIMS' | 'ENDED_CLAIMS_PROCESSED' | 'FAILED';
-  };
-  
-  mainTokenId?: string; // The _id of the actual Token document created
-  dexPairAddress?: string; // If applicable, once liquidity is added
-
-  feePaid: boolean;
-  feeDetails?: {
-    tokenSymbol: string;
-    tokenIssuer?: string;
-    amount: number; // System might calculate this.
-  };
-  // Store references to related transactions or events
-  relatedTxIds?: string[];
-}
-
-// --------------- HELPER FUNCTIONS ---------------
 
 function generateLaunchpadId(): string {
   return `lp-${crypto.randomBytes(12).toString('hex')}`; // Example: lp- + 24 char hex
@@ -240,7 +67,7 @@ export async function validateTx(data: LaunchpadLaunchTokenData, sender: string)
   // 7. Ensure total supply from tokenomics matches presale allocation + liquidity allocation + other allocations.
 
   logger.info('[launchpad-launch-token] Basic validation passed (structure check). Needs full implementation.');
-  return true; // Placeholder
+  return true; 
 }
 
 export async function process(data: LaunchpadLaunchTokenData, sender: string): Promise<boolean> {

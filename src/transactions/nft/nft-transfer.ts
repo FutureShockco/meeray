@@ -4,22 +4,17 @@ import validate from '../../validation/index.js';
 import config from '../../config.js'; // For BURN_ACCOUNT_NAME eventually
 import { NftTransferData, NftCreateCollectionData } from './nft-interfaces.js';
 
-// TODO: Replace 'null' with config.burnAccountName || 'null' once burnAccountName is added to config type and value
 const BURN_ACCOUNT_NAME = 'null';
 
-// Define a more specific type for what we expect from the nftCollections table for these checks
 export interface CachedNftCollectionForTransfer extends NftCreateCollectionData {
     _id: string;
-    // burnable & transferable are already in NftCreateCollectionData
 }
 
-// Define a type for the NFT instance document from the 'nfts' table
 export interface NftInstance {
-    _id: string; // collectionSymbol-instanceId
+    _id: string;
     collectionSymbol: string;
     instanceId: string;
     owner: string;
-    // other fields like minter, mintedAt, properties, uri exist but aren't strictly needed for transfer logic itself
 }
 
 export async function validateTx(data: NftTransferData, sender: string): Promise<boolean> {

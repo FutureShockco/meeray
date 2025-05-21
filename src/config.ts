@@ -6,6 +6,7 @@ const config = {
   networkName: 'Sidechain Devnet',
   nativeToken: 'ECH',
   originHash: 'e201950993be0e15b14ab19dccb165972ff0ba7ea162c5ad6eec9b5268bce468',
+  burnAccountName: 'null',
   tokenCreationFee: 100,
   nftCreationFee: 10,
   tradingFee: 0.0025,

@@ -60,11 +60,9 @@ let consecutiveErrors = 0;
 let retryDelay = MIN_RETRY_DELAY;
 let circuitBreakerOpen = false;
 
-// Cache for prefetched blocks
 let blockCache = new Map<number, SteemBlock>();
 let prefetchInProgress = false;
 
-// Add at the top of the file with other initialization variables
 let readyToReceiveTransactions = false;
 
 // Add tracking for sync mode exit time

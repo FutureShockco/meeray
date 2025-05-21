@@ -20,11 +20,8 @@ export class ProcessingQueue {
         if (first) {
             first((err: any, result?: any) => {
                 if (err) {
-                    // Log the error from the queued task
                     console.error('Error in ProcessingQueue task:', err);
-                    // Depending on the desired behavior, you might want to stop processing,
-                    // retry, or implement more sophisticated error handling.
-                    // For now, just logging and continuing.
+
                 }
                 if (this.queue.length > 0) {
                     this.execute();

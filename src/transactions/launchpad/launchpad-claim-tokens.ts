@@ -1,21 +1,8 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
-// import { getAccount, adjustBalance, issueTokenToAccount } from '../../utils/account-utils.js'; // TODO: Define and use issueTokenToAccount
 import { getAccount, adjustBalance } from '../../utils/account-utils.js';
-import { Launchpad, LaunchpadStatus, Token, TokenAllocation, TokenDistributionRecipient } from './launchpad-launch-token.js';
+import { Launchpad, LaunchpadStatus, Token, TokenAllocation, TokenDistributionRecipient, LaunchpadClaimTokensData } from './launchpad-interfaces.js';
 
-// --------------- TRANSACTION DATA INTERFACE ---------------
-
-export interface LaunchpadClaimTokensData {
-  userId: string; // User claiming tokens
-  launchpadId: string; // ID of the launchpad project
-  // Claiming for a specific allocation type, e.g., PRESALE_PARTICIPANTS
-  // For presale, amount is determined by their contribution and final token price.
-  // For other allocations (like team, advisors), this might be more direct.
-  allocationType: TokenDistributionRecipient; // e.g., PRESALE_PARTICIPANTS, AIRDROP_REWARDS etc.
-}
-
-// --------------- TRANSACTION LOGIC ---------------
 
 export async function validateTx(data: LaunchpadClaimTokensData, sender: string): Promise<boolean> {
   logger.debug(`[launchpad-claim-tokens] Validating claim from ${sender} for launchpad ${data.launchpadId}, type ${data.allocationType}: ${JSON.stringify(data)}`);
@@ -201,8 +188,3 @@ export async function process(data: LaunchpadClaimTokensData, sender: string): P
   }
 }
 
-// Placeholder for a utility function that would be in account-utils.js
-// We'll need to define this properly later.
-// declare module '../../utils/account-utils.js' {
-//   export function issueTokenToAccount(userId: string, tokenId: string, amount: number, tokenSymbol: string, tokenIssuer?: string): Promise<boolean>;
-// } 

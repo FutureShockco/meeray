@@ -1,11 +1,4 @@
-// TODO: Uncomment and install these dependencies as you migrate the rest of the Echelon codebase
-// import config from './config.js';
-// import logger from './logger.js';
-// import ... (other dependencies)
-
-// TODO: Add proper types for MongoDB logic, collections, etc.
-
-import { MongoClient, Db, Collection, Admin } from 'mongodb';
+import { MongoClient, Db } from 'mongodb';
 import fs from 'fs';
 import { spawn, spawnSync, ChildProcess } from 'child_process';
 import sha256File from 'sha256-file';
@@ -22,7 +15,6 @@ let dbInstance: Db | null = null;
 export interface StateDoc {
     _id: number;
     headBlock?: number;
-    // Add other state properties if any
 }
 
 export interface AccountDoc {
@@ -36,18 +28,14 @@ export interface AccountDoc {
 }
 
 export const mongo = {
-    db: null as Db | null, // To hold the db instance similar to this.db in JS example
+    db: null as Db | null,
 
     init: async (cb: (error: Error | null, state?: StateDoc | null) => void): Promise<void> => {
         try {
-            const client = new MongoClient(DB_URL, {
-                // useNewUrlParser: true, // Deprecated in newer MongoDB drivers
-                // useUnifiedTopology: true // Deprecated
-            });
+            const client = new MongoClient(DB_URL, {});
             await client.connect();
-            mongo.db = client.db(DB_NAME); // Set the db instance on the mongo object
-            dbInstance = mongo.db; // also set module-scoped instance for easier access by older functions if needed
-
+            mongo.db = client.db(DB_NAME);
+            dbInstance = mongo.db;
 
             logger.info(`Connected to ${DB_URL}/${mongo.db.databaseName}`);
 
@@ -61,7 +49,6 @@ export const mongo = {
                 logger.info('Rebuild specified and no existing state, dropping database and initializing genesis.');
                 await mongo.db.dropDatabase();
                 await mongo.initGenesis();
-                // After initGenesis, re-fetch state as it might have been created.
                 state = await mongo.db.collection<StateDoc>('state').findOne({ _id: 0 });
                 return cb(null, state); 
             }
@@ -81,17 +68,12 @@ export const mongo = {
             }
         } catch (err: any) {
             logger.error('MongoDB init error:', err);
-            // In case of error, cb should ideally be called with an error argument if its signature supported it.
-            // For now, following the JS example's tendency to throw or exit, or cb with current state.
-            // Consider a more robust error propagation via cb if possible.
-            cb(err, null); // Call with null state on error to match one of the JS outcomes
+          
+            cb(err, null); 
         }
     },
-
-    // Kept for other modules, but internal mongo functions can use mongo.db or dbInstance
     getDb: (): Db => {
         if (!dbInstance) {
-            // Try to use mongo.db if dbInstance is null (e.g. getDb called before init fully completed setting dbInstance)
             if (mongo.db) {
                 dbInstance = mongo.db;
                 return dbInstance;
@@ -143,8 +125,8 @@ export const mongo = {
     restore: (mongoUri: string, folder: string): Promise<boolean> => {
         return new Promise((resolve) => {
             const mongorestore: ChildProcess = spawn('mongorestore', [
-                `--uri=${mongoUri}`, // Use the base URI
-                '-d', DB_NAME,      // Specify the database name separately
+                `--uri=${mongoUri}`, 
+                '-d', DB_NAME,      
                 folder
             ]);
 
@@ -192,7 +174,7 @@ export const mongo = {
         const currentDb = mongo.getDb();
         logger.info('Inserting Block #0 with hash ' + config.originHash);
         const genesisBlock = chain.getGenesisBlock(); 
-        await currentDb.collection<Block>('blocks').insertOne(genesisBlock as any); // Cast to any if Block type is not directly compatible with MongoDB driver insert
+        await currentDb.collection<Block>('blocks').insertOne(genesisBlock as any); 
     },
 
     addMongoIndexes: async (): Promise<void> => {
@@ -331,13 +313,11 @@ export const mongo = {
         try {
             const blocksFromDb = await currentDb.collection<Block>('blocks').find(query, {
                 sort: { _id: -1 },
-                // Use (config as any) for properties that might not be in strict Config type
                 limit: (config as any).ecoBlocksIncreasesSoon ? (config as any).ecoBlocksIncreasesSoon : (config as any).ecoBlocks || 1000
             }).toArray();
             
             chain.recentBlocks = blocksFromDb.reverse();
             logger.info(`Filled ${chain.recentBlocks.length} blocks into memory.`);
-            // TODO: eco.loadHistory(); // If eco module is available and needed
             cb();
         } catch (err) {
             logger.error('Error in fillInMemoryBlocks:', err);
@@ -359,7 +339,7 @@ export const mongo = {
         const dump_location = dump_dir + '/blocks.zip';
         const blocks_bson = dump_dir + '/blocks.bson';
         const blocks_meta = dump_dir + '/blocks.metadata.json';
-        const mongoUriForRestore = DB_URL; // Base URI, DB name specified with -d
+        const mongoUriForRestore = DB_URL; 
 
         if (process.env.UNZIP_BLOCKS === '1') {
             try {

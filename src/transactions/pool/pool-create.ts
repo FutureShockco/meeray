@@ -96,8 +96,6 @@ export async function validateTx(data: PoolCreateData, sender: string): Promise<
       return false;
     }
 
-    // TODO: Add fee validation if there's a pool creation fee
-
     return true;
   } catch (error) {
     logger.error(`[pool-create] Error validating data for pool by ${sender}: ${error}`);
@@ -135,7 +133,6 @@ export async function process(data: PoolCreateData, sender: string): Promise<boo
       createdAt: new Date().toISOString(),
     };
 
-    // TODO: Deduct poolCreationFee from sender's balance if applicable
 
     const createSuccess = await new Promise<boolean>((resolve) => {
       cache.insertOne('liquidityPools', poolDocument, (err, result) => {

@@ -254,7 +254,6 @@ export async function process(data: PoolSwapData, sender: string): Promise<boole
       }
 
       logger.info(`[pool-swap-route] Trader ${data.trader} routed swap ${data.amountIn} ${data.fromTokenSymbol} for ${currentTokenAmount.toFixed(8)} ${data.toTokenSymbol} via ${data.hops.length} hops.`);
-      // TODO: More detailed event logging for routed swap if needed
       const eventDocument = {
         type: 'poolRouteSwap', // Differentiate event type
         timestamp: new Date().toISOString(),

@@ -1,31 +1,20 @@
 import { TransactionType } from './transactions/types.js';
 
 import logger from './logger.js';
-/**
- * Custom operation data interface
- */
+
 interface SteemOperationData {
     id: string;              // Custom JSON id
     json: string;            // JSON string payload
     required_auths: string[]; // Required authorizations
 }
 
-/**
- * Steem block operation interface (as a tuple)
- */
 type SteemOperation = [string, SteemOperationData];
 
-/**
- * Steem transaction interface
- */
 interface SteemTransaction {
     operations: SteemOperation[];
     transaction_id: string;
 }
 
-/**
- * Steem block interface
- */
 export interface SteemBlock {
     transactions: SteemTransaction[];
     timestamp: number;
@@ -37,9 +26,6 @@ export interface SteemBlockResult {
 }
 
 
-/**
- * Parsed transaction interface
- */
 export interface ParsedTransaction {
     type: number;
     data: any;

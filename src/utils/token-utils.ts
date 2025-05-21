@@ -2,7 +2,6 @@ import cache from '../cache.js';
 import logger from '../logger.js';
 import config from '../config.js';
 
-// Placeholder for Token type from your system - should match 'tokens' collection structure
 export interface Token {
     _id: string; // Typically the symbol
     symbol: string;
@@ -12,9 +11,7 @@ export interface Token {
     // other token fields like creator, maxSupply, currentSupply etc.
 }
 
-/**
- * Fetches a token definition from the cache by its symbol and optional issuer.
- */
+
 export async function getTokenByIdentifier(symbol: string, issuer?: string): Promise<Token | null> {
     logger.debug(`[token-utils] Fetching token: ${symbol}${issuer ? '@' + issuer : ''}`);
     
@@ -30,7 +27,7 @@ export async function getTokenByIdentifier(symbol: string, issuer?: string): Pro
 
     const query: any = { _id: symbol }; // Tokens are keyed by symbol (_id)
     // For non-native tokens, an issuer might be part of their unique identification scheme or a property.
-    // If your 'tokens' collection stores non-native tokens with an 'issuer' field:
+
     if (issuer) {
         query.issuer = issuer; // Add this if your token documents have an 'issuer' field for disambiguation
     }

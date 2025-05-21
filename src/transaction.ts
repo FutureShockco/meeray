@@ -8,9 +8,7 @@ import { TransactionType } from './transactions/types.js';
 import chain from './chain.js';
 import cache from './cache.js';
 import { transactionHandlers } from './transactions/index.js';
-import { upsertAccountsReferencedInTx } from './account.js';
 import cloneDeep from 'clone-deep';
-// Constants
 const MAX_MEMPOOL_SIZE = parseInt(process.env.MEMPOOL_SIZE || '2000', 10);
 
 
@@ -236,11 +234,11 @@ const transaction: TransactionModule = {
             return;
         }
 
-        const witnesses_to_update: string[] = [...acc.votedWitnesses]; // Make a copy
+        const witnesses_to_update: string[] = [...acc.votedWitnesses];
 
         logr.debug(`NodeAppr Update for voter ${acc.name}: newCoins=${newCoins}, balance_before=${balance_before}, balance_after=${balance_after}, share_before=${witness_share_before}, share_after=${witness_share_after}, diff_per_witness=${diff_per_witness}, witnesses_count=${witnesses_to_update.length}`);
 
-        if (witnesses_to_update.length === 0) { // Should be caught by initial check, but good to have.
+        if (witnesses_to_update.length === 0) { 
             cb(true);
             return;
         }
@@ -251,10 +249,8 @@ const transaction: TransactionModule = {
             { $inc: { totalVoteWeight: diff_per_witness } }, // This will be applied to each witness in the $in list
             function (err: Error | null) {
                 if (err) {
-                    // It's generally better to log and callback with error than to throw,
-                    // unless the calling infrastructure expects throws.
                     logr.error(`[adjustNodeAppr] Error in cache.updateMany for ${acc.name}'s voted witnesses:`, err);
-                    cb(false); // Indicate failure
+                    cb(false); 
                     return;
                 }
                 cb(true);
