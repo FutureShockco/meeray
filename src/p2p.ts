@@ -863,7 +863,7 @@ export const p2p = {
                         return;
                     }
                     const receivedPeers: string[] = message.d.peers;
-                    logger.info(`[P2P:messageHandler] ${ws._peerUrl || (ws._socket ? `${ws._socket.remoteAddress?.replace('::ffff:', '')}:${ws._socket.remotePort}` : 'unknown_peer')}: Received PEER_LIST with ${receivedPeers.length} peers.`);
+                    logger.debug(`[P2P:messageHandler] ${ws._peerUrl || (ws._socket ? `${ws._socket.remoteAddress?.replace('::ffff:', '')}:${ws._socket.remotePort}` : 'unknown_peer')}: Received PEER_LIST with ${receivedPeers.length} peers.`);
 
                     const selfP2PPort = p2p_port; // The port this node listens on
                     const selfIPs = [ip.address(), '127.0.0.1', '::1', 'localhost']; // Common local addresses
@@ -891,7 +891,7 @@ export const p2p = {
                     });
 
                     if (peersToConnect.length > 0) {
-                        logger.info(`[P2P:messageHandler] Attempting to connect to ${peersToConnect.length} new peers from list.`);
+                        logger.debug(`[P2P:messageHandler] Attempting to connect to ${peersToConnect.length} new peers from list.`);
                         p2p.connect(peersToConnect, false);
                     }
                     return;
