@@ -38,10 +38,10 @@ async function searchForHandlers(dirPath: string) {
       // Recursively search subdirectories
       logger.debug(`Entering subdirectory: ${filePath}`);
       await searchForHandlers(filePath);
-    } else if (file.endsWith('.ts') && !file.endsWith('.d.ts')) {
+    } else if ((file.endsWith('.ts') || file.endsWith('.js')) && !file.endsWith('.d.ts')) {
       // Skip the index file itself
-      if (file === 'index.ts' || file.includes('interfaces') || file === 'orderbook.ts' || file === 'matching-engine.ts' || file === 'types.ts') {
-        logger.debug(`Skipping index and interface files: ${filePath}`);
+      if (file === 'index.ts' || file === 'index.js' || file.includes('interfaces') || file === 'orderbook.ts' || file === 'orderbook.js' || file === 'matching-engine.ts' || file === 'matching-engine.js' || file === 'types.ts' || file === 'types.js') {
+        logger.debug(`Skipping index, interface, or specific files: ${filePath}`);
         continue;
       }
 
@@ -53,7 +53,7 @@ async function searchForHandlers(dirPath: string) {
         if (module.validateTx && module.process) {
           // Extract transaction type from filename (e.g., witness-vote.ts -> WITNESS_VOTE)
           const typeName = file
-            .replace('.ts', '')
+            .replace(/\.(ts|js)$/, '')
             .split(/[-_]/)  // Split by both hyphen and underscore
             .map(part => part.toUpperCase())
             .join('_');
@@ -75,13 +75,13 @@ async function searchForHandlers(dirPath: string) {
             const alternativeNames = [
               typeName,
               typeName.replace(/_/g, ''),  // Remove all underscores
-              file.replace('.ts', '').toUpperCase(), // Try the raw filename
+              file.replace(/\.(ts|js)$/, '').toUpperCase(), // Try the raw filename
             ];
 
             // For camelCase files, try to insert underscores between words
             if (file.match(/[a-z][A-Z]/)) {
               const underscoreVersion = file
-                .replace('.ts', '')
+                .replace(/\.(ts|js)$/, '')
                 .replace(/([a-z])([A-Z])/g, '$1_$2')
                 .toUpperCase();
               alternativeNames.push(underscoreVersion);
