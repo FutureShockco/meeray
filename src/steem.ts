@@ -895,7 +895,39 @@ const receivePeerSyncStatus = (nodeId: string, status: SyncStatus): void => {
         logger.warn(`Received malformed sync status from ${nodeId}:`, status);
         return;
     }
+    const oldStatus = networkSyncStatus.get(nodeId);
     networkSyncStatus.set(nodeId, { ...status, nodeId, timestamp: Date.now() });
+
+    // Adopt a reasonable syncExitTargetBlock from peers
+    if (isSyncing && status.exitTarget !== null) {
+        const currentChainBlockId = chain?.getLatestBlock()?._id || 0;
+        // Only adopt if the target is in the future and peer seems reasonably caught up
+        if (status.exitTarget > currentChainBlockId && status.behindBlocks <= SYNC_EXIT_THRESHOLD + ((config as any).syncExitTargetLeadBlocks || 3) ) { // Peer is caught up or will be by its target
+            if (syncExitTargetBlock === null || (status.exitTarget < syncExitTargetBlock)) {
+                // Further check: only adopt if the sender is not excessively behind compared to self or network median
+                const overallNetworkStatus = getNetworkOverallBehindBlocks();
+                const localBehindBlocks = getBehindBlocks(); // Use the function to get current local `behindBlocks`
+
+                // Trust a peer's target if it's not wildly off from local/network state
+                // or if this node has no target yet.
+                const trustThreshold = Math.max(SYNC_EXIT_THRESHOLD + 2, overallNetworkStatus.medianBehind + 3, localBehindBlocks + 3);
+
+                if (status.behindBlocks <= trustThreshold || syncExitTargetBlock === null) {
+                    logger.info(`Adopting syncExitTargetBlock ${status.exitTarget} from peer ${nodeId} (peer behind: ${status.behindBlocks}). Previous local target: ${syncExitTargetBlock}`);
+                    syncExitTargetBlock = status.exitTarget;
+                    // Consider an immediate rebroadcast of own status if the target changed significantly,
+                    // to speed up convergence. For now, rely on regular broadcasts.
+                    // For example, if (oldStatus?.exitTarget !== syncExitTargetBlock) { broadcastSyncStatusLoop(); }
+                } else {
+                    logger.debug(`Peer ${nodeId} proposed exitTarget ${status.exitTarget} but is ${status.behindBlocks} behind (trust threshold ${trustThreshold}). Local target ${syncExitTargetBlock} retained.`);
+                }
+            } else if (status.exitTarget > syncExitTargetBlock) {
+                // A peer might be suggesting a later exit. This is less common to adopt unless many peers do.
+                // logger.debug(`Peer ${nodeId} proposed a later exitTarget ${status.exitTarget}. Local target ${syncExitTargetBlock} retained.`);
+            }
+        }
+    }
+
     // Prune old statuses
     const now = Date.now();
     networkSyncStatus.forEach((s, id) => {
@@ -1047,10 +1079,10 @@ function updateSteemBlockPolling(): void {
 
                 // Entry logic
                 const entryThreshold = config.steemBlockDelay || 10;
-                if (behindBlocks > entryThreshold && !isSyncing) {
+                if (behindBlocks >= entryThreshold && !isSyncing) {
                     if (isNetworkReadyToEnterSyncMode(behindBlocks)) {
                         logger.info(`Local node ${behindBlocks} blocks behind Steem (threshold ${entryThreshold}) AND network ready. Entering sync mode.`);
-                    enterSyncMode();
+                        enterSyncMode();
                     } else {
                         logger.info(`Local node ${behindBlocks} blocks behind Steem. Network not yet ready for sync mode.`);
                     }
@@ -1058,8 +1090,44 @@ function updateSteemBlockPolling(): void {
 
                 // Exit logic
                 if (isSyncing && behindBlocks <= SYNC_EXIT_THRESHOLD) {
-                    if (shouldExitSyncMode(chain?.getLatestBlock()?._id || 0)) { // Calls the corrected shouldExitSyncMode
-                        exitSyncMode(chain?.getLatestBlock()?._id || 0, lastSteemBlockInSidechain); // Pass current sidechain's steem block
+                    const currentChainBlockId = chain?.getLatestBlock()?._id || 0;
+                    const lastSteemBlockInSidechain = chain?.getLatestBlock()?.steemBlockNum || currentSteemBlock; // Fallback to currentSteemBlock
+
+                    if (syncExitTargetBlock && currentChainBlockId >= syncExitTargetBlock) {
+                        // If we have a target and have reached it, and are caught up, exit.
+                        logger.info(`Reached syncExitTargetBlock ${syncExitTargetBlock} at block ${currentChainBlockId} and caught up (${behindBlocks} behind). Exiting sync mode.`);
+                        exitSyncMode(currentChainBlockId, lastSteemBlockInSidechain);
+                    } else if (!syncExitTargetBlock && isNetworkReadyToExitSyncMode()) {
+                        // No target set yet, but local is caught up and network seems ready to START exiting.
+                        // This node will initiate the exit sequence.
+                        const leadBlocks = (config as any).syncExitTargetLeadBlocks || 3;
+                        const newTarget = currentChainBlockId + leadBlocks;
+                        logger.info(`Local node caught up (${behindBlocks} behind) and network is ready. Initiating coordinated exit. Setting syncExitTargetBlock to ${newTarget}.`);
+                        syncExitTargetBlock = newTarget; // Set the local target
+                        
+                        // Immediately broadcast this new target
+                        if (p2p.nodeId && p2p.sockets && p2p.sockets.length > 0) {
+                            const statusUpdate: SyncStatus = {
+                                nodeId: p2p.nodeId?.pub || 'unknown',
+                                behindBlocks: behindBlocks,
+                                steemBlock: currentSteemBlock, // Module's currentSteemBlock (last processed by sidechain attempt)
+                                isSyncing: true, // Still syncing until target is hit
+                                blockId: currentChainBlockId,
+                                consensusBlocks: {},
+                                exitTarget: syncExitTargetBlock, // Broadcast the new target!
+                                timestamp: Date.now()
+                            };
+                            p2p.broadcastSyncStatus(statusUpdate);
+                            logger.debug(`Broadcasted new syncExitTargetBlock: ${syncExitTargetBlock}`);
+                        }
+                        // We don't exit immediately; we wait to reach the syncExitTargetBlock.
+                        // The next iteration of this polling logic (or block production) will catch the exit.
+                    } else if (syncExitTargetBlock && currentChainBlockId < syncExitTargetBlock) {
+                        // We have a target, but haven't reached it yet. Still caught up.
+                        logger.debug(`Waiting to reach syncExitTargetBlock ${syncExitTargetBlock}. Current: ${currentChainBlockId}, Behind: ${behindBlocks}`);
+                    } else {
+                        // Local caught up, but network not ready and no target set, or other conditions.
+                        // logger.debug(`Local node caught up (${behindBlocks} behind), but network not ready for exit and no target set.`);
                     }
                 }
 
@@ -1082,9 +1150,23 @@ process.on('SIGINT', () => {
 
 const updateLocalSteemState = (localDelay: number, headSteemBlock: number): void => {
     behindBlocks = localDelay;
-    // currentSteemBlock should reflect the latest Steem block *incorporated into the sidechain*,
-    // not just the head Steem block minus delay. It's updated via sidechain block production.
-    // If needed, chain.ts can pass its latest block's steemBlockNum.
+    // currentSteemBlock = headSteemBlock; // This should be updated based on processed sidechain blocks
+
+    // Broadcast the updated local status
+    if (p2p.nodeId && p2p.sockets && p2p.sockets.length > 0) {
+        const currentStatus: SyncStatus = {
+            nodeId: p2p.nodeId?.pub || 'unknown',
+            behindBlocks: behindBlocks,
+            steemBlock: currentSteemBlock, // currentSteemBlock reflects the latest Steem block in our sidechain
+            isSyncing: isSyncing,       // Reflect the current sync state
+            blockId: chain.getLatestBlock()?._id || 0,
+            consensusBlocks: {}, // Placeholder, adapt if consensus data is needed
+            exitTarget: syncExitTargetBlock,
+            timestamp: Date.now()
+        };
+        // logger.debug('[STEEM] Broadcasting local state update:', currentStatus);
+        p2p.broadcastSyncStatus(currentStatus);
+    }
 };
 
 const getNetworkOverallBehindBlocks = (): { maxBehind: number; medianBehind: number; numReporting: number; numWitnessesReporting: number; witnessesBehindThreshold: number } => {

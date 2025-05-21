@@ -290,14 +290,31 @@ export const mining = {
             if (steem.isInSyncMode()) {
                 const syncSkipThreshold = Math.max(20, blockTime / 100); // 1% of syncBlockTime, or 20ms minimum
                 if (mineInMs < syncSkipThreshold) {
-                    // In sync mode, if we are past the ideal slot or very close to its end,
-                    // schedule to mine ASAP instead of skipping, to maximize catch-up speed.
                     logger.warn(`[MINING:minerWorker] In Sync: mineInMs (${mineInMs}ms) is below threshold (${syncSkipThreshold}ms). Scheduling to mine ASAP.`);
-                    mineInMs = 10; // Schedule in 10ms
+                    mineInMs = 10; // Schedule in 10ms - DO NOT SKIP
                 }
-            } else if (mineInMs < blockTime / 2) { // For normal mode, keep the 50% threshold
-                logger.warn(`[MINING:minerWorker] Slow performance detected in normal mode (mineInMs: ${mineInMs}ms < threshold: ${blockTime / 2}ms), will not try to mine block for _id ${block._id + 1}`);
-                return;
+            } else { // Normal Mode
+                const postSyncGracePeriod = (config as any).postSyncGracePeriodMs || 120000; // Default 2 minutes
+                const inPostSyncGrace = steem.getLastSyncExitTime() && (currentTime - (steem.getLastSyncExitTime() || 0) < postSyncGracePeriod);
+                const normalModeSkipThreshold = blockTime / 3; // Approx 33% of block time
+
+                if (inPostSyncGrace) {
+                    const postSyncCriticalSkipThreshold = blockTime / 10; // 10% of block time
+                    const postSyncWarningThreshold = blockTime / 5;   // 20% of block time
+
+                    if (mineInMs < postSyncCriticalSkipThreshold) {
+                        logger.warn(`[MINING:minerWorker] Extremely slow post-sync performance (mineInMs: ${mineInMs}ms < critical threshold: ${postSyncCriticalSkipThreshold}ms), skipping block for _id ${block._id + 1}`);
+                        return;
+                    } else if (mineInMs < postSyncWarningThreshold) {
+                        logger.warn(`[MINING:minerWorker] Post-sync performance issue detected (mineInMs: ${mineInMs}ms < warning threshold: ${postSyncWarningThreshold}ms), continuing to mine but logging.`);
+                        // No skip, proceed to mine
+                    }
+                } else { // Standard normal mode (not in post-sync grace)
+                    if (mineInMs < normalModeSkipThreshold) {
+                        logger.warn(`[MINING:minerWorker] Slow performance detected in normal mode (mineInMs: ${mineInMs}ms < threshold: ${normalModeSkipThreshold.toFixed(0)}ms), will not try to mine block for _id ${block._id + 1}`);
+                        return;
+                    }
+                }
             }
 
             // Make sure the node is marked as ready to receive transactions now that we're mining
