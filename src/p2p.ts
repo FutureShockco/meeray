@@ -1097,36 +1097,55 @@ export const p2p = {
 
         logger.debug(`[P2P] Validating and adding block #${block._id}`);
 
-        chain.validateAndAddBlock(block, true, (err: any | null, newBlock: Block | null) => {
+        chain.validateAndAddBlock(block, true, (err: any | null, newBlockProcessed: Block | null) => {
             if (err) {
                 logger.error(`[P2P] Failed to validate block ${block._id}: ${err}`);
                 cache.rollback();
-                logger.warn(`[P2P] Failed to validate block ${block._id}, clearing recovery cache`);
-                p2p.recoveredBlocks = {};
-                p2p.recoveringBlocks = [];
+                // logger.warn(`[P2P] Failed to validate block ${block._id}, clearing recovery cache`); // Old aggressive clearing
+                // p2p.recoveredBlocks = {}; // Old: Clears ALL recovered blocks
+                // p2p.recoveringBlocks = []; // Old: Clears blocks actively being requested
+
+                // New, more targeted clearing:
+                delete p2p.recoveredBlocks[block._id]; // Remove only the failing block from cache
+                const recoveringIdx = p2p.recoveringBlocks.indexOf(block._id);
+                if (recoveringIdx > -1) {
+                    p2p.recoveringBlocks.splice(recoveringIdx, 1);
+                }
+                logger.warn(`[P2P] Removed failing block ${block._id} from recovery cache.`);
+
                 p2p.recoverAttempt++;
                 if (p2p.recoverAttempt > max_recover_attempts) {
-                    logger.error(`[P2P] Error Replay - exceeded maximum recovery attempts for block ${newBlock?._id}`);
+                    logger.error(`[P2P] Error Replay - exceeded maximum recovery attempts for block ${block._id}`);
                     p2p.recovering = false;
                     p2p.recoverAttempt = 0;
                     return;
                 } else {
-                    logger.debug(`[P2P] Recover attempt #${p2p.recoverAttempt} for block ${newBlock?._id}`);
-                    p2p.recovering = chain.getLatestBlock()._id;
-                    p2p.recover();
+                    logger.debug(`[P2P] Recover attempt #${p2p.recoverAttempt} after failure on block ${block._id}`);
+                    p2p.recovering = chain.getLatestBlock()._id; // Reset recovery to current latest valid block
+                    p2p.recover(); // Attempt to recover, will try to find next needed blocks
                 }
             } else {
                 p2p.recoverAttempt = 0;
-                if (newBlock) {
-                    delete p2p.recoveredBlocks[newBlock._id];
+                if (newBlockProcessed) { // newBlockProcessed is the block that was just successfully added
+                    delete p2p.recoveredBlocks[newBlockProcessed._id];
                 }
-                p2p.recover();
-                // If next block is in cache, process it recursively
-                if (p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
-                    setTimeout(function () {
-                        if (p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
-                            p2p.addRecursive(p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
-                    }, 1)
+                // p2p.recover(); // Original position, might be too eager if many blocks are in cache
+
+                // If next block is in cache, process it recursively without necessarily calling full p2p.recover()
+                const nextBlockIdToProcess = chain.getLatestBlock()._id + 1;
+                if (p2p.recoveredBlocks[nextBlockIdToProcess]) {
+                    logger.debug(`[P2P] Next block ${nextBlockIdToProcess} found in cache, processing recursively.`);
+                    // Use a setTimeout to avoid deep recursion / stack overflow if many blocks are cached
+                    setTimeout(() => {
+                        if (p2p.recoveredBlocks[nextBlockIdToProcess]) { // Check again in case it was removed
+                            p2p.addRecursive(p2p.recoveredBlocks[nextBlockIdToProcess]);
+                        }
+                    }, 1);
+                } else {
+                    // No more sequential blocks in cache, trigger a general recover to find what's next
+                    logger.debug(`[P2P] No next block (${nextBlockIdToProcess}) in cache, calling p2p.recover().`);
+                    p2p.recover();
+                }
             }
         });
     },
