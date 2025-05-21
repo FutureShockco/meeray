@@ -350,37 +350,31 @@ export const chain = {
         // add the block in our own db
         if (blocks && typeof blocks.isOpen !== 'undefined' && blocks.isOpen) {
             try {
+                // Assuming blocks.appendBlock might be synchronous or promise-based
+                // If it's callback-based, this would need adjustment.
                 await blocks.appendBlock(block);
             } catch (levelDbError) {
                 if (logger) logger.error(`Error appending block to LevelDB: _id=${block._id}`, levelDbError);
+                // Decide if we should fallback to MongoDB or return error
+                // For now, let's try to fallback if LevelDB fails, or just error out if LevelDB was the primary expected store
+                // Fallback to MongoDB if appendBlock fails:
                 try {
                     await mongo.getDb().collection('blocks').insertOne(block)
                 } catch (mongoError) {
                     if (logger) logger.error(`Error inserting block into MongoDB after LevelDB fail: _id=${block._id}`, mongoError);
-                    return cb(mongoError);
+                    return cb(mongoError); // Return error to original callback
                 }
             }
         } else {
             try {
+                // Former Mongoose call: await BlockModel.updateOne({ _id: block._id }, { $set: block }, { upsert: true }).exec();
                 const db = mongo.getDb();
                 await db.collection('blocks').updateOne({ _id: block._id }, { $set: block }, { upsert: true });
-            } catch (error) { 
+            } catch (error) { // This catches errors from the MongoDB operation
                 if (logger) logger.error(`Error inserting block into MongoDB: _id=${block._id}`, error);
-                return cb(error);
+                return cb(error); // Return error to original callback
             }
         }
-        
-        const currentHeadBeforeAdd = chain.getLatestBlock();
-        if (block._id !== currentHeadBeforeAdd._id + 1) {
-            logger.error(`[CHAIN:addBlock] CRITICAL: Attempting to add block ${block._id} (witness: ${block.witness}) out of sequence. Current head: ${currentHeadBeforeAdd._id}. Block will NOT be added this time.`);
-            // This situation indicates a race condition or a flaw in higher-level logic
-            // that allowed an out-of-order block to reach this point.
-            // Calling cb with an error might be appropriate depending on how callers handle it.
-            // For now, we prevent corruption and the caller (validateAndAddBlock) will likely proceed with its original callback logic.
-            // The original cb for addBlock is for cache.writeToDisk, so we call it with an error to signify failure here.
-            return cb(new Error(`Attempted to add block ${block._id} out of sequence. Current head: ${currentHeadBeforeAdd._id}`));
-        }
-
         // push cached accounts and contents to mongodb
         chain.cleanMemory();
         // update the config if an update was scheduled
@@ -393,7 +387,7 @@ export const chain = {
         if (block._id % configBlock.witnesses === 0)
             chain.schedule = witnessesModule.witnessSchedule(block);
 
-        chain.recentBlocks.push(block); // This is where the chain head effectively advances
+        chain.recentBlocks.push(block);
         mining.minerWorker(block);
         chain.output(block);
 
@@ -427,109 +421,61 @@ export const chain = {
             }, 0);
         }
 
-        const CACHE_WRITE_SLOW_THRESHOLD_MS = (config.blockTime || 3000) * 0.75; // 75% of block time
-        const writeStartTime = Date.now();
-
-        const handleCacheWriteCompletion = (writeErr?: Error | null) => {
-            const writeDuration = Date.now() - writeStartTime;
-            if (writeDuration > CACHE_WRITE_SLOW_THRESHOLD_MS) {
-                logger.warn(`[CHAIN:addBlock] cache.writeToDisk for block ${block._id} was SLOW: ${writeDuration}ms (threshold: ${CACHE_WRITE_SLOW_THRESHOLD_MS}ms)`);
-                chain.lastWriteWasSlow = true;
-            } else {
-                // logger.debug(`[CHAIN:addBlock] cache.writeToDisk for block ${block._id} was normal: ${writeDuration}ms`);
-                chain.lastWriteWasSlow = false; // Reset if it was fast
-            }
-            cb(writeErr || null);
-        };
-
-        if (p2p.recovering) {
-            p2pRecoveryWriteCounter++;
-            if (p2pRecoveryWriteCounter >= P2P_RECOVERY_WRITE_INTERVAL_BLOCKS) {
-                logger.info(`[CHAIN:addBlock] Performing periodic cache write during P2P recovery. Block: ${block._id}. Counter: ${p2pRecoveryWriteCounter}`);
-                cache.writeToDisk(false, (writeErr) => {
-                    p2pRecoveryWriteCounter = 0; // Reset counter
-                    handleCacheWriteCompletion(writeErr);
-                });
-            } else {
-                // Not writing to disk yet during recovery, just call the callback
-                handleCacheWriteCompletion(); // No error, write was skipped
-            }
-        } else {
-            // Not in P2P recovery, write to disk as usual
-            cache.writeToDisk(false, (writeErr) => {
-                handleCacheWriteCompletion(writeErr);
-            });
-        }
+        cache.writeToDisk(false, () => { // writeToDisk has its own callback
+            cb(null); // Call original cb after writeToDisk's callback completes
+        });
     },
     validateAndAddBlock: async (block: any, revalidate: boolean, cb: (err: any, newBlock: any) => void) => {
-        if (chain.shuttingDown) {
-            // Ensure lock is released if cb is called early
-            // isAddingBlockLocked = false; // Not strictly needed if lock taken after this check
-            // processBlockAddQueue();
-            return cb(new Error("Chain is shutting down"), block);
-        }
+        if (chain.shuttingDown) return
+        logger.debug(`[validateAndAddBlock] Entered. Block ID: ${block?._id}, Revalidate: ${revalidate}, Witness: ${block?.witness}`);
 
-        if (isAddingBlockLocked) {
-            logger.warn(`[CHAIN:validateAndAddBlock] Already adding a block. Queuing block ${block?._id} (witness: ${block?.witness}). Queue size: ${blockAddQueue.length}`);
-            blockAddQueue.push({ block, revalidate, cb });
-            return;
-        }
-
-        isAddingBlockLocked = true; // Acquire lock
-        logger.debug(`[validateAndAddBlock] Acquired lock. Block ID: ${block?._id}, Revalidate: ${revalidate}, Witness: ${block?.witness}`);
-
-        const releaseLockAndProcessQueue = (err: any, newBlock: any) => {
-            isAddingBlockLocked = false;
-            logger.debug(`[validateAndAddBlock] Released lock. Block ID: ${block?._id}. Error: ${err ? err.message : null}`);
-            cb(err, newBlock);
-            processBlockAddQueue(); // Attempt to process next in queue
-        };
-
-        // Original logic of validateAndAddBlock starts here
+        // Log the received block before validation begins
         isValidNewBlock(block, revalidate, false, function (isValid: boolean) {
             logger.debug(`[validateAndAddBlock] isValidNewBlock for Block ID: ${block?._id} returned: ${isValid}`);
             if (!isValid) {
                 logger.warn(`[validateAndAddBlock] Block ID: ${block?._id} failed isValidNewBlock. Witness: ${block?.witness}`);
-                return releaseLockAndProcessQueue(new Error("isValidNewBlock returned false"), block);
+                return cb(true, block);
             }
-            logger.debug(`Block ID: ${block?._id} passed isValidNewBlock. Witness: ${block?.witness}`);
-            
+            logger.info(`Block ID: ${block?._id} passed isValidNewBlock. Witness: ${block?.witness}`); // Changed from console.log
+            // straight execution
             chain.executeBlockTransactions(block, false, function (validTxs: any[], distributed: number) {
                 logger.debug(`[validateAndAddBlock] executeBlockTransactions for Block ID: ${block?._id} completed. Valid Txs: ${validTxs?.length}/${block?.txs?.length}, Distributed: ${distributed}`);
+                // if any transaction is wrong, thats a fatal error
                 if (block.txs.length !== validTxs.length) {
                     logger.error(`[validateAndAddBlock] Invalid tx(s) in Block ID: ${block?._id}. Expected: ${block.txs.length}, Got: ${validTxs.length}`);
-                    return releaseLockAndProcessQueue(new Error("Invalid transactions count"), block);
+                    cb(true, block); return
                 }
 
-                let blockDist = block.dist || 0;
+                // error if distributed computed amounts are different than the reported one
+                let blockDist = block.dist || 0
                 if (blockDist !== distributed) {
                     logger.error(`[validateAndAddBlock] Wrong dist amount for Block ID: ${block?._id}. Expected: ${blockDist}, Got: ${distributed}`);
-                    return releaseLockAndProcessQueue(new Error("Wrong distribution amount"), block);
+                    cb(true, block); return
                 }
 
-                chain.addRecentTxsInBlock(block.txs);
-                transaction.removeFromPool(block.txs);
+                // add txs to recents
+                chain.addRecentTxsInBlock(block.txs)
 
-                chain.addBlock(block, function (addBlockErr) {
-                    if (addBlockErr) {
-                        logger.error(`[validateAndAddBlock] Error from addBlock for ${block._id}: ${addBlockErr.message}`);
-                        return releaseLockAndProcessQueue(addBlockErr, block);
-                    }
-                    
-                    if (!p2p.recovering) {
-                        p2p.broadcastBlock(block);
-                    }
-                    if (process.env.USE_NOTIFICATION === 'true') {
-                        notifications.processBlock(block);
-                    }
-                    if (!p2p.recovering) {
-                        for (let i = 0; i < block.txs.length; i++) {
-                            transaction.eventConfirmation.emit(block.txs[i].hash);
-                        }
-                    }
-                    releaseLockAndProcessQueue(null, block);
-                });
-            });
+                // remove all transactions from this block from our transaction pool
+                transaction.removeFromPool(block.txs)
+
+                chain.addBlock(block, function () {
+                    // and broadcast to peers (if not replaying)
+                    if (!p2p.recovering)
+                        p2p.broadcastBlock(block)
+
+                    // process notifications and witness stats (non blocking)
+                    if (process.env.USE_NOTIFICATION === 'true')
+                    notifications.processBlock(block)
+
+                    // emit event to confirm new transactions in the http api
+                    if (!p2p.recovering)
+                        for (let i = 0; i < block.txs.length; i++)
+                            transaction.eventConfirmation.emit(block.txs[i].hash)
+
+                    cb(null, block)
+                })
+            })
         });
     },
 

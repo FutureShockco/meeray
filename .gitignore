@@ -24,3 +24,4 @@ dist/
 scripts/accounts_steem.json
 .env
 .cursor/
+config/p2p_node_id.json
