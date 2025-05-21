@@ -323,62 +323,55 @@ export const p2p = {
         setTimeout(() => p2p.keepAlive(), keep_alive_interval);
     },
 
-    connect: function (urls: string[], isInit: boolean = false) {
+    connect: (urls: string[], isInit: boolean = false) => {
         for (const url of urls) {
-            if (this.isConnectedTo(url) || this.pendingConnections.has(url)) {
-                logger.debug(`Already connected or connecting to ${url}, skipping`);
+            if (p2p.isConnectedTo(url)) {
+                logger.debug(`Already connected to ${url}, skipping`);
                 continue;
             }
-
-            const retryInfo = this.recentConnectionAttempts[url];
-            const now = Date.now();
-
-            if (retryInfo) {
-                // Calculate backoff delay: exponential based on attempts
-                const delay = Math.min(RETRY_BASE_DELAY * (2 ** (retryInfo.attempts - 1)), RETRY_MAX_DELAY);
-
-                if (now - retryInfo.lastAttempt < delay) {
-                    logger.debug(`Backoff active for ${url}, skipping connect`);
+            try {
+                // Remove 'ws://' prefix first
+                const urlWithoutProtocol = url.replace(/^ws:\/\//, '');
+    
+                // Split IP and port
+                let [ip, portStr] = urlWithoutProtocol.split(':');
+    
+                // Strip IPv4-mapped IPv6 prefix if present
+                if (ip.startsWith('::ffff:')) {
+                    ip = ip.slice(7);
+                }
+    
+                const port = parseInt(portStr, 10);
+                if (isNaN(port)) {
+                    logger.warn(`Invalid port parsed from ${url}`);
                     continue;
                 }
-            }
-
-            try {
-                this.pendingConnections.add(url);
-                this.recentConnectionAttempts[url] = {
-                    attempts: (retryInfo?.attempts || 0) + 1,
-                    lastAttempt: now,
-                };
-
-                const ws = new WebSocket(url) as EnhancedWebSocket;
-                (ws as any)._peerUrl = url;
-
+    
+                // Construct proper ws URL
+                const wsUrl = `ws://${ip}:${port}`;
+    
+                const ws = new WebSocket(wsUrl) as EnhancedWebSocket;
+                (ws as EnhancedWebSocket)._peerUrl = wsUrl;
+    
                 ws.on('open', () => {
                     logger.info(`Connected to peer ${url}`);
-                    this.pendingConnections.delete(url);
-                    // Reset attempts on success
-                    if (this.recentConnectionAttempts[url]) {
-                        this.recentConnectionAttempts[url].attempts = 0;
-                    }
-                    this.handshake(ws);
+                    p2p.handshake(ws);
                 });
-
+    
                 ws.on('error', (err) => {
-                    logger.debug(`Failed to connect to ${url}: ${err.message}`);
-                    this.pendingConnections.delete(url);
+                    logger.warn(`Failed to connect to ${url}: ${err.message}`);
                 });
-
+    
                 ws.on('close', () => {
                     logger.info(`Connection closed: ${url}`);
-                    this.pendingConnections.delete(url);
-                    this.sockets = this.sockets.filter(s => s !== ws);
+                    p2p.sockets = p2p.sockets.filter(s => s !== ws);
                 });
-
-                this.messageHandler(ws);
-                this.errorHandler(ws);
+    
+                p2p.messageHandler(ws);
+                p2p.errorHandler(ws);
+    
             } catch (err) {
                 logger.error(`Exception connecting to ${url}: ${err}`);
-                this.pendingConnections.delete(url);
             }
         }
     },
