@@ -129,25 +129,10 @@ export const p2p = {
     recentConnectionAttempts: {} as Record<string, RetryInfo>,
     pendingConnections: new Set<string>(),
     isConnectedTo(address: string) {
-        try {
-            const target = new URL(address);
-            const targetHost = target.hostname.replace('::ffff:', '');
-            const targetPort = target.port;
-
-            return this.sockets.some(ws => {
-                const peerUrl = (ws as EnhancedWebSocket)._peerUrl;
-                if (!peerUrl) return false;
-
-                const current = new URL(peerUrl);
-                const currentHost = current.hostname.replace('::ffff:', '');
-                const currentPort = current.port;
-
-                return currentHost === targetHost && currentPort === targetPort;
-            });
-        } catch (err) {
-            logger.warn(`Invalid address passed to isConnectedTo: ${address}`);
-            return false;
-        }
+        return this.sockets.some(ws => {
+            const peerUrl = (ws as EnhancedWebSocket)._peerUrl || `ws://${ws._socket.remoteAddress}:${ws._socket.remotePort}`;
+            return peerUrl === address;
+        });
     },
     init: async (): Promise<void> => {
         p2p.generateNodeId();
@@ -355,39 +340,49 @@ export const p2p = {
                 logger.debug(`Already connected to ${url}, skipping`);
                 continue;
             }
-
             try {
-                const parsed = new URL(url);
-
-                const ip = parsed.hostname.replace(/^::ffff:/, ''); // IPv4-mapped IPv6 fix
-                const port = parsed.port || '6001'; // Default fallback
-
+                // Remove 'ws://' prefix first
+                const urlWithoutProtocol = url.replace(/^ws:\/\//, '');
+    
+                // Split IP and port
+                let [ip, portStr] = urlWithoutProtocol.split(':');
+    
+                // Strip IPv4-mapped IPv6 prefix if present
+                if (ip.startsWith('::ffff:')) {
+                    ip = ip.slice(7);
+                }
+    
+                const port = parseInt(portStr, 10);
+                if (isNaN(port)) {
+                    logger.warn(`Invalid port parsed from ${url}`);
+                    continue;
+                }
+    
+                // Construct proper ws URL
                 const wsUrl = `ws://${ip}:${port}`;
-
+    
                 const ws = new WebSocket(wsUrl) as EnhancedWebSocket;
                 (ws as EnhancedWebSocket)._peerUrl = wsUrl;
-
+    
                 ws.on('open', () => {
                     logger.info(`Connected to peer ${url}`);
                     p2p.handshake(ws);
                 });
-
+    
                 ws.on('error', (err) => {
                     logger.warn(`Failed to connect to ${url}: ${err.message}`);
                 });
-
+    
                 ws.on('close', () => {
                     logger.info(`Connection closed: ${url}`);
                     p2p.sockets = p2p.sockets.filter(s => s !== ws);
                 });
-
+    
                 p2p.messageHandler(ws);
                 p2p.errorHandler(ws);
-
+    
             } catch (err) {
-                logger.warn(`Invalid peer URL or port: ${url}`);
-                logger.debug(`Error details: ${err}`);
-                continue;
+                logger.error(`Exception connecting to ${url}: ${err}`);
             }
         }
     },
@@ -398,37 +393,44 @@ export const p2p = {
             ws.close();
             return;
         }
-
+    
         if (p2p.sockets.length >= max_peers) {
             logger.warn('Incoming handshake refused because already peered enough ' + p2p.sockets.length + '/' + max_peers);
             ws.close();
             return;
         }
-
-        for (let i = 0; i < p2p.sockets.length; i++)
-            if (p2p.sockets[i]._socket.remoteAddress === ws._socket.remoteAddress
-                && p2p.sockets[i]._socket.remotePort === ws._socket.remotePort) {
+    
+        // Check if the peer is already connected
+        for (let i = 0; i < p2p.sockets.length; i++) {
+            const existingSocket = p2p.sockets[i];
+            const existingPeerUrl = (existingSocket as EnhancedWebSocket)._peerUrl || `ws://${existingSocket._socket.remoteAddress}:${existingSocket._socket.remotePort}`;
+            const incomingPeerUrl = `ws://${ws._socket.remoteAddress}:${ws._socket.remotePort}`;
+    
+            if (existingPeerUrl === incomingPeerUrl) {
+                logger.debug(`Peer ${incomingPeerUrl} already connected. Closing duplicate.`);
                 ws.close();
                 return;
             }
-
+        }
+    
         logger.debug('Handshaking new peer', ws.url || ws._socket.remoteAddress + ':' + ws._socket.remotePort);
         let random = randomBytes(config.read(0).randomBytesLength).toString('hex');
         ws.challengeHash = random;
-
+    
         ws.pendingDisconnect = setTimeout(() => {
-            for (let i = 0; i < p2p.sockets.length; i++)
+            for (let i = 0; i < p2p.sockets.length; i++) {
                 if (p2p.sockets[i].challengeHash === random) {
                     p2p.sockets[i].close();
                     logger.warn('A peer did not reply to NODE_STATUS');
                     continue;
                 }
+            }
         }, 1000);
-
+    
         p2p.sockets.push(ws);
         p2p.messageHandler(ws);
         p2p.errorHandler(ws);
-
+    
         // Send initial node status query
         p2p.sendJSON(ws, {
             t: MessageType.QUERY_NODE_STATUS,
@@ -437,7 +439,7 @@ export const p2p = {
                 random: random
             }
         });
-
+    
         // After a short delay, query their peer list to discover more peers
         setTimeout(() => {
             p2p.sendJSON(ws, {
