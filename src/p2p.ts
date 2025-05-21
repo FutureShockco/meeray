@@ -854,18 +854,19 @@ export const p2p = {
 
                     const peersToConnect = receivedPeers.filter(peerUrl => {
                         try {
-                            const url = new URL(peerUrl);
+                            const normalizedPeerUrl = normalizeWsUrl(peerUrl); // Normalize before parsing
+                            const url = new URL(normalizedPeerUrl);
                             const peerHost = url.hostname;
                             const peerPort = parseInt(url.port, 10);
 
                             // Check if it's one of the known self IPs and the same P2P port
                             if (selfIPs.some(selfIp => selfIp === peerHost) && peerPort === selfP2PPort) {
-                                logger.debug(`[P2P:messageHandler] Filtering out self from received peer list: ${peerUrl}`);
+                                logger.debug(`[P2P:messageHandler] Filtering out self from received peer list: ${peerUrl} (normalized: ${normalizedPeerUrl})`);
                                 return false;
                             }
                             return true;
                         } catch (e: any) {
-                            logger.warn(`[P2P:messageHandler] Invalid peer URL in PEER_LIST: ${peerUrl}`, e.message);
+                            logger.warn(`[P2P:messageHandler] Invalid peer URL in PEER_LIST: ${peerUrl} (normalization attempt failed or URL still invalid after norm)`);
                             return false;
                         }
                     });
