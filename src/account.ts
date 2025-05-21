@@ -59,23 +59,26 @@ export async function upsertAccountsReferencedInTx(tx: ParsedTransaction | Trans
       };
 
       try {
-        await mongo.getDb().collection('accounts').insertOne(newAccountData);
-        await new Promise<void>((resolve, reject) => {
-          cache.insertOne('accounts', newAccountData as AccountDoc, (err, success) => {
-            if (err) {
-              logger.error(`Error inserting new account ${username} into cache:`, err);
-              return reject(err);
-            }
-            if (!success && success !== undefined) { // Check for explicit false, not undefined
-              logger.warn(`[CACHE] insertOne for new account ${username} reported not successful (already exists or no change?).`);
-            }
-            logger.debug(`New account ${username} inserted into DB and cache.`);
-            resolve();
-          });
-        });
+        // Insert into MongoDB. newAccountData will be mutated with an _id.
+        const insertResult = await mongo.getDb().collection<AccountDoc>('accounts').insertOne(newAccountData);
+        
+        if (!insertResult.insertedId) {
+            logger.error(`Failed to insert new account ${username} into DB, no insertedId returned.`);
+            throw new Error(`DB insert failed for ${username}`);
+        }
+        
+        // newAccountData now has an _id from MongoDB.
+        // Directly update the live cache with the document that's now in the DB.
+        cache.accounts[username] = newAccountData;
+        logger.debug(`New account ${username} inserted into DB and live cache populated.`);
+
+        // DO NOT call cache.insertOne here as the document is already in the DB.
+        // cache.insertOne would add it to a queue for batch insertion, causing a duplicate error.
+
       } catch (insertError) {
-        logger.error(`Failed to insert new account ${username} into DB or cache:`, insertError);
-        throw insertError;
+        logger.error(`Failed to insert new account ${username} into DB or update cache:`, insertError);
+        // Re-throw or handle as appropriate for your application's error strategy
+        throw insertError; 
       }
     } else {
       logger.debug(`Account ${username} already exists in cache or DB.`);
