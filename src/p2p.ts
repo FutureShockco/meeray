@@ -1,6 +1,7 @@
 import WebSocket from 'ws';
 import dns from 'dns';
 import net from 'net';
+import os from 'os';
 import { randomBytes } from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -127,6 +128,25 @@ function normalizeWsUrl(url: string): string {
     }
 
     return protocol + rest;
+}
+
+// Helper function to get all local non-loopback IPv4 addresses
+function getAllLocalIPv4Addresses(): string[] {
+    const interfaces = os.networkInterfaces();
+    const addresses: string[] = [];
+    for (const name of Object.keys(interfaces)) {
+        const ifaceDetails = interfaces[name];
+        if (ifaceDetails) {
+            for (const iface of ifaceDetails) {
+                // Skip over internal (i.e. 127.0.0.1) and non-ipv4 addresses
+                // Also skip link-local addresses (169.254.x.x)
+                if (iface.family === 'IPv4' && !iface.internal && !iface.address.startsWith('169.254.')) {
+                    addresses.push(iface.address);
+                }
+            }
+        }
+    }
+    return addresses;
 }
 
 export const p2p = {
@@ -385,7 +405,7 @@ export const p2p = {
     connect: (urls: string[], isInit: boolean = false) => {
         logger.debug(`[P2P:connect] Called with URLs: ${JSON.stringify(urls)}, isInit: ${isInit}. Current sockets: ${p2p.sockets.length}`);
         for (const url of urls) {
-            const normalizedFullUrl = normalizeWsUrl(url); // Normalize the full URL including ws://
+            const normalizedFullUrl = normalizeWsUrl(url); 
             logger.debug(`[P2P:connect] Attempting connection to: ${normalizedFullUrl}`);
 
             if (p2p.isConnectedTo(normalizedFullUrl)) {
@@ -393,64 +413,47 @@ export const p2p = {
                 continue;
             }
             try {
-                // Remove 'ws://' or 'wss://' prefix first
                 const urlWithoutProtocol = url.replace(/^(ws:\/\/|wss:\/\/)/i, '');
-    
-                // Find the last colon to correctly separate host and port
                 const lastColonIndex = urlWithoutProtocol.lastIndexOf(':');
-                // We will ignore the port from the URL and always use the configured p2p_port
-                // But we still need to extract the host correctly.
                 let host = urlWithoutProtocol;
                 if (lastColonIndex !== -1) {
                     host = urlWithoutProtocol.substring(0, lastColonIndex);
                 }
-    
-                // Strip IPv4-mapped IPv6 prefix if present from the host
                 if (host.startsWith('::ffff:')) {
                     host = host.slice(7);
                 }
-                // Remove potential brackets if IPv6 address was already wrapped
                 if (host.startsWith('[') && host.endsWith(']')) {
                     host = host.slice(1, -1);
                 }
-
-                // ALWAYS use the defined p2p_port, ignore port from peer list URL
                 const portToUse = p2p_port;
 
-                // Prevent connecting to self via known local/configured addresses
                 const selfHostsToAvoid = ['127.0.0.1', 'localhost', '::1'];
-                const primaryLocalIP = internalIpV4Sync(); // Replaced ip.address()
-                if (primaryLocalIP) {
-                    selfHostsToAvoid.push(primaryLocalIP);
-                }
+                const allLocalIPs = getAllLocalIPv4Addresses();
+                allLocalIPs.forEach(ip => {
+                    if (!selfHostsToAvoid.includes(ip)) {
+                        selfHostsToAvoid.push(ip);
+                    }
+                });
 
-                // If P2P_HOST is a specific IP we are listening on, add it.
                 if (p2p_host && p2p_host !== '0.0.0.0' && p2p_host !== '::' && net.isIP(p2p_host)) {
-                    selfHostsToAvoid.push(p2p_host);
+                    if (!selfHostsToAvoid.includes(p2p_host)) {
+                        selfHostsToAvoid.push(p2p_host);
+                    }
                 }
 
-                // Check if the target host (after normalization) is one of our known self hosts.
                 if (selfHostsToAvoid.includes(host) && portToUse === p2p_port) {
                     logger.debug(`[P2P:connect] Skipping connection to self (target host '${host}' is a known self IP/loopback): ${url}`);
                     continue;
                 }
-
-                // Additionally, if P2P_HOST is a specific hostname we are listening on,
-                // and the target 'host' string exactly matches this configured P2P_HOST hostname.
                 if (p2p_host && p2p_host !== '0.0.0.0' && p2p_host !== '::' && !net.isIP(p2p_host) && host === p2p_host && portToUse === p2p_port) {
                     logger.debug(`[P2P:connect] Skipping connection to self (target host '${host}' matches configured P2P_HOST hostname): ${url}`);
                     continue;
                 }
     
-                // Construct proper ws URL. Ensure IPv6 literals are bracketed for WebSocket constructor.
                 const wsHost = net.isIPv6(host) ? `[${host}]` : host;
                 const wsUrl = `ws://${wsHost}:${portToUse}`;
-
-                // Update normalizedFullUrl to reflect the URL we are actually going to use (with the correct port)
-                // This is important for the isConnectedTo check.
                 const effectiveNormalizedUrl = wsUrl; 
     
-                // Check if already connected to the effective URL (IP + standard port)
                 if (p2p.isConnectedTo(effectiveNormalizedUrl)) {
                     logger.debug(`[P2P:connect] Already connected to ${effectiveNormalizedUrl} (using standard port), skipping.`);
                     continue;
@@ -904,10 +907,19 @@ export const p2p = {
                     const receivedPeers: string[] = message.d.peers;
                     logger.debug(`[P2P:messageHandler] ${ws._peerUrl || (ws._socket ? `${ws._socket.remoteAddress?.replace('::ffff:', '')}:${ws._socket.remotePort}` : 'unknown_peer')}: Received PEER_LIST with ${receivedPeers.length} peers.`);
 
-                    const selfP2PPort = p2p_port; // The port this node listens on
-                    const selfIPs = [internalIpV4Sync(), '127.0.0.1', '::1', 'localhost']; // Common local addresses
-                    if (p2p_host !== '::' && p2p_host !== '0.0.0.0') {
-                        selfIPs.push(p2p_host); // Add specific listen host if configured
+                    const selfP2PPort = p2p_port;
+                    const selfIPs = ['127.0.0.1', '::1', 'localhost']; // Keep loopbacks & localhost
+                    const allLocalIPsForPeerList = getAllLocalIPv4Addresses();
+                    allLocalIPsForPeerList.forEach(ip => {
+                        if (!selfIPs.includes(ip)) {
+                            selfIPs.push(ip);
+                        }
+                    });
+
+                    if (p2p_host !== '::' && p2p_host !== '0.0.0.0' && net.isIP(p2p_host)) { // If listening on a specific IP
+                        if (!selfIPs.includes(p2p_host)) {
+                            selfIPs.push(p2p_host);
+                        }
                     }
 
                     const peersToConnect = receivedPeers.filter(peerUrl => {

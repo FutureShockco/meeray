@@ -319,31 +319,37 @@ export const chain = {
         // add the block in our own db
         if (blocks && typeof blocks.isOpen !== 'undefined' && blocks.isOpen) {
             try {
-                // Assuming blocks.appendBlock might be synchronous or promise-based
-                // If it's callback-based, this would need adjustment.
                 await blocks.appendBlock(block);
             } catch (levelDbError) {
                 if (logger) logger.error(`Error appending block to LevelDB: _id=${block._id}`, levelDbError);
-                // Decide if we should fallback to MongoDB or return error
-                // For now, let's try to fallback if LevelDB fails, or just error out if LevelDB was the primary expected store
-                // Fallback to MongoDB if appendBlock fails:
                 try {
                     await mongo.getDb().collection('blocks').insertOne(block)
                 } catch (mongoError) {
                     if (logger) logger.error(`Error inserting block into MongoDB after LevelDB fail: _id=${block._id}`, mongoError);
-                    return cb(mongoError); // Return error to original callback
+                    return cb(mongoError);
                 }
             }
         } else {
             try {
-                // Former Mongoose call: await BlockModel.updateOne({ _id: block._id }, { $set: block }, { upsert: true }).exec();
                 const db = mongo.getDb();
                 await db.collection('blocks').updateOne({ _id: block._id }, { $set: block }, { upsert: true });
-            } catch (error) { // This catches errors from the MongoDB operation
+            } catch (error) { 
                 if (logger) logger.error(`Error inserting block into MongoDB: _id=${block._id}`, error);
-                return cb(error); // Return error to original callback
+                return cb(error);
             }
         }
+        
+        const currentHeadBeforeAdd = chain.getLatestBlock();
+        if (block._id !== currentHeadBeforeAdd._id + 1) {
+            logger.error(`[CHAIN:addBlock] CRITICAL: Attempting to add block ${block._id} (witness: ${block.witness}) out of sequence. Current head: ${currentHeadBeforeAdd._id}. Block will NOT be added this time.`);
+            // This situation indicates a race condition or a flaw in higher-level logic
+            // that allowed an out-of-order block to reach this point.
+            // Calling cb with an error might be appropriate depending on how callers handle it.
+            // For now, we prevent corruption and the caller (validateAndAddBlock) will likely proceed with its original callback logic.
+            // The original cb for addBlock is for cache.writeToDisk, so we call it with an error to signify failure here.
+            return cb(new Error(`Attempted to add block ${block._id} out of sequence. Current head: ${currentHeadBeforeAdd._id}`));
+        }
+
         // push cached accounts and contents to mongodb
         chain.cleanMemory();
         // update the config if an update was scheduled
@@ -356,7 +362,7 @@ export const chain = {
         if (block._id % configBlock.witnesses === 0)
             chain.schedule = witnessesModule.witnessSchedule(block);
 
-        chain.recentBlocks.push(block);
+        chain.recentBlocks.push(block); // This is where the chain head effectively advances
         mining.minerWorker(block);
         chain.output(block);
 
