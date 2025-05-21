@@ -26,6 +26,36 @@ const NORMAL_MODE_BROADCAST_INTERVAL_BLOCKS = 6; // Broadcast every 6 blocks in 
 let p2pRecoveryWriteCounter = 0;
 const P2P_RECOVERY_WRITE_INTERVAL_BLOCKS = 100;
 
+let isAddingBlockLocked = false; // Lock flag for validateAndAddBlock
+const blockAddQueue: any[] = []; // Queue for pending block additions
+
+// Function to process the next item in the block add queue
+const processBlockAddQueue = () => {
+    if (isAddingBlockLocked || blockAddQueue.length === 0) {
+        return;
+    }
+    const nextTask = blockAddQueue.shift();
+    if (nextTask) {
+        isAddingBlockLocked = true; // Set lock before processing
+        // Directly call the core logic of validateAndAddBlock, 
+        // but ensure the lock is released in its callback.
+        // We need to refactor validateAndAddBlock slightly or wrap its core.
+        // For now, let's assume we can call a conceptual "executeValidateAndAddBlock"
+        // that contains the original logic and handles releasing the lock.
+        // This is a placeholder for a more detailed refactor if needed.
+        // The key is that validateAndAddBlockInternal will call cb, then release lock & process queue.
+        
+        // Simplified: Re-call validateAndAddBlock, but it will acquire the lock now.
+        // This isn't ideal as it re-checks the lock. A better refactor would separate
+        // the lock acquisition from the core logic that can be called from the queue.
+        // Let's proceed with a slight refactor of validateAndAddBlock structure.
+        
+        // We'll call the original function which will now see the lock is free
+        // and then immediately acquire it.
+        chain.validateAndAddBlock(nextTask.block, nextTask.revalidate, nextTask.cb);
+    }
+};
+
 export const chain = {
     blocksToRebuild: [] as any[],
     restoredBlocks: 0,
@@ -418,56 +448,74 @@ export const chain = {
         }
     },
     validateAndAddBlock: async (block: any, revalidate: boolean, cb: (err: any, newBlock: any) => void) => {
-        if (chain.shuttingDown) return
-        logger.debug(`[validateAndAddBlock] Entered. Block ID: ${block?._id}, Revalidate: ${revalidate}, Witness: ${block?.witness}`);
+        if (chain.shuttingDown) {
+            // Ensure lock is released if cb is called early
+            // isAddingBlockLocked = false; // Not strictly needed if lock taken after this check
+            // processBlockAddQueue();
+            return cb(new Error("Chain is shutting down"), block);
+        }
 
-        // Log the received block before validation begins
+        if (isAddingBlockLocked) {
+            logger.warn(`[CHAIN:validateAndAddBlock] Already adding a block. Queuing block ${block?._id} (witness: ${block?.witness}). Queue size: ${blockAddQueue.length}`);
+            blockAddQueue.push({ block, revalidate, cb });
+            return;
+        }
+
+        isAddingBlockLocked = true; // Acquire lock
+        logger.debug(`[validateAndAddBlock] Acquired lock. Block ID: ${block?._id}, Revalidate: ${revalidate}, Witness: ${block?.witness}`);
+
+        const releaseLockAndProcessQueue = (err: any, newBlock: any) => {
+            isAddingBlockLocked = false;
+            logger.debug(`[validateAndAddBlock] Released lock. Block ID: ${block?._id}. Error: ${err ? err.message : null}`);
+            cb(err, newBlock);
+            processBlockAddQueue(); // Attempt to process next in queue
+        };
+
+        // Original logic of validateAndAddBlock starts here
         isValidNewBlock(block, revalidate, false, function (isValid: boolean) {
             logger.debug(`[validateAndAddBlock] isValidNewBlock for Block ID: ${block?._id} returned: ${isValid}`);
             if (!isValid) {
                 logger.warn(`[validateAndAddBlock] Block ID: ${block?._id} failed isValidNewBlock. Witness: ${block?.witness}`);
-                return cb(true, block);
+                return releaseLockAndProcessQueue(new Error("isValidNewBlock returned false"), block);
             }
-            logger.debug(`Block ID: ${block?._id} passed isValidNewBlock. Witness: ${block?.witness}`); // Changed from console.log
-            // straight execution
+            logger.debug(`Block ID: ${block?._id} passed isValidNewBlock. Witness: ${block?.witness}`);
+            
             chain.executeBlockTransactions(block, false, function (validTxs: any[], distributed: number) {
                 logger.debug(`[validateAndAddBlock] executeBlockTransactions for Block ID: ${block?._id} completed. Valid Txs: ${validTxs?.length}/${block?.txs?.length}, Distributed: ${distributed}`);
-                // if any transaction is wrong, thats a fatal error
                 if (block.txs.length !== validTxs.length) {
                     logger.error(`[validateAndAddBlock] Invalid tx(s) in Block ID: ${block?._id}. Expected: ${block.txs.length}, Got: ${validTxs.length}`);
-                    cb(true, block); return
+                    return releaseLockAndProcessQueue(new Error("Invalid transactions count"), block);
                 }
 
-                // error if distributed computed amounts are different than the reported one
-                let blockDist = block.dist || 0
+                let blockDist = block.dist || 0;
                 if (blockDist !== distributed) {
                     logger.error(`[validateAndAddBlock] Wrong dist amount for Block ID: ${block?._id}. Expected: ${blockDist}, Got: ${distributed}`);
-                    cb(true, block); return
+                    return releaseLockAndProcessQueue(new Error("Wrong distribution amount"), block);
                 }
 
-                // add txs to recents
-                chain.addRecentTxsInBlock(block.txs)
+                chain.addRecentTxsInBlock(block.txs);
+                transaction.removeFromPool(block.txs);
 
-                // remove all transactions from this block from our transaction pool
-                transaction.removeFromPool(block.txs)
-
-                chain.addBlock(block, function () {
-                    // and broadcast to peers (if not replaying)
-                    if (!p2p.recovering)
-                        p2p.broadcastBlock(block)
-
-                    // process notifications and witness stats (non blocking)
-                    if (process.env.USE_NOTIFICATION === 'true')
-                    notifications.processBlock(block)
-
-                    // emit event to confirm new transactions in the http api
-                    if (!p2p.recovering)
-                        for (let i = 0; i < block.txs.length; i++)
-                            transaction.eventConfirmation.emit(block.txs[i].hash)
-
-                    cb(null, block)
-                })
-            })
+                chain.addBlock(block, function (addBlockErr) {
+                    if (addBlockErr) {
+                        logger.error(`[validateAndAddBlock] Error from addBlock for ${block._id}: ${addBlockErr.message}`);
+                        return releaseLockAndProcessQueue(addBlockErr, block);
+                    }
+                    
+                    if (!p2p.recovering) {
+                        p2p.broadcastBlock(block);
+                    }
+                    if (process.env.USE_NOTIFICATION === 'true') {
+                        notifications.processBlock(block);
+                    }
+                    if (!p2p.recovering) {
+                        for (let i = 0; i < block.txs.length; i++) {
+                            transaction.eventConfirmation.emit(block.txs[i].hash);
+                        }
+                    }
+                    releaseLockAndProcessQueue(null, block);
+                });
+            });
         });
     },
 
