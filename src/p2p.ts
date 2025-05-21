@@ -98,7 +98,14 @@ export const p2p = {
     recoverAttempt: 0,
     nodeId: null as NodeKeyPair | null,
     recentConnectionAttempts: {} as Record<string, number>,
-
+    isConnectedTo(address: string) {
+        return this.sockets.some(ws => {
+            let ip = ws._socket.remoteAddress;
+            if (!ip) return false;
+            if (ip.startsWith('::ffff:')) ip = ip.slice(7);
+            return ip === address;
+        });
+    },
     init: async (): Promise<void> => {
         p2p.generateNodeId();
 
@@ -157,31 +164,31 @@ export const p2p = {
     discoveryWorker: (isInit: boolean = false): void => {
         const configBlock = config.read(0);
         const maxPeers = max_peers;
-    
+
         // Generate witnesses, assuming generateWitnesses returns array of { name: string, ws: string | undefined }
         let witnesses = witnessesModule.generateWitnesses(false, true, configBlock.witnesses * 3, 0);
         if (!Array.isArray(witnesses) || witnesses.length === 0) {
             logger.warn('No witnesses found for discovery.');
             return;
         }
-    
+
         for (const witness of witnesses) {
             if (p2p.sockets.length >= maxPeers) {
                 logger.debug(`Max peers reached: ${p2p.sockets.length}/${maxPeers}`);
                 break;
             }
-    
+
             if (!witness.ws) continue;
-    
+
             const excluded = process.env.DISCOVERY_EXCLUDE ? process.env.DISCOVERY_EXCLUDE.split(',') : [];
             if (excluded.includes(witness.name)) continue;
-    
+
             let isConnected = false;
-    
+
             for (const socket of p2p.sockets) {
                 let ip = socket._socket.remoteAddress || '';
                 if (ip.startsWith('::ffff:')) ip = ip.slice(7);
-    
+
                 try {
                     const witnessIp = new URL(witness.ws).hostname;
                     if (witnessIp === ip) {
@@ -193,7 +200,7 @@ export const p2p = {
                     logger.debug(`Invalid witness ws url: ${witness.ws} for witness ${witness.name}`, e);
                 }
             }
-    
+
             if (!isConnected) {
                 logger[isInit ? 'info' : 'debug'](`Connecting to witness ${witness.name} at ${witness.ws}`);
                 p2p.connect([witness.ws], isInit);
@@ -290,25 +297,24 @@ export const p2p = {
             ws.close();
             return;
         }
-
+    
         if (p2p.sockets.length >= max_peers) {
             logger.warn('Incoming handshake refused because already peered enough ' + p2p.sockets.length + '/' + max_peers);
             ws.close();
             return;
         }
-
-        // close connection if we already have this peer ip in our connected sockets
+    
         for (let i = 0; i < p2p.sockets.length; i++)
             if (p2p.sockets[i]._socket.remoteAddress === ws._socket.remoteAddress
                 && p2p.sockets[i]._socket.remotePort === ws._socket.remotePort) {
                 ws.close();
                 return;
             }
-
+    
         logger.debug('Handshaking new peer', ws.url || ws._socket.remoteAddress + ':' + ws._socket.remotePort);
         let random = randomBytes(config.read(0).randomBytesLength).toString('hex');
         ws.challengeHash = random;
-
+    
         ws.pendingDisconnect = setTimeout(() => {
             for (let i = 0; i < p2p.sockets.length; i++)
                 if (p2p.sockets[i].challengeHash === random) {
@@ -317,11 +323,12 @@ export const p2p = {
                     continue;
                 }
         }, 1000);
-
+    
         p2p.sockets.push(ws);
         p2p.messageHandler(ws);
         p2p.errorHandler(ws);
-
+    
+        // Send initial node status query
         p2p.sendJSON(ws, {
             t: MessageType.QUERY_NODE_STATUS,
             d: {
@@ -329,6 +336,14 @@ export const p2p = {
                 random: random
             }
         });
+    
+        // After a short delay, query their peer list to discover more peers
+        setTimeout(() => {
+            p2p.sendJSON(ws, {
+                t: MessageType.QUERY_PEER_LIST,
+                d: {}
+            });
+        }, 1500);  // 1.5 seconds delay to avoid flooding
     },
 
     broadcastSyncStatus: (syncStatus: number | SteemSyncStatus): void => {
@@ -635,6 +650,23 @@ export const p2p = {
                         });
 
                         logger.debug(`Received sync status from ${message.d.nodeId}: ${message.d.behindBlocks} blocks behind, isSyncing: ${message.d.isSyncing}`);
+                    }
+                    break;
+                // On receiving QUERY_PEER_LIST:
+                case MessageType.QUERY_PEER_LIST:
+                    // Respond with known peer list
+                    const knownPeers = p2p.sockets.map(s => s._socket.remoteAddress + ':' + s._socket.remotePort);
+                    p2p.sendJSON(ws, { t: MessageType.PEER_LIST, d: { peers: knownPeers } });
+                    break;
+
+                // On receiving PEER_LIST:
+                case MessageType.PEER_LIST:
+                    if (Array.isArray(message.d.peers)) {
+                        for (const peerAddress of message.d.peers) {
+                            if (!p2p.isConnectedTo(peerAddress)) {
+                                p2p.connect([peerAddress], false);
+                            }
+                        }
                     }
                     break;
             }
