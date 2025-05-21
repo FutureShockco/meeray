@@ -91,6 +91,14 @@ const pendingBlockRequests = new Set<number>();
 const blockRequestRetries = new Map<number, { attempts: number, triedPeers: Set<string> }>();
 const MAX_BLOCK_RETRIES = 5;
 
+const RETRY_BASE_DELAY = 30 * 1000; // 30 seconds base delay
+const RETRY_MAX_DELAY = 15 * 60 * 1000; // Max 15 minutes
+
+interface RetryInfo {
+    attempts: number;
+    lastAttempt: number; // timestamp
+}
+
 function normalizeWsUrl(url: string): string {
     const protocolMatch = url.match(/^(ws:\/\/|wss:\/\/)/i);
     if (!protocolMatch) return url;
@@ -120,7 +128,8 @@ export const p2p = {
     recovering: false as boolean | number,
     recoverAttempt: 0,
     nodeId: null as NodeKeyPair | null,
-    recentConnectionAttempts: {} as Record<string, number>,
+    recentConnectionAttempts: {} as Record<string, RetryInfo>,
+    pendingConnections: new Set<string>(),
     isConnectedTo(address: string) {
         return this.sockets.some(ws => {
             const peerUrl = (ws as EnhancedWebSocket)._peerUrl || `ws://${ws._socket.remoteAddress}:${ws._socket.remotePort}`;
@@ -230,67 +239,79 @@ export const p2p = {
     },
 
     keepAlive: async (): Promise<void> => {
-        // Only try to reconnect if we're not at max peers
         if (p2p.sockets.length >= max_peers) {
             logger.debug(`Already at max peers (${p2p.sockets.length}/${max_peers}), skipping keep-alive check`);
             setTimeout(() => p2p.keepAlive(), keep_alive_interval);
             return;
         }
+
         const currentTime = Date.now();
+
         // Clean up old connection attempts (older than 5 minutes)
         for (const peer in p2p.recentConnectionAttempts) {
-            if (currentTime - p2p.recentConnectionAttempts[peer] > 300000) {
+            const retryInfo = p2p.recentConnectionAttempts[peer];
+            if (retryInfo && currentTime - retryInfo.lastAttempt > 300000) {  // 5 minutes
                 delete p2p.recentConnectionAttempts[peer];
             }
         }
 
-        // ensure all peers explicitly listed in PEERS are connected when online
         let peers = process.env.PEERS ? process.env.PEERS.split(',') : [];
         let toConnect: string[] = [];
 
-        // Limit the number of connection attempts per keepAlive cycle
         const maxAttemptsPerCycle = 2;
 
-        for (let p = 0; p < peers.length; p++) {
-            // Stop if we've reached the maximum attempts for this cycle
+        for (const peer of peers) {
             if (toConnect.length >= maxAttemptsPerCycle) break;
 
-            // Skip peers we recently tried to connect to
-            if (p2p.recentConnectionAttempts[peers[p]]
-                && currentTime - p2p.recentConnectionAttempts[peers[p]] < 60000) {
-                logger.debug(`Skipping recent connection attempt to ${peers[p]}`);
+            const retryInfo = p2p.recentConnectionAttempts[peer];
+            if (retryInfo && currentTime - retryInfo.lastAttempt < 60000) { // skip if last attempt < 1 min ago
+                logger.debug(`Skipping recent connection attempt to ${peer}`);
                 continue;
             }
 
             let connected = false;
-            let colonSplit = peers[p].replace('ws://', '').split(':');
-            let port = parseInt(colonSplit.pop() || '0');
-            let address = colonSplit.join(':').replace('[', '').replace(']', '');
+            const urlWithoutProtocol = peer.replace(/^ws:\/\//, '');
+            const colonSplit = urlWithoutProtocol.split(':');
+            const port = parseInt(colonSplit.pop() || '0', 10);
+            let address = colonSplit.join(':').replace(/^\[|\]$/g, ''); // strip brackets for IPv6
 
             if (!net.isIP(address)) {
                 try {
                     address = (await dns.promises.lookup(address)).address;
                 } catch (e) {
-                    logger.debug('dns lookup failed for ' + address);
-                    // Record this failed attempt
-                    p2p.recentConnectionAttempts[peers[p]] = currentTime;
+                    let errorMessage = '';
+                    if (e instanceof Error) {
+                        errorMessage = e.message;
+                    } else {
+                        errorMessage = String(e);
+                    }
+                    logger.debug(`DNS lookup failed for ${address}: ${errorMessage}`);
+                    // Record failed attempt with lastAttempt timestamp and reset attempts to 1
+                    p2p.recentConnectionAttempts[peer] = { attempts: 1, lastAttempt: currentTime };
                     continue;
                 }
             }
 
-            for (let s = 0; s < p2p.sockets.length; s++) {
-                const sock = p2p.sockets[s]._socket;
-                if (sock && sock.remoteAddress && sock.remoteAddress.replace('::ffff:', '') === address &&
-                    sock.remotePort === port) {
+            for (const sock of p2p.sockets) {
+                if (!sock._socket) continue;
+                let remoteAddress = sock._socket.remoteAddress || '';
+                if (remoteAddress.startsWith('::ffff:')) {
+                    remoteAddress = remoteAddress.slice(7);
+                }
+                if (remoteAddress === address && sock._socket.remotePort === port) {
                     connected = true;
                     break;
                 }
             }
 
             if (!connected) {
-                toConnect.push(peers[p]);
-                // Record this connection attempt
-                p2p.recentConnectionAttempts[peers[p]] = currentTime;
+                toConnect.push(peer);
+                // Record this connection attempt or update attempt count if exists
+                if (retryInfo) {
+                    p2p.recentConnectionAttempts[peer] = { attempts: retryInfo.attempts + 1, lastAttempt: currentTime };
+                } else {
+                    p2p.recentConnectionAttempts[peer] = { attempts: 1, lastAttempt: currentTime };
+                }
             }
         }
 
@@ -302,37 +323,62 @@ export const p2p = {
         setTimeout(() => p2p.keepAlive(), keep_alive_interval);
     },
 
-    connect: (urls: string[], isInit: boolean = false) => {
+    connect: function (urls: string[], isInit: boolean = false) {
         for (const url of urls) {
-            try {
-                const fixedUrl = normalizeWsUrl(url);
-                if (p2p.isConnectedTo(fixedUrl)) {
-                    logger.debug(`Already connected to ${fixedUrl}, skipping`);
+            if (this.isConnectedTo(url) || this.pendingConnections.has(url)) {
+                logger.debug(`Already connected or connecting to ${url}, skipping`);
+                continue;
+            }
+
+            const retryInfo = this.recentConnectionAttempts[url];
+            const now = Date.now();
+
+            if (retryInfo) {
+                // Calculate backoff delay: exponential based on attempts
+                const delay = Math.min(RETRY_BASE_DELAY * (2 ** (retryInfo.attempts - 1)), RETRY_MAX_DELAY);
+
+                if (now - retryInfo.lastAttempt < delay) {
+                    logger.debug(`Backoff active for ${url}, skipping connect`);
                     continue;
                 }
+            }
 
-                const ws = new WebSocket(fixedUrl) as EnhancedWebSocket;
-                (ws as EnhancedWebSocket)._peerUrl = fixedUrl;
+            try {
+                this.pendingConnections.add(url);
+                this.recentConnectionAttempts[url] = {
+                    attempts: (retryInfo?.attempts || 0) + 1,
+                    lastAttempt: now,
+                };
+
+                const ws = new WebSocket(url) as EnhancedWebSocket;
+                (ws as any)._peerUrl = url;
 
                 ws.on('open', () => {
-                    logger.info(`Connected to peer ${fixedUrl}`);
-                    p2p.handshake(ws);
+                    logger.info(`Connected to peer ${url}`);
+                    this.pendingConnections.delete(url);
+                    // Reset attempts on success
+                    if (this.recentConnectionAttempts[url]) {
+                        this.recentConnectionAttempts[url].attempts = 0;
+                    }
+                    this.handshake(ws);
                 });
 
                 ws.on('error', (err) => {
-                    logger.warn(`Failed to connect to ${fixedUrl}: ${err.message}`);
+                    logger.debug(`Failed to connect to ${url}: ${err.message}`);
+                    this.pendingConnections.delete(url);
                 });
 
                 ws.on('close', () => {
-                    logger.info(`Connection closed: ${fixedUrl}`);
-                    p2p.sockets = p2p.sockets.filter(s => s !== ws);
+                    logger.info(`Connection closed: ${url}`);
+                    this.pendingConnections.delete(url);
+                    this.sockets = this.sockets.filter(s => s !== ws);
                 });
 
-                p2p.messageHandler(ws);
-                p2p.errorHandler(ws);
-
+                this.messageHandler(ws);
+                this.errorHandler(ws);
             } catch (err) {
                 logger.error(`Exception connecting to ${url}: ${err}`);
+                this.pendingConnections.delete(url);
             }
         }
     },
