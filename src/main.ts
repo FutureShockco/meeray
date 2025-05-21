@@ -242,7 +242,7 @@ process.on('SIGINT', async function () {
         if (!erroredRebuild && chain.restoredBlocks && chain.getLatestBlock()._id < chain.restoredBlocks) return
         process.stdout.write('\r')
         logger.debug(`Waiting for writerQueue... queue=${cache.writerQueue?.queue?.length}, processing=${isProcessing}`);
-
+        blocks.close()
         if (isQueueEmpty && !isProcessing) {
             clearInterval(shutdownCheck);
             logger.info('Echelon exited safely');
@@ -253,7 +253,7 @@ process.on('SIGINT', async function () {
     setTimeout(() => {
         logger.warn('Forcing shutdown after 30s timeout...');
         process.exit(1);
-    }, 30_000);
+    }, 30000);
 });
 
 main().catch(error => {

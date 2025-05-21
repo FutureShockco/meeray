@@ -48,6 +48,6 @@ export async function adjustBalance(accountName: string, tokenIdentifier: string
         return false;
     }
 
-    logger.info(`[account-utils] Balance updated for ${accountName}. Token: ${tokenIdentifier}, New Balance: ${newBalance}.`);
+    logger.debug(`[account-utils] Balance updated for ${accountName}. Token: ${tokenIdentifier}, New Balance: ${newBalance}.`);
     return true;
 } 

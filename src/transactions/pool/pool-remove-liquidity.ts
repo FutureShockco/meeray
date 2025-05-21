@@ -135,7 +135,7 @@ export async function process(data: PoolRemoveLiquidityData, sender: string): Pr
         return false;
     }
 
-    logger.info(`[pool-remove-liquidity] ${data.provider} removed liquidity from pool ${data.poolId} by burning ${data.lpTokenAmount} LP tokens. Received ${tokenAAmountToReturn.toFixed(8)} ${pool.tokenA_symbol} and ${tokenBAmountToReturn.toFixed(8)} ${pool.tokenB_symbol}.`);
+    logger.debug(`[pool-remove-liquidity] ${data.provider} removed liquidity from pool ${data.poolId} by burning ${data.lpTokenAmount} LP tokens. Received ${tokenAAmountToReturn.toFixed(8)} ${pool.tokenA_symbol} and ${tokenBAmountToReturn.toFixed(8)} ${pool.tokenB_symbol}.`);
 
     // Log event
     const eventDocument = {

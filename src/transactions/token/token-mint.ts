@@ -106,7 +106,7 @@ export async function process(data: TokenMintData, sender: string): Promise<bool
       return false;
     }
 
-    logger.info(`[token-mint] Successfully minted ${data.amount} ${data.symbol} to ${data.to} by ${sender}.`);
+    logger.debug(`[token-mint] Successfully minted ${data.amount} ${data.symbol} to ${data.to} by ${sender}.`);
 
     // Log event
     const eventDocument = {
@@ -135,7 +135,7 @@ export async function process(data: TokenMintData, sender: string): Promise<bool
     // This is a simple attempt; a more robust system might use transactions or a saga pattern.
     try {
         await cache.updateOnePromise('tokens', { _id: data.symbol, currentSupply: { $gte: data.amount } }, { $inc: { currentSupply: -data.amount } });
-        logger.info(`[token-mint] Rollback attempt for ${data.symbol} supply due to error during mint processing.`);
+        logger.debug(`[token-mint] Rollback attempt for ${data.symbol} supply due to error during mint processing.`);
     } catch (rollbackError) {
         logger.error(`[token-mint] CRITICAL: Failed to rollback token supply for ${data.symbol} after error: ${rollbackError}`);
     }

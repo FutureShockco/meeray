@@ -34,7 +34,7 @@ class MatchingEngine {
   private orderBooks: Map<string, OrderBook>; // Key: pairId
 
   constructor() {
-    logger.info('[MatchingEngine] Initializing...');
+    logger.debug('[MatchingEngine] Initializing...');
     this.orderBooks = new Map<string, OrderBook>();
     this._initializeBooks().catch(err => {
       logger.error('[MatchingEngine] CRITICAL: Failed to initialize order books during construction:', err);
@@ -43,7 +43,7 @@ class MatchingEngine {
   }
 
   private async _initializeBooks(): Promise<void> {
-    logger.info('[MatchingEngine] Loading trading pairs and initializing order books...');
+    logger.debug('[MatchingEngine] Loading trading pairs and initializing order books...');
     const activePairs = await new Promise<TradingPair[] | null>((resolve) => {
       // Assuming cache.find exists and takes a callback. If not, this needs to be an equivalent method.
       // Based on cache.ts, cache.find does not exist.
@@ -65,14 +65,14 @@ class MatchingEngine {
     if (!activePairs || activePairs.length === 0) {
       logger.warn('[MatchingEngine] No active trading pairs found to initialize.');
       // Ensure the final log reflects this outcome
-      logger.info('[MatchingEngine] Order books initialization skipped: No active pairs loaded.');
+      logger.debug('[MatchingEngine] Order books initialization skipped: No active pairs loaded.');
       return;
     }
 
     for (const pair of activePairs) { // This loop will likely not run
       const orderBook = new OrderBook(pair._id, pair.tickSize, pair.lotSize);
       this.orderBooks.set(pair._id, orderBook);
-      logger.info(`[MatchingEngine] Initialized order book for pair ${pair._id}.`);
+      logger.debug(`[MatchingEngine] Initialized order book for pair ${pair._id}.`);
 
       // Temporarily commenting out open order loading due to uncertainty with cache.find
       // Confirmed: cache.find does not exist. This logic needs a new cache method to function.
@@ -97,7 +97,7 @@ class MatchingEngine {
       });
 
       if (openOrders && openOrders.length > 0) {
-        logger.info(`[MatchingEngine] Loading ${openOrders.length} open orders for pair ${pair._id}...`);
+        logger.debug(`[MatchingEngine] Loading ${openOrders.length} open orders for pair ${pair._id}...`);
         for (const order of openOrders) {
           if (order.type === OrderType.LIMIT) {
             orderBook.addOrder(order);
@@ -106,7 +106,7 @@ class MatchingEngine {
       }
       */
     }
-    logger.info('[MatchingEngine] Order books initialization attempted (pair/order loading may be skipped due to missing cache.find).');
+    logger.debug('[MatchingEngine] Order books initialization attempted (pair/order loading may be skipped due to missing cache.find).');
   }
 
   private async _getOrderBook(pairId: string): Promise<OrderBook | null> {
@@ -118,7 +118,7 @@ class MatchingEngine {
     if (pair) {
         const orderBook = new OrderBook(pair._id, pair.tickSize, pair.lotSize);
         this.orderBooks.set(pair._id, orderBook);
-        logger.info(`[MatchingEngine] Lazily initialized order book for pair ${pair._id}.`);
+        logger.debug(`[MatchingEngine] Lazily initialized order book for pair ${pair._id}.`);
         // TODO: Potentially load open orders for this newly lazy-loaded book.
         return orderBook;
     }
@@ -127,7 +127,7 @@ class MatchingEngine {
   }
 
   public async warmupMarketData(): Promise<void> {
-    logger.info('[MatchingEngine] Starting market data warmup...');
+    logger.debug('[MatchingEngine] Starting market data warmup...');
     let activePairs: TradingPair[] | null = null;
     try {
       // Ensure cache.findPromise exists and is correctly typed in cache.ts
@@ -144,7 +144,7 @@ class MatchingEngine {
       return;
     }
 
-    logger.info(`[MatchingEngine:warmupMarketData] Found ${activePairs.length} active trading pair(s). Initializing order books...`);
+    logger.debug(`[MatchingEngine:warmupMarketData] Found ${activePairs.length} active trading pair(s). Initializing order books...`);
     let successfulBookInitializations = 0;
 
     for (const pair of activePairs) {
@@ -156,7 +156,7 @@ class MatchingEngine {
       const orderBook = new OrderBook(pair._id, pair.tickSize, pair.lotSize);
       this.orderBooks.set(pair._id, orderBook); 
       // Using pair._id for logging
-      logger.info(`[MatchingEngine:warmupMarketData] Initialized order book for pair ${pair._id}.`);
+      logger.debug(`[MatchingEngine:warmupMarketData] Initialized order book for pair ${pair._id}.`);
 
       let openOrders: Order[] | null = null;
       try {
@@ -171,7 +171,7 @@ class MatchingEngine {
       }
 
       if (openOrders && openOrders.length > 0) {
-        logger.info(`[MatchingEngine:warmupMarketData] Loading ${openOrders.length} open order(s) for pair ${pair._id}...`);
+        logger.debug(`[MatchingEngine:warmupMarketData] Loading ${openOrders.length} open order(s) for pair ${pair._id}...`);
         let ordersLoaded = 0;
         for (const order of openOrders) {
           if (order.type === OrderType.LIMIT) {
@@ -185,17 +185,17 @@ class MatchingEngine {
               logger.warn(`[MatchingEngine:warmupMarketData] Skipping order ${order._id} for pair ${pair._id} due to non-LIMIT type: ${order.type}`);
           }
         }
-        logger.info(`[MatchingEngine:warmupMarketData] Successfully loaded ${ordersLoaded} order(s) into book for pair ${pair._id}.`);
+        logger.debug(`[MatchingEngine:warmupMarketData] Successfully loaded ${ordersLoaded} order(s) into book for pair ${pair._id}.`);
       } else {
-        logger.info(`[MatchingEngine:warmupMarketData] No open orders found to load for pair ${pair._id}.`);
+        logger.debug(`[MatchingEngine:warmupMarketData] No open orders found to load for pair ${pair._id}.`);
       }
       successfulBookInitializations++;
     }
-    logger.info(`[MatchingEngine:warmupMarketData] Market data warmup completed. Initialized ${successfulBookInitializations} order book(s) out of ${activePairs.length} active pair(s).`);
+    logger.debug(`[MatchingEngine:warmupMarketData] Market data warmup completed. Initialized ${successfulBookInitializations} order book(s) out of ${activePairs.length} active pair(s).`);
   }
 
   public async addOrder(takerOrder: Order): Promise<EngineMatchResult> {
-    logger.info(`[MatchingEngine] Received order ${takerOrder._id} for pair ${takerOrder.pairId}: ${takerOrder.side} ${takerOrder.quantity} ${takerOrder.baseAssetSymbol} @ ${takerOrder.price || takerOrder.type}`);
+    logger.debug(`[MatchingEngine] Received order ${takerOrder._id} for pair ${takerOrder.pairId}: ${takerOrder.side} ${takerOrder.quantity} ${takerOrder.baseAssetSymbol} @ ${takerOrder.price || takerOrder.type}`);
     
     const orderBook = await this._getOrderBook(takerOrder.pairId);
     if (!orderBook) {
@@ -256,7 +256,7 @@ class MatchingEngine {
     let allUpdatesSuccessful = true;
 
     if (trades.length > 0) {
-      logger.info(`[MatchingEngine] Order ${takerOrder._id} generated ${trades.length} trades.`);
+      logger.debug(`[MatchingEngine] Order ${takerOrder._id} generated ${trades.length} trades.`);
       for (const trade of trades) {
         const tradePersisted = await new Promise<boolean>(resolve => {
           cache.insertOne('trades', trade, (err:any, res:any) => err || !res ? resolve(false) : resolve(true) );
@@ -334,12 +334,12 @@ class MatchingEngine {
         return { order: takerOrder, trades: trades, accepted: true, rejectReason: "Processed with some errors, check logs." };
     }
     
-    logger.info(`[MatchingEngine] Finished processing order ${takerOrder._id}. Final status: ${takerOrder.status}, Filled: ${takerOrder.filledQuantity}`);
+    logger.debug(`[MatchingEngine] Finished processing order ${takerOrder._id}. Final status: ${takerOrder.status}, Filled: ${takerOrder.filledQuantity}`);
     return { order: takerOrder, trades: trades, accepted: true };
   }
 
   public async cancelOrder(orderId: string, pairId: string, userId: string): Promise<boolean> {
-    logger.info(`[MatchingEngine] Received cancel request for order: ${orderId} on pair ${pairId} by user ${userId}`);
+    logger.debug(`[MatchingEngine] Received cancel request for order: ${orderId} on pair ${pairId} by user ${userId}`);
     const orderBook = await this._getOrderBook(pairId);
     if (!orderBook) {
       logger.error(`[MatchingEngine] Cannot cancel order ${orderId}: Order book for pair ${pairId} not found.`);
@@ -364,12 +364,12 @@ class MatchingEngine {
           logger.error(`[MatchingEngine] CRITICAL: Order ${orderId} removed from book but FAILED to mark CANCELLED in DB.`);
           return false; // Or throw, this is a critical state
       }
-      logger.info(`[MatchingEngine] Order ${orderId} removed from book and marked CANCELLED.`);
+      logger.debug(`[MatchingEngine] Order ${orderId} removed from book and marked CANCELLED.`);
       return true;
     } else {
       const currentOrderState = await cache.findOnePromise('orders', { _id: orderId }) as Order | null;
       if (currentOrderState && (currentOrderState.status === OrderStatus.FILLED || currentOrderState.status === OrderStatus.CANCELLED)) {
-        logger.info(`[MatchingEngine] Order ${orderId} already filled or cancelled in DB. Considered success for cancellation attempt.`);
+        logger.debug(`[MatchingEngine] Order ${orderId} already filled or cancelled in DB. Considered success for cancellation attempt.`);
         return true;
       }
       logger.warn(`[MatchingEngine] Failed to remove order ${orderId} from book. It might not have been found or already processed.`);

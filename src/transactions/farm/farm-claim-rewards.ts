@@ -66,7 +66,7 @@ export async function process(data: FarmClaimRewardsData, sender: string): Promi
     // - userFarmPos.stakedLpAmount, userFarmPos.rewardDebt (if using MasterChef-like model)
     // - Time elapsed since last claim or last update to farm/user position.
     const rewardsToClaim = 0; // No rewards calculated yet.
-    logger.info(`[farm-claim-rewards] Placeholder: Calculated ${rewardsToClaim} ${farm.rewardTokenSymbol} rewards for ${data.staker} from farm ${data.farmId}.`);
+    logger.debug(`[farm-claim-rewards] Placeholder: Calculated ${rewardsToClaim} ${farm.rewardTokenSymbol} rewards for ${data.staker} from farm ${data.farmId}.`);
 
     if (rewardsToClaim > 0) {
       // TODO: Transfer rewardsToClaim of farm.rewardTokenSymbol (from farm.rewardTokenIssuer) 
@@ -76,7 +76,7 @@ export async function process(data: FarmClaimRewardsData, sender: string): Promi
       // 2. Calling adjustBalance for the farm's reward pool (debit).
       // 3. Calling adjustBalance for the staker (credit).
       // This needs careful atomicity and error handling.
-      logger.info(`[farm-claim-rewards] Placeholder: Would transfer ${rewardsToClaim} ${farm.rewardTokenSymbol} to ${data.staker}.`);
+      logger.debug(`[farm-claim-rewards] Placeholder: Would transfer ${rewardsToClaim} ${farm.rewardTokenSymbol} to ${data.staker}.`);
     }
 
     // Update lastClaimedAt in UserFarmPosition, even if rewardsToClaim is 0, to mark the claim attempt.
@@ -93,7 +93,7 @@ export async function process(data: FarmClaimRewardsData, sender: string): Promi
         // Depending on rewards transferred, might not want to return false here if rewards WERE sent.
     }
 
-    logger.info(`[farm-claim-rewards] ${data.staker} claimed rewards from farm ${data.farmId}. Amount: ${rewardsToClaim} ${farm.rewardTokenSymbol}.`);
+    logger.debug(`[farm-claim-rewards] ${data.staker} claimed rewards from farm ${data.farmId}. Amount: ${rewardsToClaim} ${farm.rewardTokenSymbol}.`);
 
     const eventDocument = {
       type: 'farmClaimRewards',

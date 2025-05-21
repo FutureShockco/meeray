@@ -79,7 +79,7 @@ export async function process(data: TokenUpdateData, sender: string): Promise<bo
     if (data.websiteUrl !== undefined) fieldsToUpdate.websiteUrl = data.websiteUrl;
 
     if (Object.keys(fieldsToUpdate).length === 0) {
-      logger.info('[token-update] No actual fields to update for token ${data.symbol}, though validation should have caught empty updates.');
+      logger.debug('[token-update] No actual fields to update for token ${data.symbol}, though validation should have caught empty updates.');
       return true; 
     }
 
@@ -97,7 +97,7 @@ export async function process(data: TokenUpdateData, sender: string): Promise<bo
       return false;
     }
 
-    logger.info(`[token-update] Token ${data.symbol} updated successfully by ${sender}. Fields updated: ${Object.keys(originalFieldsUpdated).join(', ')}`);
+    logger.debug(`[token-update] Token ${data.symbol} updated successfully by ${sender}. Fields updated: ${Object.keys(originalFieldsUpdated).join(', ')}`);
     
     // Log event
     const eventDocument = {

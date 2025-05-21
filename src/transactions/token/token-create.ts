@@ -120,7 +120,7 @@ export async function process(data: TokenCreateData, sender: string): Promise<bo
       // logger.error already called in the promise if it failed
       return false;
     }
-    logger.info(`[token-create] Token ${data.symbol} created by ${sender} and inserted into cache.`);
+    logger.debug(`[token-create] Token ${data.symbol} created by ${sender} and inserted into cache.`);
 
     // If initialSupply is specified and greater than 0, mint it to the creator
     if (tokenDocument.currentSupply > 0) {
@@ -148,7 +148,7 @@ export async function process(data: TokenCreateData, sender: string): Promise<bo
         // For simplicity here, we'll return false, but a real system needs robust error handling/rollback.
         return false;
       }
-      logger.info(`[token-create] Initial supply of ${tokenDocument.currentSupply} ${data.symbol} minted to creator ${sender}.`);
+      logger.debug(`[token-create] Initial supply of ${tokenDocument.currentSupply} ${data.symbol} minted to creator ${sender}.`);
     }
 
     // Log event

@@ -80,12 +80,12 @@ export async function validateTx(data: LaunchpadParticipatePresaleData, sender: 
     return false;
   }
 
-  logger.info(`[launchpad-participate-presale] Validation successful for ${sender} on launchpad ${data.launchpadId}.`);
+  logger.debug(`[launchpad-participate-presale] Validation successful for ${sender} on launchpad ${data.launchpadId}.`);
   return true;
 }
 
 export async function process(data: LaunchpadParticipatePresaleData, sender: string): Promise<boolean> {
-  logger.info(`[launchpad-participate-presale] Processing participation from ${sender} for ${data.launchpadId}: ${JSON.stringify(data)}`);
+  logger.debug(`[launchpad-participate-presale] Processing participation from ${sender} for ${data.launchpadId}: ${JSON.stringify(data)}`);
   try {
     const launchpad = await cache.findOnePromise('launchpads', { _id: data.launchpadId }) as Launchpad | null;
     if (!launchpad || !launchpad.presaleDetailsSnapshot || !launchpad.presale) { // Should be caught by validation
@@ -132,7 +132,7 @@ export async function process(data: LaunchpadParticipatePresaleData, sender: str
     
     // Check if hard cap is met with this contribution
     if (newTotalRaised >= presaleDetails.hardCap) {
-        logger.info(`[launchpad-participate-presale] Hard cap reached for launchpad ${data.launchpadId}. New total: ${newTotalRaised}`);
+        logger.debug(`[launchpad-participate-presale] Hard cap reached for launchpad ${data.launchpadId}. New total: ${newTotalRaised}`);
         // Transition status if this contribution meets/exceeds hardcap
         // updatePayload.$set['status'] = LaunchpadStatus.PRESALE_ENDED; // Or a specific hardcap met status
         // The actual status transition to PRESALE_ENDED or similar should ideally be managed by a separate process
@@ -170,7 +170,7 @@ export async function process(data: LaunchpadParticipatePresaleData, sender: str
         });
     });
 
-    logger.info(`[launchpad-participate-presale] Participation by ${sender} for ${data.contributionAmount} ${contributionTokenIdentifier} in launchpad ${data.launchpadId} processed successfully.`);
+    logger.debug(`[launchpad-participate-presale] Participation by ${sender} for ${data.contributionAmount} ${contributionTokenIdentifier} in launchpad ${data.launchpadId} processed successfully.`);
     return true;
 
   } catch (error) {

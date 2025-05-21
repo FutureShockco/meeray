@@ -45,12 +45,12 @@ export async function validateTx(data: MarketCancelOrderData, sender: string): P
     return false; // Should not happen if order exists and userId matches sender
   }
   
-  logger.info('[market-cancel-order] Validation successful.');
+  logger.debug('[market-cancel-order] Validation successful.');
   return true;
 }
 
 export async function process(data: MarketCancelOrderData, sender: string): Promise<boolean> {
-  logger.info(`[market-cancel-order] Processing cancellation from ${sender}: ${JSON.stringify(data)}`);
+  logger.debug(`[market-cancel-order] Processing cancellation from ${sender}: ${JSON.stringify(data)}`);
   try {
     // Re-fetch order to ensure it's still in a cancellable state (race condition mitigation)
     const orderToCancel = await cache.findOnePromise('orders', { _id: data.orderId, userId: sender }) as Order | null;
@@ -132,12 +132,12 @@ export async function process(data: MarketCancelOrderData, sender: string): Prom
         // Manual intervention might be needed.
         return false; // Or throw to indicate a severe problem
       }
-      logger.info(`[market-cancel-order] Refunded ${amountToRefund} ${tokenIdentifier} to ${sender} for order ${data.orderId}.`);
+      logger.debug(`[market-cancel-order] Refunded ${amountToRefund} ${tokenIdentifier} to ${sender} for order ${data.orderId}.`);
     } else {
-        logger.info(`[market-cancel-order] No amount to refund for order ${data.orderId}, or refund calculation not applicable for this order type/state.`);
+        logger.debug(`[market-cancel-order] No amount to refund for order ${data.orderId}, or refund calculation not applicable for this order type/state.`);
     }
 
-    logger.info(`[market-cancel-order] Order ${data.orderId} cancelled successfully by ${sender}.`);
+    logger.debug(`[market-cancel-order] Order ${data.orderId} cancelled successfully by ${sender}.`);
 
     // Event logging
     const eventDocument = {

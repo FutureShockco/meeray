@@ -86,12 +86,12 @@ export async function validateTx(data: MarketCreatePairData, sender: string): Pr
     // return false;
   }
 
-  logger.info('[market-create-pair] Validation successful.');
+  logger.debug('[market-create-pair] Validation successful.');
   return true;
 }
 
 export async function process(data: MarketCreatePairData, sender: string): Promise<boolean> {
-  logger.info(`[market-create-pair] Processing request from ${sender} to create pair: ${JSON.stringify(data)}`);
+  logger.debug(`[market-create-pair] Processing request from ${sender} to create pair: ${JSON.stringify(data)}`);
   try {
     const pairId = generateTradingPairId(data.baseAssetSymbol, data.baseAssetIssuer, data.quoteAssetSymbol, data.quoteAssetIssuer);
 
@@ -123,7 +123,7 @@ export async function process(data: MarketCreatePairData, sender: string): Promi
       return false;
     }
 
-    logger.info(`[market-create-pair] Trading Pair ${pairId} (${data.baseAssetSymbol}/${data.quoteAssetSymbol}) created by ${sender}.`);
+    logger.debug(`[market-create-pair] Trading Pair ${pairId} (${data.baseAssetSymbol}/${data.quoteAssetSymbol}) created by ${sender}.`);
 
     // Log event
     const eventDocument = {

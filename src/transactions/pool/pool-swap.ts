@@ -253,7 +253,7 @@ export async function process(data: PoolSwapData, sender: string): Promise<boole
         throw new Error('Failed to credit final tokens.'); // This will trigger rollback
       }
 
-      logger.info(`[pool-swap-route] Trader ${data.trader} routed swap ${data.amountIn} ${data.fromTokenSymbol} for ${currentTokenAmount.toFixed(8)} ${data.toTokenSymbol} via ${data.hops.length} hops.`);
+      logger.debug(`[pool-swap-route] Trader ${data.trader} routed swap ${data.amountIn} ${data.fromTokenSymbol} for ${currentTokenAmount.toFixed(8)} ${data.toTokenSymbol} via ${data.hops.length} hops.`);
       const eventDocument = {
         type: 'poolRouteSwap', // Differentiate event type
         timestamp: new Date().toISOString(),
@@ -281,7 +281,7 @@ export async function process(data: PoolSwapData, sender: string): Promise<boole
             previousPoolUpdateChanges = { tokenB_reserve: info.originalReserveIn, tokenA_reserve: info.originalReserveOut };
         }
         await cache.updateOnePromise('liquidityPools', { _id: info.pool._id }, { $set: previousPoolUpdateChanges });
-        logger.info(`[pool-swap-route] Rolled back reserves for pool ${info.pool._id}`);
+        logger.debug(`[pool-swap-route] Rolled back reserves for pool ${info.pool._id}`);
       }
       return false;
     }
@@ -366,7 +366,7 @@ export async function process(data: PoolSwapData, sender: string): Promise<boole
         return false;
     }
 
-        logger.info(`[pool-swap-direct] Trader ${data.trader} swapped ${amountInNum.toFixed(8)} ${data.tokenInSymbol} for ${amountOut.toFixed(8)} ${data.tokenOutSymbol} in pool ${data.poolId}.`);
+        logger.debug(`[pool-swap-direct] Trader ${data.trader} swapped ${amountInNum.toFixed(8)} ${data.tokenInSymbol} for ${amountOut.toFixed(8)} ${data.tokenOutSymbol} in pool ${data.poolId}.`);
 
     const eventDocument = {
           type: 'poolDirectSwap', // Differentiate event type

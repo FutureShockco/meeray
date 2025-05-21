@@ -45,7 +45,7 @@ async function searchForHandlers(dirPath: string) {
         continue;
       }
 
-      logger.info(`Loading transaction handler from: ${filePath}`);
+      logger.debug(`Loading transaction handler from: ${filePath}`);
       try {
         const module = await import(pathToFileURL(filePath).href);
 
@@ -67,7 +67,7 @@ async function searchForHandlers(dirPath: string) {
               validate: module.validateTx,
               process: module.process
             };
-            logger.info(`Registered transaction handler for ${typeName} (type ${txType})`);
+            logger.debug(`Registered transaction handler for ${typeName} (type ${txType})`);
           } else {
             logger.warn(`Failed to map ${typeName} to a valid TransactionType. Available types: ${Object.keys(TransactionType).filter(k => isNaN(Number(k))).join(', ')}`);
 
@@ -96,7 +96,7 @@ async function searchForHandlers(dirPath: string) {
                   validate: module.validateTx,
                   process: module.process
                 };
-                logger.info(`Registered transaction handler for ${typeName} using alternative mapping: ${altName} (type ${altType})`);
+                logger.debug(`Registered transaction handler for ${typeName} using alternative mapping: ${altName} (type ${altType})`);
                 found = true;
                 break;
               }
@@ -120,13 +120,13 @@ async function searchForHandlers(dirPath: string) {
 export async function discoverTransactionHandlers() {
   try {
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
-    logger.info(`Looking for transaction handlers in ${__dirname}`);
+    logger.debug(`Looking for transaction handlers in ${__dirname}`);
 
     // Start recursive search from the transactions directory
     await searchForHandlers(__dirname);
 
     // Log all registered handlers
-    logger.info(`Registered transaction handlers: ${Object.keys(transactionHandlers).map(k => `${k} (${TransactionType[Number(k)]})`).join(', ')}`);
+    logger.debug(`Registered transaction handlers: ${Object.keys(transactionHandlers).map(k => `${k} (${TransactionType[Number(k)]})`).join(', ')}`);
   } catch (error) {
     logger.error('Error discovering transaction handlers:', error);
     throw error;
@@ -169,7 +169,7 @@ export async function processTransaction(tx: Transaction): Promise<{ success: bo
       return { success: false, error: `invalid ${TransactionType[tx.type].toLowerCase()} transaction data` };
     }
 
-    logger.info(`Transaction validated successfully (not executed): ${TransactionType[tx.type]} from ${tx.sender}`);
+    logger.debug(`Transaction validated successfully (not executed): ${TransactionType[tx.type]} from ${tx.sender}`);
     return { success: true }; // Now only indicates validation success
   } catch (error) {
     logger.error(`Error validating transaction ${tx.type}: ${error}`);

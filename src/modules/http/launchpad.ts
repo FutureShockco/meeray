@@ -12,13 +12,13 @@ const router: Router = express.Router();
 
 // GET endpoint to list all launchpad projects
 const listLaunchpadsHandler: RequestHandler = async (req: Request, res: Response) => {
-    logger.info('[API /launchpad] Received request to list launchpads');
+    logger.debug('[API /launchpad] Received request to list launchpads');
     try {
         // Example: Fetch all launchpads. Add query parameters for filtering/pagination later.
         const launchpads = await cache.findPromise('launchpads', {}); 
 
         if (!launchpads) {
-            logger.info('[API /launchpad] No launchpads found or error fetching.');
+            logger.debug('[API /launchpad] No launchpads found or error fetching.');
             res.status(404).json({ message: 'No launchpads found' });
             return;
         }
@@ -40,12 +40,12 @@ router.get('/', listLaunchpadsHandler);
 // TODO: Add GET endpoint for a specific launchpad: /launchpad/:launchpadId
 const getLaunchpadByIdHandler: RequestHandler = async (req: Request, res: Response) => {
     const { launchpadId } = req.params;
-    logger.info(`[API /launchpad/:launchpadId] Received request for launchpad: ${launchpadId}`);
+    logger.debug(`[API /launchpad/:launchpadId] Received request for launchpad: ${launchpadId}`);
     try {
         const launchpad = await cache.findOnePromise('launchpads', { _id: launchpadId });
 
         if (!launchpad) {
-            logger.info(`[API /launchpad/:launchpadId] Launchpad ${launchpadId} not found.`);
+            logger.debug(`[API /launchpad/:launchpadId] Launchpad ${launchpadId} not found.`);
             res.status(404).json({ message: `Launchpad with ID ${launchpadId} not found` });
             return;
         }
@@ -65,18 +65,18 @@ router.get('/:launchpadId', getLaunchpadByIdHandler);
 // TODO: Add GET endpoint for user participation in a launchpad: /launchpad/:launchpadId/user/:userId
 const getUserParticipationHandler: RequestHandler = async (req: Request, res: Response) => {
     const { launchpadId, userId } = req.params;
-    logger.info(`[API /launchpad/:launchpadId/user/:userId] Received request for user ${userId} participation in launchpad ${launchpadId}`);
+    logger.debug(`[API /launchpad/:launchpadId/user/:userId] Received request for user ${userId} participation in launchpad ${launchpadId}`);
     try {
         const launchpad = await cache.findOnePromise('launchpads', { _id: launchpadId }) as any; // Cast to any to access presale.participants
 
         if (!launchpad) {
-            logger.info(`[API /launchpad/:launchpadId/user/:userId] Launchpad ${launchpadId} not found.`);
+            logger.debug(`[API /launchpad/:launchpadId/user/:userId] Launchpad ${launchpadId} not found.`);
             res.status(404).json({ message: `Launchpad with ID ${launchpadId} not found` });
             return;
         }
 
         if (!launchpad.presale || !launchpad.presale.participants) {
-            logger.info(`[API /launchpad/:launchpadId/user/:userId] Launchpad ${launchpadId} has no presale or participant data.`);
+            logger.debug(`[API /launchpad/:launchpadId/user/:userId] Launchpad ${launchpadId} has no presale or participant data.`);
             res.status(404).json({ message: `No presale participation data found for launchpad ${launchpadId}` });
             return;
         }
@@ -84,7 +84,7 @@ const getUserParticipationHandler: RequestHandler = async (req: Request, res: Re
         const participant = launchpad.presale.participants.find((p: any) => p.userId === userId);
 
         if (!participant) {
-            logger.info(`[API /launchpad/:launchpadId/user/:userId] User ${userId} not found in participants for launchpad ${launchpadId}.`);
+            logger.debug(`[API /launchpad/:launchpadId/user/:userId] User ${userId} not found in participants for launchpad ${launchpadId}.`);
             res.status(404).json({ message: `User ${userId} did not participate in launchpad ${launchpadId}` });
             return;
         }
@@ -104,13 +104,13 @@ router.get('/:launchpadId/user/:userId', getUserParticipationHandler);
 // TODO: Add GET endpoint for claimable tokens for a user in a launchpad: /launchpad/:launchpadId/user/:userId/claimable
 const getClaimableTokensHandler: RequestHandler = async (req: Request, res: Response) => {
     const { launchpadId, userId } = req.params;
-    logger.info(`[API /launchpad/:launchpadId/user/:userId/claimable] Received request for claimable tokens for user ${userId} in launchpad ${launchpadId}`);
+    logger.debug(`[API /launchpad/:launchpadId/user/:userId/claimable] Received request for claimable tokens for user ${userId} in launchpad ${launchpadId}`);
 
     try {
         const launchpad = await cache.findOnePromise('launchpads', { _id: launchpadId }) as any | null; // Cast to any for now, will use Launchpad interface later
 
         if (!launchpad) {
-            logger.info(`[API /launchpad/:launchpadId/user/:userId/claimable] Launchpad ${launchpadId} not found.`);
+            logger.debug(`[API /launchpad/:launchpadId/user/:userId/claimable] Launchpad ${launchpadId} not found.`);
             res.status(404).json({ message: `Launchpad with ID ${launchpadId} not found` });
             return;
         }

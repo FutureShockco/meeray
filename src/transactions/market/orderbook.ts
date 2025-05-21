@@ -43,7 +43,7 @@ export class OrderBook {
         this.asks = [];
         this.tickSize = new Decimal(tickSize);
         this.lotSize = new Decimal(lotSize);
-        logger.info(`[OrderBook-${pairId}] Initialized with tickSize: ${tickSize}, lotSize: ${lotSize}`);
+        logger.debug(`[OrderBook-${pairId}] Initialized with tickSize: ${tickSize}, lotSize: ${lotSize}`);
     }
 
     // Add a new LIMIT order to the book
@@ -90,7 +90,7 @@ export class OrderBook {
         const removedMakerOrders: string[] = [];
         let updatedMakerOrder: Order | undefined = undefined;
 
-        logger.info(`[OrderBook-${this.pairId}] Matching order ${takerOrder._id}: ${takerOrder.side} ${takerOrder.quantity} @ ${takerOrder.price || 'MARKET'}`);
+        logger.debug(`[OrderBook-${this.pairId}] Matching order ${takerOrder._id}: ${takerOrder.side} ${takerOrder.quantity} @ ${takerOrder.price || 'MARKET'}`);
 
         const bookToMatchAgainst = takerOrder.side === OrderSide.BUY ? this.asks : this.bids;
         
@@ -170,7 +170,7 @@ export class OrderBook {
             logger.debug(`[OrderBook-${this.pairId}] Taker LIMIT order ${takerOrder._id} partially filled. Remainder ${remainingTakerOrder.quantity} could be added to book.`);
         }
         
-        logger.info(`[OrderBook-${this.pairId}] Match attempt for ${takerOrder._id} resulted in ${trades.length} trades. Taker fully filled: ${takerOrderFullyFilled}.`);
+        logger.debug(`[OrderBook-${this.pairId}] Match attempt for ${takerOrder._id} resulted in ${trades.length} trades. Taker fully filled: ${takerOrderFullyFilled}.`);
 
         return {
             trades,

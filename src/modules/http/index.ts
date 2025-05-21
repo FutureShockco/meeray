@@ -36,7 +36,7 @@ export function init(): void {
         const endpointPromises = files.map(async (file) => {
             const filePath = path.join(__dirname, file);
             const importUrl = new URL(`file:///${filePath.replace(/\\/g, '/')}`).href;
-            logger.info(`Importing endpoint module from: ${importUrl}`);
+            logger.debug(`Importing endpoint module from: ${importUrl}`);
             try {
                 const endpointModule = await import(/* webpackIgnore: true */ importUrl);
                 if (!endpointModule.default) {
@@ -46,7 +46,7 @@ export function init(): void {
                 // Use the filename (without extension) as the route
                 const routeName = '/' + file.replace(/\.(ts|js)$/, '');
                 app.use(routeName, endpointModule.default);
-                logger.info('Initialized API endpoint ' + routeName);
+                logger.debug('Initialized API endpoint ' + routeName);
             } catch (error) {
                 logger.error('Failed to load API endpoint ' + file, error);
             }

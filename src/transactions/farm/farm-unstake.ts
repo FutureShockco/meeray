@@ -160,7 +160,7 @@ export async function process(data: FarmUnstakeData, sender: string): Promise<bo
 
     // TODO: Handle reward claiming if data.withdrawRewards is true
 
-    logger.info(`[farm-unstake] Staker ${data.staker} unstaked ${data.lpTokenAmount} LP tokens from farm ${data.farmId} to pool ${poolIdForLp}.`);
+    logger.debug(`[farm-unstake] Staker ${data.staker} unstaked ${data.lpTokenAmount} LP tokens from farm ${data.farmId} to pool ${poolIdForLp}.`);
 
     const eventDocument = {
       type: 'farmUnstake',

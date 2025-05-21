@@ -155,7 +155,7 @@ export async function process(data: NftMintData, sender: string): Promise<boolea
       // await cache.deleteOnePromise('nfts', { _id: fullInstanceId }); // Example of a rollback attempt (needs deleteOnePromise)
     }
 
-    logger.info(`[nft-mint] NFT ${fullInstanceId} minted successfully into collection ${data.collectionSymbol} by ${sender} for owner ${data.owner}.`);
+    logger.debug(`[nft-mint] NFT ${fullInstanceId} minted successfully into collection ${data.collectionSymbol} by ${sender} for owner ${data.owner}.`);
 
     const eventDocument = {
       type: 'nftMint',

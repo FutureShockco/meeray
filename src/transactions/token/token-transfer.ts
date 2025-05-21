@@ -142,17 +142,17 @@ export async function process(data: TokenTransferData, sender: string): Promise<
         return false;
       }
       if (data.symbol === config.nativeToken) {
-        logger.info(`[token-burn] Native token ${data.symbol} burnt. Adjusting node approval for sender.`);
+        logger.debug(`[token-burn] Native token ${data.symbol} burnt. Adjusting node approval for sender.`);
         try {
           await transaction.adjustNodeAppr(sender, -data.amount, () => {
             logger.debug(`[token-burn] adjustNodeAppr callback for sender ${sender} after ECH burn.`);
           }); 
-          logger.info(`[token-burn] Node approval adjusted for sender ${sender} regarding ${data.symbol} burn.`);
+          logger.debug(`[token-burn] Node approval adjusted for sender ${sender} regarding ${data.symbol} burn.`);
         } catch (approvalError) {
           logger.error(`[token-burn] CRITICAL: Failed to adjust node approval for sender ${sender} after ${data.symbol} burn: ${approvalError}.`);
         }
       }
-      logger.info(`[token-burn] Successfully burnt ${data.amount} ${data.symbol} by ${sender}. Memo: ${data.memo || 'N/A'}`);
+      logger.debug(`[token-burn] Successfully burnt ${data.amount} ${data.symbol} by ${sender}. Memo: ${data.memo || 'N/A'}`);
       const burnEvent = {
           type: 'tokenBurn',
           timestamp: new Date().toISOString(),
@@ -187,7 +187,7 @@ export async function process(data: TokenTransferData, sender: string): Promise<
         return false;
       }
       if (data.symbol === config.nativeToken) {
-        logger.info(`[token-transfer] Native token ${data.symbol} transferred. Adjusting node approvals.`);
+        logger.debug(`[token-transfer] Native token ${data.symbol} transferred. Adjusting node approvals.`);
         try {
           await transaction.adjustNodeAppr(sender, -data.amount, () => {
             logger.debug(`[token-transfer] adjustNodeAppr callback for sender ${sender}.`);
@@ -195,12 +195,12 @@ export async function process(data: TokenTransferData, sender: string): Promise<
           await transaction.adjustNodeAppr(data.to, data.amount, () => {
             logger.debug(`[token-transfer] adjustNodeAppr callback for recipient ${data.to}.`);
           });   
-          logger.info(`[token-transfer] Node approvals adjusted for ${sender} and ${data.to}.`);
+          logger.debug(`[token-transfer] Node approvals adjusted for ${sender} and ${data.to}.`);
         } catch (approvalError) {
           logger.error(`[token-transfer] CRITICAL: Failed to adjust node approvals: ${approvalError}.`);
         }
       }
-      logger.info(`[token-transfer] Successfully transferred ${data.amount} ${data.symbol} from ${sender} to ${data.to}. Memo: ${data.memo || 'N/A'}`);
+      logger.debug(`[token-transfer] Successfully transferred ${data.amount} ${data.symbol} from ${sender} to ${data.to}. Memo: ${data.memo || 'N/A'}`);
       const transferEvent = {
           type: 'tokenTransfer',
           timestamp: new Date().toISOString(),
@@ -221,7 +221,7 @@ export async function process(data: TokenTransferData, sender: string): Promise<
     if (!senderBalanceRestored && originalSenderTokens) { 
         try {
             await cache.updateOnePromise('accounts', {name: sender}, {$set: {tokens: originalSenderTokens}});
-            logger.info(`[token-transfer/burn] Attempted to restore sender balance for ${sender} due to error in main catch block, using original snapshot.`);
+            logger.debug(`[token-transfer/burn] Attempted to restore sender balance for ${sender} due to error in main catch block, using original snapshot.`);
         } catch (restoreError) {
             logger.error(`[token-transfer/burn] CRITICAL: Failed to restore sender balance for ${sender} after error in main catch block: ${restoreError}`);
         }

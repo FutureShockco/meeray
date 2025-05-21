@@ -130,7 +130,7 @@ export async function process(data: NftTransferData, sender: string): Promise<bo
         // Re-creating the NFT is complex; logging is key here.
       }
 
-      logger.info(`[nft-burn] NFT ${fullInstanceId} successfully burnt by ${sender}. Memo: ${data.memo || 'N/A'}`);
+      logger.debug(`[nft-burn] NFT ${fullInstanceId} successfully burnt by ${sender}. Memo: ${data.memo || 'N/A'}`);
       const burnEvent = {
         type: 'nftBurn',
         timestamp: new Date().toISOString(),
@@ -158,7 +158,7 @@ export async function process(data: NftTransferData, sender: string): Promise<bo
       }
 
       // No adjustNodeAppr for NFTs in this version
-      logger.info(`[nft-transfer] NFT ${fullInstanceId} successfully transferred from ${sender} to ${data.to}. Memo: ${data.memo || 'N/A'}`);
+      logger.debug(`[nft-transfer] NFT ${fullInstanceId} successfully transferred from ${sender} to ${data.to}. Memo: ${data.memo || 'N/A'}`);
       const transferEvent = {
         type: 'nftTransfer',
         timestamp: new Date().toISOString(),
@@ -179,7 +179,7 @@ export async function process(data: NftTransferData, sender: string): Promise<bo
     if (!isBurning && originalNftOwner) {
         try {
             await cache.updateOnePromise('nfts', {_id: fullInstanceId, owner: data.to }, {$set: {owner: originalNftOwner}});
-            logger.info(`[nft-transfer] Attempted to roll back NFT ${fullInstanceId} ownership to ${originalNftOwner} due to error.`);
+            logger.debug(`[nft-transfer] Attempted to roll back NFT ${fullInstanceId} ownership to ${originalNftOwner} due to error.`);
         } catch (rollbackError) {
             logger.error(`[nft-transfer] CRITICAL: Failed to roll back NFT ${fullInstanceId} ownership after error: ${rollbackError}`);
         }

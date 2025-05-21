@@ -147,7 +147,7 @@ export async function process(data: FarmStakeData, sender: string): Promise<bool
         return false;
     }
 
-    logger.info(`[farm-stake] Staker ${data.staker} staked ${data.lpTokenAmount} LP tokens (from pool ${poolIdForLp}) into farm ${data.farmId}.`);
+    logger.debug(`[farm-stake] Staker ${data.staker} staked ${data.lpTokenAmount} LP tokens (from pool ${poolIdForLp}) into farm ${data.farmId}.`);
 
     const eventDocument = {
       type: 'farmStake',

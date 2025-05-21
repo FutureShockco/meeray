@@ -112,10 +112,10 @@ export const consensus: Consensus = {
                             possBlocksById[possBlock.block._id][j].block.witness,
                             possBlocksById[possBlock.block._id][j].block.timestamp,
                         ]);
-                    logger.info('Block collision detected at height ' + possBlock.block._id + ', the witnesses are:', collisions);
-                    logger.info('Applying block ' + possBlock.block._id + '#' + possBlock.block.hash.substr(0, 4) + ' by ' + possBlock.block.witness + ' with timestamp ' + possBlock.block.timestamp);
+                    logger.warn('Block collision detected at height ' + possBlock.block._id + ', the witnesses are:', collisions);
+                    logger.warn('Applying block ' + possBlock.block._id + '#' + possBlock.block.hash.substr(0, 4) + ' by ' + possBlock.block.witness + ' with timestamp ' + possBlock.block.timestamp);
                 } else {
-                    logger.info('block ' + possBlock.block._id + '#' + possBlock.block.hash.substr(0, 4) + ' got finalized');
+                    logger.debug('block ' + possBlock.block._id + '#' + possBlock.block.hash.substr(0, 4) + ' got finalized');
                 }
                 chain.validateAndAddBlock(possBlock.block, false, (err: any) => {
                     if (err) {
@@ -172,7 +172,7 @@ export const consensus: Consensus = {
                     logger.error('Received invalid new block from ' + block.witness, block.hash);
                     if (cb) cb(-1);
                 } else {
-                    logger.info('Precommitting block ' + block._id + '#' + block.hash.substr(0, 4));
+                    logger.debug('Precommitting block ' + block._id + '#' + block.hash.substr(0, 4));
 
                     this.possBlocks.push(possBlock);
 

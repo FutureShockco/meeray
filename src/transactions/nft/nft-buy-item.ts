@@ -131,7 +131,7 @@ export async function process(data: NftBuyPayload, buyer: string): Promise<boole
     const royaltyAmount = price.times(creatorFeePercent).dividedBy(100).toDecimalPlaces(paymentToken.precision, Decimal.ROUND_DOWN);
     const sellerProceeds = price.minus(royaltyAmount);
 
-    logger.info(`[nft-buy-item] Processing sale of listing ${data.listingId}: Price=${price}, Royalty=${royaltyAmount} (${creatorFeePercent}%), SellerGets=${sellerProceeds} ${paymentToken.symbol}`);
+    logger.debug(`[nft-buy-item] Processing sale of listing ${data.listingId}: Price=${price}, Royalty=${royaltyAmount} (${creatorFeePercent}%), SellerGets=${sellerProceeds} ${paymentToken.symbol}`);
 
     // 1. Deduct price from buyer
     if (!await adjustBalance(buyer, paymentTokenIdentifier, -price.toNumber())) {
@@ -155,7 +155,7 @@ export async function process(data: NftBuyPayload, buyer: string): Promise<boole
         await adjustBalance(buyer, paymentTokenIdentifier, price.toNumber()); // Refund buyer
         return false;
       }
-      logger.info(`[nft-buy-item] Royalty of ${royaltyAmount} ${paymentToken.symbol} paid to creator ${collection.creator}.`);
+      logger.debug(`[nft-buy-item] Royalty of ${royaltyAmount} ${paymentToken.symbol} paid to creator ${collection.creator}.`);
     }
 
     // 4. Transfer NFT ownership
@@ -184,7 +184,7 @@ export async function process(data: NftBuyPayload, buyer: string): Promise<boole
       await adjustBalance(buyer, paymentTokenIdentifier, price.toNumber());
       return false;
     }
-    logger.info(`[nft-buy-item] NFT ${fullInstanceId} ownership transferred from ${listing.seller} to ${buyer}.`);
+    logger.debug(`[nft-buy-item] NFT ${fullInstanceId} ownership transferred from ${listing.seller} to ${buyer}.`);
 
     // 5. Update listing status to SOLD
     const updateListingStatusSuccess = await cache.updateOnePromise(
@@ -197,7 +197,7 @@ export async function process(data: NftBuyPayload, buyer: string): Promise<boole
       // This is a problematic state. The sale happened, but the listing isn't marked correctly.
     }
 
-    logger.info(`[nft-buy-item] NFT Listing ${data.listingId} successfully processed for buyer ${buyer}.`);
+    logger.debug(`[nft-buy-item] NFT Listing ${data.listingId} successfully processed for buyer ${buyer}.`);
 
     // Log event
     const eventDocument = {

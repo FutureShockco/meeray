@@ -91,7 +91,7 @@ export async function process(data: WitnessUnvoteData, sender: string): Promise<
           // If the target is no longer in the voted list, add it back
           const rolledBackVotedWitnesses = [...(currentAccount.votedWitnesses || []), data.target];
           await cache.updateOnePromise('accounts', { name: sender }, { $set: { votedWitnesses: rolledBackVotedWitnesses } });
-          logger.info(`Rolled back witness unvote changes for ${sender}`);
+          logger.debug(`Rolled back witness unvote changes for ${sender}`);
         }
       } catch (rollbackError) {
         logger.error(`Failed to rollback witness unvote changes: ${rollbackError}`);

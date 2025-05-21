@@ -161,7 +161,7 @@ export async function process(data: PoolAddLiquidityData, sender: string): Promi
         logger.error(`[pool-add-liquidity] CRITICAL: Failed to update user LP position ${userLpPositionId}. Pool updated, but user LP tokens not credited. Manual fix needed.`);
     }
 
-    logger.info(`[pool-add-liquidity] ${data.provider} added ${data.tokenA_amount} ${pool.tokenA_symbol} and ${data.tokenB_amount} ${pool.tokenB_symbol} to pool ${data.poolId}. Minted ${lpTokensToMint.toFixed(8)} LP tokens.`);
+    logger.debug(`[pool-add-liquidity] ${data.provider} added ${data.tokenA_amount} ${pool.tokenA_symbol} and ${data.tokenB_amount} ${pool.tokenB_symbol} to pool ${data.poolId}. Minted ${lpTokensToMint.toFixed(8)} LP tokens.`);
 
     const eventDocument = {
       type: 'poolAddLiquidity',
@@ -196,7 +196,7 @@ export async function process(data: PoolAddLiquidityData, sender: string): Promi
         const poolForRollback = poolFromCacheOnError as LiquidityPool;
         const tokenAIdentifier = `${poolForRollback.tokenA_symbol}@${poolForRollback.tokenA_issuer}`;
         const tokenBIdentifier = `${poolForRollback.tokenB_symbol}@${poolForRollback.tokenB_issuer}`;
-        logger.info(`[pool-add-liquidity] Attempting rollback of balances for ${sender} due to error.`);
+        logger.debug(`[pool-add-liquidity] Attempting rollback of balances for ${sender} due to error.`);
         await adjustBalance(data.provider, tokenAIdentifier, data.tokenA_amount);
         await adjustBalance(data.provider, tokenBIdentifier, data.tokenB_amount);
     }

@@ -378,7 +378,7 @@ export const mongo = {
             if (!gBlock) return cb('Genesis block not found in dump');
             if (gBlock.hash !== config.originHash) return cb('Genesis block hash in dump does not match config.originHash');
 
-            logger.info(`Finished importing ${lastRestored?._id || 0} blocks`);
+            logger.debug(`Finished importing ${lastRestored?._id || 0} blocks`);
             if (lastRestored) {
                 chain.restoredBlocks = lastRestored._id;
             }

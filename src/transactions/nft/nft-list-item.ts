@@ -115,7 +115,7 @@ export async function process(data: NftListPayload, sender: string): Promise<str
       return null; // Indicate failure
     }
 
-    logger.info(`[nft-list-item] NFT ${data.collectionSymbol}-${data.instanceId} listed by ${sender} for ${data.price} ${data.paymentTokenSymbol}. Listing ID: ${listingId}`);
+    logger.debug(`[nft-list-item] NFT ${data.collectionSymbol}-${data.instanceId} listed by ${sender} for ${data.price} ${data.paymentTokenSymbol}. Listing ID: ${listingId}`);
 
     // Log event
     const eventDocument = {

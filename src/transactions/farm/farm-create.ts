@@ -110,7 +110,7 @@ export async function process(data: FarmCreateData, sender: string): Promise<boo
     if (!createSuccess) {
       return false;
     }
-    logger.info(`[farm-create] Farm ${farmId} for LP token ${data.lpTokenSymbol} rewarding ${data.rewardTokenSymbol} created by ${sender}.`);
+    logger.debug(`[farm-create] Farm ${farmId} for LP token ${data.lpTokenSymbol} rewarding ${data.rewardTokenSymbol} created by ${sender}.`);
 
     const eventDocument = {
       type: 'farmCreate',

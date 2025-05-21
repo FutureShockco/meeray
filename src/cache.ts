@@ -122,7 +122,7 @@ export const setMongoDbInstance = (mongoDbInstance: Db): void => {
         throw new Error('MongoDB instance cannot be null or undefined for cache setup.');
     }
     db = mongoDbInstance;
-    logger.info('[CACHE] MongoDB instance has been set.');
+    logger.debug('[CACHE] MongoDB instance has been set.');
 };
 
 const cache: CacheType = {
@@ -232,7 +232,7 @@ const cache: CacheType = {
 
     findOne: function (collection, query, cb, skipClone) {
         const collectionName = collection as keyof CacheMainDataCollections;
-        
+
         // DEBUGGING LOGS START
         logger.debug(`[CACHE findOne] Checking collection: '${collection}', cast to collectionName: '${collectionName}'`);
         logger.debug(`[CACHE findOne] this.copy object keys: ${Object.keys(this.copy).join(', ')}`);
@@ -738,7 +738,7 @@ const cache: CacheType = {
 
         switch (collection) {
             case 'accounts':
-                options.sort = { totalVoteWeight: -1, name: -1 }; 
+                options.sort = { totalVoteWeight: -1, name: -1 };
                 try {
                     const accountsDocs = await db.collection<BasicCacheDoc>(collection).find({}, options).toArray();
                     for (let i = 0; i < accountsDocs.length; i++) {
@@ -748,6 +748,22 @@ const cache: CacheType = {
                         }
                     }
                     logger.debug(`[CACHE warmup] Warmed up ${accountsDocs.length} accounts.`);
+                } catch (err) {
+                    logger.error(`[CACHE warmup] Error warming up ${collection}:`, err);
+                    throw err;
+                }
+                break;
+            case 'tokens':
+                options.sort = { totalVoteWeight: -1, name: -1 };
+                try {
+                    const tokensDocs = await db.collection<BasicCacheDoc>(collection).find({}, options).toArray();
+                    for (let i = 0; i < tokensDocs.length; i++) {
+                        const token = tokensDocs[i];
+                        if (token.identifier !== undefined) {
+                            (this.tokens as CacheCollectionStore)[token.identifier] = token;
+                        }
+                    }
+                    logger.debug(`[CACHE warmup] Warmed up ${tokensDocs.length} tokens.`);
                 } catch (err) {
                     logger.error(`[CACHE warmup] Error warming up ${collection}:`, err);
                     throw err;

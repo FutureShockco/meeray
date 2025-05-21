@@ -148,7 +148,7 @@ export async function process(data: PoolCreateData, sender: string): Promise<boo
     if (!createSuccess) {
       return false;
     }
-    logger.info(`[pool-create] Liquidity Pool ${poolId} (${tokenA_details.symbol}-${tokenB_details.symbol}, Fee: ${chosenFeeTier}bps) created by ${sender}.`);
+    logger.debug(`[pool-create] Liquidity Pool ${poolId} (${tokenA_details.symbol}-${tokenB_details.symbol}, Fee: ${chosenFeeTier}bps) created by ${sender}.`);
 
     // Log event
     const eventDocument = {

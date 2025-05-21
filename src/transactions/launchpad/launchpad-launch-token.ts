@@ -66,12 +66,12 @@ export async function validateTx(data: LaunchpadLaunchTokenData, sender: string)
   //    - `await cache.findOnePromise('tokens', { symbol: data.tokenSymbol /*, issuer: ... if applicable */ })`
   // 7. Ensure total supply from tokenomics matches presale allocation + liquidity allocation + other allocations.
 
-  logger.info('[launchpad-launch-token] Basic validation passed (structure check). Needs full implementation.');
+  logger.debug('[launchpad-launch-token] Basic validation passed (structure check). Needs full implementation.');
   return true; 
 }
 
 export async function process(data: LaunchpadLaunchTokenData, sender: string): Promise<boolean> {
-  logger.info(`[launchpad-launch-token] Processing launch request from ${sender}: ${JSON.stringify(data)}`);
+  logger.debug(`[launchpad-launch-token] Processing launch request from ${sender}: ${JSON.stringify(data)}`);
   try {
     // Re-validate before processing (or trust the mempool validation if applicable)
     // const isValid = await validateTx(data, sender); // Assuming validation is already done by the caller node
@@ -141,7 +141,7 @@ export async function process(data: LaunchpadLaunchTokenData, sender: string): P
                 logger.error(`[launchpad-launch-token] CRITICAL: Failed to save launchpad project ${launchpadId}: ${err || 'no result'}.`);
                 return reject(err || new Error('Failed to save launchpad project'));
             }
-            logger.info(`[launchpad-launch-token] Launchpad project ${launchpadId} created for token ${data.tokenSymbol}.`);
+            logger.debug(`[launchpad-launch-token] Launchpad project ${launchpadId} created for token ${data.tokenSymbol}.`);
             resolve();
         });
     });
@@ -170,7 +170,7 @@ export async function process(data: LaunchpadLaunchTokenData, sender: string): P
         });
     });
 
-    logger.info(`[launchpad-launch-token] Launch request for ${data.tokenSymbol} by ${sender} processed successfully. Launchpad ID: ${launchpadId}`);
+    logger.debug(`[launchpad-launch-token] Launch request for ${data.tokenSymbol} by ${sender} processed successfully. Launchpad ID: ${launchpadId}`);
     return true;
 
   } catch (error) {

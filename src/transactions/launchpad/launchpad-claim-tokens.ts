@@ -76,12 +76,12 @@ export async function validateTx(data: LaunchpadClaimTokensData, sender: string)
       return false;
   }
 
-  logger.info(`[launchpad-claim-tokens] Validation successful for ${sender} on launchpad ${data.launchpadId}.`);
+  logger.debug(`[launchpad-claim-tokens] Validation successful for ${sender} on launchpad ${data.launchpadId}.`);
   return true;
 }
 
 export async function process(data: LaunchpadClaimTokensData, sender: string): Promise<boolean> {
-  logger.info(`[launchpad-claim-tokens] Processing claim from ${sender} for ${data.launchpadId}, type ${data.allocationType}: ${JSON.stringify(data)}`);
+  logger.debug(`[launchpad-claim-tokens] Processing claim from ${sender} for ${data.launchpadId}, type ${data.allocationType}: ${JSON.stringify(data)}`);
   try {
     const launchpad = await cache.findOnePromise('launchpads', { _id: data.launchpadId }) as Launchpad | null;
     if (!launchpad || !launchpad.mainTokenId) { 
@@ -179,7 +179,7 @@ export async function process(data: LaunchpadClaimTokensData, sender: string): P
         });
     });
 
-    logger.info(`[launchpad-claim-tokens] Claim by ${sender} for ${tokensToClaim} of ${launchpad.mainTokenId} from launchpad ${data.launchpadId} processed successfully.`);
+    logger.debug(`[launchpad-claim-tokens] Claim by ${sender} for ${tokensToClaim} of ${launchpad.mainTokenId} from launchpad ${data.launchpadId} processed successfully.`);
     return true;
 
   } catch (error) {

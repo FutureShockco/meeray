@@ -140,12 +140,12 @@ export async function validateTx(data: MarketPlaceOrderData, sender: string): Pr
     logger.debug('[market-place-order] Skipping strict balance check due to undefined asset details for required amount or market buy by base quantity.');
   }
 
-  logger.info('[market-place-order] Validation successful.');
+  logger.debug('[market-place-order] Validation successful.');
   return true;
 }
 
 export async function process(data: MarketPlaceOrderData, sender: string): Promise<boolean> {
-  logger.info(`[market-place-order] Processing order from ${sender}: ${JSON.stringify(data)}`);
+  logger.debug(`[market-place-order] Processing order from ${sender}: ${JSON.stringify(data)}`);
   try {
     const tradingPair = await cache.findOnePromise('tradingPairs', { _id: data.pairId }) as TradingPair | null;
     if (!tradingPair) { // Should be caught by validation, but good to double check
@@ -191,7 +191,7 @@ export async function process(data: MarketPlaceOrderData, sender: string): Promi
         // A common strategy is to NOT escrow here, but ensure matching engine does not overspend user's available quote balance.
         // Or escrow a maximum possible amount if a 'maxSlippage' or 'worstPrice' is determined.
         // For now, we'll assume the matching engine will handle this carefully.
-        logger.info(`[market-place-order] Market BUY for ${order.quantity} ${order.baseAssetSymbol} - escrow of quote asset handled by matching or requires max spend.`);
+        logger.debug(`[market-place-order] Market BUY for ${order.quantity} ${order.baseAssetSymbol} - escrow of quote asset handled by matching or requires max spend.`);
         // Not adjusting balance here; matching engine must ensure funds.
       }
     } else { // SELL order
@@ -229,7 +229,7 @@ export async function process(data: MarketPlaceOrderData, sender: string): Promi
     // The matching engine is responsible for updating order status (OPEN, PARTIALLY_FILLED, FILLED)
     // and creating Trade documents. It should also update involved user balances for fills.
 
-    logger.info(`[market-place-order] Order ${orderId} (${order.side} ${order.quantity} ${order.baseAssetSymbol} @ ${order.price || 'MARKET'}) processed. Engine response: ${JSON.stringify(matchResult)}`);
+    logger.debug(`[market-place-order] Order ${orderId} (${order.side} ${order.quantity} ${order.baseAssetSymbol} @ ${order.price || 'MARKET'}) processed. Engine response: ${JSON.stringify(matchResult)}`);
 
     // Event logging for order placement (even if not immediately filled, it's an intent)
     const eventDocument = {

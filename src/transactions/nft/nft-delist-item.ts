@@ -55,7 +55,7 @@ export async function process(data: NftDelistPayload, sender: string): Promise<b
       return false;
     }
 
-    logger.info(`[nft-delist-item] NFT Listing ${data.listingId} cancelled by ${sender}.`);
+    logger.debug(`[nft-delist-item] NFT Listing ${data.listingId} cancelled by ${sender}.`);
 
     // Log event
     const eventDocument = {

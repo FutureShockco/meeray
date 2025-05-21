@@ -118,7 +118,7 @@ export async function process(data: NftCreateCollectionData, sender: string): Pr
     if (!createSuccess) {
       return false;
     }
-    logger.info(`[nft-create-collection] NFT Collection ${data.symbol} created by ${sender}.`);
+    logger.debug(`[nft-create-collection] NFT Collection ${data.symbol} created by ${sender}.`);
 
     // Log event
     const eventDocument = {

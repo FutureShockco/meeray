@@ -255,9 +255,9 @@ export const mining = {
                 logger.debug('[MINING:minerWorker] setTimeout triggered, calling mineBlock.');
                 mining.mineBlock(function (error, finalBlock) {
                     if (error)
-                        logger.warn(`[MINING:minerWorker] mineBlock callback - Error mining block. finalBlock._id: ${finalBlock?._id}`, finalBlock ? '' : '(No block object)');
+                        logger.warn(`Error mining block. finalBlock._id: ${finalBlock?._id}`, finalBlock ? '' : '(No block object)');
                     else
-                        logger.info(`[MINING:minerWorker] mineBlock callback - Successfully processed/proposed block. finalBlock._id: ${finalBlock?._id}`);
+                        logger.debug(` Successfully processed/proposed block. finalBlock._id: ${finalBlock?._id}`);
                 })
             }, mineInMs)
         }
