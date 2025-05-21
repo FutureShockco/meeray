@@ -133,15 +133,15 @@ export const p2p = {
             const target = new URL(address);
             const targetHost = target.hostname.replace('::ffff:', '');
             const targetPort = target.port;
-    
+
             return this.sockets.some(ws => {
                 const peerUrl = (ws as EnhancedWebSocket)._peerUrl;
                 if (!peerUrl) return false;
-    
+
                 const current = new URL(peerUrl);
                 const currentHost = current.hostname.replace('::ffff:', '');
                 const currentPort = current.port;
-    
+
                 return currentHost === targetHost && currentPort === targetPort;
             });
         } catch (err) {
@@ -207,25 +207,25 @@ export const p2p = {
     discoveryWorker: async (isInit: boolean = false): Promise<void> => {
         const configBlock = config.read(0);
         const maxPeers = max_peers;
-    
+
         let witnesses = witnessesModule.generateWitnesses(false, true, configBlock.witnesses * 3, 0);
         if (!Array.isArray(witnesses) || witnesses.length === 0) {
             logger.warn('No witnesses found for discovery.');
             return;
         }
-    
+
         const excluded = process.env.DISCOVERY_EXCLUDE ? process.env.DISCOVERY_EXCLUDE.split(',') : [];
-    
+
         for (const witness of witnesses) {
             if (p2p.sockets.length >= maxPeers) {
                 logger.debug(`Max peers reached: ${p2p.sockets.length}/${maxPeers}`);
                 break;
             }
-    
+
             if (!witness.ws || excluded.includes(witness.name)) continue;
-    
+
             let isConnected = false;
-    
+
             let witnessHost: string;
             try {
                 witnessHost = new URL(witness.ws).hostname;
@@ -233,17 +233,17 @@ export const p2p = {
                 logger.debug(`Invalid witness ws url: ${witness.ws} for witness ${witness.name}`, e);
                 continue;
             }
-    
+
             for (const socket of p2p.sockets) {
                 let ip = socket._socket?.remoteAddress || '';
                 if (ip.startsWith('::ffff:')) ip = ip.slice(7);
-    
+
                 if (ip === witnessHost) {
                     logger.warn(`Already connected to witness ${witness.name} (${witness.ws})`);
                     isConnected = true;
                     break;
                 }
-    
+
                 try {
                     // In case witnessHost is a hostname, resolve it to IP
                     const resolved = await dns.promises.lookup(witnessHost);
@@ -256,7 +256,7 @@ export const p2p = {
                     logger.debug(`DNS resolution failed for ${witnessHost}: ${e instanceof Error ? e.message : e}`);
                 }
             }
-    
+
             if (!isConnected) {
                 logger[isInit ? 'info' : 'debug'](`Connecting to witness ${witness.name} at ${witness.ws}`);
                 p2p.connect([witness.ws], isInit);
@@ -270,9 +270,9 @@ export const p2p = {
             setTimeout(() => p2p.keepAlive(), keep_alive_interval);
             return;
         }
-    
+
         const currentTime = Date.now();
-    
+
         // Clean up old connection attempts (older than 5 minutes)
         for (const peer in p2p.recentConnectionAttempts) {
             const retryInfo = p2p.recentConnectionAttempts[peer];
@@ -280,28 +280,28 @@ export const p2p = {
                 delete p2p.recentConnectionAttempts[peer];
             }
         }
-    
+
         let peers = process.env.PEERS ? process.env.PEERS.split(',') : [];
         let toConnect: string[] = [];
-    
+
         const maxAttemptsPerCycle = 2;
-    
+
         for (const peer of peers) {
             if (toConnect.length >= maxAttemptsPerCycle) break;
-    
+
             const retryInfo = p2p.recentConnectionAttempts[peer];
             if (retryInfo && currentTime - retryInfo.lastAttempt < 60000) { // skip if last attempt < 1 min ago
                 logger.debug(`Skipping recent connection attempt to ${peer}`);
                 continue;
             }
-    
+
             let connected = false;
             const urlWithoutProtocol = peer.replace(/^ws:\/\//, '');
             const colonSplit = urlWithoutProtocol.split(':');
             // Ignore the port in peer string since your nodes always use 6001
             // Just parse IP portion
-            let address = colonSplit.slice(0, colonSplit.length - 1).join(':').replace(/^\[|\]$/g, ''); 
-    
+            let address = colonSplit.slice(0, colonSplit.length - 1).join(':').replace(/^\[|\]$/g, '');
+
             if (!net.isIP(address)) {
                 try {
                     address = (await dns.promises.lookup(address)).address;
@@ -317,7 +317,7 @@ export const p2p = {
                     continue;
                 }
             }
-    
+
             for (const sock of p2p.sockets) {
                 if (!sock._socket) continue;
                 let remoteAddress = sock._socket.remoteAddress || '';
@@ -330,7 +330,7 @@ export const p2p = {
                     break;
                 }
             }
-    
+
             if (!connected) {
                 toConnect.push(peer);
                 if (retryInfo) {
@@ -340,12 +340,12 @@ export const p2p = {
                 }
             }
         }
-    
+
         if (toConnect.length > 0) {
             logger.debug(`Keep-alive: attempting to connect to ${toConnect.length} peer(s)`);
             p2p.connect(toConnect);
         }
-    
+
         setTimeout(() => p2p.keepAlive(), keep_alive_interval);
     },
 
@@ -355,35 +355,35 @@ export const p2p = {
                 logger.debug(`Already connected to ${url}, skipping`);
                 continue;
             }
-    
+
             try {
                 const parsed = new URL(url);
-    
+
                 const ip = parsed.hostname.replace(/^::ffff:/, ''); // IPv4-mapped IPv6 fix
                 const port = parsed.port || '6001'; // Default fallback
-    
+
                 const wsUrl = `ws://${ip}:${port}`;
-    
+
                 const ws = new WebSocket(wsUrl) as EnhancedWebSocket;
                 (ws as EnhancedWebSocket)._peerUrl = wsUrl;
-    
+
                 ws.on('open', () => {
                     logger.info(`Connected to peer ${url}`);
                     p2p.handshake(ws);
                 });
-    
+
                 ws.on('error', (err) => {
                     logger.warn(`Failed to connect to ${url}: ${err.message}`);
                 });
-    
+
                 ws.on('close', () => {
                     logger.info(`Connection closed: ${url}`);
                     p2p.sockets = p2p.sockets.filter(s => s !== ws);
                 });
-    
+
                 p2p.messageHandler(ws);
                 p2p.errorHandler(ws);
-    
+
             } catch (err) {
                 logger.warn(`Invalid peer URL or port: ${url}`);
                 logger.debug(`Error details: ${err}`);
@@ -974,12 +974,12 @@ export const p2p = {
                 p2p.recoveringBlocks = [];
                 p2p.recoverAttempt++;
                 if (p2p.recoverAttempt > max_recover_attempts) {
-                    logger.error(`[P2P] Error Replay - exceeded maximum recovery attempts for block ${block._id}`);
+                    logger.error(`[P2P] Error Replay - exceeded maximum recovery attempts for block ${newBlock?._id}`);
                     p2p.recovering = false;
                     p2p.recoverAttempt = 0;
                     return;
                 } else {
-                    logger.debug(`[P2P] Recover attempt #${p2p.recoverAttempt} for block ${block._id}`);
+                    logger.debug(`[P2P] Recover attempt #${p2p.recoverAttempt} for block ${newBlock?._id}`);
                     p2p.recovering = chain.getLatestBlock()._id;
                     p2p.recover();
                 }
@@ -989,13 +989,12 @@ export const p2p = {
                     delete p2p.recoveredBlocks[newBlock._id];
                 }
                 p2p.recover();
-
                 // If next block is in cache, process it recursively
-                const nextBlockId = chain.getLatestBlock()._id + 1;
-                if (p2p.recoveredBlocks[nextBlockId]) {
-                    logger.debug(`[P2P] Found next block ${nextBlockId} in recovery cache, processing immediately`);
-                    p2p.addRecursive(p2p.recoveredBlocks[nextBlockId]);
-                }
+                if (p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
+                    setTimeout(function () {
+                        if (p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
+                            p2p.addRecursive(p2p.recoveredBlocks[chain.getLatestBlock()._id + 1])
+                    }, 1)
             }
         });
     },
