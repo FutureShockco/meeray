@@ -3,31 +3,13 @@ import cache from './cache.js';
 import logger from './logger.js';
 import p2p from './p2p.js';
 import transaction from './transaction.js';
-import chain from './chain.js';
 
 export const witnessesModule = {
 
     witnessSchedule: (block: any) => {
-        let sourceBlock = block;
-        if (!sourceBlock || typeof sourceBlock.hash !== 'string' || sourceBlock.hash === '') {
-            logger.warn(`[witnessSchedule] Input block for schedule generation is invalid or missing hash. Attempting to use genesis block. Input block: ${JSON.stringify(sourceBlock)}`);
-            // Attempt to use genesis block if the provided block is invalid
-            const genesisBlock = chain.getGenesisBlock ? chain.getGenesisBlock() : null;
-            if (genesisBlock && typeof genesisBlock.hash === 'string' && genesisBlock.hash !== '') {
-                sourceBlock = genesisBlock;
-                logger.info(`[witnessSchedule] Using genesis block hash for schedule generation: ${sourceBlock.hash}`);
-            } else {
-                logger.fatal('[witnessSchedule] CRITICAL: Cannot generate witness schedule. Invalid input block AND genesis block is unavailable or has no hash. Returning empty schedule.');
-                return {
-                    block: null, // Or the problematic input block
-                    shuffle: []
-                };
-            }
-        }
-
-        let hash = sourceBlock.hash;
+        let hash = block.hash;
         let rand = parseInt('0x' + hash.substr(hash.length - config.witnessShufflePrecision));
-        if (!p2p.recovering) logger.debug('Generating schedule... NRNG: ' + rand + ' from block hash: ' + hash);
+        if (!p2p.recovering) logger.debug('Generating schedule... NRNG: ' + rand);
         let witnesses = witnessesModule.generateWitnesses(true, false, config.witnesses, 0);
         witnesses = witnesses.sort((a: any, b: any) => {
             if (a.name < b.name) return -1;
@@ -46,7 +28,7 @@ export const witnessesModule = {
             y++;
         }
         return {
-            block: sourceBlock,
+            block: block,
             shuffle: shuffledWitnesses
         };
     },

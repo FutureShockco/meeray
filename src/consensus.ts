@@ -42,30 +42,17 @@ export const consensus: Consensus = {
     },
     isActive: function () {
         if (this.observer) return false;
-
-        if (!chain.schedule || !chain.schedule.shuffle || chain.schedule.shuffle.length === 0) {
-            logger.debug('[CONSENSUS:isActive] Witness schedule not yet available or empty. Node considered inactive for this check.');
-            return false; // Not active for now, but don't become a permanent observer yet
-        }
-
         const thPub = this.getActiveWitnessKey(process.env.STEEM_ACCOUNT!);
-        
         if (!thPub) {
-            // Not found in the current schedule. This might be temporary (e.g. node just started, schedule updating, or node is rotated out)
-            // Do not set this.observer = true here, as the node might become active later.
-            logger.debug(`[CONSENSUS:isActive] ${process.env.STEEM_ACCOUNT} is not in the current witness schedule. Node considered inactive for this check.`);
+            logger.info(process.env.STEEM_ACCOUNT + ' is not elected, defaulting to observer');
+            this.observer = true;
             return false;
         }
-
-        // If STEEM_ACCOUNT is in the schedule, check if its public key matches the one in .env
         if (process.env.WITNESS_PUBLIC_KEY !== thPub) {
-            // This is a persistent misconfiguration. Become a permanent observer.
-            logger.warn(`[CONSENSUS:isActive] Witness key for ${process.env.STEEM_ACCOUNT} does not match blockchain data. Expected: ${thPub}, Found: ${process.env.WITNESS_PUBLIC_KEY}. Defaulting to observer.`);
-            this.observer = true; 
+            this.observer = true;
+            logger.warn('Witness key does not match blockchain data, observing instead ' + thPub + ' ' + process.env.WITNESS_PUBLIC_KEY);
             return false;
         }
-        
-        // All checks passed, node is active.
         return true;
     },
     activeWitnesses: function () {
