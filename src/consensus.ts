@@ -96,7 +96,7 @@ export const consensus: Consensus = {
         }
         for (let i = 0; i < this.possBlocks.length; i++) {
             const possBlock = this.possBlocks[i];
-            // logger.cons('T'+Math.ceil(threshold)+' R0-'+possBlock[0].length+' R1-'+possBlock[1].length)
+            logger.cons('T'+Math.ceil(threshold)+' R0-'+possBlock[0].length+' R1-'+possBlock[1].length)
             if (
                 possBlock[(config.consensusRounds || 2) - 1].length > threshold &&
                 !this.finalizing &&
@@ -187,8 +187,7 @@ export const consensus: Consensus = {
                             i--;
                             continue;
                         }
-                        const blockTime = steem.isInSyncMode() ? config.syncBlockTime : config.blockTime;
-                        if (this.queue[i].d.ts + 2 * blockTime < new Date().getTime()) {
+                        if (this.queue[i].d.ts + 2 * config.blockTime < new Date().getTime()) {
                             this.queue.splice(i, 1);
                             i--;
                         }
