@@ -153,8 +153,7 @@ export const consensus: Consensus = {
                 if (err) {
                     logger.error(`[CONSENSUS-TRYSTEP] Error validating/adding winning block ${winningPossBlock.block?._id}:`, err);
                 }
-                this.possBlocks = this.possBlocks.filter(pb => pb.block._id > winningPossBlock.block._id || 
-                                                              (pb.block._id === winningPossBlock.block._id && pb.block.hash !== winningPossBlock.block.hash));
+                this.possBlocks = this.possBlocks.filter(pb => pb.block._id > winningPossBlock.block._id);
                 this.finalizing = false;
                 if(this.queue.length > 0 || this.possBlocks.length > 0) {
                      // Use setTimeout to avoid potential deep recursion if tryNextStep leads to another immediate finalization
