@@ -68,6 +68,7 @@ export const chain = {
     shuttingDown: false,
     latestSteemBlock: 0,
     lastWriteWasSlow: false, // New property to track slow cache writes
+    lastBlockTime: 0, // Timestamp of when the last mining cycle started or block was processed
 
     getGenesisBlock: () => {
         const genesisBlock: Block = {
