@@ -100,8 +100,7 @@ export const consensus: Consensus = {
             if (
                 possBlock[(config.consensusRounds || 2) - 1].length > threshold &&
                 !this.finalizing &&
-                possBlock.block._id === chain.getLatestBlock?.()._id + 1 &&
-                possBlock[0] && possBlock[0].indexOf(process.env.STEEM_ACCOUNT) !== -1
+                possBlock.block._id === chain.getLatestBlock?.()._id + 1
             ) {
                 this.finalizing = true;
                 // log which block got applied if collision exists

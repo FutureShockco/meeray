@@ -569,58 +569,26 @@ const cache: CacheType = {
             });
         }
 
-        // 2. Process Changes (as replaceOne operations, maintaining current logic)
+        // 2. Process Changes (now as updateOne operations)
         const changesArr = rebuild ? this.rebuild.changes : this.changes;
         for (let i = 0; i < changesArr.length; i++) {
-            const changeOp = changesArr[i];
+            const changeOp = changesArr[i]; // changeOp is { collection, query, changes }
             const collection = changeOp.collection;
-            const keyField = this.keyByCollection(collection);
-            // The query in changeOp might be complex. We need the actual document from cache.
-            // The original logic found the document in memory, then used its key for replaceOne.
-            // We need to retrieve the modified document from the live cache.
 
-            const mainCollectionStore = this[collection as keyof CacheMainDataCollections] as CacheCollectionStore;
-            let docToReplace: BasicCacheDoc | null = null;
-
-            // Attempt to find the document in the live cache using the query from changeOp
-            // This part is a bit tricky as changeOp.query could be generic.
-            // The original logic iterated `docsToUpdate` which was populated by finding the docId.
-            // For simplicity and to match the original's intent of replacing based on the current cache state:
-            // We assume changeOp.query is specific enough to identify a unique doc for replacement,
-            // or that the keyField can be extracted from it.
-            // Let's refine this to more closely match the original's way of identifying the doc to replace.
-
-            // The original logic derived docsToUpdate by iterating changesArr and then using
-            // mainCollectionStore[docId]. So, let's simulate that to get the correct doc.
-            const queryForId = changeOp.query;
-            const docIdFromQuery = queryForId[keyField]; // This was the assumption in the original code.
-
-            if (docIdFromQuery !== undefined && mainCollectionStore && mainCollectionStore[docIdFromQuery]) {
-                docToReplace = mainCollectionStore[docIdFromQuery];
-            } else {
-                // If not found by simple key, this indicates a potential mismatch or a more complex query
-                // that the original 'docsToUpdate' logic might have handled differently if it iterated
-                // the actual cache based on the query. For now, we log a warning if specific ID not found.
-                logger.warn(`[CACHE writeToDisk Refactor] Doc for update via changeOp not found in live cache by keyField '${keyField}' from query: ${collection}`, changeOp.query);
-                // To prevent errors, we might skip this op or try a direct update if possible,
-                // but for `replaceOne`, we need the full document.
-                // The original code implicitly skipped if docId was not found for docsToUpdate population.
-                continue;
-            }
-            
-            if (docToReplace && docToReplace[keyField] !== undefined) {
+            if (changeOp.query && changeOp.changes && Object.keys(changeOp.changes).length > 0) {
                 ensureBulkOpsForCollection(collection);
-                const filterQuery: Filter<BasicCacheDoc> = {};
-                filterQuery[keyField] = docToReplace[keyField];
+                // The `changeOp.changes` should already be in the correct MongoDB update operator format
+                // e.g., { $set: { field: value }, $inc: { counter: 1 } }
+                // The `changeOp.query` is the filter document.
                 bulkOpsByCollection[collection].push({
-                    replaceOne: {
-                        filter: filterQuery,
-                        replacement: docToReplace,
-                        upsert: true // Original logic used upsert: true
+                    updateOne: {
+                        filter: changeOp.query,
+                        update: changeOp.changes,
+                        upsert: true // Keep upsert:true, was used with replaceOne and generally safe for updateOne
                     }
                 });
             } else {
-                 logger.warn(`[CACHE writeToDisk Refactor] Could not prepare replaceOne for changeOp in ${collection}, docToReplace or its keyField is undefined. Query:`, changeOp.query);
+                 logger.warn(`[CACHE writeToDisk Refactor] Skipped invalid or empty changeOp for ${collection} updateOne. Query: ${JSON.stringify(changeOp.query)}, Changes: ${JSON.stringify(changeOp.changes)}`);
             }
         }
 
@@ -750,54 +718,8 @@ const cache: CacheType = {
         } else {
             logger.debug(`[CACHE writeToDisk Refactor] Queuing ${totalBulkOps} bulk and ${totalSingleOps} single DB ops.`);
             this.writerQueue.push((queueCb: StandardCallback) => {
-                 executeAllOperations(); // The outer callback 'cb' is not used here, so pass queueCb to allOpsDoneCallback
-                 // This part needs rethinking if allOpsDoneCallback is tied to the original cb.
-                 // For now, assuming allOpsDoneCallback handles its own logic for cb or no-cb.
-                 // The queueCb for writerQueue needs to be called.
-                 // Let's simplify: if in queue, the queueCb is the effective 'cb' for this run.
-
-                // Re-wire allOpsDoneCallback for queue context
-                const originalAllOpsDoneCallback = allOpsDoneCallback;
-                const queuedAllOpsDoneCallback = (qErr?: Error | null, qResults?: any[]) => {
-                    originalAllOpsDoneCallback(qErr, qResults); // Call original for logging and clearing cache
-                    queueCb(qErr ?? null, qResults); // Then call the queue's callback
-                };
-                
-                // Re-assign for executeAllOperations to use the wrapped one
-                const logTimingAndCallDoneForQueue = (err: Error | null, results: any[], execTime: number) => {
-                    const numOps = insertArr.length + changesArr.length + singleOpExecutions.length;
-                    if (config && config.blockTime && !rebuild && execTime >= config.blockTime / 2) {
-                        logger.warn(`[CACHE writeToDisk Refactor QUEUED] Slow DB batch: ${numOps} ops, ${execTime}ms`);
-                    } else {
-                        logger.debug(`[CACHE writeToDisk Refactor QUEUED] DB batch took ${execTime}ms for ${numOps} ops.`);
-                    }
-                    queuedAllOpsDoneCallback(err ?? null, results as any[]);
-                };
-                
-                // Need to redefine executeAllOperations slightly to use the new logTiming... for queue
-                let timeBefore = new Date().getTime();
-                Promise.all(dbExecutions)
-                    .then(bulkResults => {
-                        if (singleOpExecutions.length > 0) {
-                            parallel(singleOpExecutions, (singleErr: Error | null, singleResults: any) => {
-                                let execTime = new Date().getTime() - timeBefore;
-                                if (singleErr) logger.error('[CACHE writeToDisk Refactor QUEUED] Error in single ops:', singleErr);
-                                logTimingAndCallDoneForQueue(singleErr, (bulkResults || []).concat(singleResults || []), execTime);
-                            });
-                        } else {
-                            let execTime = new Date().getTime() - timeBefore;
-                            logTimingAndCallDoneForQueue(null, bulkResults, execTime);
-                        }
-                    })
-                    .catch(bulkErr => {
-                        let execTime = new Date().getTime() - timeBefore;
-                        logger.error('[CACHE writeToDisk Refactor QUEUED] Error in bulkWrite ops:', bulkErr);
-                        logTimingAndCallDoneForQueue(bulkErr, [], execTime);
-                    });
+                executeAllOperations();
             });
-            if (!rebuild) { // Original logic for clearing when not callback based
-                this.clear();
-            }
         }
     },
 

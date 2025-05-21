@@ -255,8 +255,9 @@ export const mining = {
             for (let i = 1; i < 2 * config.witnesses; i++) {
                 // Check if this node was the witness for a recent block that might have been missed by others
                 // This logic seems to be about becoming a backup witness
-                if (chain.recentBlocks[chain.recentBlocks.length - i]
-                    && chain.recentBlocks[chain.recentBlocks.length - i].witness === process.env.STEEM_ACCOUNT) {
+                const blockIndex = chain.recentBlocks.length - i;
+                if (blockIndex >= 0 && chain.recentBlocks[blockIndex]
+                    && chain.recentBlocks[blockIndex].witness === process.env.STEEM_ACCOUNT) {
                     
                     if (justExitedSync) {
                         // If just exited sync and acting as backup, base it on when the missed slot *should have* occurred after last actual block
