@@ -15,6 +15,7 @@ import steem from './steem.js';
 import witnessesModule from './witnesses.js';
 import { getNewKeyPair, verifySignature } from './crypto.js';
 import mongo from './mongo.js';
+import ip from 'ip';
 
 const bs58 = baseX(config.b58Alphabet || '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz');
 
@@ -838,15 +839,42 @@ export const p2p = {
 
                 // On receiving PEER_LIST:
                 case MessageType.PEER_LIST:
-                    if (Array.isArray(message.d.peers)) {
-                        for (const peerUrl of message.d.peers) {
-                            // Skip if already connected
-                            if (!p2p.isConnectedTo(peerUrl)) {
-                                p2p.connect([peerUrl], false);
-                            }
-                        }
+                    if (!message.d || !Array.isArray(message.d.peers)) {
+                        logger.warn(`[P2P:messageHandler] ${ws._peerUrl}: Invalid PEER_LIST message structure`);
+                        return;
                     }
-                    break;
+                    const receivedPeers: string[] = message.d.peers;
+                    logger.info(`[P2P:messageHandler] ${ws._peerUrl}: Received PEER_LIST with ${receivedPeers.length} peers.`);
+
+                    const selfP2PPort = p2p_port; // The port this node listens on
+                    const selfIPs = [ip.address(), '127.0.0.1', '::1', 'localhost']; // Common local addresses
+                    if (p2p_host !== '::' && p2p_host !== '0.0.0.0') {
+                        selfIPs.push(p2p_host); // Add specific listen host if configured
+                    }
+
+                    const peersToConnect = receivedPeers.filter(peerUrl => {
+                        try {
+                            const url = new URL(peerUrl);
+                            const peerHost = url.hostname;
+                            const peerPort = parseInt(url.port, 10);
+
+                            // Check if it's one of the known self IPs and the same P2P port
+                            if (selfIPs.some(selfIp => selfIp === peerHost) && peerPort === selfP2PPort) {
+                                logger.debug(`[P2P:messageHandler] Filtering out self from received peer list: ${peerUrl}`);
+                                return false;
+                            }
+                            return true;
+                        } catch (e: any) {
+                            logger.warn(`[P2P:messageHandler] Invalid peer URL in PEER_LIST: ${peerUrl}`, e.message);
+                            return false;
+                        }
+                    });
+
+                    if (peersToConnect.length > 0) {
+                        logger.info(`[P2P:messageHandler] Attempting to connect to ${peersToConnect.length} new peers from list.`);
+                        p2p.connect(peersToConnect, false);
+                    }
+                    return;
             }
         });
     },
