@@ -859,11 +859,11 @@ export const p2p = {
                 // On receiving PEER_LIST:
                 case MessageType.PEER_LIST:
                     if (!message.d || !Array.isArray(message.d.peers)) {
-                        logger.warn(`[P2P:messageHandler] ${ws._peerUrl}: Invalid PEER_LIST message structure`);
+                        logger.warn(`[P2P:messageHandler] ${ws._peerUrl || (ws._socket ? `${ws._socket.remoteAddress?.replace('::ffff:', '')}:${ws._socket.remotePort}` : 'unknown_peer')}: Invalid PEER_LIST message structure`);
                         return;
                     }
                     const receivedPeers: string[] = message.d.peers;
-                    logger.info(`[P2P:messageHandler] ${ws._peerUrl}: Received PEER_LIST with ${receivedPeers.length} peers.`);
+                    logger.info(`[P2P:messageHandler] ${ws._peerUrl || (ws._socket ? `${ws._socket.remoteAddress?.replace('::ffff:', '')}:${ws._socket.remotePort}` : 'unknown_peer')}: Received PEER_LIST with ${receivedPeers.length} peers.`);
 
                     const selfP2PPort = p2p_port; // The port this node listens on
                     const selfIPs = [ip.address(), '127.0.0.1', '::1', 'localhost']; // Common local addresses

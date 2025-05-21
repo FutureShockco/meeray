@@ -18,12 +18,34 @@ export const mining = {
     prepareBlock: (cb: (err: any, newBlock?: any) => void) => {
         logger.debug('[MINING:prepareBlock] Entered.');
         let previousBlock = chain.getLatestBlock();
+        if (!previousBlock) {
+            logger.error('[MINING:prepareBlock] Cannot get latest block from chain. Aborting.');
+            cb(true, null);
+            return;
+        }
         let nextIndex = previousBlock._id + 1;
-        let nextTimestamp = new Date().getTime();
-        let nextSteemBlockNum = previousBlock.steemBlockNum + 1;
-        let nextSteemBlockTimestamp = previousBlock.steemBlockTimestamp + config.blockTime;
+        
+        // Determine the correct timestamp for the new block
+        const targetBlockInterval = steem.isInSyncMode() ? config.syncBlockTime : config.blockTime;
+        const minTimestampForNewBlock = previousBlock.timestamp + targetBlockInterval;
+        const currentSystemTime = new Date().getTime();
+        
+        // Ensure the new block's timestamp is at least minTimestampForNewBlock for the current mode,
+        // but use currentSystemTime if it's later, allowing the chain to progress naturally if there were delays.
+        let nextTimestamp = Math.max(currentSystemTime, minTimestampForNewBlock);
+        
+        // isValidNewBlock should be the ultimate arbiter of whether a timestamp is too far in the future.
 
-        logger.debug(`[MINING:prepareBlock] Attempting to process Steem block ${nextSteemBlockNum}.`);
+        // Steem block numbers and timestamps in the Echelon block are related to the Steem block being processed,
+        // not directly to Echelon block timing intervals in the same way Echelon timestamps are.
+        let nextSteemBlockNum = previousBlock.steemBlockNum + 1; 
+        let nextSteemBlockTimestamp = previousBlock.steemBlockTimestamp + targetBlockInterval; // Approximate, actual comes from Steem block
+
+        logger.debug(`[MINING:prepareBlock] Mode: ${steem.isInSyncMode() ? 'SYNC' : 'NORMAL'}, TargetInterval: ${targetBlockInterval}ms`);
+        logger.debug(`[MINING:prepareBlock] previousBlock ID: ${previousBlock._id}, timestamp: ${new Date(previousBlock.timestamp).toISOString()}`);
+        logger.debug(`[MINING:prepareBlock] Calculated minTimestampForNewBlock: ${new Date(minTimestampForNewBlock).toISOString()}, currentSystemTime: ${new Date(currentSystemTime).toISOString()}, chosen nextTimestamp: ${new Date(nextTimestamp).toISOString()}`);
+        logger.debug(`[MINING:prepareBlock] Attempting to process Steem virtual op block corresponding to Echelon block ${nextIndex} using Steem block number ${nextSteemBlockNum}.`);
+
         steem.processBlock(nextSteemBlockNum).then((transactions) => {
             if (!transactions) {
                 // Handle the case where the Steem block doesn't exist yet
@@ -259,20 +281,19 @@ export const mining = {
             // If justExitedSync, mineInMs is already calculated relative to currentTime and target, so no timeSinceLastBlock adjustment needed here.
 
             // Add a small buffer to avoid clock differences causing delays
-            mineInMs += 30;
+            mineInMs += 40;
 
             logger.debug(`[MINING:minerWorker] Calculated mineInMs: ${mineInMs}. Will try to mine for block _id ${block._id + 1}. (sync: ${steem.isInSyncMode()}), timeSinceLastBlock: ${timeSinceLastBlock}ms`);
             consensus.observer = false
 
-            // More lenient performance check during sync mode
+            // Performance check
             if (steem.isInSyncMode()) {
-                // During sync, allow mining even if it takes almost the entire syncBlockTime.
-                // Skip only if mineInMs is excessively small (e.g., less than a very small fixed buffer like 50ms, or a much smaller fraction of blockTime)
-                // Let's use 1% of blockTime as the threshold, or a minimum of, say, 20ms.
                 const syncSkipThreshold = Math.max(20, blockTime / 100); // 1% of syncBlockTime, or 20ms minimum
                 if (mineInMs < syncSkipThreshold) {
-                    logger.warn(`[MINING:minerWorker] Extremely slow performance during sync (mineInMs: ${mineInMs}ms < threshold: ${syncSkipThreshold}ms), skipping block for _id ${block._id + 1}`);
-                    return;
+                    // In sync mode, if we are past the ideal slot or very close to its end,
+                    // schedule to mine ASAP instead of skipping, to maximize catch-up speed.
+                    logger.warn(`[MINING:minerWorker] In Sync: mineInMs (${mineInMs}ms) is below threshold (${syncSkipThreshold}ms). Scheduling to mine ASAP.`);
+                    mineInMs = 10; // Schedule in 10ms
                 }
             } else if (mineInMs < blockTime / 2) { // For normal mode, keep the 50% threshold
                 logger.warn(`[MINING:minerWorker] Slow performance detected in normal mode (mineInMs: ${mineInMs}ms < threshold: ${blockTime / 2}ms), will not try to mine block for _id ${block._id + 1}`);
