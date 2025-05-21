@@ -67,7 +67,7 @@ export const chain = {
     worker: null as any,
     shuttingDown: false,
     latestSteemBlock: 0,
-
+    lastWriteWasSlow: false, // New property to track slow cache writes
 
     getGenesisBlock: () => {
         const genesisBlock: Block = {
@@ -426,24 +426,37 @@ export const chain = {
             }, 0);
         }
 
-        // New conditional write logic
+        const CACHE_WRITE_SLOW_THRESHOLD_MS = (config.blockTime || 3000) * 0.75; // 75% of block time
+        const writeStartTime = Date.now();
+
+        const handleCacheWriteCompletion = (writeErr?: Error | null) => {
+            const writeDuration = Date.now() - writeStartTime;
+            if (writeDuration > CACHE_WRITE_SLOW_THRESHOLD_MS) {
+                logger.warn(`[CHAIN:addBlock] cache.writeToDisk for block ${block._id} was SLOW: ${writeDuration}ms (threshold: ${CACHE_WRITE_SLOW_THRESHOLD_MS}ms)`);
+                chain.lastWriteWasSlow = true;
+            } else {
+                // logger.debug(`[CHAIN:addBlock] cache.writeToDisk for block ${block._id} was normal: ${writeDuration}ms`);
+                chain.lastWriteWasSlow = false; // Reset if it was fast
+            }
+            cb(writeErr || null);
+        };
+
         if (p2p.recovering) {
             p2pRecoveryWriteCounter++;
             if (p2pRecoveryWriteCounter >= P2P_RECOVERY_WRITE_INTERVAL_BLOCKS) {
                 logger.info(`[CHAIN:addBlock] Performing periodic cache write during P2P recovery. Block: ${block._id}. Counter: ${p2pRecoveryWriteCounter}`);
-                cache.writeToDisk(false, () => {
+                cache.writeToDisk(false, (writeErr) => {
                     p2pRecoveryWriteCounter = 0; // Reset counter
-                    cb(null);
+                    handleCacheWriteCompletion(writeErr);
                 });
             } else {
                 // Not writing to disk yet during recovery, just call the callback
-                // logger.debug(`[CHAIN:addBlock] Skipping cache write during P2P recovery for block ${block._id}. Counter: ${p2pRecoveryWriteCounter}`);
-                cb(null);
+                handleCacheWriteCompletion(); // No error, write was skipped
             }
         } else {
             // Not in P2P recovery, write to disk as usual
-            cache.writeToDisk(false, () => {
-                cb(null);
+            cache.writeToDisk(false, (writeErr) => {
+                handleCacheWriteCompletion(writeErr);
             });
         }
     },

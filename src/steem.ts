@@ -1333,18 +1333,18 @@ const isNetworkReadyToEnterSyncMode = (localNodeBehindBlocks: number): boolean =
     if (witnessAccounts.size > 0 && consideredWitnessPeersForEntry >= minActiveWitnessesForPriority) {
         percentageIndicatingSync = consideredWitnessPeersForEntry > 0 ? (witnessPeersIndicatingSync / consideredWitnessPeersForEntry) * 100 : 0;
         relevantConsideredNodesForEntry = consideredWitnessPeersForEntry;
-        logger.info(`Sync Entry Decision (Witness Priority): ${witnessPeersIndicatingSync}/${consideredWitnessPeersForEntry} relevant witnesses indicate sync needed. Quorum: ${SYNC_ENTRY_QUORUM_PERCENT}%`);
+        logger.warn(`Sync Entry Decision (Witness Priority): ${witnessPeersIndicatingSync}/${consideredWitnessPeersForEntry} relevant witnesses indicate sync needed. Quorum: ${SYNC_ENTRY_QUORUM_PERCENT}%`);
     } else {
         percentageIndicatingSync = consideredPeersForEntry > 0 ? (nodesIndicatingSyncNeeded / consideredPeersForEntry) * 100 : 0;
         relevantConsideredNodesForEntry = consideredPeersForEntry;
-        logger.info(`Sync Entry Decision (General Peers): ${nodesIndicatingSyncNeeded}/${consideredPeersForEntry} relevant peers indicate sync needed. Quorum: ${SYNC_ENTRY_QUORUM_PERCENT}%`);
+        logger.warn(`Sync Entry Decision (General Peers): ${nodesIndicatingSyncNeeded}/${consideredPeersForEntry} relevant peers indicate sync needed. Quorum: ${SYNC_ENTRY_QUORUM_PERCENT}%`);
     }
 
     if (percentageIndicatingSync >= SYNC_ENTRY_QUORUM_PERCENT) {
-        logger.info(`Network ready to enter sync: ${percentageIndicatingSync.toFixed(1)}% of ${relevantConsideredNodesForEntry} relevant nodes indicate need. (Local behind: ${localNodeBehindBlocks})`);
+        logger.warn(`Network ready to enter sync: ${percentageIndicatingSync.toFixed(1)}% of ${relevantConsideredNodesForEntry} relevant nodes indicate need. (Local behind: ${localNodeBehindBlocks})`);
         return true;
     }
-    logger.info(`Network NOT ready to enter sync: ${percentageIndicatingSync.toFixed(1)}% of ${relevantConsideredNodesForEntry} relevant nodes indicate need. (Local behind: ${localNodeBehindBlocks})`);
+    logger.warn(`Network NOT ready to enter sync: ${percentageIndicatingSync.toFixed(1)}% of ${relevantConsideredNodesForEntry} relevant nodes indicate need. (Local behind: ${localNodeBehindBlocks})`);
     return false;
 };
 
