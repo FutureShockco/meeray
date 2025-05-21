@@ -2,6 +2,8 @@ import WebSocket from 'ws';
 import dns from 'dns';
 import net from 'net';
 import { randomBytes } from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import secp256k1 from 'secp256k1';
 import baseX from 'base-x';
 import config from './config.js';
@@ -36,6 +38,8 @@ const p2p_host = process.env.P2P_HOST || '::';
 // Constants for peer query
 const PEER_QUERY_BASE_INTERVAL = 5 * 60 * 1000; // 5 minutes
 const PEER_QUERY_JITTER = 30 * 1000; // 30 seconds
+
+const p2p_node_id_file = path.join(process.cwd(), 'config', 'p2p_node_id.json'); // Define path for the ID file
 
 export enum MessageType {
     QUERY_NODE_STATUS = 0,
@@ -191,8 +195,43 @@ export const p2p = {
     },
 
     generateNodeId: (): void => {
+        try {
+            if (fs.existsSync(p2p_node_id_file)) {
+                const fileContent = fs.readFileSync(p2p_node_id_file, 'utf-8');
+                const loadedNodeId = JSON.parse(fileContent) as NodeKeyPair; // Assume structure if parsed
+                if (loadedNodeId && loadedNodeId.pub && loadedNodeId.priv) {
+                    // Optional: Add a quick validation for the keys if necessary
+                    // e.g., check length or try to decode/verify
+                    p2p.nodeId = loadedNodeId;
+                    if (p2p.nodeId) { // Linter fix: Check p2p.nodeId before accessing .pub
+                        logger.info('P2P ID loaded from file: ' + p2p.nodeId.pub);
+                    }
+                    return;
+                } else {
+                    logger.warn('p2p_node_id.json found but content is invalid. Generating new ID.');
+                }
+            }
+        } catch (err) {
+            logger.error('Error reading p2p_node_id.json. Generating new ID.', err);
+        }
+
         p2p.nodeId = getNewKeyPair();
-        logger.info('P2P ID: ' + p2p.nodeId.pub);
+        if (p2p.nodeId) { // Linter fix: Check p2p.nodeId before accessing .pub
+            logger.info('New P2P ID generated: ' + p2p.nodeId.pub);
+        }
+
+        try {
+            const configDir = path.dirname(p2p_node_id_file);
+            if (!fs.existsSync(configDir)) {
+                fs.mkdirSync(configDir, { recursive: true });
+            }
+            fs.writeFileSync(p2p_node_id_file, JSON.stringify(p2p.nodeId, null, 2), 'utf-8');
+            if (p2p.nodeId) { // Linter fix: Check p2p.nodeId before logging success
+                 logger.info('New P2P ID saved to ' + p2p_node_id_file);
+            }
+        } catch (err) {
+            logger.error('Error writing p2p_node_id.json. P2P ID will be ephemeral for this session.', err);
+        }
     },
 
     discoveryWorker: async (isInit: boolean = false): Promise<void> => {

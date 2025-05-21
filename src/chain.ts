@@ -22,6 +22,10 @@ import { upsertAccountsReferencedInTx } from './account.js';
 const SYNC_MODE_BROADCAST_INTERVAL_BLOCKS = 3; // Broadcast every 3 blocks in sync mode
 const NORMAL_MODE_BROADCAST_INTERVAL_BLOCKS = 6; // Broadcast every 6 blocks in normal mode
 
+// Counter and interval for periodic cache writes during P2P recovery
+let p2pRecoveryWriteCounter = 0;
+const P2P_RECOVERY_WRITE_INTERVAL_BLOCKS = 100;
+
 export const chain = {
     blocksToRebuild: [] as any[],
     restoredBlocks: 0,
@@ -386,9 +390,26 @@ export const chain = {
             }, 0);
         }
 
-        cache.writeToDisk(false, () => { // writeToDisk has its own callback
-            cb(null); // Call original cb after writeToDisk's callback completes
-        });
+        // New conditional write logic
+        if (p2p.recovering) {
+            p2pRecoveryWriteCounter++;
+            if (p2pRecoveryWriteCounter >= P2P_RECOVERY_WRITE_INTERVAL_BLOCKS) {
+                logger.info(`[CHAIN:addBlock] Performing periodic cache write during P2P recovery. Block: ${block._id}. Counter: ${p2pRecoveryWriteCounter}`);
+                cache.writeToDisk(false, () => {
+                    p2pRecoveryWriteCounter = 0; // Reset counter
+                    cb(null);
+                });
+            } else {
+                // Not writing to disk yet during recovery, just call the callback
+                // logger.debug(`[CHAIN:addBlock] Skipping cache write during P2P recovery for block ${block._id}. Counter: ${p2pRecoveryWriteCounter}`);
+                cb(null);
+            }
+        } else {
+            // Not in P2P recovery, write to disk as usual
+            cache.writeToDisk(false, () => {
+                cb(null);
+            });
+        }
     },
     validateAndAddBlock: async (block: any, revalidate: boolean, cb: (err: any, newBlock: any) => void) => {
         if (chain.shuttingDown) return
