@@ -103,39 +103,45 @@ export const witnessesModule = {
     generateWitnesses: (withWitnessPub: boolean, withWs: boolean, limit: number, start: number) => {
         let witnesses: any[] = [];
 
-        let witnessAccSource = withWitnessPub ? cache.witnesses : cache.accounts;
+        // Always use cache.accounts as the primary source of truth for witness data.
+        // The `witnessPublicKey` is expected to be on the account object itself.
+        let witnessAccSource = cache.accounts;
 
         if (!witnessAccSource || Object.keys(witnessAccSource).length === 0) {
-            logger.warn('[generateWitnesses] witnessAccSource is empty or undefined.');
+            logger.warn('[generateWitnesses] witnessAccSource (cache.accounts) is empty or undefined.');
+            // If cache.accounts is empty, no witnesses can be generated.
+            return []; 
         }
-        for (const key in witnessAccSource) {
-            // Ensure the account actually exists in the main cache.accounts map
-            // and has the necessary properties before proceeding.
-            const account = cache.accounts[key];
+
+        for (const accountNameKey in witnessAccSource) {
+            const account = witnessAccSource[accountNameKey]; // accountNameKey is the key from cache.accounts, so value is the account
+            
             if (!account) {
-                logger.warn(`[generateWitnesses] Account not found in cache.accounts for key: ${key}`);
+                // This case should ideally not happen if iterating keys of witnessAccSource directly
+                logger.warn(`[generateWitnesses] Account object unexpectedly null for key: ${accountNameKey} in cache.accounts`);
                 continue;
             }
 
             if (!account.totalVoteWeight || account.totalVoteWeight <= 0) {
-                logger.debug(`[generateWitnesses] Skipping account ${key} due to zero or missing totalVoteWeight: ${account.totalVoteWeight}`);
-                continue;
-            }
-            // If we need witnessPublicKey (for witness schedule), ensure it exists.
-            if (withWitnessPub && !account.witnessPublicKey) {
-                logger.debug(`[generateWitnesses] Skipping account ${key} due to missing witnessPublicKey (withWitnessPub is true).`);
+                logger.debug(`[generateWitnesses] Skipping account ${account.name || accountNameKey} due to zero or missing totalVoteWeight: ${account.totalVoteWeight}`);
                 continue;
             }
 
+            // If we need witnessPublicKey (for witness schedule, withWitnessPub is true), ensure it exists on the account.
+            if (withWitnessPub && (!account.witnessPublicKey || account.witnessPublicKey === '')) {
+                logger.debug(`[generateWitnesses] Skipping account ${account.name || accountNameKey} due to missing or empty witnessPublicKey (withWitnessPub is true).`);
+                continue;
+            }
 
             let witnessDetails: any = {
                 name: account.name,
-                pub: account.witnessPublicKey,
+                pub: account.witnessPublicKey, // This should be present if the above check passed
                 witnessPublicKey: account.witnessPublicKey,
                 balance: account.tokens?.ECH || 0,
                 votedWitnesses: account.votedWitnesses,
                 totalVoteWeight: account.totalVoteWeight,
             };
+
             if (withWs && account.json && account.json.node && typeof account.json.node.ws === 'string') {
                 witnessDetails.ws = account.json.node.ws;
             }
