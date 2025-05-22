@@ -63,16 +63,6 @@ router.get('/:name', (async (req: Request, res: Response) => {
             accountId = new ObjectId(req.params.name);
         } catch (e) {
             // If req.params.name is not a valid ObjectId string, it might be a name string for a lookup.
-            // Assuming _id in 'accounts' collection can be EITHER an ObjectId OR a string name based on context.
-            // The error specifically mentions ObjectId, so for this query, we prioritize ObjectId.
-            // If it was intended to search by a field other than _id (like a 'name' field), the query should be { name: req.params.name }
-            // For now, if it is not a valid ObjectId, it will fail the query if _id is strictly ObjectId.
-            // If _id is expected to be string for some documents and ObjectId for others, this is complex.
-            // Given the error, it seems _id IS an ObjectId for the documents it's trying to find.
-            // Let's assume for now that if it's not an ObjectId, we try finding by a field called 'name'.
-            // However, the original code was findOne({ _id: req.params.name }), implying _id lookup.
-            // So, if it fails to be an ObjectId, it's an invalid _id for this specific lookup.
-             return res.status(400).json({ success: false, error: 'Invalid account ID format for _id lookup.' });
         }
         const account = await mongo.getDb().collection('accounts').findOne({ _id: accountId });
         if (!account) {
