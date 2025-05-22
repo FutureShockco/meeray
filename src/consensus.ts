@@ -96,7 +96,7 @@ export const consensus: Consensus = {
         }
         for (let i = 0; i < this.possBlocks.length; i++) {
             const possBlock = this.possBlocks[i];
-            logger.cons('T'+Math.ceil(threshold)+' R0-'+possBlock[0].length+' R1-'+possBlock[1].length)
+            //logger.cons('T'+Math.ceil(threshold)+' R0-'+possBlock[0].length+' R1-'+possBlock[1].length)
             if (
                 possBlock[(config.consensusRounds || 2) - 1].length > threshold &&
                 !this.finalizing &&
@@ -112,10 +112,10 @@ export const consensus: Consensus = {
                             possBlocksById[possBlock.block._id][j].block.witness,
                             possBlocksById[possBlock.block._id][j].block.timestamp,
                         ]);
-                    logger.info('Block collision detected at height ' + possBlock.block._id + ', the witnesses are:', collisions);
+                    logger.warn('Block collision detected at height ' + possBlock.block._id + ', the witnesses are:', collisions);
                     logger.info('Applying block ' + possBlock.block._id + '#' + possBlock.block.hash.substr(0, 4) + ' by ' + possBlock.block.witness + ' with timestamp ' + possBlock.block.timestamp);
                 } else {
-                    logger.info('block ' + possBlock.block._id + '#' + possBlock.block.hash.substr(0, 4) + ' got finalized');
+                    logger.debug('block ' + possBlock.block._id + '#' + possBlock.block.hash.substr(0, 4) + ' got finalized');
                 }
                 chain.validateAndAddBlock(possBlock.block, false, (err: any) => {
                     if (err) {
