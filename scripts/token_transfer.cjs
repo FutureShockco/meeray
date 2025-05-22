@@ -28,7 +28,7 @@ async function main() {
     const tokenTransferData = {
         symbol: "FUNKY",
         to: recipientAccount,
-        amount: 123.456,
+        amount: 123,
         memo: "Have some FUNKY tokens!"
     };
 
