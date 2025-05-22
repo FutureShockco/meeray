@@ -529,7 +529,6 @@ export const chain = {
             if (revalidate) string = 'validated & ' + string
             if (err) {
                 logger.error('Error in series execution:', err);
-                throw err;
             }
             // First result is from account creation
             let executedSuccesfully: any[] = [];

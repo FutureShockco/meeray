@@ -1,10 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-const { fileURLToPath } = require('url');
-
-// __filename and __dirname are available directly in CommonJS modules
-// const __filename = fileURLToPath(import.meta.url); // No longer needed like this
-// const __dirname = path.dirname(__filename); // Use __dirname directly
 
 async function main() {
     // Dynamic import for dsteem
