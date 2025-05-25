@@ -4,7 +4,8 @@ import validate from '../../validation/index.js';
 import { FarmUnstakeData, Farm, UserFarmPosition, FarmUnstakeDataDB, UserFarmPositionDB } from './farm-interfaces.js';
 import { UserLiquidityPosition, UserLiquidityPositionDB } from '../pool/pool-interfaces.js';
 import { getAccount } from '../../utils/account-utils.js';
-import { convertToBigInt, convertToString } from '../../utils/bigint-utils.js';
+import { convertToBigInt, convertToString, toString } from '../../utils/bigint-utils.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
 const NUMERIC_FIELDS: Array<keyof FarmUnstakeData> = ['lpTokenAmount'];
 
@@ -188,26 +189,14 @@ export async function process(data: FarmUnstakeDataDB, sender: string): Promise<
 
     logger.debug(`[farm-unstake] Staker ${unstakeData.staker} unstaked ${unstakeData.lpTokenAmount} LP tokens from farm ${unstakeData.farmId} to pool ${poolIdForLp}.`);
 
-    const eventDocument = {
-      type: 'farmUnstake',
-      actor: sender,
-      data: {
+    const eventData = {
         farmId: unstakeData.farmId,
         staker: unstakeData.staker,
         lpTokenSymbol: farm.stakingToken.symbol,
         lpTokenIssuer: farm.stakingToken.issuer,
-        lpTokenAmount: unstakeData.lpTokenAmount
-      }
+        lpTokenAmount: toString(unstakeData.lpTokenAmount)
     };
-
-    await new Promise<void>((resolve) => {
-      cache.insertOne('events', eventDocument, (err, result) => {
-        if (err || !result) {
-          logger.error(`[farm-unstake] CRITICAL: Failed to log farmUnstake event for ${unstakeData.farmId}: ${err || 'no result'}.`);
-        }
-        resolve();
-      });
-    });
+    await logTransactionEvent('farmUnstake', sender, eventData);
 
     return true;
   } catch (error) {

@@ -3,6 +3,7 @@ import cache from '../../cache.js';
 import { mongo } from '../../mongo.js';
 import logger from '../../logger.js';
 import { AccountDoc } from '../../mongo.js'; // Assuming AccountDoc is exported from mongo.ts and includes witness fields
+import { toBigInt } from '../../utils/bigint-utils.js';
 
 const router: Router = express.Router();
 
@@ -18,7 +19,7 @@ router.get('/', (async (req: Request, res: Response) => {
     const { limit, skip } = getPagination(req);
     try {
         const query = { witnessPublicKey: { $exists: true, $ne: '' } }; // Consider only accounts that declared a public key
-        const witnesses = await mongo.getDb().collection<AccountDoc>('accounts')
+        const witnessesFromDB = await mongo.getDb().collection<AccountDoc>('accounts')
             .find(query)
             .sort({ totalVoteWeight: -1, name: 1 })
             .limit(limit)
@@ -26,6 +27,25 @@ router.get('/', (async (req: Request, res: Response) => {
             .toArray();
         
         const total = await mongo.getDb().collection<AccountDoc>('accounts').countDocuments(query);
+
+        const witnesses = witnessesFromDB.map((wit: any) => {
+            const { _id, totalVoteWeight, balances, ...rest } = wit;
+            const transformedWit: any = { ...rest };
+            if (_id) {
+                transformedWit.id = _id.toString();
+            }
+            if (totalVoteWeight) {
+                transformedWit.totalVoteWeight = toBigInt(totalVoteWeight as string).toString();
+            }
+            if (balances) {
+                const newBalances: Record<string, string> = {};
+                for (const tokenSymbol in balances) {
+                    newBalances[tokenSymbol] = toBigInt(balances[tokenSymbol] as string).toString();
+                }
+                transformedWit.balances = newBalances;
+            }
+            return transformedWit;
+        });
 
         res.json({ data: witnesses, total, limit, skip });
     } catch (error: any) {
@@ -39,10 +59,27 @@ router.get('/', (async (req: Request, res: Response) => {
 router.get('/:name/details', (async (req: Request, res: Response) => {
     const { name } = req.params;
     try {
-        const account = await cache.findOnePromise('accounts', { name: name }) as AccountDoc | null;
-        if (!account) {
+        const accountFromDB = await cache.findOnePromise('accounts', { name: name }) as AccountDoc | null;
+        if (!accountFromDB) {
             return res.status(404).json({ message: `Account ${name} not found.` });
         }
+        
+        const { _id, totalVoteWeight, balances, ...rest } = accountFromDB as any;
+        const account: any = { ...rest };
+        if (_id) {
+            account.id = _id.toString();
+        }
+        if (totalVoteWeight) {
+            account.totalVoteWeight = toBigInt(totalVoteWeight as string).toString();
+        }
+        if (balances) {
+            const newBalances: Record<string, string> = {};
+            for (const tokenSymbol in balances) {
+                newBalances[tokenSymbol] = toBigInt(balances[tokenSymbol] as string).toString();
+            }
+            account.balances = newBalances;
+        }
+
         res.json(account);
     } catch (error: any) {
         logger.error(`Error fetching account details for ${name}:`, error);

@@ -86,10 +86,15 @@ async function mintTokens(symbol, to, amount) {
 // --- Farm Operation Helpers --- //
 async function createFarm(lpTokenSymbol, rewardTokenSymbol) {
   const payload = {
-    lpTokenSymbol,
-    lpTokenIssuer: username,
+    farmType: "TOKEN", // Or "LP_TOKEN" depending on the farm's design
+    stakingTokenSymbol: lpTokenSymbol, // Renamed for clarity, was lpTokenSymbol
+    stakingTokenIssuer: username,    // Renamed for clarity, was lpTokenIssuer
     rewardTokenSymbol,
-    rewardTokenIssuer: username
+    rewardTokenIssuer: username,
+    rewardPerBlock: "100000", // Example: 1 token (assuming 5 decimals for reward token)
+    rewardInterval: 86400,   // Example: 1 day in seconds
+    multiplier: 1,           // Example: 1x multiplier
+    maxStakingAmount: "100000000000" // Example: 1,000,000 tokens (assuming 5 decimals)
   };
   return sendCustomJson('farm_create', payload);
 }

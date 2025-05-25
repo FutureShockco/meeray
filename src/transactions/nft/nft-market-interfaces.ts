@@ -33,7 +33,7 @@ export interface NFTListing {
     price: bigint;        // Listing price in payment token
     paymentToken: {       // Token accepted as payment
         symbol: string;
-        issuer: string;
+        issuer?: string;    // Made issuer optional
     };
     status: 'active' | 'sold' | 'cancelled';
     expiration?: string;  // ISO date string for listing expiration
@@ -64,22 +64,10 @@ export type NFTListingCreateDataDB = BigIntToString<NFTListingCreateData>;
 export type NFTListingDB = BigIntToString<NFTListing>;
 export type NFTSaleDB = BigIntToString<NFTSale>;
 
-export interface NftListing {
-  _id: string; // Unique ID for the listing (e.g., collectionSymbol-instanceId-listerAddress or a UUID)
-  collectionSymbol: string;
-  instanceId: string;
-  seller: string; // Account address of the seller
-  price: number; // Sale price
-  paymentTokenSymbol: string; // Symbol of the token for payment (e.g., "NATIVE_TOKEN", "USDC")
-  paymentTokenIssuer?: string; // Issuer for non-native tokens
-  listedAt: string; // ISO Date string when the item was listed
-  status: 'ACTIVE' | 'SOLD' | 'CANCELLED';
-}
-
 export interface NftListPayload {
   collectionSymbol: string;
   instanceId: string;
-  price: number; // Sale price
+  price: string; // Changed from number to string, expecting stringified BigInt
   paymentTokenSymbol: string; // Token for payment
   paymentTokenIssuer?: string; // Required if paymentTokenSymbol is not NATIVE_TOKEN
 }

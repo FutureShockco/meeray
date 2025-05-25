@@ -5,6 +5,7 @@ import { MarketCancelOrderData, Order, OrderStatus, TradingPair, OrderSide, Orde
 import { getAccount, adjustBalance } from '../../utils/account-utils.js';
 import { matchingEngine } from './matching-engine.js'; // Assumed to handle the actual removal from book & state update
 import { toBigInt, toString, convertToBigInt, BigIntMath } from '../../utils/bigint-utils.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
 // Define keys for converting OrderDB to Order
 const ORDER_NUMERIC_FIELDS: Array<keyof Order> = ['price', 'quantity', 'filledQuantity', 'averageFillPrice', 'cumulativeQuoteValue', 'quoteOrderQty'];
@@ -138,26 +139,16 @@ export async function process(data: MarketCancelOrderData, sender: string): Prom
     logger.debug(`[market-cancel-order] Order ${data.orderId} cancelled successfully by ${sender}.`);
 
     // Event logging
-    const eventDocument = {
-      _id: Date.now().toString(36),
-      type: 'marketCancelOrder',
-      timestamp: new Date().toISOString(),
-      actor: sender,
-      data: { 
+    const eventData = { 
         orderId: data.orderId,
         pairId: data.pairId,
         userId: data.userId,
         status: OrderStatus.CANCELLED // Status should be confirmed by matching engine result ideally
-      }
     };
-    await new Promise<void>((resolve) => {
-        cache.insertOne('events', eventDocument, (err, result) => {
-            if (err || !result) {
-                logger.error(`[market-cancel-order] CRITICAL: Failed to log marketCancelOrder event for ${data.orderId}: ${err || 'no result'}.`);
-            }
-            resolve();
-        });
-    });
+    // TODO: The original code was missing the transactionId for logTransactionEvent.
+    // Assuming it should be passed, but it's not available in this scope. 
+    // For now, logging without it. This might need to be addressed.
+    await logTransactionEvent('marketCancelOrder', sender, eventData);
 
     return true;
   } catch (error) {

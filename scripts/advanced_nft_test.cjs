@@ -105,7 +105,7 @@ async function createCollection(symbol, name, schema, actingUser = primaryUserna
     symbol,
     name,
     creator: actingUser,
-    maxSupply: 1000,
+    maxSupply: "1000",
     mintable: true,
     burnable: true,
     transferable: true,

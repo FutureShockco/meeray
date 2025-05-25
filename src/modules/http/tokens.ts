@@ -2,6 +2,7 @@ import express, { Request, Response, Router, RequestHandler } from 'express';
 import cache from '../../cache.js';
 import { mongo } from '../../mongo.js';
 import logger from '../../logger.js';
+import { toBigInt } from '../../utils/bigint-utils.js';
 
 const router: Router = express.Router();
 
@@ -18,8 +19,25 @@ const getPagination = (req: Request) => {
 router.get('/', (async (req: Request, res: Response) => {
     const { limit, skip } = getPagination(req);
     try {
-        const tokens = await cache.findPromise('tokens', {}, { limit, skip, sort: { _id: 1 } }); // _id is symbol
+        const tokensFromDB: any[] | null = await cache.findPromise('tokens', {}, { limit, skip, sort: { _id: 1 } });
         const total = await mongo.getDb().collection('tokens').countDocuments({});
+        
+        let tokens: any[] = [];
+        if (tokensFromDB && tokensFromDB.length > 0) {
+            tokens = tokensFromDB.map((tokenDoc: any) => {
+                const { maxSupply, currentSupply, ...rest } = tokenDoc;
+                const transformedToken: any = { ...rest };
+                if (maxSupply) {
+                    transformedToken.maxSupply = toBigInt(maxSupply as string).toString();
+                }
+                if (currentSupply) {
+                    transformedToken.currentSupply = toBigInt(currentSupply as string).toString();
+                }
+                // _id in tokens collection is the symbol (string), so no transformation needed for _id itself
+                return transformedToken;
+            });
+        }
+
         res.json({ data: tokens, total, limit, skip });
     } catch (error: any) {
         logger.error('Error fetching tokens:', error);
@@ -31,9 +49,17 @@ router.get('/', (async (req: Request, res: Response) => {
 router.get('/:symbol', (async (req: Request, res: Response) => {
     const { symbol } = req.params;
     try {
-        const token = await cache.findOnePromise('tokens', { _id: symbol }); // _id is symbol for tokens collection
-        if (!token) {
+        const tokenFromDB = await cache.findOnePromise('tokens', { _id: symbol });
+        if (!tokenFromDB) {
             return res.status(404).json({ message: `Token ${symbol} not found.` });
+        }
+        const { maxSupply, currentSupply, ...rest } = tokenFromDB as any;
+        const token: any = { ...rest };
+        if (maxSupply) {
+            token.maxSupply = toBigInt(maxSupply as string).toString();
+        }
+        if (currentSupply) {
+            token.currentSupply = toBigInt(currentSupply as string).toString();
         }
         res.json(token);
     } catch (error: any) {
@@ -47,8 +73,23 @@ router.get('/issuer/:issuerName', (async (req: Request, res: Response) => {
     const { issuerName } = req.params;
     const { limit, skip } = getPagination(req);
     try {
-        const tokens = await cache.findPromise('tokens', { issuer: issuerName }, { limit, skip, sort: { _id: 1 } });
+        const tokensFromDB: any[] | null = await cache.findPromise('tokens', { issuer: issuerName }, { limit, skip, sort: { _id: 1 } });
         const total = await mongo.getDb().collection('tokens').countDocuments({ issuer: issuerName });
+
+        let tokens: any[] = [];
+        if (tokensFromDB && tokensFromDB.length > 0) {
+            tokens = tokensFromDB.map((tokenDoc: any) => {
+                const { maxSupply, currentSupply, ...rest } = tokenDoc;
+                const transformedToken: any = { ...rest };
+                if (maxSupply) {
+                    transformedToken.maxSupply = toBigInt(maxSupply as string).toString();
+                }
+                if (currentSupply) {
+                    transformedToken.currentSupply = toBigInt(currentSupply as string).toString();
+                }
+                return transformedToken;
+            });
+        }
         res.json({ data: tokens, total, limit, skip });
     } catch (error: any) {
         logger.error(`Error fetching tokens for issuer ${issuerName}:`, error);
@@ -61,11 +102,25 @@ router.get('/name/:searchName', (async (req: Request, res: Response) => {
     const { searchName } = req.params;
     const { limit, skip } = getPagination(req);
     try {
-        // Using a regex for partial matching on the 'name' field. 
-        // Ensure the 'name' field is indexed for performance if this is a common query.
-        const query = { name: { $regex: searchName, $options: 'i' } }; // 'i' for case-insensitive
-        const tokens = await cache.findPromise('tokens', query, { limit, skip, sort: { _id: 1 } });
+        const query = { name: { $regex: searchName, $options: 'i' } };
+        const tokensFromDB: any[] | null = await cache.findPromise('tokens', query, { limit, skip, sort: { _id: 1 } });
         const total = await mongo.getDb().collection('tokens').countDocuments(query);
+
+        let tokens: any[] = [];
+        if (tokensFromDB && tokensFromDB.length > 0) {
+            tokens = tokensFromDB.map((tokenDoc: any) => {
+                const { maxSupply, currentSupply, ...rest } = tokenDoc;
+                const transformedToken: any = { ...rest };
+                if (maxSupply) {
+                    transformedToken.maxSupply = toBigInt(maxSupply as string).toString();
+                }
+                if (currentSupply) {
+                    transformedToken.currentSupply = toBigInt(currentSupply as string).toString();
+                }
+                return transformedToken;
+            });
+        }
+
         res.json({ data: tokens, total, limit, skip });
     } catch (error: any) {
         logger.error(`Error searching tokens by name ${searchName}:`, error);

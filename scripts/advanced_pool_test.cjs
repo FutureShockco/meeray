@@ -74,12 +74,22 @@ async function sendCustomJson(contractAction, payload, actingUser = username, pk
 
 // --- Token Operation Helpers (Reused) --- //
 async function createToken(symbol, name, precision, maxSupply, initialSupply) {
-  const payload = { symbol, name, precision, maxSupply: maxSupply, initialSupply: initialSupply };
+  const payload = { 
+    symbol, 
+    name, 
+    precision, 
+    maxSupply: maxSupply.toString(), // Ensure string
+    initialSupply: initialSupply.toString() // Ensure string
+  };
   return sendCustomJson('token_create', payload);
 }
 
 async function mintTokens(symbol, to, amount) {
-  const payload = { symbol, to, amount: amount };
+  const payload = { 
+    symbol, 
+    to, 
+    amount: amount.toString() // Ensure string
+  };
   return sendCustomJson('token_mint', payload);
 }
 
@@ -99,8 +109,8 @@ async function addLiquidity(poolId, tokenA_amount, tokenB_amount) {
   const payload = {
     poolId,
     provider: username,
-    tokenA_amount: tokenA_amount,
-    tokenB_amount: tokenB_amount,
+    tokenA_amount: tokenA_amount.toString(), // Ensure string
+    tokenB_amount: tokenB_amount.toString(), // Ensure string
   };
   return sendCustomJson('pool_add_liquidity', payload);
 }
@@ -113,8 +123,8 @@ async function swapTokens(poolId, tokenInSymbol, tokenOutSymbol, amountIn, minAm
     tokenInIssuer: username,
     tokenOutSymbol,
     tokenOutIssuer: username,
-    amountIn: amountIn,
-    minAmountOut: minAmountOut,
+    amountIn: amountIn.toString(), // Ensure string
+    minAmountOut: minAmountOut.toString(), // Ensure string
   };
   return sendCustomJson('pool_swap', payload);
 }

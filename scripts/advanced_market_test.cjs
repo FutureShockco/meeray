@@ -90,9 +90,9 @@ async function createMarketPair(baseSymbol, quoteSymbol) {
     baseAssetIssuer: username,
     quoteAssetSymbol: quoteSymbol,
     quoteAssetIssuer: username,
-    tickSize: 0.0001,
-    lotSize: 1,
-    minNotional: 1,
+    tickSize: "10000",       // Represents 0.0001, assuming 8 decimal precision for price
+    lotSize: "100000000",    // Represents 1, assuming 8 decimal precision for quantity
+    minNotional: "100000000", // Represents 1, assuming 8 decimal precision for value
     initialStatus: "TRADING"
   };
   return sendCustomJson('market_create_pair', payload);
@@ -104,8 +104,11 @@ async function placeOrder(pairId, type, side, price, quantity) {
     pairId,
     type,
     side,
-    price,
-    quantity,
+    // Assuming price and quantity are passed as numbers and need conversion based on contract precision
+    // Example: if contract expects price with 8 decimals, 0.95 becomes "95000000"
+    // Example: if contract expects quantity with 8 decimals, 100 becomes "10000000000"
+    price: type === "LIMIT" ? (BigInt(Math.round(price * 100000000))).toString() : "0", // Convert to string BigInt, 0 for market
+    quantity: (BigInt(Math.round(quantity * 100000000))).toString(), // Convert to string BigInt
     timeInForce: "GTC" // Good 'Til Canceled
   };
   return sendCustomJson('market_place_order', payload);

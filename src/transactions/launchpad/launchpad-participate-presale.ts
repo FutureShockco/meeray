@@ -3,6 +3,7 @@ import cache from '../../cache.js';
 import { getAccount, adjustBalance } from '../../utils/account-utils.js';
 import { Launchpad, LaunchpadStatus, PresaleDetails, LaunchpadParticipatePresaleData, LaunchpadParticipatePresaleDataDB } from './launchpad-interfaces.js';
 import { toBigInt, toString, convertToBigInt, BigIntMath } from '../../utils/bigint-utils.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
 const NUMERIC_FIELDS_PARTICIPATE: Array<keyof LaunchpadParticipatePresaleData> = ['contributionAmount'];
 
@@ -92,7 +93,8 @@ export async function validateTx(dataDb: LaunchpadParticipatePresaleDataDB, send
   return true;
 }
 
-export async function process(dataDb: LaunchpadParticipatePresaleDataDB, sender: string): Promise<boolean> {
+export async function process(transaction: { data: LaunchpadParticipatePresaleDataDB, sender: string, _id: string }): Promise<boolean> {
+  const { data: dataDb, sender, _id: transactionId } = transaction;
   const data = convertToBigInt<LaunchpadParticipatePresaleData>(dataDb, NUMERIC_FIELDS_PARTICIPATE);
   logger.debug(`[launchpad-participate-presale] Processing participation from ${sender} for ${data.launchpadId}: amount ${toString(data.contributionAmount)}`);
   try {
@@ -169,27 +171,16 @@ export async function process(dataDb: LaunchpadParticipatePresaleDataDB, sender:
         return false;
     }
 
-    const eventDocument = {
-      type: 'launchpadPresaleParticipation',
-      timestamp: new Date().toISOString(),
-      actor: sender,
-      data: {
+    // Log event using the new centralized logger
+    const eventData = {
         launchpadId: data.launchpadId,
         userId: data.userId,
         contributionAmount: toString(data.contributionAmount),
         contributionTokenSymbol: presaleDetails.quoteAssetForPresaleSymbol,
         contributionTokenIssuer: presaleDetails.quoteAssetForPresaleIssuer,
         newTotalRaised: toString(newTotalRaised)
-      }
     };
-    await new Promise<void>((resolve) => {
-        cache.insertOne('events', eventDocument, (err, result) => {
-            if (err || !result) {
-                logger.error(`[launchpad-participate-presale] CRITICAL: Failed to log participation event: ${err || 'no result'}.`);
-            }
-            resolve();
-        });
-    });
+    await logTransactionEvent('launchpadPresaleParticipation', sender, eventData, transactionId);
 
     logger.debug(`[launchpad-participate-presale] Participation processed for ${toString(data.contributionAmount)}.`);
     return true;

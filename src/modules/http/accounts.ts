@@ -3,6 +3,8 @@ import { ObjectId } from 'mongodb';
 import mongo from '../../mongo.js';
 import cache from '../../cache.js';
 import logger from '../../logger.js';
+import { toBigInt } from '../../utils/bigint-utils.js';
+import { transformTransactionData } from '../../utils/http-helpers.js';
 
 const router: Router = express.Router();
 
@@ -36,7 +38,7 @@ router.get('/', (async (req: Request, res: Response) => {
         const sort: any = {};
         sort[sortField] = sortDirection;
         
-        const accounts = await mongo.getDb().collection('accounts')
+        const accountsFromDB: any[] = await mongo.getDb().collection('accounts')
             .find(query)
             .sort(sort)
             .limit(limit)
@@ -44,6 +46,25 @@ router.get('/', (async (req: Request, res: Response) => {
             .toArray();
             
         const total = await mongo.getDb().collection('accounts').countDocuments(query);
+
+        const accounts = accountsFromDB.map(acc => {
+            const { _id, totalVoteWeight, balances, ...rest } = acc;
+            const transformedAcc: any = { ...rest };
+            if (_id) {
+                transformedAcc.id = _id.toString();
+            }
+            if (totalVoteWeight) {
+                transformedAcc.totalVoteWeight = toBigInt(totalVoteWeight as string).toString();
+            }
+            if (balances) {
+                const newBalances: Record<string, string> = {};
+                for (const tokenSymbol in balances) {
+                    newBalances[tokenSymbol] = toBigInt(balances[tokenSymbol] as string).toString();
+                }
+                transformedAcc.balances = newBalances;
+            }
+            return transformedAcc;
+        });
         
         res.json({ success: true, data: accounts, total, limit, skip });
     } catch (err) {
@@ -64,16 +85,31 @@ router.get('/:name', (async (req: Request, res: Response) => {
         } catch (e) {
             // If req.params.name is not a valid ObjectId string, it might be a name string for a lookup.
         }
-        const account = await mongo.getDb().collection('accounts').findOne({ _id: accountId });
-        if (!account) {
+        let accountFromDB: any = await mongo.getDb().collection('accounts').findOne({ _id: accountId });
+        if (!accountFromDB) {
             // If not found by ObjectId, perhaps try by name if that's a fallback?
-            // For now, stick to the original intention which was _id lookup.
-            const accountByName = await mongo.getDb().collection('accounts').findOne({ name: req.params.name });
-            if (!accountByName) {
+            accountFromDB = await mongo.getDb().collection('accounts').findOne({ name: req.params.name });
+            if (!accountFromDB) {
                  return res.status(404).json({ success: false, error: 'Account not found by ID or name.' });
             }
-            return res.json({ success: true, account: accountByName });
         }
+
+        const { _id, totalVoteWeight, balances, ...rest } = accountFromDB;
+        const account: any = { ...rest };
+        if (_id) {
+            account.id = _id.toString();
+        }
+        if (totalVoteWeight) {
+            account.totalVoteWeight = toBigInt(totalVoteWeight as string).toString();
+        }
+        if (balances) {
+            const newBalances: Record<string, string> = {};
+            for (const tokenSymbol in balances) {
+                newBalances[tokenSymbol] = toBigInt(balances[tokenSymbol] as string).toString();
+            }
+            account.balances = newBalances;
+        }
+
         res.json({ success: true, account });
     } catch (err) {
         logger.error(`Error fetching account ${req.params.name}:`, err);
@@ -81,84 +117,92 @@ router.get('/:name', (async (req: Request, res: Response) => {
     }
 }) as RequestHandler);
 
-// GET /accounts/:name/transactions - Get transactions involving an account
-router.get('/:name/transactions', (async (req: Request, res: Response) => {
+// GET /accounts/:name/transactions - Get transaction history for an account
+router.get('/:name/transactions', async (req: Request, res: Response) => {
+    const { name } = req.params;
+    const { limit, skip } = getPagination(req);
+    const { type, dataKey, dataValue } = req.query;
+
     try {
-        const { limit, skip } = getPagination(req);
-        const accountName = req.params.name;
-        
-        // Check if account exists - here we can try by ObjectId first, then by name string if _id might not be ObjectId.
-        // The error was on findOne({_id: accountName}), so we should assume _id is an ObjectId
-        let accountExists;
-        try {
-            const accountId = new ObjectId(accountName);
-            accountExists = await mongo.getDb().collection('accounts').findOne({ _id: accountId });
-        } catch (e) {
-            // If accountName is not an ObjectId string, it might be a name. Try finding by name.
-            accountExists = await mongo.getDb().collection('accounts').findOne({ name: accountName });
+        const query: any = {
+            $or: [
+                { sender: name },
+                { 'data.recipient': name },
+                { 'data.to': name }, 
+                { 'data.owner': name },
+                { 'data.creator': name },
+                { 'data.issuer': name },
+                { 'data.buyer': name },
+                { 'data.seller': name },
+                { 'data.provider': name } 
+                // Add other relevant fields that might signify user involvement in a transaction
+            ]
+        };
+
+        if (type) {
+            query.type = parseInt(type as string);
+        }
+        if (dataKey && dataValue) {
+            query[`data.${dataKey as string}`] = dataValue;
         }
 
-        if (!accountExists) {
-            return res.status(404).json({ success: false, error: 'Account not found' });
-        }
-        
-        // For transactions, the query is on 'sender' which is likely a string name.
-        const query: { sender: string; type?: number } = { sender: accountName }; // Explicitly type query
-        
-        // Filter by transaction type if requested
-        if (req.query.type) {
-            query['type'] = parseInt(req.query.type as string);
-        }
-        
-        // Get transactions from most recent to oldest
-        const transactions = await mongo.getDb().collection('transactions')
+        const transactionsFromDB = await mongo.getDb().collection('transactions')
             .find(query)
             .sort({ ts: -1 })
             .limit(limit)
             .skip(skip)
             .toArray();
-            
-        const total = await mongo.getDb().collection('transactions').countDocuments(query);
         
-        res.json({ 
-            success: true, 
+        const total = await mongo.getDb().collection('transactions').countDocuments(query);
+
+        const transactions = transactionsFromDB.map((tx: any) => {
+            const { _id, ...restOfTx } = tx;
+            return {
+                ...restOfTx,
+                id: _id.toString(), // Transform _id to id
+                data: transformTransactionData(tx.data) // Use shared helper
+            };
+        });
+
+        res.json({
             data: transactions,
             total,
             limit,
             skip
         });
-    } catch (err) {
-        logger.error(`Error fetching transactions for account ${req.params.name}:`, err);
-        res.status(500).json({ success: false, error: 'Internal server error' });
+    } catch (error: any) {
+        logger.error(`Error fetching transactions for account ${name}:`, error);
+        res.status(500).json({ message: 'Error fetching transactions for account', error: error.message });
     }
-}) as RequestHandler);
+});
 
 // GET /accounts/:name/tokens - Get all tokens held by an account
 router.get('/:name/tokens', (async (req: Request, res: Response) => {
     try {
         const accountName = req.params.name;
-        let account;
+        let accountFromDB: any; // Use any for now, or define a proper DB type
         try {
             const accountId = new ObjectId(accountName);
-            account = await mongo.getDb().collection('accounts').findOne({ _id: accountId });
+            accountFromDB = await mongo.getDb().collection('accounts').findOne({ _id: accountId });
         } catch (e) {
-            account = await mongo.getDb().collection('accounts').findOne({ name: accountName });
+            accountFromDB = await mongo.getDb().collection('accounts').findOne({ name: accountName });
         }
         
-        if (!account) {
+        if (!accountFromDB) {
             return res.status(404).json({ success: false, error: 'Account not found' });
         }
         
-        const tokens = account.tokens || {};
+        const balances = accountFromDB.balances || {}; // Assuming balances field, not tokens
         
-        const tokenBalances = Object.entries(tokens).map(([symbol, amount]) => ({
+        const tokenBalances = Object.entries(balances).map(([symbol, amount]) => ({
             symbol,
-            amount
+            amount: toBigInt(amount as string).toString() // Apply transformation here
         }));
         
         res.json({
             success: true,
-            account: accountName,
+            account: accountName, // Keep original account identifier (name or ID string)
+            id: accountFromDB._id ? accountFromDB._id.toString() : undefined, // Add account's actual ID
             tokens: tokenBalances
         });
     } catch (err) {

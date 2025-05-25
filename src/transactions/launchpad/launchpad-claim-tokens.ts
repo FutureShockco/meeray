@@ -3,6 +3,7 @@ import cache from '../../cache.js';
 import { getAccount, adjustBalance } from '../../utils/account-utils.js';
 import { Launchpad, LaunchpadStatus, Token, TokenAllocation, TokenDistributionRecipient, LaunchpadClaimTokensData } from './launchpad-interfaces.js';
 import { toString, toBigInt } from '../../utils/bigint-utils.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: LaunchpadClaimTokensData, sender: string): Promise<boolean> {
   logger.debug(`[launchpad-claim-tokens] Validating claim from ${sender} for launchpad ${data.launchpadId}, type ${data.allocationType}: ${JSON.stringify(data)}`);
@@ -211,26 +212,14 @@ export async function process(data: LaunchpadClaimTokensData, sender: string): P
         }
     }
 
-    const eventDocument = {
-      type: 'launchpadTokensClaimed',
-      timestamp: new Date().toISOString(),
-      actor: sender,
-      data: {
+    const eventData = {
         launchpadId: data.launchpadId,
         userId: data.userId,
         tokenId: launchpad.mainTokenId,
         amountClaimed: toString(tokensToClaim), // Log as string
         allocationType: data.allocationType
-      }
     };
-    await new Promise<void>((resolve) => {
-        cache.insertOne('events', eventDocument, (err, result) => {
-            if (err || !result) {
-                logger.error(`[launchpad-claim-tokens] CRITICAL: Failed to log token claim event: ${err || 'no result'}.`);
-            }
-            resolve();
-        });
-    });
+    await logTransactionEvent('launchpadTokensClaimed', sender, eventData);
 
     logger.debug(`[launchpad-claim-tokens] Claim by ${sender} for ${toString(tokensToClaim)} of ${launchpad.mainTokenId} from ${data.launchpadId} processed.`);
     return true;

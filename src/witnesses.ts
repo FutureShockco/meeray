@@ -4,6 +4,7 @@ import logger from './logger.js';
 import p2p from './p2p.js';
 import transaction from './transaction.js';
 import { chain } from './chain.js';
+import { toBigInt, toString } from './utils/bigint-utils.js';
 
 export const witnessesModule = {
 
@@ -47,15 +48,21 @@ export const witnessesModule = {
                 return cb(0);
             }
 
-            // Calculate the new balance with the reward
             const reward = config.witnessReward;
-            let newBalance = (account.tokens?.ECH || 0) + reward;
             if (reward > 0) {
-                // Update the account balance using dot notation for the ECH field within tokens
+                const currentBalanceStr = account.balances?.ECH || toString(BigInt(0));
+                const currentBalanceBigInt = toBigInt(currentBalanceStr);
+                
+                const rewardBigInt = BigInt(reward);
+                logger.info(`[witnessRewards] Applying reward for ${name}: ${rewardBigInt.toString()} smallest units`);
+
+                const newBalanceBigInt = currentBalanceBigInt + rewardBigInt;
+                const newBalancePaddedString = toString(newBalanceBigInt);
+
                 cache.updateOne(
                     'accounts',
                     { name: account.name },
-                    { $set: { "tokens.ECH": newBalance } },
+                    { $set: { "balances.ECH": newBalancePaddedString } },
                     function (err: Error | null, result?: boolean) {
                         if (err) {
                             logger.error('Error updating account balance for rewards:', err);
@@ -66,15 +73,25 @@ export const witnessesModule = {
                             logger.warn(`[witnessRewards] cache.updateOne for ${account.name} reported no document was updated.`);
                         }
 
-                        // Adjust node approval if needed
-                        transaction.adjustNodeAppr(account, reward, function () {
-                            logger.debug(`Distributed ${reward} to witness ${name}`);
+                        if (account.balances) {
+                            account.balances.ECH = newBalancePaddedString;
+                        } else {
+                            account.balances = { ECH: newBalancePaddedString };
+                        }
+                        if (account.tokens && account.tokens.ECH !== undefined) {
+                            delete account.tokens.ECH; 
+                            if (Object.keys(account.tokens).length === 0) {
+                                delete account.tokens;
+                            }
+                        }
+
+                        transaction.adjustWitnessWeight(account, reward, function () {
+                            logger.debug(`Distributed reward (${rewardBigInt.toString()} smallest units) to witness ${name}`);
                             cb(reward);
                         });
                     }
                 );
             } else {
-                // No rewards to distribute
                 cb(0);
             }
         });
@@ -89,8 +106,6 @@ export const witnessesModule = {
             logger.warn('[generateWitnesses] witnessAccSource is empty or undefined.');
         }
         for (const key in witnessAccSource) {
-            // Ensure the account actually exists in the main cache.accounts map
-            // and has the necessary properties before proceeding.
             const account = cache.accounts[key];
             if (!account) {
                 logger.warn(`[generateWitnesses] Account not found in cache.accounts for key: ${key}`);
@@ -98,21 +113,15 @@ export const witnessesModule = {
             }
 
             if (!account.totalVoteWeight || account.totalVoteWeight <= 0) {
-                logger.debug(`[generateWitnesses] Skipping account ${key} due to zero or missing totalVoteWeight: ${account.totalVoteWeight}`);
+                logger.debug(`[generateWitnesses] Account ${account.name} has no totalVoteWeight or totalVoteWeight is less than or equal to 0.`);
                 continue;
             }
-            // If we need witnessPublicKey (for witness schedule), ensure it exists.
-            if (withWitnessPub && !account.witnessPublicKey) {
-                logger.debug(`[generateWitnesses] Skipping account ${key} due to missing witnessPublicKey (withWitnessPub is true).`);
-                continue;
-            }
-
 
             let witnessDetails: any = {
                 name: account.name,
                 pub: account.witnessPublicKey,
                 witnessPublicKey: account.witnessPublicKey,
-                balance: account.tokens?.ECH || 0,
+                balance: account.balances?.ECH || toString(BigInt(0)),
                 votedWitnesses: account.votedWitnesses,
                 totalVoteWeight: account.totalVoteWeight,
             };
@@ -121,9 +130,7 @@ export const witnessesModule = {
             }
             witnesses.push(witnessDetails);
         }
-        witnesses = witnesses.sort((a: any, b: any) => b.totalVoteWeight - a.totalVoteWeight);
-        return witnesses.slice(start, limit);
+        return witnesses;
     },
-};
 
-export default witnessesModule; 
+};

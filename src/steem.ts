@@ -114,6 +114,14 @@ const apiUrls = process.env.STEEM_API
 let currentEndpointIndex = 0;
 let client = null as any;
 
+if(process.env.NODE_ENV === 'production') {
+    client = new DsteemClient(apiUrls[currentEndpointIndex], {
+        addressPrefix: 'STM',
+        chainId: '0000000000000000000000000000000000000000000000000000000000000000',
+        timeout: 15000  // Increased timeout for better reliability
+    });
+}
+else
 client = new DsteemClient(apiUrls[currentEndpointIndex], {
     addressPrefix: process.env.ADDRESS_PREFIX || 'STM',
     chainId: process.env.CHAIN_ID || '0000000000000000000000000000000000000000000000000000000000000000',

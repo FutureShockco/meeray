@@ -2,6 +2,9 @@ import express, { Request, Response, Router, RequestHandler } from 'express';
 import cache from '../../cache.js';
 import { mongo } from '../../mongo.js';
 import logger from '../../logger.js';
+import { toBigInt } from '../../utils/bigint-utils.js';
+import { ObjectId } from 'mongodb';
+import { transformTransactionData } from '../../utils/http-helpers.js';
 
 const router: Router = express.Router();
 
@@ -10,6 +13,74 @@ const getPagination = (req: Request) => {
     const limit = parseInt(req.query.limit as string) || 10;
     const offset = parseInt(req.query.offset as string) || 0;
     return { limit, skip: offset, page: Math.floor(offset / limit) + 1 };
+};
+
+const transformNftCollectionData = (collectionData: any): any => {
+    if (!collectionData) return collectionData;
+    const transformed = { ...collectionData };
+    // _id is collectionSymbol (string), typically no transformation to 'id' needed unless for extreme consistency.
+
+    const numericFields = ['maxSupply', 'currentSupply', 'mintPrice', 'royaltyFeePercentage']; // Added royaltyFeePercentage
+    for (const field of numericFields) {
+        if (transformed[field] && typeof transformed[field] === 'string') {
+            transformed[field] = toBigInt(transformed[field]).toString();
+        }
+    }
+    return transformed;
+};
+
+const transformNftInstanceData = (instanceData: any): any => {
+    if (!instanceData) return instanceData;
+    const transformed = { ...instanceData };
+    // _id is nftId (string, e.g. SYMBOL-001), typically no transformation to 'id' needed.
+
+    // instanceId is likely already a number, but if it could be a numeric string:
+    // if (transformed.instanceId && typeof transformed.instanceId === 'string') {
+    //     transformed.instanceId = toBigInt(transformed.instanceId).toString(); 
+    // }
+
+    if (transformed.saleData) {
+        const sd = { ...transformed.saleData };
+        const saleNumericFields = ['price', 'minBid', 'buyNowPrice'];
+        for (const field of saleNumericFields) {
+            if (sd[field] && typeof sd[field] === 'string') {
+                sd[field] = toBigInt(sd[field]).toString();
+            }
+        }
+        transformed.saleData = sd;
+    }
+
+    if (transformed.auctionData) {
+        const ad = { ...transformed.auctionData };
+        const auctionNumericFields = ['startPrice', 'currentBid', 'buyNowPrice', 'bidIncrement'];
+        for (const field of auctionNumericFields) {
+            if (ad[field] && typeof ad[field] === 'string') {
+                ad[field] = toBigInt(ad[field]).toString();
+            }
+        }
+        transformed.auctionData = ad;
+    }
+    // Add transformation for attributes if a known numeric attribute pattern exists
+    return transformed;
+};
+
+const transformNftListingData = (listingData: any): any => {
+    if (!listingData) return listingData;
+    const transformed = { ...listingData };
+    if (transformed._id && typeof transformed._id !== 'string') {
+        transformed.id = transformed._id.toString();
+        delete transformed._id;
+    } else if (transformed._id) { // If _id is already string, ensure it's called id or keep as _id
+        // transformed.id = transformed._id;
+        // delete transformed._id;
+    }
+    const numericFields = ['price', 'startingPrice', 'currentPrice', 'endingPrice', 'royaltyFeeAmount'];
+    for (const field of numericFields) {
+        if (transformed[field] && typeof transformed[field] === 'string') {
+            transformed[field] = toBigInt(transformed[field]).toString();
+        }
+    }
+    return transformed;
 };
 
 // --- NFT Collections ---
@@ -52,7 +123,7 @@ router.get('/collections', (async (req: Request, res: Response) => {
         const sort: any = {};
         sort[sortField] = sortDirection;
         
-        const collections = await cache.findPromise('nftCollections', query, { 
+        const collectionsFromDB = await cache.findPromise('nftCollections', query, { 
             limit, 
             skip, 
             sort
@@ -60,9 +131,10 @@ router.get('/collections', (async (req: Request, res: Response) => {
         
         const total = await mongo.getDb().collection('nftCollections').countDocuments(query);
         
-        if (!collections) {
-            return res.status(404).json({ message: 'No NFT collections found.' });
+        if (!collectionsFromDB || collectionsFromDB.length === 0) {
+            return res.status(200).json({ data: [], total: 0, limit, skip });
         }
+        const collections = collectionsFromDB.map(transformNftCollectionData);
         res.json({
             data: collections,
             total,
@@ -79,10 +151,11 @@ router.get('/collections', (async (req: Request, res: Response) => {
 router.get('/collections/:collectionSymbol', (async (req: Request, res: Response) => {
     const { collectionSymbol } = req.params;
     try {
-        const collection = await cache.findOnePromise('nftCollections', { _id: collectionSymbol });
-        if (!collection) {
+        const collectionFromDB = await cache.findOnePromise('nftCollections', { _id: collectionSymbol });
+        if (!collectionFromDB) {
             return res.status(404).json({ message: `NFT collection with symbol ${collectionSymbol} not found.` });
         }
+        const collection = transformNftCollectionData(collectionFromDB);
         res.json(collection);
     } catch (error: any) {
         logger.error(`Error fetching NFT collection ${collectionSymbol}:`, error);
@@ -95,12 +168,13 @@ router.get('/collections/creator/:creatorName', (async (req: Request, res: Respo
     const { creatorName } = req.params;
     const { limit, skip } = getPagination(req);
     try {
-        const collections = await cache.findPromise('nftCollections', { creator: creatorName }, { limit, skip, sort: { _id: 1 } });
+        const collectionsFromDB = await cache.findPromise('nftCollections', { creator: creatorName }, { limit, skip, sort: { _id: 1 } });
         const total = await mongo.getDb().collection('nftCollections').countDocuments({ creator: creatorName });
 
-        if (!collections || collections.length === 0) {
-            return res.status(404).json({ message: `No NFT collections found for creator ${creatorName}.` });
+        if (!collectionsFromDB || collectionsFromDB.length === 0) {
+            return res.status(200).json({ data: [], total: 0, limit, skip });
         }
+        const collections = collectionsFromDB.map(transformNftCollectionData);
         res.json({
             data: collections,
             total,
@@ -160,7 +234,7 @@ router.get('/instances', (async (req: Request, res: Response) => {
         const sort: any = {};
         sort[sortField] = sortDirection;
         
-        const instances = await cache.findPromise('nfts', query, { 
+        const instancesFromDB = await cache.findPromise('nfts', query, { 
             limit, 
             skip, 
             sort 
@@ -168,10 +242,10 @@ router.get('/instances', (async (req: Request, res: Response) => {
         
         const total = await mongo.getDb().collection('nfts').countDocuments(query);
         
-        if (!instances || instances.length === 0) {
-            return res.status(404).json({ message: 'No NFT instances found matching criteria.' });
+        if (!instancesFromDB || instancesFromDB.length === 0) {
+            return res.status(200).json({ data: [], total: 0, limit, skip });
         }
-        
+        const instances = instancesFromDB.map(transformNftInstanceData);
         res.json({
             data: instances,
             total,
@@ -189,12 +263,13 @@ router.get('/instances/collection/:collectionSymbol', (async (req: Request, res:
     const { collectionSymbol } = req.params;
     const { limit, skip } = getPagination(req);
     try {
-        const instances = await cache.findPromise('nfts', { collectionSymbol: collectionSymbol }, { limit, skip, sort: { instanceId: 1 } });
+        const instancesFromDB = await cache.findPromise('nfts', { collectionSymbol: collectionSymbol }, { limit, skip, sort: { instanceId: 1 } });
         const total = await mongo.getDb().collection('nfts').countDocuments({ collectionSymbol: collectionSymbol });
 
-        if (!instances || instances.length === 0) {
-            return res.status(404).json({ message: `No NFT instances found for collection ${collectionSymbol}.` });
+        if (!instancesFromDB || instancesFromDB.length === 0) {
+            return res.status(200).json({ data: [], total: 0, limit, skip });
         }
+        const instances = instancesFromDB.map(transformNftInstanceData);
         res.json({
             data: instances,
             total,
@@ -212,12 +287,13 @@ router.get('/instances/owner/:ownerName', (async (req: Request, res: Response) =
     const { ownerName } = req.params;
     const { limit, skip } = getPagination(req);
     try {
-        const instances = await cache.findPromise('nfts', { owner: ownerName }, { limit, skip, sort: { _id: 1 } });
+        const instancesFromDB = await cache.findPromise('nfts', { owner: ownerName }, { limit, skip, sort: { _id: 1 } });
         const total = await mongo.getDb().collection('nfts').countDocuments({ owner: ownerName });
         
-        if (!instances || instances.length === 0) {
-            return res.status(404).json({ message: `No NFT instances found for owner ${ownerName}.` });
+        if (!instancesFromDB || instancesFromDB.length === 0) {
+            return res.status(200).json({ data: [], total: 0, limit, skip });
         }
+        const instances = instancesFromDB.map(transformNftInstanceData);
         res.json({
             data: instances,
             total,
@@ -234,10 +310,11 @@ router.get('/instances/owner/:ownerName', (async (req: Request, res: Response) =
 router.get('/instances/id/:nftId', (async (req: Request, res: Response) => {
     const { nftId } = req.params; // e.g., "MYCOL-001"
     try {
-        const instance = await cache.findOnePromise('nfts', { _id: nftId });
-        if (!instance) {
+        const instanceFromDB = await cache.findOnePromise('nfts', { _id: nftId });
+        if (!instanceFromDB) {
             return res.status(404).json({ message: `NFT instance with ID ${nftId} not found.` });
         }
+        const instance = transformNftInstanceData(instanceFromDB);
         res.json(instance);
     } catch (error: any) {
         logger.error(`Error fetching NFT instance ${nftId}:`, error);
@@ -278,7 +355,7 @@ router.get('/instances/id/:nftId/history', (async (req: Request, res: Response) 
             ]
         };
         
-        const transactions = await mongo.getDb().collection('transactions')
+        const transactionsFromDB = await mongo.getDb().collection('transactions')
             .find(query)
             .sort({ ts: -1 })  // Most recent first
             .limit(limit)
@@ -286,6 +363,15 @@ router.get('/instances/id/:nftId/history', (async (req: Request, res: Response) 
             .toArray();
             
         const total = await mongo.getDb().collection('transactions').countDocuments(query);
+        
+        const transactions = transactionsFromDB.map((tx: any) => {
+            const { _id: txId, data, ...restOfTx } = tx;
+            const transformedTx: any = { ...restOfTx, data: transformTransactionData(data) };
+            if (txId) {
+                transformedTx.id = txId.toString();
+            }
+            return transformedTx;
+        });
         
         res.json({
             data: transactions,
@@ -335,7 +421,7 @@ router.get('/listings', (async (req: Request, res: Response) => {
     sort[sortField] = sortDirection;
 
     try {
-        const listings = await cache.findPromise('nftListings', query, { 
+        const listingsFromDB = await cache.findPromise('nftListings', query, { 
             limit, 
             skip, 
             sort
@@ -343,9 +429,10 @@ router.get('/listings', (async (req: Request, res: Response) => {
         
         const total = await mongo.getDb().collection('nftListings').countDocuments(query);
 
-        if (!listings || listings.length === 0) {
-            return res.status(404).json({ message: 'No NFT listings found matching criteria.' });
+        if (!listingsFromDB || listingsFromDB.length === 0) {
+            return res.status(200).json({ data: [], total: 0, limit, skip });
         }
+        const listings = listingsFromDB.map(transformNftListingData);
         res.json({
             data: listings,
             total,
@@ -362,10 +449,14 @@ router.get('/listings', (async (req: Request, res: Response) => {
 router.get('/listings/id/:listingId', (async (req: Request, res: Response) => {
     const { listingId } = req.params;
     try {
-        const listing = await cache.findOnePromise('nftListings', { _id: listingId });
-        if (!listing) {
+        let listingObjectId;
+        try { listingObjectId = new ObjectId(listingId); } catch (e) { /* not an ObjectId */ }
+
+        const listingFromDB = await cache.findOnePromise('nftListings', { _id: listingObjectId || listingId });
+        if (!listingFromDB) {
             return res.status(404).json({ message: `NFT listing with ID ${listingId} not found.` });
         }
+        const listing = transformNftListingData(listingFromDB);
         res.json(listing);
     } catch (error: any) {
         logger.error(`Error fetching NFT listing ${listingId}:`, error);
@@ -386,15 +477,16 @@ router.get('/listings/nft/:nftInstanceId', (async (req: Request, res: Response) 
              return res.status(400).json({ message: 'Invalid nftInstanceId format. Expected format like COLLECTION_SYMBOL-INSTANCE_ID.'})
         }
 
-        const listing = await cache.findOnePromise('nftListings', { 
+        const listingFromDB = await cache.findOnePromise('nftListings', { 
             collectionSymbol: collectionSymbol, 
             instanceId: instanceIdPart, 
             status: 'ACTIVE' 
         });
 
-        if (!listing) {
+        if (!listingFromDB) {
             return res.status(404).json({ message: `No active listing found for NFT instance ${nftInstanceId}.` });
         }
+        const listing = transformNftListingData(listingFromDB);
         res.json(listing);
     } catch (error: any) {
         logger.error(`Error fetching listing for NFT instance ${nftInstanceId}:`, error);
@@ -425,7 +517,7 @@ router.get('/listings/nft/:nftInstanceId/history', (async (req: Request, res: Re
         
         const sortOptions = { createdAt: 'desc' as const }; // Latest first, using 'desc' string literal
         
-        const listingHistory = await cache.findPromise('nftListings', query, {
+        const listingHistoryFromDB = await cache.findPromise('nftListings', query, {
             limit,
             skip,
             sort: sortOptions
@@ -438,7 +530,7 @@ router.get('/listings/nft/:nftInstanceId/history', (async (req: Request, res: Re
             'data.instanceId': instanceIdPart
         };
         
-        const salesHistory = await mongo.getDb().collection('transactions')
+        const salesHistoryFromDB = await mongo.getDb().collection('transactions')
             .find(salesQuery)
             .sort({ ts: -1 })
             .limit(limit)
@@ -448,14 +540,24 @@ router.get('/listings/nft/:nftInstanceId/history', (async (req: Request, res: Re
         const totalListings = await mongo.getDb().collection('nftListings').countDocuments(query);
         const totalSales = await mongo.getDb().collection('transactions').countDocuments(salesQuery);
         
+        const listingHistory = (listingHistoryFromDB || []).map(transformNftListingData);
+        const salesHistory = salesHistoryFromDB.map((tx: any) => {
+            const { _id: txId, data, ...restOfTx } = tx;
+            const transformedTx: any = { ...restOfTx, data: transformTransactionData(data) };
+            if (txId) {
+                transformedTx.id = txId.toString();
+            }
+            return transformedTx;
+        });
+        
         res.json({
             nftId: nftInstanceId,
             listings: {
-                data: listingHistory || [],
+                data: listingHistory,
                 total: totalListings
             },
             sales: {
-                data: salesHistory || [],
+                data: salesHistory,
                 total: totalSales
             },
             limit,
@@ -471,7 +573,7 @@ router.get('/listings/nft/:nftInstanceId/history', (async (req: Request, res: Re
 router.get('/collections/stats', (async (req: Request, res: Response) => {
     try {
         // Get collection with the most NFTs
-        const collectionStats = await mongo.getDb().collection('nftCollections').aggregate([
+        const collectionStatsFromDB = await mongo.getDb().collection('nftCollections').aggregate([
             {
                 $lookup: {
                     from: 'nfts',
@@ -482,7 +584,6 @@ router.get('/collections/stats', (async (req: Request, res: Response) => {
             },
             {
                 $project: {
-                    _id: 1,
                     symbol: '$_id',
                     name: 1,
                     creator: 1,
@@ -494,19 +595,38 @@ router.get('/collections/stats', (async (req: Request, res: Response) => {
             { $limit: 10 }
         ]).toArray();
         
+        // Transform collectionStats if needed (e.g. _id to id, though here _id is symbol)
+        const collectionStats = collectionStatsFromDB.map(collection => {
+            // Assuming transformNftCollectionData is not strictly needed here as fields are projected directly
+            // or that the relevant numeric fields in collectionStats are already numbers (like totalNfts).
+            // If any fields from nftCollections still need bigint string transform, apply it.
+            const { _id, ...rest } = collection; // _id is the symbol
+            return { id: _id, symbol: _id, ...rest }; // ensure id and symbol are present
+        });
+
         // Get most active collections by sales
-        const salesStats = await mongo.getDb().collection('transactions').aggregate([
+        const salesStatsFromDB = await mongo.getDb().collection('transactions').aggregate([
             { $match: { type: 6 } }, // NFT_BUY_ITEM
             {
                 $group: {
                     _id: '$data.collectionSymbol',
                     totalSales: { $sum: 1 },
-                    totalVolume: { $sum: '$data.price' }
+                    // Attempt to convert price to decimal for summing, then sum
+                    totalVolume: { $sum: { $toDecimal: '$data.price' } } 
                 }
             },
             { $sort: { totalSales: -1 } },
             { $limit: 10 }
         ]).toArray();
+
+        const salesStats = salesStatsFromDB.map((stat: any) => {
+            const { _id, totalSales, totalVolume } = stat;
+            return {
+                collectionSymbol: _id,
+                totalSales,
+                totalVolume: totalVolume ? totalVolume.toString() : '0' // Convert Decimal128 to string
+            };
+        });
         
         res.json({
             topCollectionsBySize: collectionStats,

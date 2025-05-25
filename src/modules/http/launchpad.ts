@@ -1,6 +1,7 @@
 import express, { Request, Response, Router, RequestHandler } from 'express';
 import cache from '../../cache.js';
 import logger from '../../logger.js';
+import { toBigInt } from '../../utils/bigint-utils.js';
 // Remove imports related to POST data and transaction module if no longer needed here
 // import { TransactionType } from '../../transactions/types.js';
 // import { LaunchpadLaunchTokenData } from '../../transactions/launchpad/launchpad-launch-token.js';
@@ -10,19 +11,85 @@ import logger from '../../logger.js';
 
 const router: Router = express.Router();
 
+// Helper to transform numeric string fields in a launchpad object
+const transformLaunchpadData = (launchpadData: any): any => {
+    if (!launchpadData) return launchpadData;
+    const transformed = { ...launchpadData };
+
+    // Transform _id to id
+    if (transformed._id && typeof transformed._id !== 'string') {
+        transformed.id = transformed._id.toString();
+        delete transformed._id;
+    }
+
+    // Tokenomics Snapshot
+    if (transformed.tokenomicsSnapshot) {
+        const ts = { ...transformed.tokenomicsSnapshot };
+        if (ts.totalSupply && typeof ts.totalSupply === 'string') {
+            ts.totalSupply = toBigInt(ts.totalSupply).toString();
+        }
+        // allocations[].amount (if it exists and is a string)
+        if (ts.allocations && Array.isArray(ts.allocations)) {
+            ts.allocations = ts.allocations.map((alloc: any) => {
+                const transformedAlloc = { ...alloc };
+                if (transformedAlloc.amount && typeof transformedAlloc.amount === 'string') {
+                    transformedAlloc.amount = toBigInt(transformedAlloc.amount).toString();
+                }
+                return transformedAlloc;
+            });
+        }
+        transformed.tokenomicsSnapshot = ts;
+    }
+
+    // Presale Data
+    if (transformed.presale) {
+        const presale = { ...transformed.presale };
+        const presaleNumericFields = ['goal', 'raisedAmount', 'minContribution', 'maxContribution', 'tokenPrice'];
+        for (const field of presaleNumericFields) {
+            if (presale[field] && typeof presale[field] === 'string') {
+                presale[field] = toBigInt(presale[field]).toString();
+            }
+        }
+        if (presale.participants && Array.isArray(presale.participants)) {
+            presale.participants = presale.participants.map((p: any) => {
+                const participant = { ...p };
+                const participantNumericFields = ['amountContributed', 'tokensAllocated', 'claimedAmount']; // added claimedAmount
+                for (const field of participantNumericFields) {
+                    if (participant[field] && typeof participant[field] === 'string') {
+                        participant[field] = toBigInt(participant[field]).toString();
+                    }
+                }
+                return participant;
+            });
+        }
+        transformed.presale = presale;
+    }
+    
+    // Other potential top-level numeric fields
+    const topLevelNumericFields = ['targetRaise', 'totalCommitted'];
+    for (const field of topLevelNumericFields) {
+        if (transformed[field] && typeof transformed[field] === 'string') {
+            transformed[field] = toBigInt(transformed[field]).toString();
+        }
+    }
+
+    return transformed;
+};
+
 // GET endpoint to list all launchpad projects
 const listLaunchpadsHandler: RequestHandler = async (req: Request, res: Response) => {
     logger.debug('[API /launchpad] Received request to list launchpads');
     try {
-        // Example: Fetch all launchpads. Add query parameters for filtering/pagination later.
-        const launchpads = await cache.findPromise('launchpads', {}); 
+        const launchpadsFromDB = await cache.findPromise('launchpads', {}); 
 
-        if (!launchpads) {
+        if (!launchpadsFromDB || launchpadsFromDB.length === 0) {
             logger.debug('[API /launchpad] No launchpads found or error fetching.');
-            res.status(404).json({ message: 'No launchpads found' });
+            // Return empty array if none found, consistent with other list endpoints
+            res.status(200).json([]); 
             return;
         }
 
+        const launchpads = launchpadsFromDB.map(transformLaunchpadData);
         res.status(200).json(launchpads);
 
     } catch (error) {
@@ -42,14 +109,15 @@ const getLaunchpadByIdHandler: RequestHandler = async (req: Request, res: Respon
     const { launchpadId } = req.params;
     logger.debug(`[API /launchpad/:launchpadId] Received request for launchpad: ${launchpadId}`);
     try {
-        const launchpad = await cache.findOnePromise('launchpads', { _id: launchpadId });
+        const launchpadFromDB = await cache.findOnePromise('launchpads', { _id: launchpadId });
 
-        if (!launchpad) {
+        if (!launchpadFromDB) {
             logger.debug(`[API /launchpad/:launchpadId] Launchpad ${launchpadId} not found.`);
             res.status(404).json({ message: `Launchpad with ID ${launchpadId} not found` });
             return;
         }
-
+        
+        const launchpad = transformLaunchpadData(launchpadFromDB);
         res.status(200).json(launchpad);
     } catch (error) {
         logger.error(`[API /launchpad/:launchpadId] Error fetching launchpad ${launchpadId}:`, error);
@@ -67,26 +135,39 @@ const getUserParticipationHandler: RequestHandler = async (req: Request, res: Re
     const { launchpadId, userId } = req.params;
     logger.debug(`[API /launchpad/:launchpadId/user/:userId] Received request for user ${userId} participation in launchpad ${launchpadId}`);
     try {
-        const launchpad = await cache.findOnePromise('launchpads', { _id: launchpadId }) as any; // Cast to any to access presale.participants
+        const launchpadFromDB = await cache.findOnePromise('launchpads', { _id: launchpadId }) as any;
 
-        if (!launchpad) {
+        if (!launchpadFromDB) {
             logger.debug(`[API /launchpad/:launchpadId/user/:userId] Launchpad ${launchpadId} not found.`);
             res.status(404).json({ message: `Launchpad with ID ${launchpadId} not found` });
             return;
         }
 
-        if (!launchpad.presale || !launchpad.presale.participants) {
+        // The launchpad itself might have fields to transform, though this route focuses on a participant
+        // For consistency, we could transform the whole launchpad then extract, or just transform participant data
+        // Let's assume the full launchpad transform might be too broad here if only participant is returned.
+
+        if (!launchpadFromDB.presale || !launchpadFromDB.presale.participants) {
             logger.debug(`[API /launchpad/:launchpadId/user/:userId] Launchpad ${launchpadId} has no presale or participant data.`);
             res.status(404).json({ message: `No presale participation data found for launchpad ${launchpadId}` });
             return;
         }
 
-        const participant = launchpad.presale.participants.find((p: any) => p.userId === userId);
+        const participantRaw = launchpadFromDB.presale.participants.find((p: any) => p.userId === userId);
 
-        if (!participant) {
+        if (!participantRaw) {
             logger.debug(`[API /launchpad/:launchpadId/user/:userId] User ${userId} not found in participants for launchpad ${launchpadId}.`);
             res.status(404).json({ message: `User ${userId} did not participate in launchpad ${launchpadId}` });
             return;
+        }
+        
+        // Transform only the participant object for this specific route
+        const participant = { ...participantRaw };
+        const participantNumericFields = ['amountContributed', 'tokensAllocated', 'claimedAmount'];
+        for (const field of participantNumericFields) {
+            if (participant[field] && typeof participant[field] === 'string') {
+                participant[field] = toBigInt(participant[field]).toString();
+            }
         }
 
         res.status(200).json(participant);
@@ -107,65 +188,72 @@ const getClaimableTokensHandler: RequestHandler = async (req: Request, res: Resp
     logger.debug(`[API /launchpad/:launchpadId/user/:userId/claimable] Received request for claimable tokens for user ${userId} in launchpad ${launchpadId}`);
 
     try {
-        const launchpad = await cache.findOnePromise('launchpads', { _id: launchpadId }) as any | null; // Cast to any for now, will use Launchpad interface later
+        const launchpadFromDB = await cache.findOnePromise('launchpads', { _id: launchpadId }) as any | null;
 
-        if (!launchpad) {
+        if (!launchpadFromDB) {
             logger.debug(`[API /launchpad/:launchpadId/user/:userId/claimable] Launchpad ${launchpadId} not found.`);
             res.status(404).json({ message: `Launchpad with ID ${launchpadId} not found` });
             return;
         }
 
-        // Assuming a Launchpad interface structure from your previous context
-        // We need to determine the user's total allocation and how much has been claimed.
+        // For calculations, convert to BigInt, then convert result back to string for response
+        let totalAllocatedToUserBI = BigInt(0);
+        let claimedByUserBI = BigInt(0);
 
-        let totalAllocatedToUser = 0;
-        let claimedByUser = 0;
-
-        // 1. Check presale participation
-        if (launchpad.presale && launchpad.presale.participants) {
-            const participant = launchpad.presale.participants.find((p: any) => p.userId === userId);
-            if (participant && participant.tokensAllocated) {
-                totalAllocatedToUser += participant.tokensAllocated;
-                if (participant.claimed) {
-                    // This simple boolean might mean all of presale allocation is claimed.
-                    // A more granular `claimedAmount` would be better.
-                    // For now, if `claimed` is true, assume all `tokensAllocated` from presale are claimed.
-                    claimedByUser += participant.tokensAllocated; 
+        if (launchpadFromDB.presale && launchpadFromDB.presale.participants) {
+            const participantRaw = launchpadFromDB.presale.participants.find((p: any) => p.userId === userId);
+            if (participantRaw) {
+                if (participantRaw.tokensAllocated && typeof participantRaw.tokensAllocated === 'string') {
+                    totalAllocatedToUserBI += toBigInt(participantRaw.tokensAllocated);
+                }
+                 // Assuming participantRaw.claimed might be a boolean or participantRaw.claimedAmount is a numeric string
+                if (participantRaw.claimedAmount && typeof participantRaw.claimedAmount === 'string') {
+                    claimedByUserBI += toBigInt(participantRaw.claimedAmount);
+                } else if (participantRaw.claimed === true && participantRaw.tokensAllocated && typeof participantRaw.tokensAllocated === 'string') {
+                    // If only a boolean `claimed` flag exists, and it's true, assume all presale tokensAllocated are claimed.
+                    claimedByUserBI += toBigInt(participantRaw.tokensAllocated);
                 }
             }
         }
         
-        // 2. Check other allocations (e.g., airdrops, team vesting if applicable to this endpoint's purpose)
-        // This part is more complex and depends on how TokenAllocation is structured and if this endpoint
-        // should cover all types of claimable tokens or just presale-related ones.
-        // For now, let's assume this endpoint is primarily for presale claimable amounts 
-        // or simple direct allocations defined in launchpad.allocations (if such a field existed).
-
-        // Accessing tokenomicsSnapshot for total supply and allocations
-        const tokenomics = launchpad.tokenomicsSnapshot; // Assuming type Tokenomics
-        if (tokenomics && tokenomics.allocations) {
-            tokenomics.allocations.forEach((allocation: any) => { // Assuming type TokenAllocation
-                // If the allocation is directly for this user (e.g. customRecipientAddress or airdrop to userId)
-                // This is a simplified example. Real logic would depend on allocation.recipient type and vesting.
-                if (allocation.customRecipientAddress === userId /* && allocation.recipient === SomeAirdropOrDirectRecipientType */) {
-                    // This calculation is illustrative. Vesting logic would be critical here.
-                    // Percentage of total supply
-                    const allocationAmount = (allocation.percentage / 100) * tokenomics.totalSupply;
-                    totalAllocatedToUser += allocationAmount;
-                    // TODO: Determine how much of *this specific allocation* has been claimed.
-                    // This would require tracking claims against specific allocations, not just a global `claimedByUser`.
+        const tokenomics = launchpadFromDB.tokenomicsSnapshot;
+        if (tokenomics && tokenomics.allocations && tokenomics.totalSupply) {
+            const totalSupplyBI = typeof tokenomics.totalSupply === 'string' ? toBigInt(tokenomics.totalSupply) : BigInt(tokenomics.totalSupply); // Ensure totalSupply is BigInt
+            tokenomics.allocations.forEach((allocation: any) => {
+                if (allocation.customRecipientAddress === userId) {
+                    // Ensure allocation.amount is used if available, otherwise calculate from percentage
+                    let allocationAmountBI: bigint = BigInt(0); // Initialize to 0
+                    if (allocation.amount && typeof allocation.amount === 'string') {
+                        allocationAmountBI = toBigInt(allocation.amount);
+                    } else if (allocation.percentage) {
+                        // Note: BigInt division truncates. For precision with percentages,
+                        // multiply first, then divide: (percentage * totalSupplyBI) / 100n
+                        // Or, ensure percentage calculations are done carefully if smallest units are critical.
+                        // Here, assuming percentage is a whole number like 10 for 10%.
+                        allocationAmountBI = (BigInt(Math.round(allocation.percentage * 100)) * totalSupplyBI) / BigInt(10000);
+                    }
+                    if (allocationAmountBI) {
+                         totalAllocatedToUserBI += allocationAmountBI;
+                         // TODO: Add logic for claimed amounts against specific non-presale allocations if needed
+                         // This might require a field like `allocation.claimedAmount` (numeric string)
+                         if (allocation.claimedAmount && typeof allocation.claimedAmount === 'string') {
+                             claimedByUserBI += toBigInt(allocation.claimedAmount);
+                         } else if (allocation.claimed === true && allocationAmountBI) {
+                             claimedByUserBI += allocationAmountBI; // if boolean flag means fully claimed
+                         }
+                    }
                 }
             });
         }
 
-        const claimableAmount = totalAllocatedToUser - claimedByUser;
+        const claimableAmountBI = totalAllocatedToUserBI - claimedByUserBI;
 
         res.status(200).json({
             launchpadId,
             userId,
-            totalAllocated: totalAllocatedToUser,
-            claimed: claimedByUser,
-            claimable: Math.max(0, claimableAmount) // Ensure it doesn't go negative
+            totalAllocated: totalAllocatedToUserBI.toString(),
+            claimed: claimedByUserBI.toString(),
+            claimable: (claimableAmountBI < BigInt(0) ? BigInt(0) : claimableAmountBI).toString()
         });
 
     } catch (error) {

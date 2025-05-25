@@ -2,6 +2,8 @@ import express, { Request, Response, Router, RequestHandler } from 'express';
 import { chain } from '../../chain.js';
 import { mongo } from '../../mongo.js';
 import logger from '../../logger.js';
+import { transformTransactionData } from '../../utils/http-helpers.js';
+import cache from '../../cache.js';
 
 const router = express.Router();
 
@@ -10,6 +12,23 @@ const getPagination = (req: Request) => {
     const limit = parseInt(req.query.limit as string) || 10;
     const offset = parseInt(req.query.offset as string) || 0;
     return { limit, skip: offset, page: Math.floor(offset / limit) + 1 };
+};
+
+const transformBlockData = (block: any): any => {
+    if (!block) return block;
+    const { _id, txs, ...restOfBlock } = block;
+    return {
+        ...restOfBlock,
+        id: _id.toString(),
+        txs: txs ? txs.map((tx: any) => {
+            const { _id: txId, data, ...restOfTx } = tx;
+            const transformedTx: any = { ...restOfTx, data: transformTransactionData(data) };
+            if (txId) {
+                transformedTx.id = txId.toString();
+            }
+            return transformedTx;
+        }) : []
+    };
 };
 
 // GET /blocks - Get a range of blocks with pagination
@@ -36,7 +55,7 @@ router.get('/', (async (req: Request, res: Response) => {
         // Sort by height (most recent first by default)
         const sortDirection = req.query.sortDirection === 'asc' ? 1 : -1;
         
-        const blocks = await mongo.getDb().collection('blocks')
+        const blocksFromDB = await mongo.getDb().collection('blocks')
             .find(query)
             .sort({ height: sortDirection })
             .limit(limit)
@@ -44,6 +63,8 @@ router.get('/', (async (req: Request, res: Response) => {
             .toArray();
             
         const total = await mongo.getDb().collection('blocks').countDocuments(query);
+
+        const blocks = blocksFromDB.map(transformBlockData);
         
         res.json({ 
             success: true, 
@@ -61,11 +82,27 @@ router.get('/', (async (req: Request, res: Response) => {
 // GET /blocks/latest - Returns the latest block
 router.get('/latest', ((_req: Request, res: Response) => {
     try {
-        const latestBlock = chain.getLatestBlock?.();
-        if (!latestBlock) {
+        const latestBlockFromChain = chain.getLatestBlock?.();
+        if (!latestBlockFromChain) {
             return res.status(404).json({ error: 'No blocks found' });
         }
-        res.json({ success: true, block: latestBlock });
+        // Assuming latestBlockFromChain structure is similar to DB structure
+        const { transactions, _id, ...restOfBlock } = latestBlockFromChain as any;
+        const transformedBlock: any = { ...restOfBlock };
+        if (_id) { // _id might not exist if chain.getLatestBlock() returns a simplified object
+            transformedBlock.id = _id.toString();
+        }
+        
+        if (transactions && Array.isArray(transactions)) {
+            transformedBlock.transactions = transactions.map((tx: any) => {
+                const { data, ...restOfTx } = tx;
+                return {
+                    ...restOfTx,
+                    data: transformTransactionData(data)
+                };
+            });
+        }
+        res.json({ success: true, block: transformedBlock });
     } catch (err) {
         logger.error('Error fetching latest block:', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -81,13 +118,14 @@ router.get('/height/:height', (async (req: Request, res: Response) => {
             return res.status(400).json({ error: 'Invalid block height. Must be a number.' });
         }
         
-        const block = await mongo.getDb().collection('blocks').findOne({ height });
+        const blockFromDB = await mongo.getDb().collection('blocks').findOne({ height });
         
-        if (!block) {
+        if (!blockFromDB) {
             return res.status(404).json({ error: `Block with height ${height} not found` });
         }
         
-        res.json({ success: true, block });
+        const transformedBlock = transformBlockData(blockFromDB);
+        res.json({ success: true, block: transformedBlock });
     } catch (err) {
         logger.error(`Error fetching block by height ${req.params.height}:`, err);
         res.status(500).json({ error: 'Internal server error' });
@@ -99,13 +137,14 @@ router.get('/hash/:hash', (async (req: Request, res: Response) => {
     try {
         const hash = req.params.hash;
         
-        const block = await mongo.getDb().collection('blocks').findOne({ hash });
+        const blockFromDB = await mongo.getDb().collection('blocks').findOne({ hash });
         
-        if (!block) {
+        if (!blockFromDB) {
             return res.status(404).json({ error: `Block with hash ${hash} not found` });
         }
         
-        res.json({ success: true, block });
+        const transformedBlock = transformBlockData(blockFromDB);
+        res.json({ success: true, block: transformedBlock });
     } catch (err) {
         logger.error(`Error fetching block by hash ${req.params.hash}:`, err);
         res.status(500).json({ error: 'Internal server error' });
@@ -121,19 +160,31 @@ router.get('/:height/transactions', (async (req: Request, res: Response) => {
             return res.status(400).json({ error: 'Invalid block height. Must be a number.' });
         }
         
-        const block = await mongo.getDb().collection('blocks').findOne(
+        const blockFromDB = await mongo.getDb().collection('blocks').findOne(
             { height },
-            { projection: { transactions: 1 } }
+            { projection: { transactions: 1, _id: 1 } } // Ensure _id is projected if needed for block ID
         );
         
-        if (!block) {
+        if (!blockFromDB) {
             return res.status(404).json({ error: `Block with height ${height} not found` });
         }
         
+        let transformedTransactions: any[] = [];
+        if (blockFromDB.transactions && Array.isArray(blockFromDB.transactions)) {
+            transformedTransactions = blockFromDB.transactions.map((tx: any) => {
+                const { data, ...restOfTx } = tx;
+                return {
+                    ...restOfTx,
+                    data: transformTransactionData(data)
+                };
+            });
+        }
+
         res.json({ 
             success: true, 
             blockHeight: height,
-            transactions: block.transactions || []
+            blockId: blockFromDB._id ? blockFromDB._id.toString() : undefined,
+            transactions: transformedTransactions
         });
     } catch (err) {
         logger.error(`Error fetching transactions for block ${req.params.height}:`, err);

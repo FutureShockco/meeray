@@ -5,6 +5,7 @@ import { NftMintData, NftCreateCollectionData } from './nft-interfaces.js';
 // We need NftCreateCollectionData to type the fetched collection document for checks
 import crypto from 'crypto'; // For UUID generation
 import config from '../../config.js';
+import { logTransactionEvent } from '../../utils/event-logger.js'; // Import the new event logger
 
 // Helper to generate a UUID. Node.js built-in.
 function generateUUID(): string {
@@ -99,30 +100,31 @@ export async function validateTx(data: NftMintData, sender: string): Promise<boo
   }
 }
 
-export async function process(data: NftMintData, sender: string): Promise<boolean> {
+export async function process(transaction: { data: NftMintData, sender: string, _id: string }): Promise<boolean> {
+  const { data: mintPayload, sender, _id: transactionId } = transaction;
   try {
-    const actualInstanceId = data.instanceId || generateUUID();
-    const fullInstanceId = `${data.collectionSymbol}-${actualInstanceId}`;
+    const actualInstanceId = mintPayload.instanceId || generateUUID();
+    const fullInstanceId = `${mintPayload.collectionSymbol}-${actualInstanceId}`;
 
     // Re-check uniqueness for generated UUID just in case of an extremely rare collision or if validation was skipped/changed.
     // This is a safeguard; for UUIDs, collisions are astronomically unlikely.
-    if (!data.instanceId) { // Only re-check if it was auto-generated
+    if (!mintPayload.instanceId) { // Only re-check if it was auto-generated
         const existingNft = await cache.findOnePromise('nfts', { _id: fullInstanceId });
         if (existingNft) {
-            logger.error(`[nft-mint] CRITICAL: Generated instanceId ${actualInstanceId} (full ID: ${fullInstanceId}) collided for collection ${data.collectionSymbol}. Retrying may be an option or use a different generation scheme.`);
+            logger.error(`[nft-mint] CRITICAL: Generated instanceId ${actualInstanceId} (full ID: ${fullInstanceId}) collided for collection ${mintPayload.collectionSymbol}.`);
             return false; // Critical failure, likely needs investigation
         }
     }
 
     const nftDocument = {
       _id: fullInstanceId, // Composite ID: collectionSymbol-instanceId
-      collectionSymbol: data.collectionSymbol,
+      collectionSymbol: mintPayload.collectionSymbol,
       instanceId: actualInstanceId,
-      owner: data.owner,
+      owner: mintPayload.owner,
       minter: sender, // The account that executed the mint transaction (collection creator in this model)
       mintedAt: new Date().toISOString(),
-      properties: data.properties || {},
-      uri: data.uri || null,
+      properties: mintPayload.properties || {},
+      uri: mintPayload.uri || null,
       // immutableProperties: data.immutableProperties === undefined ? false : data.immutableProperties, // If added to interface
     };
 
@@ -145,38 +147,25 @@ export async function process(data: NftMintData, sender: string): Promise<boolea
     // Increment currentSupply in the collection
     const collectionUpdateSuccess = await cache.updateOnePromise(
       'nftCollections',
-      { _id: data.collectionSymbol }, 
+      { _id: mintPayload.collectionSymbol }, 
       { $inc: { currentSupply: 1 } }
     );
 
     if (!collectionUpdateSuccess) {
-      logger.error(`[nft-mint] CRITICAL: Failed to update currentSupply for collection ${data.collectionSymbol} after minting ${fullInstanceId}. NFT created but collection supply incorrect.`);
+      logger.error(`[nft-mint] CRITICAL: Failed to update currentSupply for collection ${mintPayload.collectionSymbol} after minting ${fullInstanceId}. NFT created but collection supply incorrect.`);
       // This is a critical inconsistency. May need manual reconciliation or a rollback of NFT creation.
       // For now, we log and the NFT is minted, but supply is off.
       // await cache.deleteOnePromise('nfts', { _id: fullInstanceId }); // Example of a rollback attempt (needs deleteOnePromise)
     }
 
-    logger.debug(`[nft-mint] NFT ${fullInstanceId} minted successfully into collection ${data.collectionSymbol} by ${sender} for owner ${data.owner}.`);
+    logger.debug(`[nft-mint] NFT ${fullInstanceId} minted successfully into collection ${mintPayload.collectionSymbol} by ${sender} for owner ${mintPayload.owner}.`);
 
-    const eventDocument = {
-      _id: Date.now().toString(36),
-      type: 'nftMint',
-      timestamp: new Date().toISOString(),
-      actor: sender,
-      data: { ...nftDocument }
-    };
-    await new Promise<void>((resolve) => {
-        cache.insertOne('events', eventDocument, (err, result) => {
-            if (err || !result) {
-                logger.error(`[nft-mint] CRITICAL: Failed to log nftMint event for ${fullInstanceId}: ${err || 'no result'}.`);
-            }
-            resolve(); 
-        });
-    });
+    // Log event using the new centralized logger
+    await logTransactionEvent('nftMint', sender, { ...nftDocument }, transactionId);
 
     return true;
   } catch (error) {
-    logger.error(`[nft-mint] Error processing mint for collection ${data.collectionSymbol} by ${sender}: ${error}`);
+    logger.error(`[nft-mint] Error processing mint for collection ${mintPayload.collectionSymbol} by ${sender}: ${error}`);
     return false;
   }
 } 

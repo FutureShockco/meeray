@@ -5,6 +5,7 @@ import config from '../../config.js';
 import { FarmCreateData, FarmCreateDataDB, Farm, FarmDB } from './farm-interfaces.js';
 import { convertToBigInt, convertToString, toString, BigIntMath } from '../../utils/bigint-utils.js';
 import { getAccount } from '../../utils/account-utils.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
 const NUMERIC_FIELDS_FARM_CREATE: Array<keyof FarmCreateData> = ['totalRewards', 'rewardsPerBlock', 'minStakeAmount', 'maxStakeAmount'];
 const NUMERIC_FIELDS_FARM: Array<keyof Farm> = ['totalRewards', 'rewardsPerBlock', 'minStakeAmount', 'maxStakeAmount', 'totalStaked'];
@@ -115,13 +116,14 @@ export async function validateTx(data: FarmCreateDataDB, sender: string): Promis
     }
 }
 
-export async function process(sender: string, data: FarmCreateDataDB): Promise<boolean> {
+export async function process(transaction: { data: FarmCreateDataDB, sender: string, _id: string }): Promise<boolean> {
+    const { data: farmCreatePayloadDB, sender, _id: transactionId } = transaction;
     try {
-        const farmData = convertToBigInt<FarmCreateData>(data, NUMERIC_FIELDS_FARM_CREATE);
+        const farmData = convertToBigInt<FarmCreateData>(farmCreatePayloadDB, NUMERIC_FIELDS_FARM_CREATE);
         const farmId = generateFarmId(farmData.stakingToken.symbol, farmData.rewardToken.symbol, farmData.rewardToken.issuer);
 
         const senderBalanceKey = `balances.${farmData.rewardToken.symbol}`;
-        const senderAccount = await getAccount(sender); // Already fetched in validateTx, but re-fetch for atomicity is safer
+        const senderAccount = await getAccount(sender); 
         if (!senderAccount || !senderAccount.balances) {
             logger.error(`[farm-create] Critical: Sender account or balances not found for ${sender} during processing.`);
             return false; 
@@ -154,8 +156,8 @@ export async function process(sender: string, data: FarmCreateDataDB): Promise<b
             endTime: farmData.endTime,
             totalRewards: farmData.totalRewards,
             rewardsPerBlock: farmData.rewardsPerBlock,
-            minStakeAmount: farmData.minStakeAmount === undefined ? BigInt(0) : farmData.minStakeAmount, // Default to 0 if undefined
-            maxStakeAmount: farmData.maxStakeAmount === undefined ? BigInt(0) : farmData.maxStakeAmount, // Default to 0 (no limit) or specific large if undefined
+            minStakeAmount: farmData.minStakeAmount === undefined ? BigInt(0) : farmData.minStakeAmount, 
+            maxStakeAmount: farmData.maxStakeAmount === undefined ? BigInt(0) : farmData.maxStakeAmount, 
             totalStaked: BigInt(0),
             status: 'active',
             createdAt: new Date().toISOString(),
@@ -163,7 +165,7 @@ export async function process(sender: string, data: FarmCreateDataDB): Promise<b
 
         const farmDocumentDB = convertToString<Farm>(farmDocument, NUMERIC_FIELDS_FARM);
         const insertSuccess = await new Promise<boolean>((resolve) => {
-            cache.insertOne('farms', farmDocumentDB, (err, result) => { // Reverted to cache.insertOne with callback
+            cache.insertOne('farms', farmDocumentDB, (err, result) => { 
                 if (err || !result) {
                     logger.error(`[farm-create] Failed to insert farm ${farmId} into cache: ${err || 'no result'}`);
                     resolve(false);
@@ -185,36 +187,24 @@ export async function process(sender: string, data: FarmCreateDataDB): Promise<b
 
         logger.debug(`[farm-create] Farm ${farmId} for staking token ${farmData.stakingToken.symbol} rewarding ${farmData.rewardToken.symbol} created by ${sender}.`);
 
-        const eventDocument = {
-            type: 'farmCreate',
-            actor: sender,
-            data: {
-                farmId: farmId,
-                name: farmData.name,
-                stakingTokenSymbol: farmData.stakingToken.symbol,
-                stakingTokenIssuer: farmData.stakingToken.issuer,
-                rewardTokenSymbol: farmData.rewardToken.symbol,
-                rewardTokenIssuer: farmData.rewardToken.issuer,
-                totalRewards: toString(farmData.totalRewards),
-                rewardsPerBlock: toString(farmData.rewardsPerBlock),
-                startTime: farmData.startTime,
-                endTime: farmData.endTime
-            }
+        // Log event using the new centralized logger
+        const eventData = {
+            farmId: farmId,
+            name: farmData.name,
+            stakingTokenSymbol: farmData.stakingToken.symbol,
+            stakingTokenIssuer: farmData.stakingToken.issuer,
+            rewardTokenSymbol: farmData.rewardToken.symbol,
+            rewardTokenIssuer: farmData.rewardToken.issuer,
+            totalRewards: toString(farmData.totalRewards),
+            rewardsPerBlock: toString(farmData.rewardsPerBlock),
+            startTime: farmData.startTime,
+            endTime: farmData.endTime
         };
-        await new Promise<void>((resolve) => { // Reverted to cache.insertOne with callback for event
-            cache.insertOne('events', eventDocument, (err, result) => {
-                if (err || !result) {
-                    logger.error(`[farm-create] CRITICAL: Failed to log farmCreate event for ${farmId}: ${err || 'no result'}.`);
-                }
-                resolve();
-            });
-        });
+        await logTransactionEvent('farmCreate', sender, eventData, transactionId);
 
         return true;
     } catch (error) {
         logger.error(`[farm-create] Error processing farm creation: ${error}`);
-        // Ensure rollback on any general error if balance was deducted
-        // This part needs careful consideration of atomicity or compensation logic
         return false;
     }
 } 

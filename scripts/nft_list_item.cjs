@@ -11,7 +11,7 @@ async function main() {
     const listItemData = {
         collectionSymbol: "ARTBK", // Should match an existing collection
         instanceId: instanceIdToList,
-        price: (Math.random() * 1000 + 100).toFixed(2), // Random price between 100 and 1100
+        price: (BigInt(Math.floor(Math.random() * 100000) + 10000)).toString(), // Random price, as integer string
         paymentTokenSymbol: "ECH", // Token for payment
         // paymentTokenIssuer: "some-issuer", // Required if paymentTokenSymbol is not NATIVE_TOKEN
     };

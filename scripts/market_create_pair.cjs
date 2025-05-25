@@ -13,9 +13,9 @@ async function main() {
         baseAssetIssuer: pairData.baseIssuer,
         quoteAssetSymbol: pairData.quoteSymbol,
         quoteAssetIssuer: pairData.quoteIssuer,
-        tickSize: 0.0001, // Minimum price movement
-        lotSize: 1,       // Minimum order quantity
-        minNotional: 1,   // Minimum order value
+        tickSize: "10000", // Represents 0.0001, assuming 8 decimal precision for price
+        lotSize: "100000000", // Represents 1, assuming 8 decimal precision for quantity
+        minNotional: "100000000", // Represents 1, assuming 8 decimal precision for value
         initialStatus: "TRADING"
     };
 

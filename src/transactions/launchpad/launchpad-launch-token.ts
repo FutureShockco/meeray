@@ -21,6 +21,7 @@ import {
 import { BigIntMath, toString, convertAllBigIntToStringRecursive } from '../../utils/bigint-utils.js'; // Removed convertToString as we'll do it manually for deep objects
 import validate from '../../validation/index.js'; // Assuming validate exists
 import config from '../../config.js'; // Import config
+import { logTransactionEvent } from '../../utils/event-logger.js'; // Import the new event logger
 
 
 function generateLaunchpadId(): string {
@@ -92,7 +93,8 @@ export async function validateTx(data: LaunchpadLaunchTokenData, sender: string)
   return true;
 }
 
-export async function process(data: LaunchpadLaunchTokenData, sender: string): Promise<boolean> {
+export async function process(transaction: { data: LaunchpadLaunchTokenData, sender: string, _id: string }): Promise<boolean> {
+  const { data: launchData, sender, _id: transactionId } = transaction;
   logger.debug(`[launchpad-launch-token] Processing launch request from ${sender}`);
   try {
     // Assuming validateTx was called by the node before processing
@@ -103,8 +105,8 @@ export async function process(data: LaunchpadLaunchTokenData, sender: string): P
     // Ensure data.tokenomics fields are BigInt before use
     // This is important if data comes from an API as JSON (numbers/strings)
     // ValidateTx might have already done this, but good to be defensive
-    const tokenDecimalsBigInt = BigInt(data.tokenomics.tokenDecimals);
-    const totalSupplyBigInt = BigInt(data.tokenomics.totalSupply);
+    const tokenDecimalsBigInt = BigInt(launchData.tokenomics.tokenDecimals);
+    const totalSupplyBigInt = BigInt(launchData.tokenomics.totalSupply);
 
     const tokenDecimalsNumber = BigIntMath.toNumber(tokenDecimalsBigInt);
     if (tokenDecimalsNumber < 0 || tokenDecimalsNumber > 18) {
@@ -114,35 +116,35 @@ export async function process(data: LaunchpadLaunchTokenData, sender: string): P
 
     const launchpadProjectData: Launchpad = {
       _id: launchpadId,
-      projectId: `${data.tokenSymbol}-launch-${launchpadId.substring(0,8)}`,
+      projectId: `${launchData.tokenSymbol}-launch-${launchpadId.substring(0,8)}`,
       status: LaunchpadStatus.UPCOMING, // Assuming validation passed if we reach here
       tokenToLaunch: {
-        name: data.tokenName,
-        symbol: data.tokenSymbol,
-        standard: data.tokenStandard,
+        name: launchData.tokenName,
+        symbol: launchData.tokenSymbol,
+        standard: launchData.tokenStandard,
         decimals: tokenDecimalsNumber, // Use converted number
         totalSupply: totalSupplyBigInt, // Use BigInt directly
       },
       tokenomicsSnapshot: {
-        ...data.tokenomics,
+        ...launchData.tokenomics,
         totalSupply: totalSupplyBigInt, // Ensure BigInt
         tokenDecimals: tokenDecimalsBigInt, // Ensure BigInt
       },
-      presaleDetailsSnapshot: data.presaleDetails ? {
-        ...data.presaleDetails,
+      presaleDetailsSnapshot: launchData.presaleDetails ? {
+        ...launchData.presaleDetails,
         // Ensure all BigInt fields are indeed BigInt
-        pricePerToken: BigInt(data.presaleDetails.pricePerToken),
-        minContributionPerUser: BigInt(data.presaleDetails.minContributionPerUser),
-        maxContributionPerUser: BigInt(data.presaleDetails.maxContributionPerUser),
-        hardCap: BigInt(data.presaleDetails.hardCap),
-        softCap: data.presaleDetails.softCap ? BigInt(data.presaleDetails.softCap) : undefined,
+        pricePerToken: BigInt(launchData.presaleDetails.pricePerToken),
+        minContributionPerUser: BigInt(launchData.presaleDetails.minContributionPerUser),
+        maxContributionPerUser: BigInt(launchData.presaleDetails.maxContributionPerUser),
+        hardCap: BigInt(launchData.presaleDetails.hardCap),
+        softCap: launchData.presaleDetails.softCap ? BigInt(launchData.presaleDetails.softCap) : undefined,
       } : undefined,
-      liquidityProvisionDetailsSnapshot: data.liquidityProvisionDetails,
+      liquidityProvisionDetailsSnapshot: launchData.liquidityProvisionDetails,
       launchedByUserId: sender,
       createdAt: now,
       updatedAt: now,
       feePaid: false, 
-      presale: data.presaleDetails ? {
+      presale: launchData.presaleDetails ? {
           totalQuoteRaised: BigInt(0), // Initialize with BigInt(0)
           participants: [],
           status: 'NOT_STARTED'
@@ -158,34 +160,22 @@ export async function process(data: LaunchpadLaunchTokenData, sender: string): P
                 logger.error(`[launchpad-launch-token] CRITICAL: Failed to save launchpad ${launchpadId}: ${err || 'no result'}.`);
                 return reject(err || new Error('Failed to save launchpad'));
             }
-            logger.debug(`[launchpad-launch-token] Launchpad ${launchpadId} created for ${data.tokenSymbol}.`);
+            logger.debug(`[launchpad-launch-token] Launchpad ${launchpadId} created for ${launchData.tokenSymbol}.`);
             resolve();
         });
     });
 
-    const eventDocument = {
-      type: 'launchpadLaunchTokenInitiated',
-      timestamp: now,
-      actor: sender,
-      data: {
+    // Log event using the new centralized logger
+    const eventData = {
         launchpadId: launchpadId,
-        tokenName: data.tokenName,
-        tokenSymbol: data.tokenSymbol,
-        totalSupply: toString(totalSupplyBigInt), // Convert for event log
+        tokenName: launchData.tokenName,
+        tokenSymbol: launchData.tokenSymbol,
+        totalSupply: toString(totalSupplyBigInt), 
         status: launchpadProjectData.status,
-      }
     };
-    
-    await new Promise<void>((resolve) => {
-        cache.insertOne('events', eventDocument, (err, result) => {
-            if (err || !result) {
-                logger.error(`[launchpad-launch-token] CRITICAL: Failed to log event for ${launchpadId}: ${err || 'no result'}.`);
-            }
-            resolve(); // Log and continue, don't fail transaction for event log error
-        });
-    });
+    await logTransactionEvent('launchpadLaunchTokenInitiated', sender, eventData, transactionId);
 
-    logger.debug(`[launchpad-launch-token] Launch request for ${data.tokenSymbol} by ${sender} processed successfully. Launchpad ID: ${launchpadId}`);
+    logger.debug(`[launchpad-launch-token] Launch request for ${launchData.tokenSymbol} by ${sender} processed successfully. Launchpad ID: ${launchpadId}`);
     return true;
 
   } catch (error) {

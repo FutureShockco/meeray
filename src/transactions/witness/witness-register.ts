@@ -2,6 +2,7 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import { AccountDoc } from '../../mongo.js';
 import { isValidPubKey } from '../../crypto.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export interface WitnessRegisterData {
   pub: string;
@@ -39,7 +40,8 @@ export async function validateTx(data: WitnessRegisterData, sender: string): Pro
   }
 }
 
-export async function process(data: WitnessRegisterData, sender: string): Promise<boolean> {
+export async function process(transaction: { data: WitnessRegisterData, sender: string, _id: string }): Promise<boolean> {
+  const { data, sender, _id: transactionId } = transaction;
   try {
     // Direct check of account state before transaction
     const beforeAccount = await cache.findOnePromise('accounts', { name: sender });
@@ -61,12 +63,18 @@ export async function process(data: WitnessRegisterData, sender: string): Promis
       return false;
     }
     return new Promise((resolve) => {
-      cache.addWitness(sender, false, function(err, witness) {
+      cache.addWitness(sender, false, async function(err, witness) {
         if (err) {
           logger.error(`Error adding witness ${sender} to cache: ${err}`);
           resolve(false);
         } else {
           logger.debug(`[process] witness: ${witness}`);
+          // Log event for successful registration
+          const eventData = {
+            witness: sender,
+            publicKey: data.pub
+          };
+          await logTransactionEvent('witnessRegister', sender, eventData, transactionId);
           resolve(true);
         }
       });

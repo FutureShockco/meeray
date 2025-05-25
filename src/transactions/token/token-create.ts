@@ -4,6 +4,7 @@ import config from '../../config.js';
 import validate from '../../validation/index.js';
 import { TokenCreateData, TokenCreateDataDB, TokenForStorage, TokenForStorageDB } from './token-interfaces.js';
 import { convertToBigInt, convertToString, toString, setTokenDecimals, convertAllBigIntToStringRecursive, toBigInt } from '../../utils/bigint-utils.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
 const NUMERIC_FIELDS_INPUT: Array<keyof TokenCreateData> = ['maxSupply', 'initialSupply']; 
 
@@ -104,39 +105,58 @@ export async function validateTx(data: TokenCreateDataDB, sender: string): Promi
   }
 }
 
-export async function process(sender: string, data: TokenCreateDataDB): Promise<boolean> {
-    try {
-        const tokenCreationInput = convertToBigInt<TokenCreateData>(data, NUMERIC_FIELDS_INPUT);
-        // Populate non-numeric and precision fields explicitly after convertToBigInt
-        tokenCreationInput.symbol = data.symbol;
-        tokenCreationInput.name = data.name;
-        if (data.precision !== undefined) tokenCreationInput.precision = data.precision;
-        tokenCreationInput.mintable = data.mintable;
-        tokenCreationInput.burnable = data.burnable;
-        tokenCreationInput.description = data.description;
-        tokenCreationInput.logoUrl = data.logoUrl;
-        tokenCreationInput.websiteUrl = data.websiteUrl;
-        // initialSupply is handled by convertToBigInt from NUMERIC_FIELDS_INPUT
-        // maxSupply is handled by convertToBigInt from NUMERIC_FIELDS_INPUT
+export async function process(transaction: { data: TokenCreateData, sender: string, _id: string }): Promise<boolean> {
+    const { data: tokenCreationInput, sender, _id: transactionId } = transaction;
+    logger.debug(`[token-create] Processing token creation for ${tokenCreationInput.symbol} by ${sender}`);
 
-        const initialSupplyForLogic = tokenCreationInput.initialSupply !== undefined ? tokenCreationInput.initialSupply : BigInt(0);
+    // Validate
+    // if (!validate(tokenCreationInput)) {
+    //     logger.error('[token-create] Validation failed for input data.');
+    //     return false;
+    // }
+
+    try {
+        const existingToken = await cache.findOnePromise('tokens', { _id: tokenCreationInput.symbol });
+        if (existingToken) {
+            logger.error(`[token-create] Token with symbol ${tokenCreationInput.symbol} already exists.`);
+            return false;
+        }
+
+        // Use 8 as the default precision if not provided
         const effectivePrecision = tokenCreationInput.precision === undefined ? 8 : tokenCreationInput.precision;
+        if (effectivePrecision < 0 || effectivePrecision > 18) { 
+            logger.error(`[token-create] Invalid precision ${effectivePrecision} for token ${tokenCreationInput.symbol}. Must be between 0 and 18.`);
+            return false;
+        }
 
         setTokenDecimals(tokenCreationInput.symbol, effectivePrecision);
+
+        const initialSupplyForLogic = tokenCreationInput.initialSupply || BigInt(0);
+        const maxSupplyForLogic = tokenCreationInput.maxSupply || BigInt(0); 
+
+        if (initialSupplyForLogic < BigInt(0) || maxSupplyForLogic < BigInt(0)) {
+            logger.error('[token-create] Initial supply and max supply cannot be negative.');
+            return false;
+        }
+
+        if (maxSupplyForLogic !== BigInt(0) && initialSupplyForLogic > maxSupplyForLogic) {
+            logger.error('[token-create] Initial supply cannot exceed max supply.');
+            return false;
+        }
 
         const tokenToStore: TokenForStorage = {
             _id: tokenCreationInput.symbol,
             symbol: tokenCreationInput.symbol,
             name: tokenCreationInput.name,
+            creator: sender,
             precision: effectivePrecision,
-            maxSupply: tokenCreationInput.maxSupply, 
+            maxSupply: maxSupplyForLogic,
             currentSupply: initialSupplyForLogic, 
             mintable: tokenCreationInput.mintable === undefined ? false : tokenCreationInput.mintable,
-            burnable: tokenCreationInput.burnable === undefined ? false : tokenCreationInput.burnable,
-            creator: sender,
-            description: tokenCreationInput.description,
-            logoUrl: tokenCreationInput.logoUrl,
-            websiteUrl: tokenCreationInput.websiteUrl
+            burnable: tokenCreationInput.burnable === undefined ? true : tokenCreationInput.burnable,
+            description: tokenCreationInput.description || '',
+            logoUrl: tokenCreationInput.logoUrl || '',
+            websiteUrl: tokenCreationInput.websiteUrl || '',
         };
 
         const tokenToStoreDB: TokenForStorageDB = convertAllBigIntToStringRecursive(tokenToStore);
@@ -144,10 +164,11 @@ export async function process(sender: string, data: TokenCreateDataDB): Promise<
         const insertSuccess = await new Promise<boolean>((resolve) => {
             cache.insertOne('tokens', tokenToStoreDB, (err, result) => {
                 if (err || !result) {
-                    logger.error(`[token-create] Failed to insert token ${tokenToStoreDB.symbol}`);
+                    logger.error(`[token-create] Failed to insert token ${tokenToStoreDB._id}`);
                     resolve(false);
+                } else { 
+                  resolve(true);
                 }
-                resolve(true);
             });
         });
 
@@ -157,38 +178,33 @@ export async function process(sender: string, data: TokenCreateDataDB): Promise<
             const updateSuccess = await cache.updateOnePromise(
                 'accounts',
                 { name: sender },
-                { $set: { [`balances.${tokenToStoreDB.symbol}`]: toString(initialSupplyForLogic) } }
+                { $set: { [`balances.${tokenToStoreDB._id}`]: toString(initialSupplyForLogic) } }
             );
             if (!updateSuccess) {
-                logger.error(`[token-create] Failed to set initial balance for ${sender} for token ${tokenToStoreDB.symbol}.`);
+                logger.error(`[token-create] Failed to set initial balance for ${sender} for token ${tokenToStoreDB._id}.`);
                 // TODO: Consider rollback of token insertion if this critical step fails
                 return false;
             }
         }
 
-        const eventDocument = {
-            type: 'tokenCreate',
-            timestamp: new Date().toISOString(),
-            actor: sender,
-            data: { 
-                symbol: tokenCreationInput.symbol,
-                name: tokenCreationInput.name,
-                precision: effectivePrecision,
-                maxSupply: toString(tokenCreationInput.maxSupply), 
-                initialSupply: toString(initialSupplyForLogic), 
-                mintable: tokenToStore.mintable, 
-                burnable: tokenToStore.burnable  
-            }
+        // Log event using the new centralized logger
+        const eventData = { 
+            symbol: tokenCreationInput.symbol,
+            name: tokenCreationInput.name,
+            precision: effectivePrecision,
+            maxSupply: toString(tokenCreationInput.maxSupply), 
+            initialSupply: toString(initialSupplyForLogic), 
+            mintable: tokenToStore.mintable, 
+            burnable: tokenToStore.burnable  
         };
-        await new Promise<void>((resolve) => {
-            cache.insertOne('events', eventDocument, (err) => {
-                if (err) logger.error(`[token-create] Failed to log tokenCreate event for ${tokenToStoreDB.symbol}: ${err}`);
-                resolve(); 
-            });
-        });
+        // Pass the transactionId to link the event to the original transaction
+        await logTransactionEvent('tokenCreate', sender, eventData, transactionId); 
+
+        logger.info(`[token-create] Token ${tokenToStoreDB._id} created successfully by ${sender}.`);
         return true;
+
     } catch (error) {
-        logger.error(`[token-create] Error processing token creation: ${error}`);
+        logger.error(`[token-create] Error processing token creation for ${tokenCreationInput.symbol} by ${sender}: ${error}`);
         return false;
     }
 } 

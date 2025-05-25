@@ -2,6 +2,7 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { NftDelistPayload, NftListing } from './nft-market-interfaces.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: NftDelistPayload, sender: string): Promise<boolean> {
   try {
@@ -58,21 +59,11 @@ export async function process(data: NftDelistPayload, sender: string): Promise<b
     logger.debug(`[nft-delist-item] NFT Listing ${data.listingId} cancelled by ${sender}.`);
 
     // Log event
-    const eventDocument = {
-      _id: Date.now().toString(36),
-      type: 'nftDelistItem',
-      timestamp: new Date().toISOString(),
-      actor: sender,
-      data: { listingId: data.listingId }
-    };
-    await new Promise<void>((resolve) => {
-        cache.insertOne('events', eventDocument, (err, result) => {
-            if (err || !result) {
-                logger.error(`[nft-delist-item] CRITICAL: Failed to log nftDelistItem event for ${data.listingId}: ${err || 'no result'}.`);
-            }
-            resolve(); 
-        });
-    });
+    const eventData = { listingId: data.listingId };
+    // TODO: The original code was missing the transactionId for logTransactionEvent.
+    // Assuming it should be passed, but it's not available in this scope. 
+    // For now, logging without it. This might need to be addressed.
+    await logTransactionEvent('nftDelistItem', sender, eventData);
 
     return true;
   } catch (error) {

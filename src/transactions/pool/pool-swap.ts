@@ -1,33 +1,31 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
-import { PoolSwapData, LiquidityPool } from './pool-interfaces.js';
+import { PoolSwapData, LiquidityPool, PoolSwapDataDB, LiquidityPoolDB } from './pool-interfaces.js';
 import { adjustBalance, getAccount, Account } from '../../utils/account-utils.js';
-import { BigIntMath } from '../../utils/bigint-utils.js';
+import { BigIntMath, convertToBigInt, toString as bigintToString } from '../../utils/bigint-utils.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
-const SWAP_FEE_RATE = 0.003; // 0.3% swap fee
+// const SWAP_FEE_RATE = 0.003; // 0.3% swap fee - This constant is not used in the BigInt logic below which uses 997/1000 factor
 
-// Helper to parse string amounts to numbers, returns 0 if invalid
-function parseAmount(amountStr: string | undefined): number {
-    if (amountStr === undefined) return 0;
-    const amount = parseFloat(amountStr);
-    return isNaN(amount) || amount < 0 ? 0 : amount;
-}
+const NUMERIC_FIELDS_SWAP: Array<keyof PoolSwapData> = ['amountIn', 'minAmountOut'];
 
-export async function validateTx(data: PoolSwapData, sender: string): Promise<boolean> {
+export async function validateTx(dataDb: PoolSwapDataDB, sender: string): Promise<boolean> {
     try {
+        const data = convertToBigInt<PoolSwapData>(dataDb, NUMERIC_FIELDS_SWAP);
+
         if (sender !== data.trader) {
             logger.warn('[pool-swap] Sender must be the trader.');
             return false;
         }
 
         if (!BigIntMath.isPositive(data.amountIn)) {
-            logger.warn('[pool-swap] amountIn must be a positive number.');
+            logger.warn('[pool-swap] amountIn must be a positive BigInt.');
             return false;
         }
 
-        if (data.minAmountOut && !BigIntMath.isPositive(data.minAmountOut)) {
-            logger.warn('[pool-swap] minAmountOut must be a positive number.');
+        if (data.minAmountOut !== undefined && !BigIntMath.isPositive(data.minAmountOut)) {
+            logger.warn('[pool-swap] minAmountOut, if provided, must be a positive BigInt.');
             return false;
         }
 
@@ -38,11 +36,12 @@ export async function validateTx(data: PoolSwapData, sender: string): Promise<bo
         }
 
         // Get pool data
-        const pool = await cache.findOnePromise('pools', { _id: data.poolId }) as LiquidityPool | null;
-        if (!pool) {
+        const poolFromDb = await cache.findOnePromise('liquidityPools', { _id: data.poolId }) as LiquidityPoolDB | null;
+        if (!poolFromDb) {
             logger.warn(`[pool-swap] Pool ${data.poolId} not found.`);
             return false;
         }
+        const pool = convertToBigInt<LiquidityPool>(poolFromDb, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens', 'feeTier']);
 
         // Verify token symbols match
         if (!((pool.tokenA_symbol === data.tokenIn_symbol && pool.tokenB_symbol === data.tokenOut_symbol) ||
@@ -57,11 +56,12 @@ export async function validateTx(data: PoolSwapData, sender: string): Promise<bo
             return false;
         }
 
-        // Check trader balance
-        const tokenInIdentifier = `${data.tokenIn_symbol}@${pool.tokenA_symbol === data.tokenIn_symbol ? pool.tokenA_issuer : pool.tokenB_issuer}`;
-        const traderBalance = BigIntMath.toBigInt(traderAccount.balances?.[tokenInIdentifier] || 0);
+        // Determine token issuers from the validated pool data for correct balance check
+        const tokenInIssuer = pool.tokenA_symbol === data.tokenIn_symbol ? pool.tokenA_issuer : pool.tokenB_issuer;
+        const tokenInIdentifier = `${data.tokenIn_symbol}@${tokenInIssuer}`;
+        const traderBalance = BigIntMath.toBigInt(traderAccount.balances?.[tokenInIdentifier] || '0');
         if (traderBalance < data.amountIn) {
-            logger.warn(`[pool-swap] Insufficient balance. Has ${traderBalance}, needs ${data.amountIn}`);
+            logger.warn(`[pool-swap] Insufficient balance for ${tokenInIdentifier}. Has ${bigintToString(traderBalance)}, needs ${bigintToString(data.amountIn)}`);
             return false;
         }
 
@@ -72,55 +72,67 @@ export async function validateTx(data: PoolSwapData, sender: string): Promise<bo
     }
 }
 
-// Helper to calculate swap output amount (constant product formula with fee)
-function calculateSwapAmountOut(
-    amountIn: number,
-    reserveIn: number,
-    reserveOut: number,
-    poolFeeRate: number // Use specific pool's fee rate
-): number {
-    if (amountIn <= 0 || reserveIn <= 0 || reserveOut <= 0) return 0;
-    const amountInAfterFee = amountIn * (1 - poolFeeRate);
-    const numerator = reserveOut * amountInAfterFee;
-    const denominator = reserveIn + amountInAfterFee;
-    if (denominator === 0) return 0;
-    return numerator / denominator;
-}
+export async function process(transaction: { data: PoolSwapDataDB, sender: string, _id: string }): Promise<boolean> {
+    const { data: dataDb, sender, _id: transactionId } = transaction;
+    const data = convertToBigInt<PoolSwapData>(dataDb, NUMERIC_FIELDS_SWAP);
 
-export async function process(data: PoolSwapData, sender: string): Promise<boolean> {
-    return handlePoolSwap(data);
-}
-
-export async function handlePoolSwap(data: PoolSwapData): Promise<boolean> {
     // Get pool data
-    const pool = await cache.findOnePromise('pools', { _id: data.poolId }) as LiquidityPool | null;
-    if (!pool) {
-        logger.warn(`[pool-swap] Pool ${data.poolId} not found.`);
+    const poolFromDb = await cache.findOnePromise('liquidityPools', { _id: data.poolId }) as LiquidityPoolDB | null;
+    if (!poolFromDb) {
+        logger.warn(`[pool-swap] Pool ${data.poolId} not found during processing.`);
         return false;
     }
+    const pool = convertToBigInt<LiquidityPool>(poolFromDb, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens', 'feeTier']);
 
     // Determine token indices
     const tokenInIndex = data.tokenIn_symbol === pool.tokenA_symbol ? 'A' : 'B';
     const tokenOutIndex = tokenInIndex === 'A' ? 'B' : 'A';
 
-    // Get token identifiers
-    const tokenInIdentifier = `${pool[`token${tokenInIndex}_symbol`]}@${pool[`token${tokenInIndex}_issuer`]}`;
-    const tokenOutIdentifier = `${pool[`token${tokenOutIndex}_symbol`]}@${pool[`token${tokenOutIndex}_issuer`]}`;
+    // Get token identifiers including issuers from the pool document
+    const tokenIn_symbol = pool[`token${tokenInIndex}_symbol`];
+    const tokenIn_issuer = pool[`token${tokenInIndex}_issuer`];
+    const tokenOut_symbol = pool[`token${tokenOutIndex}_symbol`];
+    const tokenOut_issuer = pool[`token${tokenOutIndex}_issuer`];
+
+    const tokenInIdentifier = `${tokenIn_symbol}@${tokenIn_issuer}`;
+    const tokenOutIdentifier = `${tokenOut_symbol}@${tokenOut_issuer}`;
 
     // Calculate output amount using constant product formula (x * y = k)
-    const reserveIn = BigIntMath.toBigInt(pool[`token${tokenInIndex}_reserve`]);
-    const reserveOut = BigIntMath.toBigInt(pool[`token${tokenOutIndex}_reserve`]);
+    const reserveIn = pool[`token${tokenInIndex}_reserve`];
+    const reserveOut = pool[`token${tokenOutIndex}_reserve`];
 
     // Using constant product formula: (x + dx)(y - dy) = k = x * y
-    // Solving for dy: dy = y * dx / (x + dx)
-    const amountInWithFee = BigIntMath.mul(data.amountIn, BigInt(997)); // 0.3% fee
-    const numerator = BigIntMath.mul(amountInWithFee, reserveOut);
-    const denominator = BigIntMath.add(BigIntMath.mul(reserveIn, BigInt(1000)), amountInWithFee);
+    // dy = y - k / (x + dx) = y - (x*y) / (x + dx_after_fee)
+    // amountOut = reserveOut - (reserveIn * reserveOut) / (reserveIn + amountIn_after_fee)
+    // Simplified: amountOut = (reserveOut * amountIn_after_fee) / (reserveIn_before_fee + amountIn_after_fee)
+    // Fee is typically applied to amountIn. Let's assume a 0.3% fee (multiply by 997, divide by 1000)
+    // The feeTier from the pool interface is in basis points (e.g., 30 for 0.3%)
+    const feeMultiplier = BigInt(10000) - pool.feeTier; // e.g., 10000 - 30 = 9970
+    const feeDivisor = BigInt(10000);
+
+    const amountInAfterFee = BigIntMath.div(BigIntMath.mul(data.amountIn, feeMultiplier), feeDivisor);
+
+    const numerator = BigIntMath.mul(amountInAfterFee, reserveOut);
+    const denominator = BigIntMath.add(reserveIn, amountInAfterFee);
+    
+    if (BigIntMath.isZero(denominator)) {
+        logger.error(`[pool-swap] CRITICAL: Denominator is zero in swap calculation for pool ${data.poolId}. reserveIn: ${bigintToString(reserveIn)}, amountInAfterFee: ${bigintToString(amountInAfterFee)}`);
+        return false;
+    }
     const amountOut = BigIntMath.div(numerator, denominator);
+
+    if (BigIntMath.isZero(amountOut)) {
+        logger.warn(`[pool-swap] Calculated swap amountOut is zero for pool ${data.poolId}. amountIn: ${bigintToString(data.amountIn)}, reserveIn: ${bigintToString(reserveIn)}, reserveOut: ${bigintToString(reserveOut)}`);
+        // Allow zero amount out if minAmountOut is zero or not specified, but log it.
+        if (data.minAmountOut && data.minAmountOut > BigInt(0)) {
+             logger.warn(`[pool-swap] Output amount is zero and minAmountOut is ${bigintToString(data.minAmountOut)}. Swap failed.`);
+             return false;
+        }
+    }
 
     // Ensure minimum output amount is met
     if (data.minAmountOut && amountOut < data.minAmountOut) {
-        logger.warn('[pool-swap] Output amount is less than minimum required.');
+        logger.warn(`[pool-swap] Output amount ${bigintToString(amountOut)} is less than minimum required ${bigintToString(data.minAmountOut)}.`);
         return false;
     }
 
@@ -129,30 +141,54 @@ export async function handlePoolSwap(data: PoolSwapData): Promise<boolean> {
     const newReserveOut = BigIntMath.sub(reserveOut, amountOut);
 
     // Update user balances
-    const trader = await getAccount(data.trader);
-    if (!trader) {
-        logger.warn(`[pool-swap] Trader account ${data.trader} not found.`);
+    const deductSuccess = await adjustBalance(data.trader, tokenInIdentifier, BigIntMath.mul(data.amountIn, BigInt(-1)));
+    if (!deductSuccess) {
+        logger.error(`[pool-swap] Failed to deduct ${bigintToString(data.amountIn)} ${tokenInIdentifier} from ${data.trader}.`);
+        return false; // Or attempt rollback? For now, fail.
+    }
+    const creditSuccess = await adjustBalance(data.trader, tokenOutIdentifier, amountOut);
+    if (!creditSuccess) {
+        logger.error(`[pool-swap] Failed to credit ${bigintToString(amountOut)} ${tokenOutIdentifier} to ${data.trader}. Rolling back deduction.`);
+        // Rollback deduction
+        await adjustBalance(data.trader, tokenInIdentifier, data.amountIn); // Credit back
         return false;
     }
 
-    // Adjust balances using BigInt values
-    await adjustBalance(data.trader, tokenInIdentifier, -data.amountIn);
-    await adjustBalance(data.trader, tokenOutIdentifier, amountOut);
-
     // Save updated pool state
-    const updateSuccess = await cache.updateOnePromise('pools', { _id: data.poolId }, {
-        $set: {
-            [`token${tokenInIndex}_reserve`]: newReserveIn,
-            [`token${tokenOutIndex}_reserve`]: newReserveOut,
-            lastTradeAt: new Date().toISOString()
-        }
+    const poolUpdateSet: any = {
+        lastTradeAt: new Date().toISOString()
+    };
+    poolUpdateSet[`token${tokenInIndex}_reserve`] = bigintToString(newReserveIn);
+    poolUpdateSet[`token${tokenOutIndex}_reserve`] = bigintToString(newReserveOut);
+
+    const updateSuccess = await cache.updateOnePromise('liquidityPools', { _id: data.poolId }, {
+        $set: poolUpdateSet
     });
 
     if (!updateSuccess) {
-        logger.error(`[pool-swap] Failed to update pool ${data.poolId} reserves.`);
+        logger.error(`[pool-swap] Failed to update pool ${data.poolId} reserves. Critical: Balances changed but pool reserves not. Manual fix needed or implement full rollback.`);
+        // Attempt to rollback balance changes
+        await adjustBalance(data.trader, tokenOutIdentifier, BigIntMath.mul(amountOut, BigInt(-1))); // Deduct credited amountOut
+        await adjustBalance(data.trader, tokenInIdentifier, data.amountIn); // Credit back original amountIn
         return false;
     }
 
-    logger.info(`[pool-swap] Successful swap in pool ${data.poolId}: ${data.amountIn} ${tokenInIdentifier} -> ${amountOut} ${tokenOutIdentifier}`);
+    logger.info(`[pool-swap] Successful swap by ${sender} in pool ${data.poolId}: ${bigintToString(data.amountIn)} ${tokenInIdentifier} -> ${bigintToString(amountOut)} ${tokenOutIdentifier}`);
+
+    // Log event
+    const eventData = {
+        poolId: data.poolId,
+        trader: sender, // or data.trader, should be same
+        tokenIn_symbol: tokenIn_symbol,
+        tokenIn_issuer: tokenIn_issuer,
+        amountIn: bigintToString(data.amountIn),
+        tokenOut_symbol: tokenOut_symbol,
+        tokenOut_issuer: tokenOut_issuer,
+        amountOut: bigintToString(amountOut),
+        feeTier: bigintToString(pool.feeTier), // Log the fee tier used
+        // transactionId: transactionId // Already passed to logTransactionEvent
+    };
+    await logTransactionEvent('poolSwap', sender, eventData, transactionId);
+
     return true;
 } 

@@ -5,6 +5,7 @@ import { MarketCreatePairData, MarketCreatePairDataDB, TradingPair, TradingPairD
 // import crypto from 'crypto'; // No longer needed for TradingPairId generation
 import { generateDeterministicId } from '../../utils/id-utils.js'; // Import the new helper
 import { convertToBigInt, convertToString } from '../../utils/bigint-utils.js';
+import { logTransactionEvent } from '../../utils/event-logger.js'; // Import the new event logger
 
 const NUMERIC_FIELDS_CREATE_PAIR: Array<keyof MarketCreatePairData> = ['tickSize', 'lotSize', 'minNotional', 'minTradeAmount', 'maxTradeAmount'];
 
@@ -107,7 +108,8 @@ export async function validateTx(dataDb: MarketCreatePairDataDB, sender: string)
   return true;
 }
 
-export async function process(dataDb: MarketCreatePairDataDB, sender: string): Promise<boolean> {
+export async function process(transaction: { data: MarketCreatePairDataDB, sender: string, _id: string }): Promise<boolean> {
+  const { data: dataDb, sender, _id: transactionId } = transaction;
   const data = convertToBigInt<MarketCreatePairData>(dataDb, NUMERIC_FIELDS_CREATE_PAIR);
   logger.debug(`[market-create-pair] Processing request from ${sender} to create pair: ${JSON.stringify(data)}`);
   try {
@@ -123,8 +125,8 @@ export async function process(dataDb: MarketCreatePairDataDB, sender: string): P
       lotSize: data.lotSize,
       minNotional: data.minNotional,
       minTradeAmount: data.minTradeAmount || BigInt(0),
-      maxTradeAmount: data.maxTradeAmount || BigInt('1000000000000000000000'),
-      status: data.initialStatus || 'TRADING',
+      maxTradeAmount: data.maxTradeAmount || BigInt('1000000000000000000000'), // Default to a large number if not provided
+      status: data.initialStatus || 'TRADING', // Default to TRADING if not provided
       createdAt: new Date().toISOString(),
     };
 
@@ -148,22 +150,8 @@ export async function process(dataDb: MarketCreatePairDataDB, sender: string): P
 
     logger.debug(`[market-create-pair] Trading Pair ${pairId} (${data.baseAssetSymbol}/${data.quoteAssetSymbol}) created by ${sender}.`);
 
-    // Log event
-    const eventDocument = {
-      _id: Date.now().toString(36),
-      type: 'marketCreatePair',
-      timestamp: new Date().toISOString(),
-      actor: sender,
-      data: { ...tradingPairDocumentDB }
-    };
-    await new Promise<void>((resolve) => {
-        cache.insertOne('events', eventDocument, (err, result) => {
-            if (err || !result) {
-                logger.error(`[market-create-pair] CRITICAL: Failed to log marketCreatePair event for ${pairId}: ${err || 'no result'}.`);
-            }
-            resolve(); 
-        });
-    });
+    // Log event using the new centralized logger
+    await logTransactionEvent('marketCreatePair', sender, { ...tradingPairDocumentDB }, transactionId);
 
     return true;
   } catch (error) {

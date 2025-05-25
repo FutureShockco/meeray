@@ -1,11 +1,13 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
-import { NftListPayload, NftListing } from './nft-market-interfaces.js';
+import { NftListPayload, NFTListing } from './nft-market-interfaces.js';
 import { NftInstance } from './nft-transfer.js'; // Assuming NftInstance is exported and suitable
 import { CachedNftCollectionForTransfer } from './nft-transfer.js'; // Assuming this is also suitable
 import config from '../../config.js';
 import { getTokenByIdentifier } from '../../utils/token-utils.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
+import { toBigInt, toString } from '../../utils/bigint-utils.js'; // Import toBigInt and toString
 
 // Helper to generate a unique listing ID
 function generateListingId(collectionSymbol: string, instanceId: string, seller: string): string {
@@ -14,9 +16,19 @@ function generateListingId(collectionSymbol: string, instanceId: string, seller:
 
 export async function validateTx(data: NftListPayload, sender: string): Promise<boolean> {
   try {
-    if (!data.collectionSymbol || !data.instanceId || typeof data.price !== 'number' || !data.paymentTokenSymbol) {
+    if (!data.collectionSymbol || !data.instanceId || !data.price || !data.paymentTokenSymbol) {
       logger.warn('[nft-list-item] Invalid data: Missing required fields (collectionSymbol, instanceId, price, paymentTokenSymbol).');
       return false;
+    }
+
+    if (!validate.string(data.price, 64, 1) || !/^[1-9]\d*$/.test(data.price)) {
+        logger.warn(`[nft-list-item] Invalid price format. Must be a string representing a positive integer. Received: ${data.price}`);
+        return false;
+    }
+    const priceBigInt = toBigInt(data.price);
+    if (priceBigInt <= BigInt(0)) {
+        logger.warn(`[nft-list-item] Price must be positive. Received: ${data.price}`);
+        return false;
     }
 
     if (!validate.string(data.collectionSymbol, 10, 3, config.tokenSymbolAllowedChars)) {
@@ -25,10 +37,6 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
     }
     if (!validate.string(data.instanceId, 128, 1)) {
         logger.warn('[nft-list-item] Invalid instanceId length (1-128 chars).');
-        return false;
-    }
-    if (data.price <= 0) {
-        logger.warn(`[nft-list-item] Price must be positive. Received: ${data.price}`);
         return false;
     }
     // Validate payment token details
@@ -71,7 +79,7 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
 
     // Check if this NFT is already actively listed by this sender
     const listingId = generateListingId(data.collectionSymbol, data.instanceId, sender);
-    const existingListing = await cache.findOnePromise('nftListings', { _id: listingId, status: 'ACTIVE' }) as NftListing | null;
+    const existingListing = await cache.findOnePromise('nftListings', { _id: listingId, status: 'ACTIVE' }) as NFTListing | null;
     if (existingListing) {
         logger.warn(`[nft-list-item] NFT ${fullInstanceId} is already actively listed by ${sender} under listing ID ${listingId}.`);
         return false;
@@ -87,17 +95,20 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
 export async function process(data: NftListPayload, sender: string): Promise<string | null> {
   try {
     const listingId = generateListingId(data.collectionSymbol, data.instanceId, sender);
+    const priceAsBigInt = toBigInt(data.price);
 
-    const listingDocument: NftListing = {
+    const listingDocument: NFTListing = {
       _id: listingId,
-      collectionSymbol: data.collectionSymbol,
-      instanceId: data.instanceId,
+      collectionId: data.collectionSymbol,
+      tokenId: data.instanceId,
       seller: sender,
-      price: data.price,
-      paymentTokenSymbol: data.paymentTokenSymbol,
-      paymentTokenIssuer: data.paymentTokenSymbol === config.nativeToken ? undefined : data.paymentTokenIssuer,
-      listedAt: new Date().toISOString(),
-      status: 'ACTIVE',
+      price: priceAsBigInt,
+      paymentToken: {
+        symbol: data.paymentTokenSymbol,
+        issuer: data.paymentTokenIssuer
+      },
+      status: 'active',
+      createdAt: new Date().toISOString(),
     };
 
     const listSuccess = await new Promise<boolean>((resolve) => {
@@ -118,21 +129,11 @@ export async function process(data: NftListPayload, sender: string): Promise<str
     logger.debug(`[nft-list-item] NFT ${data.collectionSymbol}-${data.instanceId} listed by ${sender} for ${data.price} ${data.paymentTokenSymbol}. Listing ID: ${listingId}`);
 
     // Log event
-    const eventDocument = {
-      _id: Date.now().toString(36),
-      type: 'nftListItem',
-      timestamp: new Date().toISOString(),
-      actor: sender,
-      data: { ...listingDocument }
+    const eventData = { 
+      ...listingDocument,
+      price: toString(listingDocument.price)
     };
-    await new Promise<void>((resolve) => {
-        cache.insertOne('events', eventDocument, (err, result) => {
-            if (err || !result) {
-                logger.error(`[nft-list-item] CRITICAL: Failed to log nftListItem event for ${listingId}: ${err || 'no result'}.`);
-            }
-            resolve(); 
-        });
-    });
+    await logTransactionEvent('nftListItem', sender, eventData);
 
     return listingId; // Return the ID of the created listing
 
@@ -140,4 +141,4 @@ export async function process(data: NftListPayload, sender: string): Promise<str
     logger.error(`[nft-list-item] Error processing NFT listing for ${data.collectionSymbol}-${data.instanceId} by ${sender}: ${error}`);
     return null;
   }
-} 
+}

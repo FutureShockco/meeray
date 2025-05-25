@@ -33,7 +33,7 @@ interface TransactionModule {
     isValidTxData: (tx: TransactionInterface, ts: number, legitUser: string, cb: ValidationCallback) => void;
     execute: (tx: TransactionInterface, ts: number, cb: ExecutionCallback) => void;
     updateIntsAndNodeApprPromise: (account: any, ts: number, change: number) => Promise<boolean>;
-    adjustNodeAppr: (acc: any, newCoins: number, cb: (success: boolean) => void) => void;
+    adjustWitnessWeight: (acc: any, newCoins: number, cb: (success: boolean) => void) => void;
 }
 
 const transaction: TransactionModule = {
@@ -208,32 +208,41 @@ const transaction: TransactionModule = {
 
     updateIntsAndNodeApprPromise: function (account: any, ts: number, change: number): Promise<boolean> {
         return new Promise<boolean>((resolve) => {
-            transaction.adjustNodeAppr(account, change, () => resolve(true));
+            transaction.adjustWitnessWeight(account, change, () => resolve(true));
         });
     },
 
-    adjustNodeAppr: async (acc: any, newCoins: number, cb: (success: boolean) => void): Promise<void> => {
+    adjustWitnessWeight: async (acc: any, newCoins: number, cb: (success: boolean) => void): Promise<void> => {
         if (!acc.votedWitnesses || acc.votedWitnesses.length === 0 || !newCoins || newCoins === 0) {
             cb(true);
             return;
         }
 
-        const balance_before = acc.tokens?.ECH || 0;
-        const witness_share_before = acc.votedWitnesses.length > 0 ? Math.floor(balance_before / acc.votedWitnesses.length) : 0;
+        // This is the balance *after* the reward has been added by witnessRewards
+        const balance_after_reward_str = acc.balances?.ECH || toString(BigInt(0));
+        const balance_after_reward_bigint = toBigInt(balance_after_reward_str);
+        
+        // newCoins is now the reward in smallest units, already scaled.
+        const newCoinsBigInt = BigInt(newCoins);
 
-        const balance_after = balance_before + newCoins;
-        const witness_share_after = acc.votedWitnesses.length > 0 ? Math.floor(balance_after / acc.votedWitnesses.length) : 0;
+        // Calculate the balance as it was *before* this reward was added
+        const balance_before_reward_bigint = balance_after_reward_bigint - newCoinsBigInt;
 
-        const diff_per_witness = witness_share_after - witness_share_before;
+        const witness_share_before_reward_bigint = acc.votedWitnesses.length > 0 ? 
+            balance_before_reward_bigint / BigInt(acc.votedWitnesses.length) : BigInt(0);
+        
+        const witness_share_after_reward_bigint = acc.votedWitnesses.length > 0 ? 
+            balance_after_reward_bigint / BigInt(acc.votedWitnesses.length) : BigInt(0);
 
-        if (diff_per_witness === 0) { 
+        const diff_per_witness_bigint = witness_share_after_reward_bigint - witness_share_before_reward_bigint;
+
+        if (diff_per_witness_bigint === BigInt(0)) { 
             cb(true);
             return;
         }
 
         const witnesses_to_update_names: string[] = [...acc.votedWitnesses];
-
-        logr.debug(`NodeAppr Update for voter ${acc.name}: newCoins=${newCoins}, balance_before=${balance_before}, balance_after=${balance_after}, share_before=${witness_share_before}, share_after=${witness_share_after}, diff_per_witness=${diff_per_witness}, witnesses_count=${witnesses_to_update_names.length}`);
+        // Log with newCoins (now in smallest units)
 
         if (witnesses_to_update_names.length === 0) { 
             cb(true);
@@ -241,38 +250,29 @@ const transaction: TransactionModule = {
         }
 
         try {
-            const diffBigInt = BigInt(diff_per_witness);
-            // Fetch all witness accounts that need updating
-            // Assuming cache.find can take an array for `name` field with $in operator style, or we loop and fetch one by one.
-            // For simplicity, let's assume we fetch them one by one in a loop for now or use a method that gets multiple.
-            // cache.findPromise or equivalent would be better if it supports $in efficiently.
-            // Here, we iterate through names and update one by one.
-
             let allUpdatesSuccessful = true;
             for (const witnessName of witnesses_to_update_names) {
                 const witnessAccount = await cache.findOnePromise('accounts', { name: witnessName });
                 if (witnessAccount) {
                     const currentVoteWeightStr = witnessAccount.totalVoteWeight || toString(BigInt(0));
                     const currentVoteWeightBigInt = toBigInt(currentVoteWeightStr);
-                    let newVoteWeightBigInt = currentVoteWeightBigInt + diffBigInt;
+                    let newVoteWeightBigInt = currentVoteWeightBigInt + diff_per_witness_bigint;
 
                     if (newVoteWeightBigInt < BigInt(0)) {
-                        newVoteWeightBigInt = BigInt(0); // Should not happen if diff_per_witness is positive for rewards
+                        newVoteWeightBigInt = BigInt(0); 
                     }
                     await cache.updateOnePromise(
                         'accounts',
                         { name: witnessName }, 
                         { $set: { totalVoteWeight: toString(newVoteWeightBigInt) } }
                     );
+                    const witnessAccountAfter = await cache.findOnePromise('accounts', { name: witnessName });
                 } else {
-                    logr.error(`[adjustNodeAppr] Witness account ${witnessName} not found for update by ${acc.name}.`);
-                    // Decide if one failure should mark all as failed. For now, continue but flag.
                     allUpdatesSuccessful = false; 
                 }
             }
             cb(allUpdatesSuccessful);
         } catch (err: any) {
-            logr.error(`[adjustNodeAppr] Error during batch update for ${acc.name}'s voted witnesses:`, err);
             cb(false); 
         }
     }

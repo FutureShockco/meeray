@@ -5,6 +5,7 @@ import { Order, OrderDB, TradingPair, TradingPairDB, OrderType, OrderSide, Order
 import { getAccount, adjustBalance } from '../../utils/account-utils.js';
 import { convertToBigInt, convertToString, toString, toBigInt } from '../../utils/bigint-utils.js';
 import crypto from 'crypto';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
 const NUMERIC_FIELDS_MARKET_PLACE_ORDER_DATA: Array<keyof MarketPlaceOrderData> = ['price', 'quantity', 'quoteOrderQty'];
 const NUMERIC_FIELDS_ORDER_STORAGE: Array<keyof Order> = ['price', 'quantity', 'filledQuantity', 'averageFillPrice', 'cumulativeQuoteValue', 'quoteOrderQty'];
@@ -118,9 +119,10 @@ export async function validateTx(data: MarketPlaceOrderDataDB, sender: string): 
   }
 }
 
-export async function process(data: MarketPlaceOrderDataDB, sender: string): Promise<boolean> {
+export async function process(transaction: { data: MarketPlaceOrderDataDB, sender: string, _id: string }): Promise<boolean> {
+  const { data: dataDb, sender, _id: transactionId } = transaction;
   try {
-    const orderInput = convertToBigInt<MarketPlaceOrderData>(data, NUMERIC_FIELDS_MARKET_PLACE_ORDER_DATA);
+    const orderInput = convertToBigInt<MarketPlaceOrderData>(dataDb, NUMERIC_FIELDS_MARKET_PLACE_ORDER_DATA);
 
     const pairDB = await cache.findOnePromise('tradingPairs', { _id: orderInput.pairId }) as TradingPairDB | null;
     if (!pairDB) {
@@ -217,64 +219,25 @@ export async function process(data: MarketPlaceOrderDataDB, sender: string): Pro
 
     logger.debug(`[market-place-order] Order ${newOrderObject._id} placed for pair ${orderInput.pairId} by ${sender}.`);
 
-    // Define an explicit type for the event log data structure
-    interface OrderPlacedEventData {
-        orderId: string;
-        pairId: string;
-        userId: string;
-        orderType: OrderType; // Using OrderType enum for clarity
-        side: OrderSide;
-        status: OrderStatus;
-        price?: string;
-        quantity: string;
-        filledQuantity: string;
-        averageFillPrice?: string;
-        cumulativeQuoteValue?: string;
-        quoteOrderQty?: string;
-        createdAt: string;
-        updatedAt: string;
-        timeInForce?: 'GTC' | 'IOC' | 'FOK';
-        expiresAt?: string;
-    }
-
-    const eventDataForLog: OrderPlacedEventData = {
+    const eventData = {
         orderId: newOrderObject._id,
         pairId: newOrderObject.pairId,
         userId: newOrderObject.userId,
         orderType: newOrderObject.type,
         side: newOrderObject.side,
-        status: newOrderObject.status, // Initial status
+        status: newOrderObject.status,
         price: newOrderObject.price ? toString(newOrderObject.price) : undefined,
         quantity: toString(newOrderObject.quantity),
-        filledQuantity: toString(newOrderObject.filledQuantity), // Initially 0
-        averageFillPrice: newOrderObject.averageFillPrice ? toString(newOrderObject.averageFillPrice) : undefined,
-        cumulativeQuoteValue: newOrderObject.cumulativeQuoteValue ? toString(newOrderObject.cumulativeQuoteValue) : undefined,
+        filledQuantity: toString(newOrderObject.filledQuantity),
         quoteOrderQty: newOrderObject.quoteOrderQty ? toString(newOrderObject.quoteOrderQty) : undefined,
-        createdAt: newOrderObject.createdAt,
-        updatedAt: newOrderObject.updatedAt,
         timeInForce: newOrderObject.timeInForce,
-        expiresAt: newOrderObject.expiresAt
+        createdAt: newOrderObject.createdAt,
     };
-
-    const eventDocument = {
-      type: 'orderPlaced',
-      timestamp: newOrderObject.createdAt, 
-      actor: sender,
-      data: eventDataForLog,
-    };
-
-    await new Promise<void>((resolve) => {
-      cache.insertOne('events', eventDocument, (err, result) => {
-        if (err || !result) {
-          logger.error(`[market-place-order] CRITICAL: Failed to log orderPlaced event for ${newOrderObject._id}: ${err || 'no result'}.`);
-        }
-        resolve();
-      });
-    });
+    await logTransactionEvent('marketOrderPlaced', sender, eventData, transactionId);
 
     return true;
   } catch (error: any) {
-    const pairId = (data as any)?.pairId || 'unknown_pair';
+    const pairId = (dataDb as any)?.pairId || 'unknown_pair';
     logger.error(`[market-place-order] Error processing order for pair ${pairId} by ${sender}: ${error?.message || error}`);
     return false;
   }

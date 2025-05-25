@@ -11,12 +11,13 @@ import mining from './mining.js';
 import cache from './cache.js';
 import txHistory from './txHistory.js';
 import witnessesStats from './witnessesStats.js';
-import witnessesModule from './witnesses.js';
+import { witnessesModule } from './witnesses.js';
 import p2p from './p2p.js';
 import notifications from './modules/notifications.js';
 import mongo from './mongo.js';
 import steem from './steem.js';
 import { upsertAccountsReferencedInTx } from './account.js';
+import _ from 'lodash';
 
 // Add constants for block-based broadcasting
 const SYNC_MODE_BROADCAST_INTERVAL_BLOCKS = 3; // Broadcast every 3 blocks in sync mode

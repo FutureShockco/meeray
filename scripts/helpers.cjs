@@ -82,8 +82,8 @@ function generateRandomTokenData() {
         name,
         symbol: symbol.toUpperCase(),
         precision: Math.floor(Math.random() * 8) + 1, // 1-8 decimals
-        maxSupply: (Math.floor(Math.random() * 900000000) + 100000000), // 100M-1B
-        initialSupply: (Math.floor(Math.random() * 10000000) + 1000000), // 1M-11M
+        maxSupply: (BigInt(Math.floor(Math.random() * 900000000) + 100000000)).toString(), // 100M-1B
+        initialSupply: (BigInt(Math.floor(Math.random() * 10000000) + 1000000)).toString(), // 1M-11M
         description: `${name} - A revolutionary digital asset`,
         logoUrl: `https://example.com/tokens/${symbol.toLowerCase()}.png`,
         websiteUrl: `https://example.com/tokens/${symbol.toLowerCase()}`
@@ -102,7 +102,7 @@ function generateRandomNFTCollectionData() {
         description: `${name} - A unique digital collectibles series`,
         logoUrl: `https://example.com/nft/${symbol.toLowerCase()}.png`,
         websiteUrl: `https://example.com/nft/${symbol.toLowerCase()}`,
-        maxSupply: Math.floor(Math.random() * 9000) + 1000, // 1000-10000
+        maxSupply: (BigInt(Math.floor(Math.random() * 9000) + 1000)).toString(), // 1000-10000
         metadata: {
             properties: {
                 rarity: ['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary'],
@@ -159,15 +159,16 @@ function generateRandomMarketPairData() {
 function generateRandomMarketOrder() {
     const orderType = getRandomElement(MARKET_ORDER_TYPES);
     const orderSide = getRandomElement(MARKET_ORDER_SIDES);
-    const amount = (Math.random() * 999 + 1).toFixed(6);
-    const price = (Math.random() * 99 + 1).toFixed(6);
+    // Generate amount and price as whole numbers then convert to string for BigInt compatibility
+    const amount = BigInt(Math.floor(Math.random() * 999) + 1); // Example: 1 to 1000 units
+    const price = BigInt(Math.floor(Math.random() * 99) + 1);   // Example: 1 to 100 price units
 
     return {
         type: orderType,
         side: orderSide,
-        amount,
-        price: orderType === 'limit' ? price : undefined,
-        minAmountOut: orderType === 'market' ? (parseFloat(amount) * 0.99).toFixed(6) : undefined // 1% slippage for market orders
+        amount: amount.toString(),
+        price: orderType === 'limit' ? price.toString() : undefined,
+        minAmountOut: orderType === 'market' ? (amount * BigInt(99) / BigInt(100)).toString() : undefined // 1% slippage for market orders
     };
 }
 
@@ -188,10 +189,10 @@ function generateRandomFarmData() {
         stakingTokenIssuer: process.env.TOKEN_ISSUER || 'echelon-token-issuer',
         rewardTokenSymbol: POOL_TOKEN_SYMBOLS[rewardTokenIndex],
         rewardTokenIssuer: process.env.TOKEN_ISSUER || 'echelon-token-issuer',
-        rewardPerBlock: (Math.random() * 10).toFixed(6),
+        rewardPerBlock: (BigInt(Math.floor(Math.random() * 10) + 1)).toString(), // represent as integer
         rewardInterval,
         multiplier: Math.floor(Math.random() * 5) + 1, // 1-5x multiplier
-        maxStakingAmount: (Math.random() * 1000000 + 10000).toFixed(6)
+        maxStakingAmount: (BigInt(Math.floor(Math.random() * 1000000) + 10000)).toString()
     };
 }
 
@@ -222,11 +223,11 @@ function generateRandomLaunchpadData() {
         phase,
         duration,
         startBlock: Math.floor(Date.now() / 3000), // Approximate current block
-        softCap: (Math.random() * 100000 + 10000).toFixed(2),
-        hardCap: (Math.random() * 1000000 + 100000).toFixed(2),
-        tokenPrice: (Math.random() * 10).toFixed(6),
-        minInvestment: (Math.random() * 100 + 10).toFixed(2),
-        maxInvestment: (Math.random() * 10000 + 1000).toFixed(2),
+        softCap: (BigInt(Math.floor(Math.random() * 100000) + 10000)).toString(),
+        hardCap: (BigInt(Math.floor(Math.random() * 1000000) + 100000)).toString(),
+        tokenPrice: (BigInt(Math.floor(Math.random() * 10) + 1)).toString(), // represent as integer, precision will define decimals
+        minInvestment: (BigInt(Math.floor(Math.random() * 100) + 10)).toString(),
+        maxInvestment: (BigInt(Math.floor(Math.random() * 10000) + 1000)).toString(),
         vestingSchedule: [
             {
                 percentage: 20,
@@ -246,10 +247,10 @@ function generateRandomLaunchpadData() {
 
 function generateRandomLaunchpadOperation() {
     // Generate random investment amount between min and max
-    const amount = (Math.random() * 999 + 1).toFixed(6);
+    const amount = BigInt(Math.floor(Math.random() * 999) + 1);
     
     return {
-        amount
+        amount: amount.toString()
     };
 }
 

@@ -4,6 +4,7 @@ import validate from '../../validation/index.js';
 import { FarmClaimRewardsData, Farm, UserFarmPosition } from './farm-interfaces.js';
 import { getAccount, adjustBalance } from '../../utils/account-utils.js'; // For actual reward transfer later
 import { toString } from '../../utils/bigint-utils.js'; // Import toString
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: FarmClaimRewardsData, sender: string): Promise<boolean> {
   try {
@@ -96,27 +97,17 @@ export async function process(data: FarmClaimRewardsData, sender: string): Promi
 
     logger.debug(`[farm-claim-rewards] ${data.staker} claimed rewards from farm ${data.farmId}. Amount: ${toString(rewardsToClaim)} ${farm.rewardToken.symbol}.`);
 
-    const eventDocument = {
-      // _id: Date.now().toString(36), // Not needed if MongoDB auto-generates _id for events
-      type: 'farmClaimRewards',
-      timestamp: new Date().toISOString(),
-      actor: sender,
-      data: {
+    const eventData = {
         farmId: data.farmId,
         staker: data.staker,
         rewardTokenSymbol: farm.rewardToken.symbol,
         rewardTokenIssuer: farm.rewardToken.issuer,
-        rewardsClaimed: toString(rewardsToClaim) 
-      }
+        rewardsClaimed: toString(rewardsToClaim)
     };
-    await new Promise<void>((resolve) => {
-        cache.insertOne('events', eventDocument, (err, result) => { 
-            if (err || !result) {
-                logger.error(`[farm-claim-rewards] CRITICAL: Failed to log farmClaimRewards event for ${data.farmId}: ${err || 'no result'}.`);
-            }
-            resolve(); 
-        });
-    });
+    // TODO: The original code was missing the transactionId for logTransactionEvent.
+    // Assuming it should be passed, but it's not available in this scope. 
+    // For now, logging without it. This might need to be addressed.
+    await logTransactionEvent('farmClaimRewards', sender, eventData);
 
     return true;
   } catch (error) {

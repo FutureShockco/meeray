@@ -2,6 +2,8 @@ import express, { Request, Response, Router, RequestHandler } from 'express';
 import cache from '../../cache.js';
 import { mongo } from '../../mongo.js';
 import logger from '../../logger.js';
+import { toBigInt } from '../../utils/bigint-utils.js';
+import { ObjectId } from 'mongodb';
 
 const router: Router = express.Router();
 
@@ -12,6 +14,54 @@ const getPagination = (req: Request) => {
     return { limit, skip: offset, page: Math.floor(offset / limit) + 1 };
 };
 
+const transformPairData = (pairData: any): any => {
+    if (!pairData) return pairData;
+    const transformed = { ...pairData };
+    if (transformed._id && typeof transformed._id !== 'string') {
+        transformed.id = transformed._id.toString();
+        delete transformed._id;
+    }
+    const numericFields = ['lastPrice', 'volume24h', 'high24h', 'low24h', 'minTradeSize', 'maxTradeSize', 'tickSize', 'stepSize', 'baseMinSize', 'baseMaxSize', 'quoteMinPrice', 'quoteMaxPrice'];
+    for (const field of numericFields) {
+        if (transformed[field] && typeof transformed[field] === 'string') {
+            transformed[field] = toBigInt(transformed[field]).toString();
+        }
+    }
+    return transformed;
+};
+
+const transformOrderData = (orderData: any): any => {
+    if (!orderData) return orderData;
+    const transformed = { ...orderData };
+    if (transformed._id && typeof transformed._id !== 'string') {
+        transformed.id = transformed._id.toString();
+        delete transformed._id;
+    }
+    const numericFields = ['price', 'quantity', 'filledQuantity', 'remainingQuantity', 'cost', 'fee', 'total'];
+    for (const field of numericFields) {
+        if (transformed[field] && typeof transformed[field] === 'string') {
+            transformed[field] = toBigInt(transformed[field]).toString();
+        }
+    }
+    return transformed;
+};
+
+const transformTradeData = (tradeData: any): any => {
+    if (!tradeData) return tradeData;
+    const transformed = { ...tradeData };
+    if (transformed._id && typeof transformed._id !== 'string') {
+        transformed.id = transformed._id.toString();
+        delete transformed._id;
+    }
+    const numericFields = ['price', 'quantity', 'buyerFee', 'sellerFee', 'cost', 'total'];
+    for (const field of numericFields) {
+        if (transformed[field] && typeof transformed[field] === 'string') {
+            transformed[field] = toBigInt(transformed[field]).toString();
+        }
+    }
+    return transformed;
+};
+
 // --- Trading Pairs ---
 router.get('/pairs', (async (req: Request, res: Response) => {
     const { limit, skip } = getPagination(req);
@@ -20,8 +70,9 @@ router.get('/pairs', (async (req: Request, res: Response) => {
         query.status = req.query.status as string;
     }
     try {
-        const pairs = await cache.findPromise('tradingPairs', query, { limit, skip, sort: { _id: 1 } });
+        const pairsFromDB = await cache.findPromise('tradingPairs', query, { limit, skip, sort: { _id: 1 } });
         const total = await mongo.getDb().collection('tradingPairs').countDocuments(query);
+        const pairs = (pairsFromDB || []).map(transformPairData);
         res.json({ data: pairs, total, limit, skip });
     } catch (error: any) {
         logger.error('Error fetching trading pairs:', error);
@@ -32,10 +83,11 @@ router.get('/pairs', (async (req: Request, res: Response) => {
 router.get('/pairs/:pairId', (async (req: Request, res: Response) => {
     const { pairId } = req.params;
     try {
-        const pair = await cache.findOnePromise('tradingPairs', { _id: pairId });
-        if (!pair) {
+        const pairFromDB = await cache.findOnePromise('tradingPairs', { _id: pairId });
+        if (!pairFromDB) {
             return res.status(404).json({ message: `Trading pair ${pairId} not found.` });
         }
+        const pair = transformPairData(pairFromDB);
         res.json(pair);
     } catch (error: any) {
         logger.error(`Error fetching trading pair ${pairId}:`, error);
@@ -53,8 +105,9 @@ router.get('/orders/pair/:pairId', (async (req: Request, res: Response) => {
     if (req.query.userId) query.userId = req.query.userId as string; // Allow filtering orders in a pair by user
 
     try {
-        const orders = await cache.findPromise('orders', query, { limit, skip, sort: { createdAt: -1 } }); // Assuming createdAt for sorting
+        const ordersFromDB = await cache.findPromise('orders', query, { limit, skip, sort: { createdAt: -1 } });
         const total = await mongo.getDb().collection('orders').countDocuments(query);
+        const orders = (ordersFromDB || []).map(transformOrderData);
         res.json({ data: orders, total, limit, skip });
     } catch (error: any) {
         logger.error(`Error fetching orders for pair ${pairId}:`, error);
@@ -71,8 +124,9 @@ router.get('/orders/user/:userId', (async (req: Request, res: Response) => {
     if (req.query.side) query.side = req.query.side as string;
 
     try {
-        const orders = await cache.findPromise('orders', query, { limit, skip, sort: { createdAt: -1 } });
+        const ordersFromDB = await cache.findPromise('orders', query, { limit, skip, sort: { createdAt: -1 } });
         const total = await mongo.getDb().collection('orders').countDocuments(query);
+        const orders = (ordersFromDB || []).map(transformOrderData);
         res.json({ data: orders, total, limit, skip });
     } catch (error: any) {
         logger.error(`Error fetching orders for user ${userId}:`, error);
@@ -83,10 +137,11 @@ router.get('/orders/user/:userId', (async (req: Request, res: Response) => {
 router.get('/orders/:orderId', (async (req: Request, res: Response) => {
     const { orderId } = req.params;
     try {
-        const order = await cache.findOnePromise('orders', { _id: orderId });
-        if (!order) {
+        const orderFromDB = await cache.findOnePromise('orders', { _id: orderId });
+        if (!orderFromDB) {
             return res.status(404).json({ message: `Order ${orderId} not found.` });
         }
+        const order = transformOrderData(orderFromDB);
         res.json(order);
     } catch (error: any) {
         logger.error(`Error fetching order ${orderId}:`, error);
@@ -104,8 +159,9 @@ router.get('/trades/pair/:pairId', (async (req: Request, res: Response) => {
     if (req.query.toTimestamp) query.timestamp = { ...query.timestamp, $lte: parseInt(req.query.toTimestamp as string) };
 
     try {
-        const trades = await cache.findPromise('trades', query, { limit, skip, sort: { timestamp: -1 } }); // Sort by newest first
+        const tradesFromDB = await cache.findPromise('trades', query, { limit, skip, sort: { timestamp: -1 } });
         const total = await mongo.getDb().collection('trades').countDocuments(query);
+        const trades = (tradesFromDB || []).map(transformTradeData);
         res.json({ data: trades, total, limit, skip });
     } catch (error: any) {
         logger.error(`Error fetching trades for pair ${pairId}:`, error);
@@ -124,12 +180,31 @@ router.get('/trades/order/:orderId', (async (req: Request, res: Response) => {
         ]
     };
     try {
-        const trades = await cache.findPromise('trades', query, { limit, skip, sort: { timestamp: -1 }});
+        const tradesFromDB = await cache.findPromise('trades', query, { limit, skip, sort: { timestamp: -1 }});
         const total = await mongo.getDb().collection('trades').countDocuments(query);
 
-        if (!trades || trades.length === 0) {
-            return res.status(404).json({ message: `No trades found for order ID ${orderId}.` });
+        const trades = (tradesFromDB || []).map(transformTradeData);
+        
+        if (trades.length === 0) {
+            // If no trades are found for the orderId, check if the order itself exists before returning 404.
+            // This helps differentiate between "no trades for this valid order" vs "order itself is invalid/not found".
+            let orderExists = false;
+            try {
+                const orderObjectId = new ObjectId(orderId); // Attempt to convert to ObjectId
+                orderExists = !!(await mongo.getDb().collection('orders').findOne({ _id: orderObjectId }));
+            } catch (e) {
+                // orderId is not a valid ObjectId string, so it can't be a direct _id match for an order.
+                // If your orders can also be identified by a string ID that is NOT an ObjectId, 
+                // you might need an additional check here, e.g. findOne({ stringOrderIdField: orderId })
+                // For now, assume if it's not an ObjectId, it won't match an _id.
+            }
+
+            if (!orderExists) {
+                return res.status(404).json({ message: `Order with ID ${orderId} not found.` });
+            }
+            // If order exists but has no trades, return empty trades list (HTTP 200)
         }
+
         res.json({ data: trades, total, limit, skip });
     } catch (error: any) {
         logger.error(`Error fetching trades for order ${orderId}:`, error);
@@ -142,10 +217,11 @@ router.get('/trades/order/:orderId', (async (req: Request, res: Response) => {
 router.get('/trades/:tradeId', (async (req: Request, res: Response) => {
     const { tradeId } = req.params;
     try {
-        const trade = await cache.findOnePromise('trades', { _id: tradeId });
-        if (!trade) {
+        const tradeFromDB = await cache.findOnePromise('trades', { _id: tradeId });
+        if (!tradeFromDB) {
             return res.status(404).json({ message: `Trade ${tradeId} not found.` });
         }
+        const trade = transformTradeData(tradeFromDB);
         res.json(trade);
     } catch (error: any) {
         logger.error(`Error fetching trade ${tradeId}:`, error);

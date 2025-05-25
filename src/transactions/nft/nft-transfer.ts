@@ -3,6 +3,7 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import config from '../../config.js'; // For BURN_ACCOUNT_NAME eventually
 import { NftTransferData, NftCreateCollectionData } from './nft-interfaces.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
 const BURN_ACCOUNT_NAME = 'null';
 
@@ -131,18 +132,13 @@ export async function process(data: NftTransferData, sender: string): Promise<bo
       }
 
       logger.debug(`[nft-burn] NFT ${fullInstanceId} successfully burnt by ${sender}. Memo: ${data.memo || 'N/A'}`);
-      const burnEvent = {
-        type: 'nftBurn',
-        timestamp: new Date().toISOString(),
-        actor: sender,
-        data: { collectionSymbol: data.collectionSymbol, instanceId: data.instanceId, from: sender, memo: data.memo || null }
+      const eventData = { 
+        collectionSymbol: data.collectionSymbol, 
+        instanceId: data.instanceId, 
+        from: sender, 
+        memo: data.memo || null 
       };
-      await new Promise<void>((resolve) => {
-        cache.insertOne('events', burnEvent, (err, result) => {
-            if (err || !result) logger.error(`[nft-burn] CRITICAL: Failed to log nftBurn event for ${fullInstanceId}: ${err || 'no result'}.`);
-            resolve();
-        });
-      });
+      await logTransactionEvent('nftBurn', sender, eventData);
     } else {
       // --- REGULAR TRANSFER LOGIC ---
       // 1. Update NFT owner
@@ -157,20 +153,15 @@ export async function process(data: NftTransferData, sender: string): Promise<bo
         return false;
       }
 
-      // No adjustNodeAppr for NFTs in this version
       logger.debug(`[nft-transfer] NFT ${fullInstanceId} successfully transferred from ${sender} to ${data.to}. Memo: ${data.memo || 'N/A'}`);
-      const transferEvent = {
-        type: 'nftTransfer',
-        timestamp: new Date().toISOString(),
-        actor: sender,
-        data: { collectionSymbol: data.collectionSymbol, instanceId: data.instanceId, from: sender, to: data.to, memo: data.memo || null }
+      const eventDataTransfer = {
+        collectionSymbol: data.collectionSymbol, 
+        instanceId: data.instanceId, 
+        from: sender, 
+        to: data.to, 
+        memo: data.memo || null 
       };
-      await new Promise<void>((resolve) => {
-        cache.insertOne('events', transferEvent, (err, result) => {
-            if (err || !result) logger.error(`[nft-transfer] CRITICAL: Failed to log nftTransfer event for ${fullInstanceId}: ${err || 'no result'}.`);
-            resolve();
-        });
-      });
+      await logTransactionEvent('nftTransfer', sender, eventDataTransfer);
     }
     return true;
   } catch (error) {

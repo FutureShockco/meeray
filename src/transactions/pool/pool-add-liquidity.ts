@@ -3,7 +3,8 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { PoolAddLiquidityData, LiquidityPool, UserLiquidityPosition, PoolAddLiquidityDataDB, LiquidityPoolDB, UserLiquidityPositionDB } from './pool-interfaces.js';
 import { adjustBalance, getAccount, Account } from '../../utils/account-utils.js';
-import { convertToBigInt, convertToString, BigIntMath } from '../../utils/bigint-utils.js';
+import { convertToBigInt, convertToString, BigIntMath, toString as bigintToString } from '../../utils/bigint-utils.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
 const NUMERIC_FIELDS: Array<keyof PoolAddLiquidityData> = ['tokenA_amount', 'tokenB_amount'];
 
@@ -79,10 +80,11 @@ export async function validateTx(data: PoolAddLiquidityDataDB, sender: string): 
   }
 }
 
-export async function process(data: PoolAddLiquidityDataDB, sender: string): Promise<boolean> {
+export async function process(transaction: { data: PoolAddLiquidityDataDB, sender: string, _id: string }): Promise<boolean> {
+  const { data: dataDb, sender, _id: transactionId } = transaction;
   try {
     // Convert string amounts to BigInt for processing
-    const addLiquidityData = convertToBigInt<PoolAddLiquidityData>(data, NUMERIC_FIELDS);
+    const addLiquidityData = convertToBigInt<PoolAddLiquidityData>(dataDb, NUMERIC_FIELDS);
 
     const poolDB = await cache.findOnePromise('liquidityPools', { _id: addLiquidityData.poolId }) as LiquidityPoolDB | null;
     if (!poolDB) {
@@ -190,32 +192,21 @@ export async function process(data: PoolAddLiquidityDataDB, sender: string): Pro
       return false;
     }
 
-    logger.debug(`[pool-add-liquidity] Provider ${addLiquidityData.provider} added liquidity to pool ${addLiquidityData.poolId}. Token A: ${addLiquidityData.tokenA_amount}, Token B: ${addLiquidityData.tokenB_amount}, LP tokens minted: ${lpTokensToMint}`);
+    logger.debug(`[pool-add-liquidity] Provider ${addLiquidityData.provider} added liquidity to pool ${addLiquidityData.poolId}. Token A: ${bigintToString(addLiquidityData.tokenA_amount)}, Token B: ${bigintToString(addLiquidityData.tokenB_amount)}, LP tokens minted: ${bigintToString(lpTokensToMint)}`);
 
-    const eventDocument = {
-      type: 'poolAddLiquidity',
-      actor: sender,
-      data: {
+    // Log event using the new centralized logger
+    const eventData = {
         poolId: addLiquidityData.poolId,
         provider: addLiquidityData.provider,
-        tokenA_amount: addLiquidityData.tokenA_amount,
-        tokenB_amount: addLiquidityData.tokenB_amount,
-        lpTokensMinted: lpTokensToMint
-      }
+        tokenA_amount: bigintToString(addLiquidityData.tokenA_amount),
+        tokenB_amount: bigintToString(addLiquidityData.tokenB_amount),
+        lpTokensMinted: bigintToString(lpTokensToMint)
     };
-
-    await new Promise<void>((resolve) => {
-      cache.insertOne('events', eventDocument, (err, result) => {
-        if (err || !result) {
-          logger.error(`[pool-add-liquidity] CRITICAL: Failed to log poolAddLiquidity event for ${addLiquidityData.poolId}: ${err || 'no result'}.`);
-        }
-        resolve();
-      });
-    });
+    await logTransactionEvent('poolAddLiquidity', sender, eventData, transactionId);
 
     return true;
   } catch (error) {
-    logger.error(`[pool-add-liquidity] Error processing add liquidity for pool ${data.poolId} by ${sender}: ${error}`);
+    logger.error(`[pool-add-liquidity] Error processing add liquidity for pool ${dataDb.poolId} by ${sender}: ${error}`);
     return false;
   }
 } 

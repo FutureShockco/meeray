@@ -82,8 +82,8 @@ async function createToken(symbol, name, precision, maxSupply, initialSupply) {
     symbol,
     name,
     precision,
-    maxSupply: maxSupply,
-    initialSupply: initialSupply, // Add initialSupply as per typical token creation
+    maxSupply: maxSupply.toString(),
+    initialSupply: initialSupply.toString(),
     // Add other fields like mintable, burnable, description if needed, matching token_create.cjs
   };
   return sendCustomJson('token_create', payload);
@@ -93,7 +93,7 @@ async function mintTokens(symbol, to, amount) {
   const payload = {
     symbol,
     to,
-    amount: amount,
+    amount: amount.toString(),
   };
   return sendCustomJson('token_mint', payload);
 }
@@ -102,7 +102,7 @@ async function transferTokens(symbol, to, amount, memo) {
   const payload = {
     symbol,
     to,
-    amount: amount,
+    amount: amount.toString(),
     memo,
   };
   return sendCustomJson('token_transfer', payload);

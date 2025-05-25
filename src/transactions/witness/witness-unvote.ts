@@ -1,6 +1,7 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import { toBigInt, toString } from '../../utils/bigint-utils.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export interface WitnessUnvoteData {
   target: string;
@@ -34,7 +35,8 @@ export async function validateTx(data: WitnessUnvoteData, sender: string): Promi
   }
 }
 
-export async function process(data: WitnessUnvoteData, sender: string): Promise<boolean> {
+export async function process(transaction: { data: WitnessUnvoteData, sender: string, _id: string }): Promise<boolean> {
+  const { data, sender, _id: transactionId } = transaction;
   try {
     // Get sender account
     const senderAccount = await cache.findOnePromise('accounts', { name: sender });
@@ -48,11 +50,14 @@ export async function process(data: WitnessUnvoteData, sender: string): Promise<
     const newVotedWitnesses = votedWitnesses.filter((w: string) => w !== data.target);
     
     // Calculate vote weight changes
-    const balance = senderAccount.tokens?.ECH || 0;
-    const newVoteWeight = newVotedWitnesses.length > 0 ? 
-      Math.floor(balance / newVotedWitnesses.length) : 0;
-    const oldVoteWeight = votedWitnesses.length > 0 ? 
-      Math.floor(balance / votedWitnesses.length) : 0;
+    const balanceStr = senderAccount.tokens?.ECH || toString(BigInt(0));
+    const balanceBigInt = toBigInt(balanceStr);
+
+    const newVoteWeightBigIntCalculated = newVotedWitnesses.length > 0 ? 
+      balanceBigInt / BigInt(newVotedWitnesses.length) : BigInt(0);
+    // oldVoteWeight should be based on the state BEFORE unvoting
+    const oldVoteWeightBigIntCalculated = votedWitnesses.length > 0 ? 
+      balanceBigInt / BigInt(votedWitnesses.length) : BigInt(0);
 
     try {
       // Update in sequence instead of using transactions
@@ -62,8 +67,8 @@ export async function process(data: WitnessUnvoteData, sender: string): Promise<
       
       // 2. Update vote weights for remaining voted witnesses (their share increases)
       if (newVotedWitnesses.length > 0) {
-        const adjustmentForRemaining = newVoteWeight - oldVoteWeight; // This will be positive
-        const adjustmentForRemainingBigInt = BigInt(adjustmentForRemaining);
+        // This calculation is now BigInt based
+        const adjustmentForRemainingBigInt = newVoteWeightBigIntCalculated - oldVoteWeightBigIntCalculated; 
 
         for (const witnessName of newVotedWitnesses) {
             const witnessAccount = await cache.findOnePromise('accounts', { name: witnessName });
@@ -84,11 +89,11 @@ export async function process(data: WitnessUnvoteData, sender: string): Promise<
       // 3. Remove votes from unvoted witness (data.target) - ensure totalVoteWeight doesn't go negative
       const targetAccount = await cache.findOnePromise('accounts', { name: data.target });
       if (targetAccount) {
-        const oldVoteWeightBigInt = BigInt(oldVoteWeight);
+        // Use the correctly calculated oldVoteWeightBigIntCalculated
         const currentTotalVoteWeightStr = targetAccount.totalVoteWeight || toString(BigInt(0));
         const currentTotalVoteWeightBigInt = toBigInt(currentTotalVoteWeightStr);
         
-        let newTotalVoteWeightBigInt = currentTotalVoteWeightBigInt - oldVoteWeightBigInt;
+        let newTotalVoteWeightBigInt = currentTotalVoteWeightBigInt - oldVoteWeightBigIntCalculated;
         if (newTotalVoteWeightBigInt < BigInt(0)) {
             newTotalVoteWeightBigInt = BigInt(0); // Clamp at 0
         }
@@ -101,6 +106,16 @@ export async function process(data: WitnessUnvoteData, sender: string): Promise<
       }
       
       logger.debug(`Witness unvote from ${sender} to ${data.target} processed successfully`);
+      
+      // Log event for successful unvote
+      const eventData = {
+        unvoter: sender,
+        targetWitness: data.target,
+        remainingVotedWitnesses: newVotedWitnesses,
+        newSharePerWitnessForUnvoter: toString(newVoteWeightBigIntCalculated) // Share for remaining votes by unvoter
+      };
+      await logTransactionEvent('witnessUnvote', sender, eventData, transactionId);
+      
       return true;
     } catch (updateError: any) {
       logger.error('Error updating accounts during witness unvote:', updateError);

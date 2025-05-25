@@ -5,61 +5,53 @@ import config from '../../config.js';
 import transaction from '../../transaction.js';
 import { TokenTransferData, TokenTransferDataDB } from './token-interfaces.js';
 import { convertToBigInt, convertToString, toString, getTokenDecimals, toBigInt } from '../../utils/bigint-utils.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
 const BURN_ACCOUNT_NAME = config.burnAccountName || 'null';
 const NUMERIC_FIELDS: Array<keyof TokenTransferData> = ['amount'];
 
 export async function validateTx(data: TokenTransferDataDB, sender: string): Promise<boolean> {
     try {
-        // Convert string amount to BigInt for validation
         const transferData = convertToBigInt<TokenTransferData>(data, NUMERIC_FIELDS);
-
         if (!data.symbol || !data.to) {
             logger.warn('[token-transfer] Invalid data: Missing required fields (symbol, to).');
             return false;
         }
-
-        // Token fetched early for multiple checks
-        const token = await cache.findOnePromise('tokens', { symbol: data.symbol });
+        const token = await cache.findOnePromise('tokens', { _id: data.symbol });
         if (!token) {
             logger.warn(`[token-transfer] Token ${data.symbol} not found.`);
             return false;
         }
-
-        // Validations for symbol, recipient name format, amount
         if (!validate.string(data.symbol, 10, 3, config.tokenSymbolAllowedChars)) {
             logger.warn(`[token-transfer] Invalid token symbol format: ${data.symbol}.`);
             return false;
         }
-
         if (data.to !== BURN_ACCOUNT_NAME && !validate.string(data.to, 16, 3)) {
             logger.warn(`[token-transfer] Invalid recipient account name format: ${data.to}.`);
             return false;
         }
-
-        // Validate amount considering token precision
-        const precision = token.precision || 8;
-        const maxAmount = BigInt('9'.repeat(30 - precision)) * BigInt(10) ** BigInt(precision);
         
+        const precision = typeof token.precision === 'number' ? token.precision : (typeof token.precision === 'string' ? parseInt(token.precision, 10) : 8);
+        // Use a default of 30 for total digits if config.maxTokenAmountDigits is not set
+        const totalDigits = (config as any).maxTokenAmountDigits || (30 - precision); 
+        const maxAmountString = '9'.repeat(totalDigits) + '0'.repeat(precision);
+        const maxAmount = BigInt(maxAmountString);
+
         if (!validate.bigint(transferData.amount, false, false, maxAmount, BigInt(1))) {
-            logger.warn(`[token-transfer] Invalid amount: ${transferData.amount}. Must be a positive integer not exceeding ${maxAmount}.`);
+            logger.warn(`[token-transfer] Invalid amount: ${toString(transferData.amount)}. Must be a positive integer not exceeding ${toString(maxAmount)}.`);
             return false;
         }
-
-        // Verify sender has sufficient balance
         const senderAccount = await cache.findOnePromise('accounts', { name: sender });
         if (!senderAccount) {
             logger.warn(`[token-transfer] Sender account ${sender} not found.`);
             return false;
         }
-
         const senderBalanceString = senderAccount.balances?.[data.symbol] || '0';
         const currentSenderBalance = toBigInt(senderBalanceString);
         if (currentSenderBalance < transferData.amount) {
-            logger.warn(`[token-transfer] Insufficient balance for ${sender}. Has: ${currentSenderBalance}, Needs: ${transferData.amount}`);
+            logger.warn(`[token-transfer] Insufficient balance for ${sender}. Has: ${toString(currentSenderBalance)}, Needs: ${toString(transferData.amount)}`);
             return false;
         }
-
         return true;
     } catch (error) {
         logger.error(`[token-transfer] Error validating transfer: ${error}`);
@@ -67,120 +59,101 @@ export async function validateTx(data: TokenTransferDataDB, sender: string): Pro
     }
 }
 
-export async function process(sender: string, data: TokenTransferDataDB): Promise<boolean> {
+export async function process(transactionObj: { data: TokenTransferDataDB, sender: string, _id: string }): Promise<boolean> {
+    const { data: dataDb, sender, _id: transactionId } = transactionObj;
     try {
-        // Convert string inputs to BigInt for processing
-        const transferData = convertToBigInt<TokenTransferData>(data, NUMERIC_FIELDS);
+        const transferData = convertToBigInt<TokenTransferData>(dataDb, NUMERIC_FIELDS);
 
-        // Get token info for proper decimal handling
-        const token = await cache.findOnePromise('tokens', { symbol: data.symbol });
+        if (sender !== dataDb.from) {
+            logger.error(`[token-transfer:process] Transaction sender ${sender} does not match data.from ${dataDb.from}. Aborting.`);
+            return false;
+        }
+
+        const token = await cache.findOnePromise('tokens', { _id: transferData.symbol }); 
         if (!token) {
-            logger.error(`[token-transfer] Token ${data.symbol} not found`);
+            logger.error(`[token-transfer] Token ${transferData.symbol} not found`);
             return false;
         }
 
-        // Get sender's current balance
-        const senderAccount = await cache.findOnePromise('accounts', { name: data.from });
+        const senderAccount = await cache.findOnePromise('accounts', { name: sender }); 
         if (!senderAccount) {
-            logger.error(`[token-transfer:process] Sender account ${data.from} not found`);
+            logger.error(`[token-transfer:process] Sender account ${sender} not found`);
             return false;
         }
 
-        const senderBalanceString = senderAccount.balances?.[data.symbol] || '0';
+        const senderBalanceString = senderAccount.balances?.[transferData.symbol] || '0';
         const currentSenderBalance = toBigInt(senderBalanceString);
         
-        // Defensive check (already in validateTx)
         if (currentSenderBalance < transferData.amount) {
-            logger.error(`[token-transfer:process] Insufficient balance for ${data.from}. Has: ${currentSenderBalance}, Needs: ${transferData.amount}. Should have been caught by validateTx.`);
+            logger.error(`[token-transfer:process] Insufficient balance for ${sender}. Has: ${toString(currentSenderBalance)}, Needs: ${toString(transferData.amount)}. Should have been caught by validateTx.`);
             return false;
         }
         const newSenderBalance = currentSenderBalance - transferData.amount;
 
-        // Deduct from sender with proper padding
         const deductSuccess = await cache.updateOnePromise(
             'accounts',
-            { name: data.from },
-            { $set: { [`balances.${data.symbol}`]: toString(newSenderBalance) } }
+            { name: sender }, 
+            { $set: { [`balances.${transferData.symbol}`]: toString(newSenderBalance) } }
         );
 
         if (!deductSuccess) {
-            logger.error(`[token-transfer] Failed to deduct from sender ${data.from}`);
+            logger.error(`[token-transfer] Failed to deduct from sender ${sender}`);
             return false;
         }
 
-        // Handle recipient balance update
-        if (data.to !== BURN_ACCOUNT_NAME) {
-            // Get recipient's current balance
-            const recipientAccount = await cache.findOnePromise('accounts', { name: data.to });
+        if (transferData.to !== BURN_ACCOUNT_NAME) {
+            const recipientAccount = await cache.findOnePromise('accounts', { name: transferData.to });
             if (!recipientAccount) {
-                logger.error(`[token-transfer:process] Recipient account ${data.to} not found. Cannot transfer to non-existent account.`);
-                // Rollback sender deduction
+                logger.error(`[token-transfer:process] Recipient account ${transferData.to} not found. Rolling back sender deduction.`);
                  await cache.updateOnePromise(
                     'accounts',
-                    { name: data.from },
-                    { $set: { [`balances.${data.symbol}`]: toString(currentSenderBalance) } } // Rollback to original balance
+                    { name: sender }, 
+                    { $set: { [`balances.${transferData.symbol}`]: toString(currentSenderBalance) } } 
                 );
                 return false;
             }
-            const recipientBalanceString = recipientAccount.balances?.[data.symbol] || '0';
+            const recipientBalanceString = recipientAccount.balances?.[transferData.symbol] || '0';
             const currentRecipientBalance = toBigInt(recipientBalanceString);
             const newRecipientBalance = currentRecipientBalance + transferData.amount;
 
-            // Add to recipient with proper padding
             const addSuccess = await cache.updateOnePromise(
                 'accounts',
-                { name: data.to },
-                { $set: { [`balances.${data.symbol}`]: toString(newRecipientBalance) } }
+                { name: transferData.to },
+                { $set: { [`balances.${transferData.symbol}`]: toString(newRecipientBalance) } }
             );
 
             if (!addSuccess) {
-                // Attempt to rollback sender deduction
                 await cache.updateOnePromise(
                     'accounts',
-                    { name: data.from },
-                    { $set: { [`balances.${data.symbol}`]: toString(currentSenderBalance) } }
+                    { name: sender }, 
+                    { $set: { [`balances.${transferData.symbol}`]: toString(currentSenderBalance) } }
                 );
-                logger.error(`[token-transfer] Failed to add to recipient ${data.to}`);
+                logger.error(`[token-transfer] Failed to add to recipient ${transferData.to}`);
                 return false;
             }
 
-            // Handle native token node approval adjustments
-            if (data.symbol === config.nativeToken) {
+            if (transferData.symbol === config.nativeToken) {
                 try {
-                    await transaction.adjustNodeAppr(data.from, Number(newSenderBalance), () => {
-                        logger.debug(`[token-transfer] Node approval adjusted for sender ${data.from}`);
+                    await transaction.adjustWitnessWeight(sender, Number(newSenderBalance), () => {
+                        logger.debug(`[token-transfer] Witness weight adjusted for sender ${sender}`);
                     });
-                    await transaction.adjustNodeAppr(data.to, Number(newRecipientBalance), () => {
-                        logger.debug(`[token-transfer] Node approval adjusted for recipient ${data.to}`);
+                    await transaction.adjustWitnessWeight(transferData.to, Number(newRecipientBalance), () => {
+                        logger.debug(`[token-transfer] Witness weight adjusted for recipient ${transferData.to}`);
                     });
                 } catch (error) {
-                    logger.error(`[token-transfer] Failed to adjust node approvals: ${error}`);
-                    // Continue processing as this is not critical
+                    logger.error(`[token-transfer] Failed to adjust witness weights: ${error}`);
                 }
             }
         }
 
-        // Log event with proper numeric formatting
-        const eventDocument = {
-            type: 'tokenTransfer',
-            actor: sender,
-            data: {
-                symbol: data.symbol,
-                from: data.from,
-                to: data.to,
-                amount: toString(transferData.amount),
-                memo: data.memo
-            }
+        const eventData = {
+            symbol: transferData.symbol,
+            from: sender, 
+            to: transferData.to,
+            amount: toString(transferData.amount),
+            memo: transferData.memo
         };
-
-        await new Promise<void>((resolve) => {
-            cache.insertOne('events', eventDocument, (err, result) => {
-                if (err || !result) {
-                    logger.error(`[token-transfer] Failed to log transfer event: ${err || 'no result'}`);
-                }
-                resolve();
-            });
-        });
+        await logTransactionEvent('tokenTransfer', sender, eventData, transactionId);
 
         return true;
     } catch (error) {

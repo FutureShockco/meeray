@@ -1,10 +1,19 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
-import { PoolRemoveLiquidityData, LiquidityPool, UserLiquidityPosition } from './pool-interfaces.js';
+import { PoolRemoveLiquidityData, LiquidityPool, UserLiquidityPosition, PoolRemoveLiquidityDataDB, LiquidityPoolDB, UserLiquidityPositionDB } from './pool-interfaces.js';
 import { adjustBalance, getAccount } from '../../utils/account-utils.js';
+import { BigIntMath, toString, toBigInt, convertToBigInt, convertToString } from '../../utils/bigint-utils.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
-export async function validateTx(data: PoolRemoveLiquidityData, sender: string): Promise<boolean> {
+// minTokenA_amount and minTokenB_amount are for client-side slippage, not direct processing here if only lpTokenAmount is used.
+const NUMERIC_FIELDS_REMOVE_LIQ: Array<keyof PoolRemoveLiquidityData> = ['lpTokenAmount']; 
+
+export async function validateTx(dataDb: PoolRemoveLiquidityDataDB, sender: string): Promise<boolean> {
+  // data.minTokenA_amount and data.minTokenB_amount might be present in dataDb if sent by client,
+  // but convertToBigInt will only process 'lpTokenAmount' as per NUMERIC_FIELDS_REMOVE_LIQ.
+  // If validation based on minTokenA_amount/minTokenB_amount is needed server-side, they should be handled explicitly.
+  const data = convertToBigInt<PoolRemoveLiquidityData>(dataDb, NUMERIC_FIELDS_REMOVE_LIQ);
   try {
     if (!data.poolId || !data.provider || data.lpTokenAmount === undefined) {
       logger.warn('[pool-remove-liquidity] Invalid data: Missing required fields (poolId, provider, lpTokenAmount).');
@@ -18,157 +27,164 @@ export async function validateTx(data: PoolRemoveLiquidityData, sender: string):
         logger.warn('[pool-remove-liquidity] Invalid poolId format.');
         return false;
     }
-    if (!validate.integer(data.lpTokenAmount, false, false, undefined, 0) || data.lpTokenAmount <= 0) {
-        logger.warn('[pool-remove-liquidity] lpTokenAmount must be a positive number.');
+    if (!validate.bigint(data.lpTokenAmount, false, false, undefined, BigInt(1))) { 
+        logger.warn('[pool-remove-liquidity] lpTokenAmount must be a positive BigInt.');
         return false;
     }
-
-    const pool = await cache.findOnePromise('liquidityPools', { _id: data.poolId }) as LiquidityPool | null;
-    if (!pool) {
+    const poolFromDb = await cache.findOnePromise('liquidityPools', { _id: data.poolId }) as LiquidityPoolDB | null;
+    if (!poolFromDb) {
       logger.warn(`[pool-remove-liquidity] Pool ${data.poolId} not found.`);
       return false;
     }
+    const pool = convertToBigInt<LiquidityPool>(poolFromDb, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens', 'feeTier']);
     if (pool.totalLpTokens === BigInt(0)) {
         logger.warn(`[pool-remove-liquidity] Pool ${data.poolId} has no liquidity to remove.`);
         return false;
     }
-
     const userLpPositionId = `${data.provider}-${data.poolId}`;
-    const userPosition = await cache.findOnePromise('userLiquidityPositions', { _id: userLpPositionId }) as UserLiquidityPosition | null;
-    if (!userPosition || userPosition.lpTokenBalance < data.lpTokenAmount) {
-      logger.warn(`[pool-remove-liquidity] Provider ${data.provider} has insufficient LP token balance for pool ${data.poolId}. Has ${userPosition?.lpTokenBalance || 0}, needs ${data.lpTokenAmount}`);
+    const userPositionFromDb = await cache.findOnePromise('userLiquidityPositions', { _id: userLpPositionId }) as UserLiquidityPositionDB | null;
+    if (!userPositionFromDb) {
+      logger.warn(`[pool-remove-liquidity] Provider ${data.provider} has no LP position for pool ${data.poolId}.`);
       return false;
     }
-
-    // Optional: Check against minTokenA_amount and minTokenB_amount if provided (slippage protection for removal)
-
+    const userPosition = convertToBigInt<UserLiquidityPosition>(userPositionFromDb, ['lpTokenBalance']);
+    if (userPosition.lpTokenBalance < data.lpTokenAmount) {
+      logger.warn(`[pool-remove-liquidity] Provider ${data.provider} has insufficient LP token balance for pool ${data.poolId}. Has ${toString(userPosition.lpTokenBalance)}, needs ${toString(data.lpTokenAmount)}`);
+      return false;
+    }
+    // TODO: Optional server-side validation for minTokenA_amount and minTokenB_amount from dataDb if needed
     return true;
   } catch (error) {
-    logger.error(`[pool-remove-liquidity] Error validating data for pool ${data.poolId} by ${sender}: ${error}`);
+    logger.error(`[pool-remove-liquidity] Error validating data for pool ${dataDb.poolId} by ${sender}: ${error}`);
     return false;
   }
 }
 
-export async function process(data: PoolRemoveLiquidityData, sender: string): Promise<boolean> {
+export async function process(transaction: { data: PoolRemoveLiquidityDataDB, sender: string, _id: string }): Promise<boolean> {
+  const { data: dataDb, sender, _id: transactionId } = transaction;
+  // Only convert lpTokenAmount as defined in NUMERIC_FIELDS_REMOVE_LIQ for the core data object.
+  // minTokenA_amount/minTokenB_amount from dataDb would be ignored by this specific convertToBigInt call if not in NUMERIC_FIELDS_REMOVE_LIQ
+  const data = convertToBigInt<PoolRemoveLiquidityData>(dataDb, NUMERIC_FIELDS_REMOVE_LIQ);
   try {
-    const pool = await cache.findOnePromise('liquidityPools', { _id: data.poolId }) as LiquidityPool | null;
-    if (!pool) {
-      logger.error(`[pool-remove-liquidity] CRITICAL: Pool ${data.poolId} not found during processing. Validation might be stale.`);
+    const poolFromDb = await cache.findOnePromise('liquidityPools', { _id: data.poolId }) as LiquidityPoolDB | null;
+    if (!poolFromDb) {
+      logger.error(`[pool-remove-liquidity] CRITICAL: Pool ${data.poolId} not found during processing.`);
       return false;
     }
+    const pool = convertToBigInt<LiquidityPool>(poolFromDb, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens', 'feeTier']);
 
     const userLpPositionId = `${data.provider}-${data.poolId}`;
-    const userPosition = await cache.findOnePromise('userLiquidityPositions', { _id: userLpPositionId }) as UserLiquidityPosition | null;
-    if (!userPosition || userPosition.lpTokenBalance < data.lpTokenAmount) {
-      logger.error(`[pool-remove-liquidity] CRITICAL: User position ${userLpPositionId} not found or insufficient LP balance during processing.`);
+    const userPositionFromDb = await cache.findOnePromise('userLiquidityPositions', { _id: userLpPositionId }) as UserLiquidityPositionDB | null;
+    if (!userPositionFromDb) {
+      logger.error(`[pool-remove-liquidity] CRITICAL: User position ${userLpPositionId} not found during processing.`);
       return false; 
     }
-
-    // Calculate amounts of tokenA and tokenB to return
-    // share = lpTokenAmount / totalLpTokens
-    // amountTokenA = share * reserveTokenA
-    // amountTokenB = share * reserveTokenB
-    const shareOfPool = data.lpTokenAmount / pool.totalLpTokens;
-    const tokenAAmountToReturn = shareOfPool * pool.tokenA_reserve;
-    const tokenBAmountToReturn = shareOfPool * pool.tokenB_reserve;
-
-    if (tokenAAmountToReturn <= 0 || tokenBAmountToReturn <= 0) {
-        logger.error(`[pool-remove-liquidity] Calculated zero or negative tokens to return for ${data.poolId}. LP: ${data.lpTokenAmount}, TotalLP: ${pool.totalLpTokens}, ResA: ${pool.tokenA_reserve}, ResB: ${pool.tokenB_reserve}`);
+    const userPosition = convertToBigInt<UserLiquidityPosition>(userPositionFromDb, ['lpTokenBalance']);
+    if (userPosition.lpTokenBalance < data.lpTokenAmount) {
+        logger.error(`[pool-remove-liquidity] CRITICAL: Insufficient LP balance for ${userLpPositionId} during processing.`);
         return false;
     }
 
-    // 1. Update pool reserves and total LP tokens (decrease)
+    const tokenAAmountToReturn = (data.lpTokenAmount * pool.tokenA_reserve) / pool.totalLpTokens;
+    const tokenBAmountToReturn = (data.lpTokenAmount * pool.tokenB_reserve) / pool.totalLpTokens;
+
+    if (tokenAAmountToReturn <= BigInt(0) || tokenBAmountToReturn <= BigInt(0)) {
+        logger.error(`[pool-remove-liquidity] Calculated zero or negative tokens to return for ${data.poolId}.`);
+        return false;
+    }
+
     const poolUpdateSuccess = await cache.updateOnePromise(
       'liquidityPools',
       { _id: data.poolId },
       {
-        $inc: {
-          tokenA_reserve: -tokenAAmountToReturn,
-          tokenB_reserve: -tokenBAmountToReturn,
-          totalLpTokens: -data.lpTokenAmount
-        },
-        $set: { lastUpdatedAt: new Date().toISOString() }
+        $set: convertToString(
+            {
+                tokenA_reserve: pool.tokenA_reserve - tokenAAmountToReturn,
+                tokenB_reserve: pool.tokenB_reserve - tokenBAmountToReturn,
+                totalLpTokens: pool.totalLpTokens - data.lpTokenAmount,
+                // lastUpdatedAt should be part of the object passed to convertToString if we want it converted (it's not a BigInt though)
+                // For simplicity, setting it directly if not part of a consistent numeric conversion strategy
+            },
+            ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens']
+        ),
+        // If lastUpdatedAt is always just set, no need to include in convertToString
+        $currentDate: { lastUpdatedAt: true } // Alternative: use MongoDB to set current date
       }
     );
+    // If $set was used for lastUpdatedAt before:
+    // const poolUpdatePayload = { ...convertToString(...), lastUpdatedAt: new Date().toISOString() };
+    // await cache.updateOnePromise(..., { $set: poolUpdatePayload });
+
 
     if (!poolUpdateSuccess) {
-      logger.error(`[pool-remove-liquidity] Failed to update pool reserves for ${data.poolId}. Cannot proceed.`);
+      logger.error(`[pool-remove-liquidity] Failed to update pool reserves for ${data.poolId}.`);
       return false;
     }
 
-    // 2. Update user's LP token balance (decrease)
     const newLpBalance = userPosition.lpTokenBalance - data.lpTokenAmount;
+    const userPositionUpdatePayload = {
+        ...convertToString({ lpTokenBalance: newLpBalance }, ['lpTokenBalance']),
+        lastUpdatedAt: new Date().toISOString()
+    };
     const userPositionUpdateSuccess = await cache.updateOnePromise(
         'userLiquidityPositions',
         { _id: userLpPositionId },
-        { 
-            $set: { 
-                lpTokenBalance: newLpBalance, 
-                lastUpdatedAt: new Date().toISOString() 
-            }
-        }
+        { $set: userPositionUpdatePayload }
     );
 
     if (!userPositionUpdateSuccess) {
-        logger.error(`[pool-remove-liquidity] CRITICAL: Failed to update user LP position ${userLpPositionId}. Pool reserves changed! Manual rollback/fix needed for pool and user LP balance.`);
-        // Attempt to roll back pool changes
-        await cache.updateOnePromise('liquidityPools', { _id: data.poolId }, {
-            $inc: { tokenA_reserve: tokenAAmountToReturn, tokenB_reserve: tokenBAmountToReturn, totalLpTokens: data.lpTokenAmount }
-        });
+        logger.error(`[pool-remove-liquidity] CRITICAL: Failed to update user LP position ${userLpPositionId}. Rolling back pool update.`);
+        const rollbackPoolPayload = convertToString(
+            {
+                tokenA_reserve: pool.tokenA_reserve,
+                tokenB_reserve: pool.tokenB_reserve,
+                totalLpTokens: pool.totalLpTokens
+            },
+            ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens']
+        );
+        await cache.updateOnePromise('liquidityPools', { _id: data.poolId }, { $set: rollbackPoolPayload });
         return false;
     }
 
-    // 3. Credit tokenA and tokenB back to the provider's account
     const tokenAIdentifier = `${pool.tokenA_symbol}@${pool.tokenA_issuer}`;
     const tokenBIdentifier = `${pool.tokenB_symbol}@${pool.tokenB_issuer}`;
 
     if (!await adjustBalance(data.provider, tokenAIdentifier, tokenAAmountToReturn)) {
-        logger.error(`[pool-remove-liquidity] CRITICAL: Failed to credit ${tokenAAmountToReturn} ${tokenAIdentifier} to ${data.provider}. State inconsistent! Manual fix needed.`);
-        // At this point, pool and user LP are updated, but user didn't get token A.
-        // Rollbacks are getting very complex. Need robust transaction management or flagging.
+        logger.error(`[pool-remove-liquidity] CRITICAL: Failed to credit ${toString(tokenAAmountToReturn)} ${tokenAIdentifier} to ${data.provider}.`);
+        const rollbackUserLpPayload = { ...convertToString({ lpTokenBalance: userPosition.lpTokenBalance }, ['lpTokenBalance']), lastUpdatedAt: new Date().toISOString() };
+        await cache.updateOnePromise('userLiquidityPositions', { _id: userLpPositionId }, { $set: rollbackUserLpPayload });
+        const rollbackPoolPayload = convertToString(pool, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens']);
+        await cache.updateOnePromise('liquidityPools', { _id: data.poolId }, { $set: rollbackPoolPayload });
         return false; 
     }
     if (!await adjustBalance(data.provider, tokenBIdentifier, tokenBAmountToReturn)) {
-        logger.error(`[pool-remove-liquidity] CRITICAL: Failed to credit ${tokenBAmountToReturn} ${tokenBIdentifier} to ${data.provider}. User received Token A but not B. State inconsistent! Manual fix needed.`);
-        // User got token A, but not token B. Further complex rollback or flagging.
-        await adjustBalance(data.provider, tokenAIdentifier, -tokenAAmountToReturn); // Try to roll back token A credit.
+        logger.error(`[pool-remove-liquidity] CRITICAL: Failed to credit ${toString(tokenBAmountToReturn)} ${tokenBIdentifier} to ${data.provider}.`);
+        await adjustBalance(data.provider, tokenAIdentifier, -tokenAAmountToReturn);
+        const rollbackUserLpPayload = { ...convertToString({ lpTokenBalance: userPosition.lpTokenBalance }, ['lpTokenBalance']), lastUpdatedAt: new Date().toISOString() };
+        await cache.updateOnePromise('userLiquidityPositions', { _id: userLpPositionId }, { $set: rollbackUserLpPayload });
+        const rollbackPoolPayload = convertToString(pool, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens']);
+        await cache.updateOnePromise('liquidityPools', { _id: data.poolId }, { $set: rollbackPoolPayload });
         return false;
     }
 
-    logger.debug(`[pool-remove-liquidity] ${data.provider} removed liquidity from pool ${data.poolId} by burning ${data.lpTokenAmount} LP tokens. Received ${tokenAAmountToReturn} ${pool.tokenA_symbol} and ${tokenBAmountToReturn} ${pool.tokenB_symbol}.`);
+    logger.debug(`[pool-remove-liquidity] ${data.provider} removed liquidity from pool ${data.poolId} by burning ${toString(data.lpTokenAmount)} LP tokens. Received ${toString(tokenAAmountToReturn)} ${pool.tokenA_symbol} and ${toString(tokenBAmountToReturn)} ${pool.tokenB_symbol}.`);
 
-    // Log event
-    const eventDocument = {
-      _id: Date.now().toString(36),
-      type: 'poolRemoveLiquidity',
-      timestamp: new Date().toISOString(),
-      actor: sender,
-      data: {
+    const eventData = {
         poolId: data.poolId,
         provider: data.provider,
-        lpTokensBurned: data.lpTokenAmount,
+        lpTokensBurned: toString(data.lpTokenAmount),
         tokenA_symbol: pool.tokenA_symbol,
         tokenA_issuer: pool.tokenA_issuer,
-        tokenA_amount_returned: tokenAAmountToReturn,
+        tokenA_amount_returned: toString(tokenAAmountToReturn),
         tokenB_symbol: pool.tokenB_symbol,
         tokenB_issuer: pool.tokenB_issuer,
-        tokenB_amount_returned: tokenBAmountToReturn
-      }
+        tokenB_amount_returned: toString(tokenBAmountToReturn)
     };
-    await new Promise<void>((resolve) => {
-        cache.insertOne('events', eventDocument, (err, result) => { 
-            if (err || !result) {
-                logger.error(`[pool-remove-liquidity] CRITICAL: Failed to log poolRemoveLiquidity event for ${data.poolId}: ${err || 'no result'}.`);
-            }
-            resolve(); 
-        });
-    });
+    await logTransactionEvent('poolRemoveLiquidity', sender, eventData, transactionId);
 
     return true;
   } catch (error) {
     logger.error(`[pool-remove-liquidity] Error processing remove liquidity for pool ${data.poolId} by ${sender}: ${error}`);
-    // General catch block, rollbacks would be very complex here and depend on which step failed.
-    // The specific rollbacks are attempted in the steps above.
     return false;
   }
 } 

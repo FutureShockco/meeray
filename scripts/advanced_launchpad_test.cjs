@@ -88,7 +88,7 @@ async function createToken(symbol, name, precision, maxSupply, initialSupply) {
 // --- Launchpad Operation Helpers --- //
 async function launchToken(tokenSymbol, tokenName, quoteAssetSymbol) {
   const tokenomicsData = {
-    totalSupply: 100000000, // 100 Million
+    totalSupply: "100000000000000", // 100 Million with 6 decimals assumed for the launched token
     tokenDecimals: 6,
     allocations: [
       { recipient: "PROJECT_TEAM", percentage: 15, lockupMonths: 6, vestingSchedule: { type: "LINEAR_MONTHLY", durationMonths: 24, cliffMonths: 6 } },
@@ -101,15 +101,15 @@ async function launchToken(tokenSymbol, tokenName, quoteAssetSymbol) {
 
   const presaleDetailsData = {
     presaleTokenAllocationPercentage: 30,
-    pricePerToken: 0.05, // Price in quote asset
+    pricePerToken: "50000", // Price in quote asset (e.g., 0.05 with 6 decimals for quote asset)
     quoteAssetForPresaleSymbol: quoteAssetSymbol,
     quoteAssetForPresaleIssuer: username,
-    minContributionPerUser: 50,
-    maxContributionPerUser: 5000,
+    minContributionPerUser: "50000000", // e.g., 50 with 6 decimals for quote asset
+    maxContributionPerUser: "5000000000", // e.g., 5000 with 6 decimals for quote asset
     startTime: getFutureDateString(1), // 1 day from now
     endTime: getFutureDateString(3),   // 3 days from now
-    hardCap: 1000000,
-    softCap: 250000,
+    hardCap: "1000000000000", // e.g., 1,000,000 with 6 decimals for quote asset
+    softCap: "250000000000",   // e.g., 250,000 with 6 decimals for quote asset
     whitelistRequired: false,
     fcfsAfterReservedAllocation: true
   };
@@ -119,7 +119,7 @@ async function launchToken(tokenSymbol, tokenName, quoteAssetSymbol) {
     liquidityTokenAllocationPercentage: 25,
     quoteAssetForLiquiditySymbol: quoteAssetSymbol,
     quoteAssetForLiquidityIssuer: username,
-    initialQuoteAmountProvidedByProject: 50000,
+    initialQuoteAmountProvidedByProject: "50000000000", // e.g., 50,000 with 6 decimals for quote asset
     lpTokenLockupMonths: 12
   };
 

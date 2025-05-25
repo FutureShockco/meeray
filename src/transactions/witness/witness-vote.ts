@@ -2,6 +2,7 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import { toBigInt, toString } from '../../utils/bigint-utils.js';
 import config from '../../config.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export interface WitnessVoteData {
   target: string;
@@ -43,72 +44,99 @@ export async function validateTx(data: WitnessVoteData, sender: string): Promise
 
 export async function process(data: WitnessVoteData, sender: string): Promise<boolean> {
   try {
-    // Get sender account
     const senderAccount = await cache.findOnePromise('accounts', { name: sender });
     if (!senderAccount) {
-      logger.error(`Sender account ${sender} not found for witness vote`);
+      logger.error(`[witness-vote process] Sender account ${sender} not found for witness vote`);
       return false;
     }
-    // Initialize votedWitnesses array if it doesn't exist
+    logger.info(`[witness-vote process] Processing vote from: ${sender}`);
+    logger.info(`[witness-vote process] Sender account data before vote: ${JSON.stringify(senderAccount)}`);
+
     if (!senderAccount.votedWitnesses) {
       senderAccount.votedWitnesses = [];
     }
-    // Witnesses before this vote
     const originalVotedWitnesses = [...senderAccount.votedWitnesses];
-    const balance = senderAccount.tokens?.ECH || 0;
+    
+    const balanceStr = senderAccount.balances?.ECH || toString(BigInt(0));
+    logger.info(`[witness-vote process] Sender ${sender} ECH balance string: ${balanceStr}`);
+    const balanceBigInt = toBigInt(balanceStr);
+    logger.info(`[witness-vote process] Sender ${sender} ECH balance BigInt: ${balanceBigInt.toString()}`);
 
-    // Calculate the vote share these original witnesses had
-    const oldSharePerWitness = originalVotedWitnesses.length > 0 ?
-      Math.floor(balance / originalVotedWitnesses.length) : 0;
+    const oldSharePerWitnessBigInt = originalVotedWitnesses.length > 0 ? 
+      balanceBigInt / BigInt(originalVotedWitnesses.length) : BigInt(0);
+    logger.info(`[witness-vote process] Sender ${sender} oldSharePerWitnessBigInt: ${oldSharePerWitnessBigInt.toString()}`);
 
-    // Construct the new list of voted witnesses, ensuring uniqueness using a Set
     const uniqueVotedWitnesses = new Set([...originalVotedWitnesses, data.target]);
     const newVotedWitnessesList = Array.from(uniqueVotedWitnesses);
 
-    // Check if the list actually changed.
     if (newVotedWitnessesList.length === originalVotedWitnesses.length && originalVotedWitnesses.includes(data.target)) {
       logger.warn(`[witness-vote process] Sender ${sender} attempted to vote for ${data.target} again, or validate() check failed. No change to votedWitnesses list.`);
       return true;
     }
-    // Calculate the new vote share with the new target included
-    const newSharePerWitness = newVotedWitnessesList.length > 0 ?
-      Math.floor(balance / newVotedWitnessesList.length) : 0;
+
+    const newSharePerWitnessBigIntCalculated = newVotedWitnessesList.length > 0 ?
+      balanceBigInt / BigInt(newVotedWitnessesList.length) : BigInt(0);
+    logger.info(`[witness-vote process] Sender ${sender} newSharePerWitnessBigIntCalculated for target ${data.target}: ${newSharePerWitnessBigIntCalculated.toString()}`);
+
     try {
       await cache.updateOnePromise('accounts', { name: sender }, { $set: { votedWitnesses: newVotedWitnessesList } });
+      logger.info(`[witness-vote process] Sender ${sender} votedWitnesses list updated to: ${JSON.stringify(newVotedWitnessesList)}`);
 
-      const adjustment = BigInt(newSharePerWitness) - BigInt(oldSharePerWitness);
+      const adjustmentBigInt = newSharePerWitnessBigIntCalculated - oldSharePerWitnessBigInt;
+      logger.info(`[witness-vote process] Adjustment for original witnesses: ${adjustmentBigInt.toString()}`);
 
       for (const witnessName of originalVotedWitnesses) {
-        if (adjustment === BigInt(0)) continue; // No change in share for this witness
+        if (adjustmentBigInt === BigInt(0)) continue;
 
         const witnessAccount = await cache.findOnePromise('accounts', { name: witnessName });
         if (witnessAccount) {
+          logger.info(`[witness-vote process] Adjusting original voter ${witnessName}: BEFORE ${JSON.stringify(witnessAccount)}`);
           const currentTotalVoteWeightStr = witnessAccount.totalVoteWeight || toString(BigInt(0));
           const currentTotalVoteWeightBigInt = toBigInt(currentTotalVoteWeightStr);
-
-          let newTotalVoteWeightBigInt = currentTotalVoteWeightBigInt + adjustment;
+          let newTotalVoteWeightBigInt = currentTotalVoteWeightBigInt + adjustmentBigInt;
           if (newTotalVoteWeightBigInt < BigInt(0)) {
-            newTotalVoteWeightBigInt = BigInt(0); // Clamp at 0
+            newTotalVoteWeightBigInt = BigInt(0);
           }
           await cache.updateOnePromise('accounts', { name: witnessName }, { $set: { totalVoteWeight: toString(newTotalVoteWeightBigInt) } });
+          const witnessAccountAfter = await cache.findOnePromise('accounts', { name: witnessName });
+          logger.info(`[witness-vote process] Adjusting original voter ${witnessName}: AFTER ${JSON.stringify(witnessAccountAfter)}`);
         } else {
+          logger.error(`[witness-vote process] Witness account ${witnessName} not found when trying to adjust totalVoteWeight.`);
           throw new Error(`Witness account ${witnessName} (previously voted by ${sender}) not found during vote weight adjustment for new vote on ${data.target}.`);
         }
       }
-      logger.debug(`[witness-vote process] Updating target ${data.target} for sender ${sender}: balance=${balance}, list length=${newVotedWitnessesList.length}, sharePerWitness=${newSharePerWitness}`);
-
-      // Update the newly voted witness (data.target)
+      
       const targetAccount = await cache.findOnePromise('accounts', { name: data.target });
       if (targetAccount) {
+        logger.info(`[witness-vote process] Updating target ${data.target}: BEFORE ${JSON.stringify(targetAccount)}`);
         const currentTargetVoteWeightStr = targetAccount.totalVoteWeight || toString(BigInt(0));
+        logger.info(`[witness-vote process] Target ${data.target} currentTotalVoteWeightStr: ${currentTargetVoteWeightStr}`);
         const currentTargetVoteWeightBigInt = toBigInt(currentTargetVoteWeightStr);
-        const newSharePerWitnessBigInt = BigInt(newSharePerWitness);
-        const finalTargetVoteWeightBigInt = currentTargetVoteWeightBigInt + newSharePerWitnessBigInt;
-        // No need to clamp below zero here as newSharePerWitness should be positive
+        logger.info(`[witness-vote process] Target ${data.target} currentTotalVoteWeightBigInt: ${currentTargetVoteWeightBigInt.toString()}`);
+        
+        const finalTargetVoteWeightBigInt = currentTargetVoteWeightBigInt + newSharePerWitnessBigIntCalculated;
+        logger.info(`[witness-vote process] Target ${data.target} finalTargetVoteWeightBigInt (adding ${newSharePerWitnessBigIntCalculated.toString()}): ${finalTargetVoteWeightBigInt.toString()}`);
+        
         await cache.updateOnePromise('accounts', { name: data.target }, { $set: { totalVoteWeight: toString(finalTargetVoteWeightBigInt) } });
+        const targetAccountAfter = await cache.findOnePromise('accounts', { name: data.target });
+        logger.info(`[witness-vote process] Updating target ${data.target}: AFTER ${JSON.stringify(targetAccountAfter)}`);
       } else {
+        logger.error(`[witness-vote process] Target account ${data.target} not found for final weight update.`);
         throw new Error(`Target account ${data.target} not found for final weight update.`);
       }
+
+      // Log the successful vote event
+      const eventData = {
+        voter: sender,
+        targetWitness: data.target,
+        newVotedWitnesses: newVotedWitnessesList,
+        newSharePerWitness: toString(newSharePerWitnessBigIntCalculated)
+      };
+      // TODO: The original code was missing the transactionId for logTransactionEvent.
+      // Assuming it should be passed, but it's not available in this scope. 
+      // For now, logging without it. This might need to be addressed.
+      await logTransactionEvent('witnessVote', sender, eventData);
+
       return true;
     } catch (updateError: any) {
       logger.error('Error updating accounts during witness vote:', updateError);

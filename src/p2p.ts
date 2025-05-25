@@ -15,10 +15,11 @@ import logger from './logger.js';
 import cache from './cache.js';
 import consensus from './consensus.js';
 import steem from './steem.js';
-import witnessesModule from './witnesses.js';
-import { getNewKeyPair, verifySignature } from './crypto.js';
+import { witnessesModule } from './witnesses.js';
+import { getNewKeyPair, verifySignature, signMessage } from './crypto.js';
 import mongo from './mongo.js';
 import { internalIpV4Sync } from 'internal-ip';
+// import { Message, MessageType, signMessage } from './messages.js'; // Temporarily commented out
 
 const bs58 = baseX(config.b58Alphabet || '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz');
 

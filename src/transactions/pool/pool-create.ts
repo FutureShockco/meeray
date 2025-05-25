@@ -5,6 +5,7 @@ import { PoolCreateData, LiquidityPool, PoolCreateDataDB, LiquidityPoolDB } from
 import { generateDeterministicId } from '../../utils/id-utils.js';
 import config from '../../config.js';
 import { BigIntMath, convertToBigInt, convertToString, toString, toBigInt } from '../../utils/bigint-utils.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
 const ALLOWED_FEE_TIERS: bigint[] = [BigInt(5), BigInt(30), BigInt(100), BigInt(500)];
 const DEFAULT_FEE_TIER: bigint = BigInt(30);
@@ -110,7 +111,8 @@ export async function validateTx(dataDb: PoolCreateDataDB, sender: string): Prom
   }
 }
 
-export async function process(dataDb: PoolCreateDataDB, sender: string): Promise<boolean> {
+export async function process(transaction: { data: PoolCreateDataDB, sender: string, _id: string }): Promise<boolean> {
+  const { data: dataDb, sender, _id: transactionId } = transaction;
   try {
     const data = convertToBigInt<PoolCreateData>(dataDb, NUMERIC_FIELDS_POOL_CREATE);
     let chosenFeeTier = data.feeTier;
@@ -161,23 +163,9 @@ export async function process(dataDb: PoolCreateDataDB, sender: string): Promise
     }
     logger.debug(`[pool-create] Liquidity Pool ${poolId} (${tokenA_details.symbol}-${tokenB_details.symbol}, Fee: ${toString(chosenFeeTier)}bps) created by ${sender}. LP Token: ${lpTokenSymbol}`);
 
-    // TODO: Create the LP token itself using token-create transaction? Or is it virtual?
-    // For now, assume LP token symbol is just for reference in the pool doc.
-
-    const eventDocument = {
-      type: 'poolCreate',
-      timestamp: new Date().toISOString(),
-      actor: sender,
-      data: { ...poolDocumentDB, lpTokenSymbol: lpTokenSymbol } // Include lpTokenSymbol in event data for reference
-    };
-    await new Promise<void>((resolve) => {
-        cache.insertOne('events', eventDocument, (err, result) => {
-            if (err || !result) {
-                logger.error(`[pool-create] CRITICAL: Failed to log poolCreate event for ${poolId}: ${err || 'no result'}.`);
-            }
-            resolve(); 
-        });
-    });
+    // Log event using the new centralized logger
+    const eventData = { ...poolDocumentDB, lpTokenSymbol: lpTokenSymbol };
+    await logTransactionEvent('poolCreate', sender, eventData, transactionId);
 
     return true;
   } catch (error) {
