@@ -3,12 +3,15 @@ import logger from '../logger.js';
 import config from '../config.js';
 
 export interface Token {
-    _id: string; // Typically the symbol
+    _id: string;                // Typically the symbol
     symbol: string;
     name: string;
-    precision: number;
-    issuer?: string; // For non-native tokens
-    // other token fields like creator, maxSupply, currentSupply etc.
+    precision: bigint;          // Number of decimal places (0-18)
+    issuer?: string;            // For non-native tokens
+    maxSupply: bigint;          // Maximum token supply
+    currentSupply: bigint;      // Current circulating supply
+    creator: string;            // Account that created the token
+    // other token fields
 }
 
 
@@ -20,8 +23,11 @@ export async function getTokenByIdentifier(symbol: string, issuer?: string): Pro
             _id: config.nativeToken,
             symbol: config.nativeToken,
             name: `${config.nativeToken} (Native)`,
-            precision: 8,
-            issuer: undefined 
+            precision: 8n,
+            issuer: undefined,
+            maxSupply: 0n,
+            currentSupply: 0n,
+            creator: ""
         } as Token;
     }
 

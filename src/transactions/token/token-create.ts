@@ -2,53 +2,52 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import config from '../../config.js'; // Assuming config holds nativeToken symbol, etc.
 import validate from '../../validation/index.js'; // Corrected import based on index.d.ts
-import { TokenCreateData } from './token-interfaces.js'; // Import from new interfaces file
+import { TokenCreateData, TokenCreateDataDB } from './token-interfaces.js'; // Import from new interfaces file
+import { convertToBigInt, convertToString, toString, setTokenDecimals } from '../../utils/bigint-utils.js';
 
-export async function validateTx(data: TokenCreateData, sender: string): Promise<boolean> {
+const NUMERIC_FIELDS: Array<keyof TokenCreateData> = ['maxSupply', 'initialSupply', 'currentSupply'];
+
+export async function validateTx(data: TokenCreateDataDB, sender: string): Promise<boolean> {
   try {
-    // Validate required fields
-    if (!data.symbol || !data.name || typeof data.precision !== 'number' || typeof data.maxSupply !== 'number') {
-      logger.warn('[token-create] Invalid data: Missing required fields (symbol, name, precision, maxSupply)');
+    // Convert string amount to BigInt for validation
+    const tokenData = convertToBigInt<TokenCreateData>(data, NUMERIC_FIELDS);
+
+    // Basic required field checks
+    if (!data.symbol || !data.name || !data.maxSupply) {
+      logger.warn('[token-create] Invalid data: Missing required fields (symbol, name, maxSupply).');
       return false;
     }
 
-    // Use imported validation functions with correct signatures
-    // validate.string(value: any, maxLength?: number, minLength?: number, allowedChars?: string)
-    if (!validate.string(data.symbol, 10, 3, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")) {
-      logger.warn(`[token-create] Invalid symbol: ${data.symbol}. Must be 3-10 uppercase letters.`);
+    // symbol: 3-10 chars, uppercase letters and numbers only
+    if (!validate.string(data.symbol, 10, 3, config.tokenSymbolAllowedChars)) {
+      logger.warn('[token-create] Invalid symbol format.');
       return false;
     }
-    // For name, we only had length checks before. The new validate.string can do that.
-    // No specific allowedChars were defined for name, so pass undefined or omit.
+
+    // name: 1-50 chars
     if (!validate.string(data.name, 50, 1)) {
       logger.warn('[token-create] Invalid name length (must be 1-50 characters).');
       return false;
     }
-    
-    // validate.integer(value: any, canBeZero?: boolean, canBeNegative?: boolean, max?: number, min?: number)
-    if (!validate.integer(data.precision, true, false, 18, 0 )) { // precision: 0-18
-      logger.warn('[token-create] Invalid precision. Must be integer between 0 and 18.');
+
+    // precision: 0-18
+    if (data.precision !== undefined && !validate.integer(data.precision, true, false, 18, 0)) {
+      logger.warn('[token-create] Invalid precision (must be 0-18).');
       return false;
     }
 
-    // maxSupply: must be positive integer (min 1)
-    if (!validate.integer(data.maxSupply, false, false, undefined, 1)) { 
+    // maxSupply: must be positive bigint (min 1)
+    if (!validate.bigint(tokenData.maxSupply, false, false, undefined, BigInt(1))) {
       logger.warn('[token-create] Invalid maxSupply. Must be a positive integer (min 1).');
       return false;
     }
     
-    if (data.initialSupply !== undefined) {
-      // initialSupply: non-negative integer (min 0)
-      if (!validate.integer(data.initialSupply, true, false, data.maxSupply, 0)) { 
-        logger.warn('[token-create] Invalid initialSupply. Must be a non-negative integer and not exceed maxSupply.');
+    if (tokenData.initialSupply !== undefined) {
+      // initialSupply: must be <= maxSupply if provided
+      if (!validate.bigint(tokenData.initialSupply, true, false, tokenData.maxSupply)) {
+        logger.warn('[token-create] Invalid initialSupply. Must be <= maxSupply.');
         return false;
       }
-      // The validate.integer above now includes max check against data.maxSupply
-      // So, the separate check below is redundant if validate.integer handles it correctly.
-      // if (data.initialSupply > data.maxSupply) {
-      //   logger.warn('[token-create] InitialSupply cannot exceed maxSupply.');
-      //   return false;
-      // }
     }
 
     if (data.mintable !== undefined && typeof data.mintable !== 'boolean') {
@@ -80,111 +79,116 @@ export async function validateTx(data: TokenCreateData, sender: string): Promise
 
     return true;
   } catch (error) {
-    logger.error(`[token-create] Error validating token creation for ${data.symbol} by ${sender}: ${error}`);
+    logger.error(`[token-create] Error validating token creation: ${error}`);
     return false;
   }
 }
 
-export async function process(data: TokenCreateData, sender: string): Promise<boolean> {
-  try {
-    const tokenDocument = {
-      _id: data.symbol, // Use symbol as ID for tokens collection for easy lookup
-      symbol: data.symbol,
-      name: data.name,
-      precision: data.precision,
-      maxSupply: data.maxSupply,
-      currentSupply: data.initialSupply || 0,
-      creator: sender,
-      createdAt: new Date().toISOString(),
-      mintable: data.mintable === undefined ? false : data.mintable,
-      burnable: data.burnable === undefined ? true : data.burnable,
-      description: data.description || '',
-      logoUrl: data.logoUrl || '',
-      websiteUrl: data.websiteUrl || '',
-      burntSupply: 0,
-    };
+export async function verifyTokenCreate(sender: string, data: TokenCreateDataDB): Promise<boolean> {
+    try {
+        // Convert string inputs to BigInt for verification
+        const tokenData = convertToBigInt<TokenCreateData>(data, NUMERIC_FIELDS);
 
-    // Create the token
-    const createSuccess = await new Promise<boolean>((resolve) => {
-      cache.insertOne('tokens', tokenDocument, (err, result) => {
-        if (err || !result) {
-          logger.error(`[token-create] Failed to insert token ${data.symbol} into cache: ${err || 'no result'}`);
-          resolve(false);
-        } else {
-          resolve(true);
+        // Verify token amounts
+        if (!validate.bigint(tokenData.maxSupply, false, false, undefined, BigInt(1))) {
+            logger.error(`[verifyTokenCreate] Invalid maxSupply: ${tokenData.maxSupply}`);
+            return false;
         }
-      });
-    });
 
-    if (!createSuccess) {
-      // logger.error already called in the promise if it failed
-      return false;
-    }
-    logger.debug(`[token-create] Token ${data.symbol} created by ${sender} and inserted into cache.`);
+        if (tokenData.initialSupply !== undefined && 
+            !validate.bigint(tokenData.initialSupply, true, false, tokenData.maxSupply)) {
+            logger.error(`[verifyTokenCreate] Invalid initialSupply: ${tokenData.initialSupply}`);
+            return false;
+        }
 
-    // If initialSupply is specified and greater than 0, mint it to the creator
-    if (tokenDocument.currentSupply > 0) {
-      const creatorAccount = await cache.findOnePromise('accounts', { name: sender });
-      if (!creatorAccount) {
-        // This should ideally not happen if validation passed or accounts are auto-created
-        logger.error(`[token-create] Creator account ${sender} not found during initial supply minting for ${data.symbol}. This might indicate a consistency issue.`);
-        // Decide if token creation should be rolled back or if this is a separate problem
-        return false; // Or attempt to create account here if that's the desired flow
-      }
-
-      const currentTokens = creatorAccount.tokens || {};
-      currentTokens[data.symbol] = (currentTokens[data.symbol] || 0) + tokenDocument.currentSupply;
-
-      const updatePayload = { $set: { tokens: currentTokens } };
-      if (creatorAccount.tokens === undefined) { // If tokens field didn't exist, $set will create it.
-          // Optionally, can use $setOnInsert for first-time field creation if preferred by DB and cache logic
-      }
-
-      const balanceUpdateSuccess = await cache.updateOnePromise('accounts', { name: sender }, updatePayload);
-      if (!balanceUpdateSuccess) {
-        logger.error(`[token-create] Failed to update balance for creator ${sender} with initial supply of ${data.symbol}.`);
-        // At this point, the token is created but initial supply minting failed.
-        // Consider rollback logic or marking the token/transaction as partially failed.
-        // For simplicity here, we'll return false, but a real system needs robust error handling/rollback.
+        return true;
+    } catch (error) {
+        logger.error(`[verifyTokenCreate] Error: ${error}`);
         return false;
-      }
-      logger.debug(`[token-create] Initial supply of ${tokenDocument.currentSupply} ${data.symbol} minted to creator ${sender}.`);
     }
+}
 
-    // Log event
-    const eventDocument = {
-      type: 'tokenCreate',
-      timestamp: new Date().toISOString(),
-      actor: sender,
-      data: {
-        symbol: tokenDocument.symbol,
-        name: tokenDocument.name,
-        precision: tokenDocument.precision,
-        maxSupply: tokenDocument.maxSupply,
-        initialSupply: tokenDocument.currentSupply,
-        mintable: tokenDocument.mintable,
-        burnable: tokenDocument.burnable,
-        creator: tokenDocument.creator,
-        description: tokenDocument.description,
-        logoUrl: tokenDocument.logoUrl,
-        websiteUrl: tokenDocument.websiteUrl
-      }
-    };
+export async function process(sender: string, data: TokenCreateDataDB): Promise<boolean> {
+    try {
+        // Convert string inputs to BigInt for processing
+        const tokenData = convertToBigInt<TokenCreateData>(data, NUMERIC_FIELDS);
 
-    // Using callback pattern for cache.insertOne, consistent with existing code
-    await new Promise<void>((resolve) => {
-        cache.insertOne('events', eventDocument, (err, result) => {
-            if (err || !result) {
-                logger.error(`[token-create] CRITICAL: Failed to log tokenCreate event for ${data.symbol}: ${err || 'no result'}. Transaction completed but event missing.`);
-            }
-            // Even if event logging fails, we resolve and let the main transaction succeed.
-            resolve(); 
+        // Set token decimals in the global registry
+        setTokenDecimals(data.symbol, data.precision || 8);
+
+        // Create token document with proper padding
+        const tokenDocument: TokenCreateData = {
+            ...tokenData,
+            creator: sender,
+            precision: data.precision || 8,
+            currentSupply: tokenData.initialSupply || BigInt(0),
+            mintable: data.mintable || false,
+            burnable: data.burnable || false,
+            description: data.description,
+            logoUrl: data.logoUrl,
+            websiteUrl: data.websiteUrl
+        };
+
+        // Convert BigInt values to strings for database storage with proper padding
+        const tokenDocumentDB = convertToString<TokenCreateData>(tokenDocument, NUMERIC_FIELDS);
+
+        // Store in database
+        const insertSuccess = await new Promise<boolean>((resolve) => {
+            cache.insertOne('tokens', tokenDocumentDB, (err, result) => {
+                if (err || !result) {
+                    logger.error(`[token-create] Failed to insert token ${data.symbol}`);
+                    resolve(false);
+                }
+                resolve(true);
+            });
         });
-    });
 
-    return true;
-  } catch (error) {
-    logger.error(`[token-create] Error processing token creation for ${data.symbol} by ${sender}: ${error}`);
-    return false;
-  }
+        if (!insertSuccess) {
+            logger.error(`[token-create] Failed to insert token ${data.symbol}`);
+            return false;
+        }
+
+        // Create initial balance for token creator if initialSupply > 0
+        if (tokenData.initialSupply && tokenData.initialSupply > BigInt(0)) {
+            const updateSuccess = await cache.updateOnePromise(
+                'accounts',
+                { name: sender },
+                { $set: { [`balances.${data.symbol}`]: toString(tokenData.initialSupply) } }
+            );
+
+            if (!updateSuccess) {
+                logger.error(`[token-create] Failed to set initial balance for ${sender}`);
+                return false;
+            }
+        }
+
+        // Log event
+        const eventDocument = {
+            type: 'tokenCreate',
+            actor: sender,
+            data: {
+                symbol: data.symbol,
+                name: data.name,
+                precision: data.precision || 8,
+                maxSupply: tokenDocumentDB.maxSupply,
+                initialSupply: tokenDocumentDB.initialSupply,
+                mintable: data.mintable,
+                burnable: data.burnable
+            }
+        };
+
+        await new Promise<void>((resolve) => {
+            cache.insertOne('events', eventDocument, (err, result) => {
+                if (err || !result) {
+                    logger.error(`[token-create] Failed to log tokenCreate event for ${data.symbol}: ${err || 'no result'}`);
+                }
+                resolve();
+            });
+        });
+
+        return true;
+    } catch (error) {
+        logger.error(`[token-create] Error processing token creation: ${error}`);
+        return false;
+    }
 } 

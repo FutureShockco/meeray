@@ -59,6 +59,7 @@ export async function process(data: NftDelistPayload, sender: string): Promise<b
 
     // Log event
     const eventDocument = {
+      _id: Date.now().toString(36),
       type: 'nftDelistItem',
       timestamp: new Date().toISOString(),
       actor: sender,

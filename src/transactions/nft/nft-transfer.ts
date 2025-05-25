@@ -25,7 +25,7 @@ export async function validateTx(data: NftTransferData, sender: string): Promise
     }
 
     // Validate formats
-    if (!validate.string(data.collectionSymbol, 10, 3, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")) {
+    if (!validate.string(data.collectionSymbol, 10, 3, config.tokenSymbolAllowedChars)) {
       logger.warn(`[nft-transfer/burn] Invalid collection symbol format: ${data.collectionSymbol}.`);
       return false;
     }

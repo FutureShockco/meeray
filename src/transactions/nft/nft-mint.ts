@@ -4,6 +4,7 @@ import validate from '../../validation/index.js'; // Shared validation module
 import { NftMintData, NftCreateCollectionData } from './nft-interfaces.js';
 // We need NftCreateCollectionData to type the fetched collection document for checks
 import crypto from 'crypto'; // For UUID generation
+import config from '../../config.js';
 
 // Helper to generate a UUID. Node.js built-in.
 function generateUUID(): string {
@@ -26,7 +27,7 @@ export async function validateTx(data: NftMintData, sender: string): Promise<boo
     }
 
     // Validate collectionSymbol format (consistency with create-collection)
-    if (!validate.string(data.collectionSymbol, 10, 3, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")) {
+    if (!validate.string(data.collectionSymbol, 10, 3, config.tokenSymbolAllowedChars)) {
       logger.warn(`[nft-mint] Invalid collection symbol format: ${data.collectionSymbol}.`);
       return false;
     }
@@ -158,6 +159,7 @@ export async function process(data: NftMintData, sender: string): Promise<boolea
     logger.debug(`[nft-mint] NFT ${fullInstanceId} minted successfully into collection ${data.collectionSymbol} by ${sender} for owner ${data.owner}.`);
 
     const eventDocument = {
+      _id: Date.now().toString(36),
       type: 'nftMint',
       timestamp: new Date().toISOString(),
       actor: sender,

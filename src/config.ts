@@ -3,8 +3,9 @@ import { TransactionType } from "./transactions/types.js";
 const config = {
   // Protocol/chain constants (do not change via .env)
   chainId: 'sidechain-dev',
-  networkName: 'Sidechain Devnet',
+  networkName: 'Echelon Devnet',
   nativeToken: 'ECH',
+  nativeTokenPrecision: 8,
   originHash: 'e201950993be0e15b14ab19dccb165972ff0ba7ea162c5ad6eec9b5268bce468',
   burnAccountName: 'null',
   tokenCreationFee: 100,
@@ -20,7 +21,7 @@ const config = {
   steemSyncCheckInterval: 30000, // ms - how often to check if we need sync mode
   witnessReward: 1,
   steemChainId: '0000000000000000000000000000000000000000000000000000000000000000',
-  steemStartBlock: 95762370, // starting Steem block for sidechain
+  steemStartBlock: process.env.NODE_ENV === 'development' ? 496294 : 95762370, // starting Steem block for sidechain
   steemBlockDelay: 2, // blocks - delay between Steem blocks
   mongoUri:
     process.env.MONGO_URL && process.env.MONGO_DB
@@ -38,6 +39,7 @@ const config = {
   apiPort: process.env.API_PORT ? Number(process.env.API_PORT) : 3000,
   logLevel: process.env.LOG_LEVEL || 'debug',
   b58Alphabet: '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz',
+  tokenSymbolAllowedChars: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890',
   consensusRounds: 2,
   witnesses: 10, 
   notifPurge: 1000, // how often to purge old notifications (blocks)

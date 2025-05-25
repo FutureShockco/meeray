@@ -1,9 +1,13 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
-import { MarketCancelOrderData, Order, OrderStatus, TradingPair } from './market-interfaces.js';
+import { MarketCancelOrderData, Order, OrderStatus, TradingPair, OrderSide, OrderType } from './market-interfaces.js';
 import { getAccount, adjustBalance } from '../../utils/account-utils.js';
 import { matchingEngine } from './matching-engine.js'; // Assumed to handle the actual removal from book & state update
+import { toBigInt, toString, convertToBigInt, BigIntMath } from '../../utils/bigint-utils.js';
+
+// Define keys for converting OrderDB to Order
+const ORDER_NUMERIC_FIELDS: Array<keyof Order> = ['price', 'quantity', 'filledQuantity', 'averageFillPrice', 'cumulativeQuoteValue', 'quoteOrderQty'];
 
 export async function validateTx(data: MarketCancelOrderData, sender: string): Promise<boolean> {
   logger.debug(`[market-cancel-order] Validating cancellation from ${sender}: ${JSON.stringify(data)}`);
@@ -27,11 +31,12 @@ export async function validateTx(data: MarketCancelOrderData, sender: string): P
     // return false;
   }
 
-  const order = await cache.findOnePromise('orders', { _id: data.orderId, pairId: data.pairId, userId: data.userId }) as Order | null;
-  if (!order) {
+  const orderFromCache = await cache.findOnePromise('orders', { _id: data.orderId, pairId: data.pairId, userId: data.userId });
+  if (!orderFromCache) {
     logger.warn(`[market-cancel-order] Order ${data.orderId} for pair ${data.pairId} by user ${data.userId} not found or not owned by sender.`);
     return false;
   }
+  const order = convertToBigInt<Order>(orderFromCache as any, ORDER_NUMERIC_FIELDS); // Convert DB strings to BigInts
 
   if (order.status === OrderStatus.FILLED || order.status === OrderStatus.CANCELLED || order.status === OrderStatus.REJECTED || order.status === OrderStatus.EXPIRED) {
     logger.warn(`[market-cancel-order] Order ${data.orderId} is already in a final state: ${order.status}. Cannot cancel.`);
@@ -52,12 +57,12 @@ export async function validateTx(data: MarketCancelOrderData, sender: string): P
 export async function process(data: MarketCancelOrderData, sender: string): Promise<boolean> {
   logger.debug(`[market-cancel-order] Processing cancellation from ${sender}: ${JSON.stringify(data)}`);
   try {
-    // Re-fetch order to ensure it's still in a cancellable state (race condition mitigation)
-    const orderToCancel = await cache.findOnePromise('orders', { _id: data.orderId, userId: sender }) as Order | null;
-    if (!orderToCancel) {
+    const orderFromCache = await cache.findOnePromise('orders', { _id: data.orderId, userId: sender });
+    if (!orderFromCache) {
         logger.error(`[market-cancel-order] CRITICAL: Order ${data.orderId} not found for user ${sender} during processing.`);
         return false;
     }
+    const orderToCancel = convertToBigInt<Order>(orderFromCache as any, ORDER_NUMERIC_FIELDS);
 
     if (orderToCancel.status !== OrderStatus.OPEN && orderToCancel.status !== OrderStatus.PARTIALLY_FILLED) {
         logger.warn(`[market-cancel-order] Order ${data.orderId} is no longer cancellable. Current status: ${orderToCancel.status}.`);
@@ -82,65 +87,59 @@ export async function process(data: MarketCancelOrderData, sender: string): Prom
     // If cancelSuccess is true, the matching engine has updated the order to CANCELLED.
     // Now, refund escrowed assets.
     // The amount to refund depends on what was escrowed and how much was filled.
-    const tradingPair = await cache.findOnePromise('tradingPairs', { _id: orderToCancel.pairId }) as TradingPair | null;
-    if (!tradingPair) {
-        logger.error(`[market-cancel-order] CRITICAL: TradingPair ${orderToCancel.pairId} for order ${orderToCancel._id} not found during refund.`);
+    const tradingPairFromCache = await cache.findOnePromise('tradingPairs', { _id: orderToCancel.pairId });
+    if (!tradingPairFromCache) {
+        logger.error(`[market-cancel-order] CRITICAL: TradingPair ${orderToCancel.pairId} for order ${orderToCancel._id} not found.`);
         return false; // This would be a serious data integrity issue
     }
+    // Assuming TradingPairDB needs conversion for its BigInt fields if fetched from DB
+    const tradingPairNumericFields: (keyof TradingPair)[] = ['tickSize', 'lotSize', 'minNotional', 'minTradeAmount', 'maxTradeAmount'];
+    const tradingPair = convertToBigInt<TradingPair>(tradingPairFromCache as any, tradingPairNumericFields);
 
     let refundAssetSymbol: string | undefined;
     let refundAssetIssuer: string | undefined;
-    let amountToRefund = 0;
+    let amountToRefund: bigint = BigInt(0); // Initialize as BigInt
 
-    const remainingQuantity = orderToCancel.quantity - orderToCancel.filledQuantity;
+    // orderToCancel fields (quantity, filledQuantity, price, quoteOrderQty) are BigInt here
+    const remainingQuantity = BigIntMath.sub(orderToCancel.quantity, orderToCancel.filledQuantity);
 
-    if (orderToCancel.side === 'BUY') {
+    if (orderToCancel.side === OrderSide.BUY) { // Compare with enum
       refundAssetSymbol = tradingPair.quoteAssetSymbol;
       refundAssetIssuer = tradingPair.quoteAssetIssuer;
-      if (orderToCancel.type === 'LIMIT' && orderToCancel.price && remainingQuantity > 0) {
-        amountToRefund = remainingQuantity * orderToCancel.price;
-      } else if (orderToCancel.type === 'MARKET' && orderToCancel.quoteOrderQty) {
-        // For market buy by quoteOrderQty, if partially filled, refunding is complex.
-        // The `cumulativeQuoteValue` used for fills vs `quoteOrderQty` would determine remainder.
-        // This logic is simplified: assumes if it was MARKET BUY by quoteOrderQty and it's cancelled before *any* fill,
-        // the full quoteOrderQty could be refunded. If partially filled, it means some quote was spent.
-        // A more robust system would track actual locked quote vs spent quote.
-        // For now, if it was a market order, refunding exact pre-escrowed amount is hard without knowing precisely what was held.
-        // Let's assume for simplicity: if LIMIT, price is known. If MARKET, precise refund is tricky here.
-        // The matching engine should ideally tell us the amount to refund or handle it.
-        // Let's assume for LIMIT BUY, it's remaining quantity * price.
-        // For MARKET BUY with quoteOrderQty that was never filled at all, refund quoteOrderQty. This is a simplification.
-        if (orderToCancel.filledQuantity === 0 && orderToCancel.quoteOrderQty) {
+      if (orderToCancel.type === OrderType.LIMIT && orderToCancel.price && remainingQuantity > BigInt(0)) { // Compare with enum & BigInt(0)
+        amountToRefund = BigIntMath.mul(remainingQuantity, orderToCancel.price);
+      } else if (orderToCancel.type === OrderType.MARKET && orderToCancel.quoteOrderQty) { // Compare with enum
+        if (orderToCancel.filledQuantity === BigInt(0) && orderToCancel.quoteOrderQty) { // Compare with BigInt(0)
             amountToRefund = orderToCancel.quoteOrderQty; 
         }
-        // If partially filled market buy, refund logic needs to be more precise based on actual quote spent vs quote held.
       }
     } else { // SELL order
       refundAssetSymbol = tradingPair.baseAssetSymbol;
       refundAssetIssuer = tradingPair.baseAssetIssuer;
-      if (remainingQuantity > 0) {
-         amountToRefund = remainingQuantity; // Refund remaining base asset
+      if (remainingQuantity > BigInt(0)) { // Compare with BigInt(0)
+         amountToRefund = remainingQuantity;
       }
     }
 
-    if (amountToRefund > 0 && refundAssetSymbol && refundAssetIssuer) {
-      const tokenIdentifier = `${refundAssetSymbol}@${refundAssetIssuer}`;
-      const refundProcessed = await adjustBalance(sender, tokenIdentifier, amountToRefund);
+    if (amountToRefund > BigInt(0) && refundAssetSymbol && refundAssetIssuer !== undefined) { // Compare with BigInt(0)
+      const tokenIdentifier = `${refundAssetSymbol}${refundAssetIssuer ? '@' + refundAssetIssuer : ''}`;
+      const refundProcessed = await adjustBalance(sender, tokenIdentifier, amountToRefund); // amountToRefund is BigInt
       if (!refundProcessed) {
-        logger.error(`[market-cancel-order] CRITICAL: Failed to refund ${amountToRefund} ${tokenIdentifier} to ${sender} for cancelled order ${data.orderId}. Funds may be stuck!`);
+        logger.error(`[market-cancel-order] CRITICAL: Failed to refund ${toString(amountToRefund)} ${tokenIdentifier} to ${sender}.`);
         // This is a critical error. The order is cancelled in the engine, but funds not returned.
         // Manual intervention might be needed.
         return false; // Or throw to indicate a severe problem
       }
-      logger.debug(`[market-cancel-order] Refunded ${amountToRefund} ${tokenIdentifier} to ${sender} for order ${data.orderId}.`);
+      logger.debug(`[market-cancel-order] Refunded ${toString(amountToRefund)} ${tokenIdentifier} to ${sender}.`);
     } else {
-        logger.debug(`[market-cancel-order] No amount to refund for order ${data.orderId}, or refund calculation not applicable for this order type/state.`);
+        logger.debug(`[market-cancel-order] No amount to refund for order ${data.orderId}.`);
     }
 
     logger.debug(`[market-cancel-order] Order ${data.orderId} cancelled successfully by ${sender}.`);
 
     // Event logging
     const eventDocument = {
+      _id: Date.now().toString(36),
       type: 'marketCancelOrder',
       timestamp: new Date().toISOString(),
       actor: sender,

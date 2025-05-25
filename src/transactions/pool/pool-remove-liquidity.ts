@@ -28,7 +28,7 @@ export async function validateTx(data: PoolRemoveLiquidityData, sender: string):
       logger.warn(`[pool-remove-liquidity] Pool ${data.poolId} not found.`);
       return false;
     }
-    if (pool.totalLpTokens === 0) {
+    if (pool.totalLpTokens === BigInt(0)) {
         logger.warn(`[pool-remove-liquidity] Pool ${data.poolId} has no liquidity to remove.`);
         return false;
     }
@@ -135,10 +135,11 @@ export async function process(data: PoolRemoveLiquidityData, sender: string): Pr
         return false;
     }
 
-    logger.debug(`[pool-remove-liquidity] ${data.provider} removed liquidity from pool ${data.poolId} by burning ${data.lpTokenAmount} LP tokens. Received ${tokenAAmountToReturn.toFixed(8)} ${pool.tokenA_symbol} and ${tokenBAmountToReturn.toFixed(8)} ${pool.tokenB_symbol}.`);
+    logger.debug(`[pool-remove-liquidity] ${data.provider} removed liquidity from pool ${data.poolId} by burning ${data.lpTokenAmount} LP tokens. Received ${tokenAAmountToReturn} ${pool.tokenA_symbol} and ${tokenBAmountToReturn} ${pool.tokenB_symbol}.`);
 
     // Log event
     const eventDocument = {
+      _id: Date.now().toString(36),
       type: 'poolRemoveLiquidity',
       timestamp: new Date().toISOString(),
       actor: sender,

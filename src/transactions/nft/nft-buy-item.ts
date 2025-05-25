@@ -6,7 +6,7 @@ import { NftInstance, CachedNftCollectionForTransfer } from './nft-transfer.js';
 import { Account, adjustBalance, getAccount } from '../../utils/account-utils.js';
 import { Token, getTokenByIdentifier } from '../../utils/token-utils.js';
 import config from '../../config.js';
-import { Decimal } from 'decimal.js'; // For precise fee calculation
+import { BigIntMath } from '../../utils/bigint-utils.js';
 
 export async function validateTx(data: NftBuyPayload, sender: string): Promise<boolean> {
   try {
@@ -46,9 +46,11 @@ export async function validateTx(data: NftBuyPayload, sender: string): Promise<b
     }
     
     const paymentTokenIdentifier = `${listing.paymentTokenSymbol}${listing.paymentTokenIssuer ? '@' + listing.paymentTokenIssuer : ''}`;
-    const buyerBalance = buyerAccount.balances?.[paymentTokenIdentifier] || 0;
-    if (new Decimal(buyerBalance).lessThan(listing.price)) {
-      logger.warn(`[nft-buy-item] Buyer ${sender} has insufficient balance of ${listing.paymentTokenSymbol}. Has ${buyerBalance}, needs ${listing.price}.`);
+    const buyerBalance = BigIntMath.toBigInt(buyerAccount.balances?.[paymentTokenIdentifier] || 0);
+    const listingPrice = BigIntMath.toBigInt(listing.price);
+    
+    if (buyerBalance < listingPrice) {
+      logger.warn(`[nft-buy-item] Buyer ${sender} has insufficient balance of ${listing.paymentTokenSymbol}. Has ${buyerBalance}, needs ${listingPrice}.`);
       return false;
     }
 
@@ -84,9 +86,9 @@ export async function process(data: NftBuyPayload, buyer: string): Promise<boole
   let listing: NftListing | null = null;
   let collection: (CachedNftCollectionForTransfer & { creatorFee?: number }) | null = null; // Ensure creatorFee is accessible
   let paymentToken: Token | null = null;
-  const originalBuyerBalances: { [tokenIdentifier: string]: number } = {};
-  const originalSellerBalances: { [tokenIdentifier: string]: number } = {};
-  const originalCreatorBalances: { [tokenIdentifier: string]: number } = {};
+  const originalBuyerBalances: { [tokenIdentifier: string]: bigint } = {};
+  const originalSellerBalances: { [tokenIdentifier: string]: bigint } = {};
+  const originalCreatorBalances: { [tokenIdentifier: string]: bigint } = {};
   let nftOriginalOwner: string | null = null;
 
   try {
@@ -106,7 +108,7 @@ export async function process(data: NftBuyPayload, buyer: string): Promise<boole
       logger.error(`[nft-buy-item] CRITICAL: Collection ${listing.collectionSymbol} not found or not transferable during processing.`);
       return false;
     }
-    const creatorFeePercent = new Decimal(collection.creatorFee || 0);
+    const creatorFeePercent = BigIntMath.toBigInt(collection.creatorFee || 0);
 
     paymentToken = await getTokenByIdentifier(listing.paymentTokenSymbol, listing.paymentTokenIssuer);
     if (!paymentToken) {
@@ -120,39 +122,39 @@ export async function process(data: NftBuyPayload, buyer: string): Promise<boole
     const sellerAccount = await getAccount(listing.seller);
     if(buyerAccount) Object.assign(originalBuyerBalances, buyerAccount.balances);
     if(sellerAccount) Object.assign(originalSellerBalances, sellerAccount.balances);
-    if (collection.creator && collection.creator !== listing.seller && creatorFeePercent.greaterThan(0)) {
+    if (collection.creator && collection.creator !== listing.seller && creatorFeePercent > 0n) {
         const creatorAccount = await getAccount(collection.creator);
         if(creatorAccount) Object.assign(originalCreatorBalances, creatorAccount.balances);
     }
     // --- End Snapshot ---
 
-    // Calculate fees (ensure precision with Decimal.js)
-    const price = new Decimal(listing.price);
-    const royaltyAmount = price.times(creatorFeePercent).dividedBy(100).toDecimalPlaces(paymentToken.precision, Decimal.ROUND_DOWN);
-    const sellerProceeds = price.minus(royaltyAmount);
+    // Calculate fees (ensure precision with BigIntMath)
+    const price = BigIntMath.toBigInt(listing.price);
+    const royaltyAmount = BigIntMath.div(BigIntMath.mul(price, creatorFeePercent), BigInt(100));
+    const sellerProceeds = BigIntMath.sub(price, royaltyAmount);
 
     logger.debug(`[nft-buy-item] Processing sale of listing ${data.listingId}: Price=${price}, Royalty=${royaltyAmount} (${creatorFeePercent}%), SellerGets=${sellerProceeds} ${paymentToken.symbol}`);
 
     // 1. Deduct price from buyer
-    if (!await adjustBalance(buyer, paymentTokenIdentifier, -price.toNumber())) {
+    if (!await adjustBalance(buyer, paymentTokenIdentifier, -price)) {
       logger.error(`[nft-buy-item] Failed to deduct ${price} ${paymentToken.symbol} from buyer ${buyer}.`);
       // TODO: More robust rollback needed here in a real system
       return false;
     }
 
     // 2. Add proceeds to seller
-    if (!await adjustBalance(listing.seller, paymentTokenIdentifier, sellerProceeds.toNumber())) {
+    if (!await adjustBalance(listing.seller, paymentTokenIdentifier, sellerProceeds)) {
       logger.error(`[nft-buy-item] Failed to add ${sellerProceeds} ${paymentToken.symbol} to seller ${listing.seller}.`);
-      await adjustBalance(buyer, paymentTokenIdentifier, price.toNumber()); // Attempt to refund buyer
+      await adjustBalance(buyer, paymentTokenIdentifier, price); // Attempt to refund buyer
       return false;
     }
 
     // 3. Add royalty to collection creator (if applicable)
-    if (royaltyAmount.greaterThan(0) && collection.creator) {
-      if (!await adjustBalance(collection.creator, paymentTokenIdentifier, royaltyAmount.toNumber())) {
+    if (royaltyAmount > 0n && collection.creator) {
+      if (!await adjustBalance(collection.creator, paymentTokenIdentifier, royaltyAmount)) {
         logger.error(`[nft-buy-item] Failed to add royalty ${royaltyAmount} ${paymentToken.symbol} to creator ${collection.creator}.`);
-        await adjustBalance(listing.seller, paymentTokenIdentifier, -sellerProceeds.toNumber()); // Revert seller payment
-        await adjustBalance(buyer, paymentTokenIdentifier, price.toNumber()); // Refund buyer
+        await adjustBalance(listing.seller, paymentTokenIdentifier, -sellerProceeds); // Revert seller payment
+        await adjustBalance(buyer, paymentTokenIdentifier, price); // Refund buyer
         return false;
       }
       logger.debug(`[nft-buy-item] Royalty of ${royaltyAmount} ${paymentToken.symbol} paid to creator ${collection.creator}.`);
@@ -164,9 +166,9 @@ export async function process(data: NftBuyPayload, buyer: string): Promise<boole
     if(!nft || nft.owner !== listing.seller) {
         logger.error(`[nft-buy-item] CRITICAL: NFT ${fullInstanceId} not found or owner changed mid-transaction. Current owner: ${nft?.owner}`);
         // Attempt to revert all fund transfers
-        if (royaltyAmount.greaterThan(0) && collection.creator) await adjustBalance(collection.creator, paymentTokenIdentifier, -royaltyAmount.toNumber());
-        await adjustBalance(listing.seller, paymentTokenIdentifier, -sellerProceeds.toNumber());
-        await adjustBalance(buyer, paymentTokenIdentifier, price.toNumber());
+        if (royaltyAmount > 0n && collection.creator) await adjustBalance(collection.creator, paymentTokenIdentifier, -royaltyAmount);
+        await adjustBalance(listing.seller, paymentTokenIdentifier, -sellerProceeds);
+        await adjustBalance(buyer, paymentTokenIdentifier, price);
         return false;
     }
     nftOriginalOwner = nft.owner; // Should be listing.seller
@@ -179,9 +181,9 @@ export async function process(data: NftBuyPayload, buyer: string): Promise<boole
     if (!updateNftOwnerSuccess) {
       logger.error(`[nft-buy-item] CRITICAL: Failed to update NFT ${fullInstanceId} owner to ${buyer}.`);
       // Attempt to revert all fund transfers
-      if (royaltyAmount.greaterThan(0) && collection.creator) await adjustBalance(collection.creator, paymentTokenIdentifier, -royaltyAmount.toNumber());
-      await adjustBalance(listing.seller, paymentTokenIdentifier, -sellerProceeds.toNumber());
-      await adjustBalance(buyer, paymentTokenIdentifier, price.toNumber());
+      if (royaltyAmount > 0n && collection.creator) await adjustBalance(collection.creator, paymentTokenIdentifier, -royaltyAmount);
+      await adjustBalance(listing.seller, paymentTokenIdentifier, -sellerProceeds);
+      await adjustBalance(buyer, paymentTokenIdentifier, price);
       return false;
     }
     logger.debug(`[nft-buy-item] NFT ${fullInstanceId} ownership transferred from ${listing.seller} to ${buyer}.`);
@@ -190,7 +192,15 @@ export async function process(data: NftBuyPayload, buyer: string): Promise<boole
     const updateListingStatusSuccess = await cache.updateOnePromise(
       'nftListings',
       { _id: data.listingId },
-      { $set: { status: 'SOLD', buyer: buyer, soldAt: new Date().toISOString(), finalPrice: price.toNumber(), royaltyPaid: royaltyAmount.toNumber() } }
+      { 
+        $set: { 
+          status: 'SOLD', 
+          buyer: buyer, 
+          soldAt: new Date().toISOString(), 
+          finalPrice: price.toString(), 
+          royaltyPaid: royaltyAmount.toString() 
+        } 
+      }
     );
     if (!updateListingStatusSuccess) {
       logger.error(`[nft-buy-item] CRITICAL: Failed to update listing ${data.listingId} status to SOLD. NFT and funds transferred but listing state inconsistent.`);
@@ -201,6 +211,7 @@ export async function process(data: NftBuyPayload, buyer: string): Promise<boole
 
     // Log event
     const eventDocument = {
+      _id: Date.now().toString(36),
       type: 'nftBuyItem',
       timestamp: new Date().toISOString(),
       actor: buyer,
@@ -210,10 +221,10 @@ export async function process(data: NftBuyPayload, buyer: string): Promise<boole
         instanceId: listing.instanceId,
         seller: listing.seller,
         buyer: buyer,
-        price: price.toNumber(),
+        price: price.toString(),
         paymentTokenSymbol: paymentToken.symbol,
         paymentTokenIssuer: paymentToken.issuer,
-        royaltyAmount: royaltyAmount.toNumber(),
+        royaltyAmount: royaltyAmount.toString(),
         collectionCreator: collection.creator, // if royaltyAmount > 0
       }
     };
@@ -235,9 +246,9 @@ export async function process(data: NftBuyPayload, buyer: string): Promise<boole
     logger.error('[nft-buy-item] Attempting catastrophic error rollback...');
     if (listing && paymentToken) {
         const paymentTokenIdentifier = `${paymentToken.symbol}${paymentToken.issuer ? '@' + paymentToken.issuer : ''}`;
-        const price = new Decimal(listing.price);
-        const royaltyAmount = price.times(new Decimal(collection?.creatorFee || 0)).dividedBy(100).toDecimalPlaces(paymentToken.precision, Decimal.ROUND_DOWN);
-        const sellerProceeds = price.minus(royaltyAmount);
+        const price = BigIntMath.toBigInt(listing.price);
+        const royaltyAmount = BigIntMath.div(BigIntMath.mul(price, BigIntMath.toBigInt(collection?.creatorFee || 0)), BigInt(100));
+        const sellerProceeds = BigIntMath.sub(price, royaltyAmount);
 
         // Try to revert NFT ownership if it was changed
         if (nftOriginalOwner && listing.collectionSymbol && listing.instanceId) {
@@ -246,14 +257,14 @@ export async function process(data: NftBuyPayload, buyer: string): Promise<boole
             await cache.updateOnePromise('nfts', { _id: fullId, owner: buyer }, { $set: { owner: nftOriginalOwner } });
         }
         // Try to revert payments
-        if (royaltyAmount.greaterThan(0) && collection?.creator) {
+        if (royaltyAmount > 0n && collection?.creator) {
             logger.warn(`[nft-buy-item-ROLLBACK] Attempting to revert royalty ${royaltyAmount} from ${collection.creator}`);
-            await adjustBalance(collection.creator, paymentTokenIdentifier, -royaltyAmount.toNumber());
+            await adjustBalance(collection.creator, paymentTokenIdentifier, -royaltyAmount);
         }
         logger.warn(`[nft-buy-item-ROLLBACK] Attempting to revert seller proceeds ${sellerProceeds} from ${listing.seller}`);
-        await adjustBalance(listing.seller, paymentTokenIdentifier, -sellerProceeds.toNumber());
+        await adjustBalance(listing.seller, paymentTokenIdentifier, -sellerProceeds);
         logger.warn(`[nft-buy-item-ROLLBACK] Attempting to revert price ${price} to buyer ${buyer}`);
-        await adjustBalance(buyer, paymentTokenIdentifier, price.toNumber());
+        await adjustBalance(buyer, paymentTokenIdentifier, price);
     }
     logger.error('[nft-buy-item] Catastrophic error rollback attempt finished.');
     return false;

@@ -6,6 +6,8 @@ import logger from './logger.js';
 import config from './config.js';
 import { chain } from './chain.js';
 import { Block } from './block.js';
+import { TokenCreateData, TokenCreateDataDB } from './transactions/token/token-interfaces.js';
+import { convertToString, toString, toBigInt, setTokenDecimals } from './utils/bigint-utils.js';
 
 const DB_NAME = process.env.MONGO_DB || 'echelon';
 const DB_URL = process.env.MONGO_URL || 'mongodb://localhost:27017';
@@ -20,9 +22,9 @@ export interface StateDoc {
 export interface AccountDoc {
     name: string;
     witnessPublicKey?: string;
-    tokens?: Record<string, number>;
+    balances?: Record<string, string>; // Store as padded strings
     nfts?: Record<string, any>;
-    totalVoteWeight?: number;
+    totalVoteWeight?: string; // Store as padded string
     votedWitnesses?: string[];
     created?: Date;
 }
@@ -119,6 +121,7 @@ export const mongo = {
             logger.warn('No genesis.zip file found or error during processing. Creating minimal genesis.');
             await mongo.insertMasterAccount();
             await mongo.insertBlockZero();
+            await mongo.insertNativeToken();
         }
     },
 
@@ -159,10 +162,10 @@ export const mongo = {
         logger.info('Inserting new master account: ' + config.masterName);
         const masterAccount: AccountDoc = {
             name: config.masterName,
-            created: new Date(), 
-            tokens: { ECH: config.masterBalance },
+            created: new Date(),
+            balances: { ECH: toString(BigInt(config.masterBalance)) },
             nfts: {},
-            totalVoteWeight: config.masterBalance,
+            totalVoteWeight: toString(BigInt(config.masterBalance)),
             votedWitnesses: [config.masterName],
             witnessPublicKey: config.masterPublicKey
         };
@@ -175,6 +178,39 @@ export const mongo = {
         logger.info('Inserting Block #0 with hash ' + config.originHash);
         const genesisBlock = chain.getGenesisBlock(); 
         await currentDb.collection<Block>('blocks').insertOne(genesisBlock as any); 
+    },
+
+    insertNativeToken: async (): Promise<void> => {
+        if (process.env.BLOCKS_DIR) return;
+        const currentDb = mongo.getDb();
+        logger.info('Inserting Native Token');
+
+        // Set token decimals in global registry
+        setTokenDecimals('ECH', 8);
+
+        const MAX_SUPPLY_BIGINT = BigInt('20000000000000000'); // 200 million with 8 decimals
+
+        // This object is for internal logic, should use BigInt
+        const nativeTokenData: TokenCreateData = {
+            symbol: 'ECH',
+            name: 'Echelon',
+            precision: 8,
+            maxSupply: MAX_SUPPLY_BIGINT,
+            initialSupply: MAX_SUPPLY_BIGINT,
+            currentSupply: MAX_SUPPLY_BIGINT,
+            mintable: true,
+            burnable: true,
+            creator: config.masterName,
+            description: 'Echelon is the native token of the Echelon Network',
+            logoUrl: 'https://echelon.network/logo.png',
+            websiteUrl: 'https://echelon.network'
+        };
+
+        // Convert the BigInt fields to strings for database storage.
+        // The `convertToString` utility handles this transformation based on the type T (TokenCreateData).
+        const nativeTokenDB = convertToString<TokenCreateData>(nativeTokenData, ['maxSupply', 'initialSupply', 'currentSupply']);
+
+        await currentDb.collection<TokenCreateDataDB>('tokens').insertOne(nativeTokenDB);
     },
 
     addMongoIndexes: async (): Promise<void> => {
@@ -224,6 +260,7 @@ export const mongo = {
             // Events
             logger.debug('[DB Indexes] Creating indexes for events collection...');
             const eventsCollection = currentDb.collection('events');
+            await eventsCollection.createIndex({ _id: 1 });
             await eventsCollection.createIndex({ type: 1 });
             await eventsCollection.createIndex({ actor: 1 });
             await eventsCollection.createIndex({ timestamp: 1 });

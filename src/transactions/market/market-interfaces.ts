@@ -1,36 +1,41 @@
+import crypto from 'crypto';
+import { BigIntToString, toBigInt, toString } from '../../utils/bigint-utils.js';
+
 export enum OrderType {
-  LIMIT = 'LIMIT',
-  MARKET = 'MARKET',
+  LIMIT = 'limit',
+  MARKET = 'market',
   // Future: STOP_LOSS, STOP_LOSS_LIMIT, TAKE_PROFIT, TAKE_PROFIT_LIMIT
 }
 
 export enum OrderSide {
-  BUY = 'BUY',
-  SELL = 'SELL',
+  BUY = 'buy',
+  SELL = 'sell',
 }
 
 export enum OrderStatus {
-  OPEN = 'OPEN',                // Actively on the book
-  PARTIALLY_FILLED = 'PARTIALLY_FILLED',
-  FILLED = 'FILLED',
-  CANCELLED = 'CANCELLED',      // Cancelled by user or system
+  OPEN = 'open',                // Actively on the book
+  PARTIALLY_FILLED = 'partially_filled',
+  FILLED = 'filled',
+  CANCELLED = 'cancelled',      // Cancelled by user or system
   REJECTED = 'REJECTED',        // Could not be placed (e.g. insufficient funds, invalid params)
   EXPIRED = 'EXPIRED',          // If timeInForce or expiry is implemented
 }
 
 // Defines the configuration for a tradable pair
 export interface TradingPair {
-  _id: string;                    // Unique identifier for the pair, e.g., "BTC_USDT" or a hash.
-  baseAssetSymbol: string;        // The asset being traded (e.g., BTC)
-  baseAssetIssuer: string;        // Issuer of the base asset
-  quoteAssetSymbol: string;       // The asset used for pricing (e.g., USDT)
-  quoteAssetIssuer: string;       // Issuer of the quote asset
-  tickSize: number;               // Minimum price increment (e.g., 0.01 for a price like 123.45)
-  lotSize: number;                // Minimum quantity increment (aka stepSize) (e.g., 0.0001 for BTC)
-  minNotional: number;            // Minimum order value (price * quantity) in quote asset (e.g., 10 USDT)
-  status: string;                 // e.g., 'TRADING', 'PAUSED', 'DELISTED', 'PRE_TRADE'
-  createdAt: string;              // ISO Date string
-  // Future: maxMarketOrderQuantity, etc.
+  _id: string;                // Unique pair identifier (e.g., BTC-USDT)
+  baseAssetSymbol: string;    // Base asset symbol (e.g., BTC)
+  baseAssetIssuer: string;    // Base asset issuer
+  quoteAssetSymbol: string;   // Quote asset symbol (e.g., USDT)
+  quoteAssetIssuer: string;   // Quote asset issuer
+  tickSize: bigint;          // Minimum price movement
+  lotSize: bigint;           // Minimum quantity movement
+  minNotional: bigint;       // Minimum order value in quote asset
+  minTradeAmount: bigint;    // Minimum trade amount
+  maxTradeAmount: bigint;    // Maximum trade amount
+  status: string;            // Pair status (e.g., 'active', 'paused')
+  createdAt: string;         // ISO date string
+  lastUpdatedAt?: string;    // ISO date string
 }
 
 // Represents an order placed by a user
@@ -40,23 +45,25 @@ export interface Order {
   pairId: string;                 // Reference to TradingPair._id
   
   baseAssetSymbol: string;        // From TradingPair for easier querying/display
+  baseAssetIssuer: string;        // From TradingPair
   quoteAssetSymbol: string;       // From TradingPair
+  quoteAssetIssuer: string;       // From TradingPair
 
   type: OrderType;
   side: OrderSide;
   status: OrderStatus;
 
-  price?: number;                 // Required for LIMIT orders; the price per unit of baseAsset in terms of quoteAsset
-  quantity: number;               // Desired amount of baseAsset to buy/sell
+  price?: bigint;                 // Required for LIMIT orders; the price per unit of baseAsset in terms of quoteAsset
+  quantity: bigint;               // Desired amount of baseAsset to buy/sell
   
-  filledQuantity: number;         // Amount of baseAsset that has been filled
-  averageFillPrice?: number;      // Average price at which the order was filled (if partially/fully filled)
-  cumulativeQuoteValue?: number;  // Total value in quoteAsset for filled portion (filledQuantity * averageFillPrice)
+  filledQuantity: bigint;         // Amount of baseAsset that has been filled
+  averageFillPrice?: bigint;      // Average price at which the order was filled (if partially/fully filled)
+  cumulativeQuoteValue?: bigint;  // Total value in quoteAsset for filled portion (filledQuantity * averageFillPrice)
 
   // For MARKET orders, a client might specify how much quote currency they want to spend (for BUY)
   // or how much base currency they want to sell (for SELL, same as quantity).
   // e.g. "Buy BTC with 1000 USDT". If 'quoteOrderQty' is used, 'quantity' might be indicative or calculated.
-  quoteOrderQty?: number;         
+  quoteOrderQty?: bigint;         
 
   createdAt: string;              // ISO Date string
   updatedAt: string;              // ISO Date string of the last status change or fill
@@ -64,8 +71,45 @@ export interface Order {
   // Optional: For more advanced order types or features
   timeInForce?: 'GTC' | 'IOC' | 'FOK'; // Good-Til-Cancelled, Immediate-Or-Cancel, Fill-Or-Kill
   expiresAt?: string;             // ISO Date string for orders with an expiry
-  // clientOrderId?: string;      // User-defined ID for their reference
-  // stopPrice?: number;          // For STOP_LOSS / TAKE_PROFIT orders
+}
+
+// Helper function to create a new order with proper initialization
+export function createOrder(data: Partial<Order & { /* Allow extra fields like amount for flexible input */ amount?: bigint | string | number, expirationTimestamp?: bigint | number }>): Order {
+    const orderId = data._id || crypto.randomUUID();
+    // Quantity can be from data.quantity or data.amount (if provided as an alternative)
+    const quantityValue = data.quantity !== undefined ? toBigInt(data.quantity) :
+                          (data.amount !== undefined ? toBigInt(data.amount) : BigInt(0));
+
+    let expiresAtValue: string | undefined = data.expiresAt;
+    if (data.expirationTimestamp !== undefined) {
+        expiresAtValue = new Date(Number(data.expirationTimestamp) * 1000).toISOString(); // Assuming seconds timestamp
+        if (data.expiresAt && data.expiresAt !== expiresAtValue) {
+            console.warn('Both expiresAt (string) and expirationTimestamp (number) provided. Using expirationTimestamp.');
+        }
+    }
+
+    return {
+        _id: orderId,
+        userId: data.userId || '',
+        pairId: data.pairId || '',
+        baseAssetSymbol: data.baseAssetSymbol || '',
+        baseAssetIssuer: data.baseAssetIssuer || '',
+        quoteAssetSymbol: data.quoteAssetSymbol || '',
+        quoteAssetIssuer: data.quoteAssetIssuer || '',
+        side: data.side || OrderSide.BUY,
+        type: data.type || OrderType.LIMIT,
+        price: data.price !== undefined ? toBigInt(data.price) : undefined,
+        quantity: quantityValue,
+        filledQuantity: data.filledQuantity !== undefined ? toBigInt(data.filledQuantity) : BigInt(0),
+        status: data.status || OrderStatus.OPEN,
+        averageFillPrice: data.averageFillPrice !== undefined ? toBigInt(data.averageFillPrice) : undefined,
+        cumulativeQuoteValue: data.cumulativeQuoteValue !== undefined ? toBigInt(data.cumulativeQuoteValue) : undefined,
+        quoteOrderQty: data.quoteOrderQty !== undefined ? toBigInt(data.quoteOrderQty) : undefined,
+        createdAt: data.createdAt || new Date().toISOString(),
+        updatedAt: data.updatedAt || new Date().toISOString(),
+        timeInForce: data.timeInForce,
+        expiresAt: expiresAtValue, 
+    };
 }
 
 // Represents an executed trade between two orders
@@ -79,8 +123,8 @@ export interface Trade {
   makerOrderId: string;           // ID of the order that was resting on the book (maker)
   takerOrderId: string;           // ID of the order that matched with the maker (taker)
   
-  price: number;                  // Price at which the trade was executed
-  quantity: number;               // Amount of baseAsset traded
+  price: bigint;                  // Price at which the trade was executed
+  quantity: bigint;               // Amount of baseAsset traded
   
   buyerUserId: string;            // User ID of the buyer
   sellerUserId: string;           // User ID of the seller
@@ -91,17 +135,20 @@ export interface Trade {
                                   // (Alternatively, could deduce from makerOrderId's side)
 
   // Fees
-  feeAmount?: number;             // Total fee paid for this trade
+  feeAmount?: bigint;             // Total fee paid for this trade
   feeCurrency?: string;           // Symbol of the currency the fee was paid in (could be base, quote, or a native token)
   // individual fees for maker/taker can also be stored if they differ
-  // makerFee?: number;
-  // takerFee?: number;
+  makerFee?: bigint;
+  takerFee?: bigint;
+  total: bigint;                  // Total in quote asset (amount * price)
+  maker: string;                  // User ID of the maker
+  taker: string;                  // User ID of the taker
 }
 
 // Represents a single price level in the order book
 export interface OrderBookLevel {
-  price: number;
-  quantity: number;               // Total quantity of baseAsset available at this price
+  price: bigint;
+  quantity: bigint;               // Total quantity of baseAsset available at this price
   orderCount?: number;            // Optional: number of individual orders at this level
 }
 
@@ -120,26 +167,46 @@ export interface MarketCreatePairData {
     baseAssetIssuer: string;
     quoteAssetSymbol: string;
     quoteAssetIssuer: string;
-    tickSize: number;
-    lotSize: number;
-    minNotional: number;
-    initialStatus?: string; // Default to 'TRADING' or 'PRE_TRADE'
+    tickSize: bigint;             // Changed from number to bigint
+    lotSize: bigint;              // Changed from number to bigint
+    minNotional: bigint;          // Changed from number to bigint
+    initialStatus?: string;       // Default to 'TRADING' or 'PRE_TRADE'
+    minTradeAmount?: bigint;      // Minimum trade amount in quote asset
+    maxTradeAmount?: bigint;      // Maximum trade amount in quote asset
 }
 
 export interface MarketPlaceOrderData {
-    userId: string; // Will be sender
+    userId: string;               // Will be sender
     pairId: string;
     type: OrderType;
     side: OrderSide;
-    price?: number; // Required for LIMIT
-    quantity: number;
-    quoteOrderQty?: number; // For MARKET BUY by quote amount
+    price?: bigint;              // Required for LIMIT
+    quantity: bigint;
+    quoteOrderQty?: bigint;      // For MARKET BUY by quote amount
     timeInForce?: 'GTC' | 'IOC' | 'FOK';
-    // clientOrderId?: string;
+    expiresAt?: string;          // ISO string, matches Order.expiresAt
+    expirationTimestamp?: number; // Unix timestamp in seconds
 }
 
 export interface MarketCancelOrderData {
     userId: string; // Will be sender
     orderId: string;
     pairId: string; // Useful for routing/sharding if books are managed per pair
-} 
+}
+
+/**
+ * Database types (automatically converted from base types)
+ */
+export type MarketCreatePairDataDB = BigIntToString<MarketCreatePairData>;
+export type MarketPlaceOrderDataDB = BigIntToString<MarketPlaceOrderData & { expirationTimestamp?: number }>;
+export type TradingPairDB = BigIntToString<TradingPair>;
+export type OrderDB = BigIntToString<Order>;
+export type TradeDB = BigIntToString<Trade>;
+export type OrderBookLevelDB = BigIntToString<OrderBookLevel>;
+export type OrderBookSnapshotDB = {
+  pairId: string;
+  timestamp: string;
+  lastUpdateId?: number;
+  bids: OrderBookLevelDB[];
+  asks: OrderBookLevelDB[];
+}; 

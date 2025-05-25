@@ -99,7 +99,11 @@ const SYNC_BLOCK_FETCH_DELAY = 200; // ms delay between block fetches in sync mo
 
 // Setup multiple endpoints with manual failover
 const DEFAULT_STEEM_ENDPOINTS = [
-    'https://api.steemit.com'
+    'https://api.steemit.com',
+    'https://api.justyy.com',
+    'https://api.steem.fans',
+    'https://api.futureshock.world',
+    'https://steemd.steemworld.org'
 ];
 
 const apiUrls = process.env.STEEM_API
@@ -109,11 +113,10 @@ const apiUrls = process.env.STEEM_API
 // Track current endpoint and create initial client
 let currentEndpointIndex = 0;
 let client = null as any;
-const isTestnet = process.env.NODE_ENV === 'development';
 
 client = new DsteemClient(apiUrls[currentEndpointIndex], {
-    addressPrefix: 'STM',
-    chainId: config.steemChainId || '0000000000000000000000000000000000000000000000000000000000000000',
+    addressPrefix: process.env.ADDRESS_PREFIX || 'STM',
+    chainId: process.env.CHAIN_ID || '0000000000000000000000000000000000000000000000000000000000000000',
     timeout: 15000  // Increased timeout for better reliability
 });
 

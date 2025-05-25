@@ -1,22 +1,42 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import { getAccount, adjustBalance } from '../../utils/account-utils.js';
-import { Launchpad, LaunchpadStatus, PresaleDetails, Token, LaunchpadParticipatePresaleData } from './launchpad-interfaces.js'; // Import shared types
+import { Launchpad, LaunchpadStatus, PresaleDetails, LaunchpadParticipatePresaleData, LaunchpadParticipatePresaleDataDB } from './launchpad-interfaces.js';
+import { toBigInt, toString, convertToBigInt, BigIntMath } from '../../utils/bigint-utils.js';
+
+const NUMERIC_FIELDS_PARTICIPATE: Array<keyof LaunchpadParticipatePresaleData> = ['contributionAmount'];
+
+// Type for participant data as stored in DB (with stringified BigInts)
+interface LaunchpadParticipantDB {
+    userId: string;
+    quoteAmountContributed: string; 
+    tokensAllocated?: string;
+    claimed: boolean;
+}
+
+// Type for participant data in application logic (with BigInts)
+interface LaunchpadParticipant {
+    userId: string;
+    quoteAmountContributed: bigint; 
+    tokensAllocated?: bigint;
+    claimed: boolean;
+}
 
 // --------------- TRANSACTION DATA INTERFACE ---------------
 
 // --------------- TRANSACTION LOGIC ---------------
 
-export async function validateTx(data: LaunchpadParticipatePresaleData, sender: string): Promise<boolean> {
-  logger.debug(`[launchpad-participate-presale] Validating participation from ${sender} for launchpad ${data.launchpadId}: ${JSON.stringify(data)}`);
+export async function validateTx(dataDb: LaunchpadParticipatePresaleDataDB, sender: string): Promise<boolean> {
+  const data = convertToBigInt<LaunchpadParticipatePresaleData>(dataDb, NUMERIC_FIELDS_PARTICIPATE);
+  logger.debug(`[launchpad-participate-presale] Validating participation from ${sender} for launchpad ${data.launchpadId}: amount ${toString(data.contributionAmount)}`);
 
   if (sender !== data.userId) {
     logger.warn('[launchpad-participate-presale] Sender must match userId for participation.');
     return false;
   }
 
-  if (!data.launchpadId || typeof data.contributionAmount !== 'number' || data.contributionAmount <= 0) {
-    logger.warn('[launchpad-participate-presale] Missing or invalid fields: launchpadId, contributionAmount must be a positive number.');
+  if (!data.launchpadId || data.contributionAmount <= BigInt(0)) {
+    logger.warn('[launchpad-participate-presale] Missing or invalid fields: launchpadId, contributionAmount must be a positive BigInt.');
     return false;
   }
 
@@ -35,48 +55,36 @@ export async function validateTx(data: LaunchpadParticipatePresaleData, sender: 
     logger.warn(`[launchpad-participate-presale] Launchpad ${data.launchpadId} does not have presale details configured.`);
     return false;
   }
+  // presaleDetailsSnapshot amounts are BigInt due to interface changes
   const presaleDetails = launchpad.presaleDetailsSnapshot;
 
-  // Check contribution limits
   if (data.contributionAmount < presaleDetails.minContributionPerUser) {
-    logger.warn(`[launchpad-participate-presale] Contribution ${data.contributionAmount} is below min limit ${presaleDetails.minContributionPerUser} for ${data.launchpadId}.`);
+    logger.warn(`[launchpad-participate-presale] Contribution ${toString(data.contributionAmount)} is below min limit ${toString(presaleDetails.minContributionPerUser)} for ${data.launchpadId}.`);
     return false;
   }
   if (data.contributionAmount > presaleDetails.maxContributionPerUser) {
-    logger.warn(`[launchpad-participate-presale] Contribution ${data.contributionAmount} exceeds max limit ${presaleDetails.maxContributionPerUser} for ${data.launchpadId}.`);
+    logger.warn(`[launchpad-participate-presale] Contribution ${toString(data.contributionAmount)} exceeds max limit ${toString(presaleDetails.maxContributionPerUser)} for ${data.launchpadId}.`);
     return false;
   }
 
-  // Check if hard cap would be exceeded (more complex check, consider current total raised)
-  const currentTotalRaised = launchpad.presale?.totalQuoteRaised || 0;
-  if ((currentTotalRaised + data.contributionAmount) > presaleDetails.hardCap) {
-    logger.warn(`[launchpad-participate-presale] Contribution ${data.contributionAmount} would exceed hard cap ${presaleDetails.hardCap} for ${data.launchpadId}. Current raised: ${currentTotalRaised}`);
-    // This could be a partial fill scenario or outright rejection depending on rules.
-    // For simplicity, let's reject if it strictly exceeds. A more advanced system might allow partial fills.
+  const currentTotalRaised = launchpad.presale?.totalQuoteRaised || BigInt(0);
+  if (BigIntMath.add(currentTotalRaised, data.contributionAmount) > presaleDetails.hardCap) {
+    logger.warn(`[launchpad-participate-presale] Contribution ${toString(data.contributionAmount)} would exceed hard cap ${toString(presaleDetails.hardCap)} for ${data.launchpadId}. Current raised: ${toString(currentTotalRaised)}`);
     return false;
   }
 
-  // Whitelist check (if applicable)
-  if (presaleDetails.whitelistRequired) {
-    // Assuming whitelist is stored, e.g., in launchpad.presale.whitelistedUsers: string[]
-    // const isWhitelisted = launchpad.presale?.whitelistedUsers?.includes(data.userId);
-    // if (!isWhitelisted) {
-    //   logger.warn(`[launchpad-participate-presale] User ${data.userId} is not whitelisted for ${data.launchpadId}.`);
-    //   return false;
-    // }
-    logger.debug(`[launchpad-participate-presale] Whitelist check would be performed here if enabled for ${data.launchpadId}.`);
-  }
+  // Whitelist check (if applicable) - remains placeholder
 
-  // User balance check
   const userAccount = await getAccount(data.userId);
   if (!userAccount) {
     logger.warn(`[launchpad-participate-presale] User account ${data.userId} not found.`);
     return false;
   }
   const contributionTokenIdentifier = `${presaleDetails.quoteAssetForPresaleSymbol}${presaleDetails.quoteAssetForPresaleIssuer ? '@' + presaleDetails.quoteAssetForPresaleIssuer : ''}`;
-  const userBalance = userAccount.balances[contributionTokenIdentifier] || 0;
+  const userBalanceString = userAccount.balances?.[contributionTokenIdentifier] || '0';
+  const userBalance = toBigInt(userBalanceString);
   if (userBalance < data.contributionAmount) {
-    logger.warn(`[launchpad-participate-presale] Insufficient balance for ${data.userId}. Needs ${data.contributionAmount} ${contributionTokenIdentifier}, has ${userBalance}.`);
+    logger.warn(`[launchpad-participate-presale] Insufficient balance for ${data.userId}. Needs ${toString(data.contributionAmount)} ${contributionTokenIdentifier}, has ${toString(userBalance)}.`);
     return false;
   }
 
@@ -84,70 +92,83 @@ export async function validateTx(data: LaunchpadParticipatePresaleData, sender: 
   return true;
 }
 
-export async function process(data: LaunchpadParticipatePresaleData, sender: string): Promise<boolean> {
-  logger.debug(`[launchpad-participate-presale] Processing participation from ${sender} for ${data.launchpadId}: ${JSON.stringify(data)}`);
+export async function process(dataDb: LaunchpadParticipatePresaleDataDB, sender: string): Promise<boolean> {
+  const data = convertToBigInt<LaunchpadParticipatePresaleData>(dataDb, NUMERIC_FIELDS_PARTICIPATE);
+  logger.debug(`[launchpad-participate-presale] Processing participation from ${sender} for ${data.launchpadId}: amount ${toString(data.contributionAmount)}`);
   try {
-    const launchpad = await cache.findOnePromise('launchpads', { _id: data.launchpadId }) as Launchpad | null;
-    if (!launchpad || !launchpad.presaleDetailsSnapshot || !launchpad.presale) { // Should be caught by validation
+    const launchpadFromCache = await cache.findOnePromise('launchpads', { _id: data.launchpadId });
+    if (!launchpadFromCache || !launchpadFromCache.presaleDetailsSnapshot || !launchpadFromCache.presale) {
         logger.error(`[launchpad-participate-presale] CRITICAL: Launchpad ${data.launchpadId} or its presale details not found during processing.`);
         return false;
     }
+    // Convert launchpadFromCache (DB format with strings) to Launchpad (internal format with BigInts)
+    // Define keys that need conversion to BigInt in the fetched launchpad data
+    const launchpadNumericFields: (keyof Launchpad)[] = []; // Add actual keys if Launchpad itself has direct BigInt fields
+    const presaleNumericFields: (keyof PresaleDetails)[] = ['pricePerToken', 'minContributionPerUser', 'maxContributionPerUser', 'hardCap', 'softCap'];
+    
+    // This is a simplified conversion, assuming presale and presaleDetailsSnapshot are the primary concerns for BigInts.
+    // A full deep conversion utility would be more robust.
+    const launchpad: Launchpad = {
+        ...launchpadFromCache,
+        tokenToLaunch: launchpadFromCache.tokenToLaunch ? { ...launchpadFromCache.tokenToLaunch, totalSupply: toBigInt(launchpadFromCache.tokenToLaunch.totalSupply) } : undefined as any,
+        tokenomicsSnapshot: launchpadFromCache.tokenomicsSnapshot ? { ...launchpadFromCache.tokenomicsSnapshot, totalSupply: toBigInt(launchpadFromCache.tokenomicsSnapshot.totalSupply), tokenDecimals: toBigInt(launchpadFromCache.tokenomicsSnapshot.tokenDecimals) } : undefined as any,
+        presaleDetailsSnapshot: launchpadFromCache.presaleDetailsSnapshot ? convertToBigInt<PresaleDetails>(launchpadFromCache.presaleDetailsSnapshot as any, presaleNumericFields) : undefined,
+        presale: launchpadFromCache.presale ? {
+            ...launchpadFromCache.presale,
+            totalQuoteRaised: toBigInt(launchpadFromCache.presale.totalQuoteRaised),
+            participants: launchpadFromCache.presale.participants.map((p: LaunchpadParticipantDB): LaunchpadParticipant => ({
+                ...p,
+                quoteAmountContributed: toBigInt(p.quoteAmountContributed),
+                tokensAllocated: p.tokensAllocated ? toBigInt(p.tokensAllocated) : undefined
+            }))
+        } : undefined as any,
+        feeDetails: launchpadFromCache.feeDetails ? { ...launchpadFromCache.feeDetails, amount: toBigInt(launchpadFromCache.feeDetails.amount) } : undefined,
+    } as Launchpad;
 
-    const presaleDetails = launchpad.presaleDetailsSnapshot;
+    const presaleDetails = launchpad.presaleDetailsSnapshot!;
     const contributionTokenIdentifier = `${presaleDetails.quoteAssetForPresaleSymbol}${presaleDetails.quoteAssetForPresaleIssuer ? '@' + presaleDetails.quoteAssetForPresaleIssuer : ''}`;
 
-    // 1. Deduct contribution currency from user
-    const balanceAdjusted = await adjustBalance(sender, contributionTokenIdentifier, -data.contributionAmount);
+    const balanceAdjusted = await adjustBalance(sender, contributionTokenIdentifier, -data.contributionAmount); // data.contributionAmount is BigInt
     if (!balanceAdjusted) {
-        logger.error(`[launchpad-participate-presale] Failed to deduct ${data.contributionAmount} ${contributionTokenIdentifier} from ${sender} for launchpad ${data.launchpadId}.`);
+        logger.error(`[launchpad-participate-presale] Failed to deduct ${toString(data.contributionAmount)} ${contributionTokenIdentifier} from ${sender} for launchpad ${data.launchpadId}.`);
         return false;
     }
 
-    // 2. Update Launchpad document: add participant and increment totalRaised
-    // This needs to be an atomic operation or handled carefully to avoid race conditions.
-    // For a cache-based system, it might involve fetching, updating, and saving.
-    // A more robust DB would use atomic increments.
-
-    const participantIndex = launchpad.presale.participants.findIndex(p => p.userId === data.userId);
-    let updatedParticipantsList = [...launchpad.presale.participants];
-    let newTotalRaised = (launchpad.presale.totalQuoteRaised || 0) + data.contributionAmount;
+    const participantIndex = launchpad.presale!.participants.findIndex(p => p.userId === data.userId);
+    let updatedParticipantsList = [...launchpad.presale!.participants];
+    let newTotalRaised = BigIntMath.add(launchpad.presale!.totalQuoteRaised || BigInt(0), data.contributionAmount);
 
     if (participantIndex > -1) {
-        updatedParticipantsList[participantIndex].quoteAmountContributed += data.contributionAmount;
+        updatedParticipantsList[participantIndex].quoteAmountContributed = BigIntMath.add(updatedParticipantsList[participantIndex].quoteAmountContributed, data.contributionAmount);
     } else {
         updatedParticipantsList.push({
             userId: data.userId,
             quoteAmountContributed: data.contributionAmount,
-            claimed: false // Tokens not claimable yet
+            claimed: false
         });
     }
 
+    // Prepare fields for DB update (convert BigInts back to strings)
     const updatePayload = {
         $set: {
-            'presale.participants': updatedParticipantsList,
-            'presale.totalQuoteRaised': newTotalRaised,
+            'presale.participants': updatedParticipantsList.map((p: LaunchpadParticipant): LaunchpadParticipantDB => ({
+                ...p,
+                quoteAmountContributed: toString(p.quoteAmountContributed),
+                tokensAllocated: p.tokensAllocated ? toString(p.tokensAllocated) : undefined
+            })),
+            'presale.totalQuoteRaised': toString(newTotalRaised),
             updatedAt: new Date().toISOString(),
         }
     };
-    
-    // Check if hard cap is met with this contribution
-    if (newTotalRaised >= presaleDetails.hardCap) {
-        logger.debug(`[launchpad-participate-presale] Hard cap reached for launchpad ${data.launchpadId}. New total: ${newTotalRaised}`);
-        // Transition status if this contribution meets/exceeds hardcap
-        // updatePayload.$set['status'] = LaunchpadStatus.PRESALE_ENDED; // Or a specific hardcap met status
-        // The actual status transition to PRESALE_ENDED or similar should ideally be managed by a separate process
-        // that monitors presale end times and contribution totals.
-    }
 
     const updateSuccessful = await cache.updateOnePromise('launchpads', { _id: data.launchpadId }, updatePayload);
 
     if (!updateSuccessful) {
-        logger.error(`[launchpad-participate-presale] Failed to update launchpad ${data.launchpadId} with participation from ${sender}. Rolling back balance.`);
-        await adjustBalance(sender, contributionTokenIdentifier, data.contributionAmount); // Rollback
+        logger.error(`[launchpad-participate-presale] Failed to update launchpad ${data.launchpadId}. Rolling back balance.`);
+        await adjustBalance(sender, contributionTokenIdentifier, data.contributionAmount); // Rollback with positive BigInt
         return false;
     }
 
-    // 3. Log event
     const eventDocument = {
       type: 'launchpadPresaleParticipation',
       timestamp: new Date().toISOString(),
@@ -155,27 +176,26 @@ export async function process(data: LaunchpadParticipatePresaleData, sender: str
       data: {
         launchpadId: data.launchpadId,
         userId: data.userId,
-        contributionAmount: data.contributionAmount,
+        contributionAmount: toString(data.contributionAmount),
         contributionTokenSymbol: presaleDetails.quoteAssetForPresaleSymbol,
         contributionTokenIssuer: presaleDetails.quoteAssetForPresaleIssuer,
-        newTotalRaised: newTotalRaised
+        newTotalRaised: toString(newTotalRaised)
       }
     };
-    await new Promise<void>((resolve, reject) => {
+    await new Promise<void>((resolve) => {
         cache.insertOne('events', eventDocument, (err, result) => {
             if (err || !result) {
-                logger.error(`[launchpad-participate-presale] CRITICAL: Failed to log participation event for ${data.launchpadId} by ${sender}: ${err || 'no result'}.`);
+                logger.error(`[launchpad-participate-presale] CRITICAL: Failed to log participation event: ${err || 'no result'}.`);
             }
             resolve();
         });
     });
 
-    logger.debug(`[launchpad-participate-presale] Participation by ${sender} for ${data.contributionAmount} ${contributionTokenIdentifier} in launchpad ${data.launchpadId} processed successfully.`);
+    logger.debug(`[launchpad-participate-presale] Participation processed for ${toString(data.contributionAmount)}.`);
     return true;
 
   } catch (error) {
-    logger.error(`[launchpad-participate-presale] Error processing participation by ${sender} for ${data.launchpadId}: ${error}`);
-    // Consider rollback if partial failure (e.g. balance deducted but DB update failed and rollback also failed)
+    logger.error(`[launchpad-participate-presale] Error processing participation: ${error}`);
     return false;
   }
 } 

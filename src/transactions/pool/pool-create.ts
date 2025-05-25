@@ -1,42 +1,46 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
-import { PoolCreateData, LiquidityPool } from './pool-interfaces.js';
+import { PoolCreateData, LiquidityPool, PoolCreateDataDB, LiquidityPoolDB } from './pool-interfaces.js';
 import { generateDeterministicId } from '../../utils/id-utils.js';
+import config from '../../config.js';
+import { BigIntMath, convertToBigInt, convertToString, toString, toBigInt } from '../../utils/bigint-utils.js';
 
-const ALLOWED_FEE_TIERS = [5, 30, 100, 500]; // 0.05%, 0.3%, 1%, 5% (example)
-const DEFAULT_FEE_TIER = 30; // 0.3%
+const ALLOWED_FEE_TIERS: bigint[] = [BigInt(5), BigInt(30), BigInt(100), BigInt(500)];
+const DEFAULT_FEE_TIER: bigint = BigInt(30);
+const NUMERIC_FIELDS_POOL_CREATE: Array<keyof PoolCreateData> = ['feeTier'];
+const LIQUIDITY_POOL_NUMERIC_FIELDS: Array<keyof LiquidityPool> = ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens', 'feeTier'];
 
-// Helper function to generate a unique and deterministic pool ID
-function generatePoolId(tokenA_symbol: string, tokenA_issuer: string, tokenB_symbol: string, tokenB_issuer: string, feeTier: number): string {
+function generatePoolId(tokenA_symbol: string, tokenA_issuer: string, tokenB_symbol: string, tokenB_issuer: string, feeTier: bigint): string {
   const component1 = `${tokenA_symbol}@${tokenA_issuer}`;
   const component2 = `${tokenB_symbol}@${tokenB_issuer}`;
-  const component3 = `FEE${feeTier.toString()}`;
+  const component3 = `FEE${toString(feeTier)}`;
   return generateDeterministicId(component1, component2, component3);
 }
 
-// Helper function to generate LP token symbol
-function generateLpTokenSymbol(tokenA_symbol: string, tokenB_symbol: string, feeTier: number): string {
-  // Using only symbols for LP token, and fee tier, consistent with previous LP_TOKENA_TOKENB_FEE format but now sorted
+function generateLpTokenSymbol(tokenA_symbol: string, tokenB_symbol: string, feeTier: bigint): string {
   const component1 = tokenA_symbol;
   const component2 = tokenB_symbol;
-  const component3 = `FEE${feeTier.toString()}`;
-  return `LP_${generateDeterministicId(component1, component2, component3)}`;
+  const component3 = `FEE${toString(feeTier)}`;
+  // Make LP token symbols shorter and more predictable if possible
+  const pairPart = `${tokenA_symbol.substring(0,3)}${tokenB_symbol.substring(0,3)}`.toUpperCase();
+  return `LP_${pairPart}_${toString(feeTier)}`; 
 }
 
-export async function validateTx(data: PoolCreateData, sender: string): Promise<boolean> {
+export async function validateTx(dataDb: PoolCreateDataDB, sender: string): Promise<boolean> {
   try {
+    const data = convertToBigInt<PoolCreateData>(dataDb, NUMERIC_FIELDS_POOL_CREATE);
     if (!data.tokenA_symbol || !data.tokenA_issuer || !data.tokenB_symbol || !data.tokenB_issuer) {
       logger.warn('[pool-create] Invalid data: Missing required token symbols or issuers.');
       return false;
     }
 
     // Validate token symbols (e.g., 3-10 uppercase letters - adjust as per your token spec)
-    if (!validate.string(data.tokenA_symbol, 10, 3, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")) {
+    if (!validate.string(data.tokenA_symbol, 10, 3, config.tokenSymbolAllowedChars)) {
       logger.warn(`[pool-create] Invalid tokenA_symbol: ${data.tokenA_symbol}.`);
       return false;
     }
-    if (!validate.string(data.tokenB_symbol, 10, 3, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")) {
+    if (!validate.string(data.tokenB_symbol, 10, 3, config.tokenSymbolAllowedChars)) {
       logger.warn(`[pool-create] Invalid tokenB_symbol: ${data.tokenB_symbol}.`);
       return false;
     }
@@ -57,13 +61,16 @@ export async function validateTx(data: PoolCreateData, sender: string): Promise<
       return false;
     }
 
-    let chosenFeeTier = data.feeTier;
-    if (chosenFeeTier === undefined) {
+    let chosenFeeTier: bigint;
+    if (data.feeTier === undefined) {
       chosenFeeTier = DEFAULT_FEE_TIER;
-      logger.debug(`[pool-create] No feeTier provided, using default: ${chosenFeeTier} bps.`);
+      logger.debug(`[pool-create] No feeTier provided, using default: ${toString(chosenFeeTier)} bps.`);
     } else {
-      if (!validate.integer(chosenFeeTier) || !ALLOWED_FEE_TIERS.includes(chosenFeeTier)) {
-        logger.warn(`[pool-create] Invalid feeTier: ${chosenFeeTier}. Allowed tiers: ${ALLOWED_FEE_TIERS.join(', ')}.`);
+      chosenFeeTier = data.feeTier; // Already BigInt due to convertToBigInt
+      // Validate.integer cannot be directly used for BigInt. Check if it's a whole number if needed by other means or trust input.
+      // For inclusion, convert chosenFeeTier to number for ALLOWED_FEE_TIERS.includes, or check BigInt equality.
+      if (!ALLOWED_FEE_TIERS.some(tier => tier === chosenFeeTier)) {
+        logger.warn(`[pool-create] Invalid feeTier: ${toString(chosenFeeTier)}. Allowed tiers: ${ALLOWED_FEE_TIERS.map(t => toString(t)).join(', ')}.`);
         return false;
       }
     }
@@ -85,7 +92,7 @@ export async function validateTx(data: PoolCreateData, sender: string): Promise<
     const poolId = generatePoolId(data.tokenA_symbol, data.tokenA_issuer, data.tokenB_symbol, data.tokenB_issuer, chosenFeeTier);
     const existingPool = await cache.findOnePromise('liquidityPools', { _id: poolId });
     if (existingPool) {
-      logger.warn(`[pool-create] Liquidity pool with ID ${poolId} (tokens + fee tier ${chosenFeeTier}) already exists.`);
+      logger.warn(`[pool-create] Liquidity pool with ID ${poolId} (tokens + fee tier ${toString(chosenFeeTier)}) already exists.`);
       return false;
     }
 
@@ -103,39 +110,43 @@ export async function validateTx(data: PoolCreateData, sender: string): Promise<
   }
 }
 
-export async function process(data: PoolCreateData, sender: string): Promise<boolean> {
+export async function process(dataDb: PoolCreateDataDB, sender: string): Promise<boolean> {
   try {
-    const chosenFeeTier = data.feeTier === undefined ? DEFAULT_FEE_TIER : data.feeTier; // Validation ensures it's allowed or default
-    const feeRate = chosenFeeTier / 10000; // Convert basis points to rate (e.g., 30bps -> 0.003)
+    const data = convertToBigInt<PoolCreateData>(dataDb, NUMERIC_FIELDS_POOL_CREATE);
+    let chosenFeeTier = data.feeTier;
+    if (chosenFeeTier === undefined) {
+        chosenFeeTier = DEFAULT_FEE_TIER;
+    }
+    // feeRate calculation removed as it's not stored in LiquidityPool interface
 
     const poolId = generatePoolId(data.tokenA_symbol, data.tokenA_issuer, data.tokenB_symbol, data.tokenB_issuer, chosenFeeTier);
     const lpTokenSymbol = generateLpTokenSymbol(data.tokenA_symbol, data.tokenB_symbol, chosenFeeTier);
 
-    // Ensure tokens are stored in a consistent order (e.g., alphabetically by symbol@issuer)
     let tokenA_details = { symbol: data.tokenA_symbol, issuer: data.tokenA_issuer };
     let tokenB_details = { symbol: data.tokenB_symbol, issuer: data.tokenB_issuer };
-
     if (`${tokenA_details.symbol}@${tokenA_details.issuer}` > `${tokenB_details.symbol}@${tokenB_details.issuer}`) {
-        [tokenA_details, tokenB_details] = [tokenB_details, tokenA_details]; // Swap to ensure consistent ordering
+        [tokenA_details, tokenB_details] = [tokenB_details, tokenA_details];
     }
 
-    const poolDocument: LiquidityPool = {
+    const poolDocumentApp: LiquidityPool = {
       _id: poolId,
       tokenA_symbol: tokenA_details.symbol,
       tokenA_issuer: tokenA_details.issuer,
-      tokenA_reserve: 0,
+      tokenA_reserve: BigInt(0),
       tokenB_symbol: tokenB_details.symbol,
       tokenB_issuer: tokenB_details.issuer,
-      tokenB_reserve: 0,
-      totalLpTokens: 0,
-      lpTokenSymbol: lpTokenSymbol,
-      feeRate: feeRate, // Store the calculated fee rate
+      tokenB_reserve: BigInt(0),
+      totalLpTokens: BigInt(0),
+      // lpTokenSymbol: lpTokenSymbol, // LiquidityPool interface does not have lpTokenSymbol
+      feeTier: chosenFeeTier, // This is BigInt
       createdAt: new Date().toISOString(),
+      status: 'ACTIVE' // Default status
     };
 
+    const poolDocumentDB = convertToString<LiquidityPool>(poolDocumentApp, LIQUIDITY_POOL_NUMERIC_FIELDS);
 
     const createSuccess = await new Promise<boolean>((resolve) => {
-      cache.insertOne('liquidityPools', poolDocument, (err, result) => {
+      cache.insertOne('liquidityPools', poolDocumentDB, (err, result) => {
         if (err || !result) {
           logger.error(`[pool-create] Failed to insert pool ${poolId} into cache: ${err || 'no result'}`);
           resolve(false);
@@ -148,14 +159,16 @@ export async function process(data: PoolCreateData, sender: string): Promise<boo
     if (!createSuccess) {
       return false;
     }
-    logger.debug(`[pool-create] Liquidity Pool ${poolId} (${tokenA_details.symbol}-${tokenB_details.symbol}, Fee: ${chosenFeeTier}bps) created by ${sender}.`);
+    logger.debug(`[pool-create] Liquidity Pool ${poolId} (${tokenA_details.symbol}-${tokenB_details.symbol}, Fee: ${toString(chosenFeeTier)}bps) created by ${sender}. LP Token: ${lpTokenSymbol}`);
 
-    // Log event
+    // TODO: Create the LP token itself using token-create transaction? Or is it virtual?
+    // For now, assume LP token symbol is just for reference in the pool doc.
+
     const eventDocument = {
       type: 'poolCreate',
       timestamp: new Date().toISOString(),
       actor: sender,
-      data: { ...poolDocument }
+      data: { ...poolDocumentDB, lpTokenSymbol: lpTokenSymbol } // Include lpTokenSymbol in event data for reference
     };
     await new Promise<void>((resolve) => {
         cache.insertOne('events', eventDocument, (err, result) => {

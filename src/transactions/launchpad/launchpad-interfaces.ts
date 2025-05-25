@@ -1,3 +1,5 @@
+import { BigIntToString } from '../../utils/bigint-utils.js';
+
 export enum TokenStandard {
   NATIVE = 'NATIVE',
   WRAPPED_NATIVE_LIKE = 'WRAPPED_NATIVE_LIKE',
@@ -40,22 +42,22 @@ export interface TokenAllocation {
 }
 
 export interface Tokenomics {
-  totalSupply: number;
-  tokenDecimals: number;
+  totalSupply: bigint;        // Total token supply
+  tokenDecimals: bigint;      // Number of decimal places (0-18)
   allocations: TokenAllocation[];
 }
 
 export interface PresaleDetails {
   presaleTokenAllocationPercentage: number;
-  pricePerToken: number;
+  pricePerToken: bigint;
   quoteAssetForPresaleSymbol: string;
   quoteAssetForPresaleIssuer?: string;
-  minContributionPerUser: number;
-  maxContributionPerUser: number;
+  minContributionPerUser: bigint;
+  maxContributionPerUser: bigint;
   startTime: string;
   endTime: string;
-  hardCap: number;
-  softCap?: number;
+  hardCap: bigint;
+  softCap?: bigint;
   whitelistRequired?: boolean;
   fcfsAfterReservedAllocation?: boolean;
 }
@@ -129,7 +131,7 @@ export interface Launchpad {
     symbol: string;
     standard: TokenStandard;
     decimals: number;
-    totalSupply: number;
+    totalSupply: bigint;
   };
   tokenomicsSnapshot: Tokenomics;
   presaleDetailsSnapshot?: PresaleDetails;
@@ -140,11 +142,11 @@ export interface Launchpad {
   presale?: {
     startTimeActual?: string;
     endTimeActual?: string;
-    totalQuoteRaised: number;
+    totalQuoteRaised: bigint;
     participants: Array<{
       userId: string;
-      quoteAmountContributed: number;
-      tokensAllocated?: number;
+      quoteAmountContributed: bigint;
+      tokensAllocated?: bigint;
       claimed: boolean;
     }>;
     status: 'NOT_STARTED' | 'ACTIVE' | 'ENDED_PENDING_CLAIMS' | 'ENDED_CLAIMS_PROCESSED' | 'FAILED';
@@ -155,7 +157,7 @@ export interface Launchpad {
   feeDetails?: {
     tokenSymbol: string;
     tokenIssuer?: string;
-    amount: number;
+    amount: bigint;
   };
   relatedTxIds?: string[];
 }
@@ -163,11 +165,69 @@ export interface Launchpad {
 export interface LaunchpadParticipatePresaleData {
   userId: string;
   launchpadId: string;
-  contributionAmount: number;
+  contributionAmount: bigint;
 }
 
 export interface LaunchpadClaimTokensData {
   userId: string;
   launchpadId: string;
   allocationType: TokenDistributionRecipient;
-} 
+}
+
+/**
+ * Launchpad interfaces with BigInt values for application logic
+ */
+
+export interface LaunchpadCreateData {
+    name: string;
+    description?: string;
+    tokenSymbol: string;       // Token being launched
+    tokenIssuer: string;      // Token issuer address
+    paymentToken: {           // Token accepted for payment
+        symbol: string;
+        issuer: string;
+    };
+    totalTokens: bigint;      // Total tokens being sold
+    tokenPrice: bigint;       // Price per token in payment token
+    minPurchase?: bigint;     // Minimum purchase amount per user
+    maxPurchase?: bigint;     // Maximum purchase amount per user
+    startTime: string;        // ISO date string
+    endTime: string;         // ISO date string
+    metadata?: {
+        websiteUrl?: string;
+        whitepaperUrl?: string;
+        logoUrl?: string;
+        [key: string]: any;
+    };
+}
+
+export interface LaunchpadPurchaseData {
+    launchpadId: string;     // Launchpad ID
+    amount: bigint;          // Amount of tokens to purchase
+    buyer: string;           // Buyer's address
+}
+
+export interface LaunchpadClaimData {
+    launchpadId: string;     // Launchpad ID
+    buyer: string;           // Buyer's address
+}
+
+export interface LaunchpadPurchase {
+    _id: string;            // Purchase ID: hash(launchpadId, buyer, timestamp)
+    launchpadId: string;    // Launchpad ID
+    buyer: string;          // Buyer's address
+    amount: bigint;         // Amount of tokens purchased
+    totalPaid: bigint;      // Total amount paid in payment token
+    claimed: boolean;       // Whether tokens have been claimed
+    timestamp: string;      // ISO date string
+}
+
+/**
+ * Database types (automatically converted from base types)
+ */
+export type LaunchpadCreateDataDB = BigIntToString<LaunchpadCreateData>;
+export type LaunchpadPurchaseDataDB = BigIntToString<LaunchpadPurchaseData>;
+export type LaunchpadDB = BigIntToString<Launchpad>;
+export type LaunchpadPurchaseDB = BigIntToString<LaunchpadPurchase>;
+export type PresaleDetailsDB = BigIntToString<PresaleDetails>;
+export type LaunchpadParticipatePresaleDataDB = BigIntToString<LaunchpadParticipatePresaleData>; 

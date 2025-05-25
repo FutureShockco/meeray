@@ -1,9 +1,12 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
-import { MarketCreatePairData, TradingPair } from './market-interfaces.js';
+import { MarketCreatePairData, MarketCreatePairDataDB, TradingPair, TradingPairDB } from './market-interfaces.js';
 // import crypto from 'crypto'; // No longer needed for TradingPairId generation
 import { generateDeterministicId } from '../../utils/id-utils.js'; // Import the new helper
+import { convertToBigInt, convertToString } from '../../utils/bigint-utils.js';
+
+const NUMERIC_FIELDS_CREATE_PAIR: Array<keyof MarketCreatePairData> = ['tickSize', 'lotSize', 'minNotional', 'minTradeAmount', 'maxTradeAmount'];
 
 // Function to generate a unique ID for the trading pair
 function generateTradingPairId(baseAssetSymbol: string, baseAssetIssuer: string, quoteAssetSymbol: string, quoteAssetIssuer: string): string {
@@ -13,23 +16,37 @@ function generateTradingPairId(baseAssetSymbol: string, baseAssetIssuer: string,
   return generateDeterministicId(component1, component2);
 }
 
-export async function validateTx(data: MarketCreatePairData, sender: string): Promise<boolean> {
+export async function validateTx(dataDb: MarketCreatePairDataDB, sender: string): Promise<boolean> {
+  const data = convertToBigInt<MarketCreatePairData>(dataDb, NUMERIC_FIELDS_CREATE_PAIR);
   logger.debug(`[market-create-pair] Validating data for sender: ${sender}, data: ${JSON.stringify(data)}`);
   // Basic validation
   if (!data.baseAssetSymbol || !data.baseAssetIssuer || !data.quoteAssetSymbol || !data.quoteAssetIssuer) {
     logger.warn('[market-create-pair] Missing asset symbol or issuer.');
     return false;
   }
-  if (typeof data.tickSize !== 'number' || data.tickSize <= 0) {
+  // Validate BigInt fields
+  if (data.tickSize <= BigInt(0)) {
     logger.warn('[market-create-pair] Invalid tickSize.');
     return false;
   }
-  if (typeof data.lotSize !== 'number' || data.lotSize <= 0) {
+  if (data.lotSize <= BigInt(0)) {
     logger.warn('[market-create-pair] Invalid lotSize.');
     return false;
   }
-  if (typeof data.minNotional !== 'number' || data.minNotional < 0) { // Can be 0 if no minimum
+  if (data.minNotional < BigInt(0)) {
     logger.warn('[market-create-pair] Invalid minNotional.');
+    return false;
+  }
+  if (data.minTradeAmount && data.minTradeAmount < BigInt(0)) {
+    logger.warn('[market-create-pair] Invalid minTradeAmount.');
+    return false;
+  }
+  if (data.maxTradeAmount && data.maxTradeAmount < BigInt(0)) {
+    logger.warn('[market-create-pair] Invalid maxTradeAmount.');
+    return false;
+  }
+  if (data.minTradeAmount && data.maxTradeAmount && data.minTradeAmount > data.maxTradeAmount) {
+    logger.warn('[market-create-pair] minTradeAmount cannot exceed maxTradeAmount.');
     return false;
   }
 
@@ -90,7 +107,8 @@ export async function validateTx(data: MarketCreatePairData, sender: string): Pr
   return true;
 }
 
-export async function process(data: MarketCreatePairData, sender: string): Promise<boolean> {
+export async function process(dataDb: MarketCreatePairDataDB, sender: string): Promise<boolean> {
+  const data = convertToBigInt<MarketCreatePairData>(dataDb, NUMERIC_FIELDS_CREATE_PAIR);
   logger.debug(`[market-create-pair] Processing request from ${sender} to create pair: ${JSON.stringify(data)}`);
   try {
     const pairId = generateTradingPairId(data.baseAssetSymbol, data.baseAssetIssuer, data.quoteAssetSymbol, data.quoteAssetIssuer);
@@ -104,14 +122,19 @@ export async function process(data: MarketCreatePairData, sender: string): Promi
       tickSize: data.tickSize,
       lotSize: data.lotSize,
       minNotional: data.minNotional,
-      status: data.initialStatus || 'TRADING', // Default to TRADING
+      minTradeAmount: data.minTradeAmount || BigInt(0),
+      maxTradeAmount: data.maxTradeAmount || BigInt('1000000000000000000000'),
+      status: data.initialStatus || 'TRADING',
       createdAt: new Date().toISOString(),
     };
 
+    // Convert TradingPair with BigInts to TradingPairDB with strings for storage
+    const tradingPairDocumentDB = convertToString<TradingPair>(tradingPairDocument, NUMERIC_FIELDS_CREATE_PAIR as (keyof TradingPair)[]);
+
     const createSuccess = await new Promise<boolean>((resolve) => {
-      cache.insertOne('tradingPairs', tradingPairDocument, (err, result) => {
+      cache.insertOne('tradingPairs', tradingPairDocumentDB, (err, result) => {
         if (err || !result) {
-          logger.error(`[market-create-pair] Failed to insert trading pair ${pairId} into cache: ${err || 'no result'}`);
+          logger.error(`[market-create-pair] Failed to insert trading pair ${pairId}: ${err || 'no result'}`);
           resolve(false);
         } else {
           resolve(true);
@@ -127,10 +150,11 @@ export async function process(data: MarketCreatePairData, sender: string): Promi
 
     // Log event
     const eventDocument = {
+      _id: Date.now().toString(36),
       type: 'marketCreatePair',
       timestamp: new Date().toISOString(),
       actor: sender,
-      data: { ...tradingPairDocument }
+      data: { ...tradingPairDocumentDB }
     };
     await new Promise<void>((resolve) => {
         cache.insertOne('events', eventDocument, (err, result) => {

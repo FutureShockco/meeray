@@ -1,71 +1,43 @@
-const { Client, PrivateKey } = require('dsteem');
-const fs = require('fs');
-const path = require('path');
-
-// Configuration
-const STEEM_API_URL = 'https://api.justyy.com';
-const KEYS_FILE_PATH = path.join(__dirname, 'keys.json');
+const { getClient, getRandomAccount, sendCustomJson } = require('./helpers.cjs');
 
 async function main() {
-    const client = new Client(STEEM_API_URL);
-    let privateKeysData;
-    try {
-        const keysFileContent = fs.readFileSync(KEYS_FILE_PATH, 'utf8');
-        privateKeysData = JSON.parse(keysFileContent);
-        if (!privateKeysData || !Array.isArray(privateKeysData) || privateKeysData.length === 0) {
-            console.error('Error: keys.json is missing, empty, or not an array.');
-            process.exit(1);
-        }
-    } catch (err) {
-        console.error(`Error loading or parsing ${KEYS_FILE_PATH}:`, err.message);
-        process.exit(1);
-    }
+    // Get client and random account
+    const { client, sscId } = await getClient();
+    const { username, privateKey } = await getRandomAccount();
 
-    const signingPrivateKeyString = privateKeysData[0]; // This should be echelon-darwin's active key
-    const authorizingAccount = 'echelon-darwin'; // Account owning the NFT and authorizing the update
-
-    // IMPORTANT: Replace with an actual instanceId of an NFT owned by authorizingAccount
-    const instanceIdToUpdate = 'artbk-example-id-12345'; 
+    // IMPORTANT: Replace with an actual instanceId of an NFT owned by the account
+    const instanceIdToUpdate = `artbk-${Date.now()}`; // This is just an example, use a real NFT ID
 
     const updateMetadataData = {
-        collectionSymbol: "ARTBK",
+        collectionSymbol: "ARTBK", // Should match an existing collection
         instanceId: instanceIdToUpdate,
         properties: { 
-            artist: "Updated Artist Name",
-            edition: 2 // Example of updating a property
+            artist: username,
+            edition: Math.floor(Math.random() * 1000) + 1,
+            attributes: {
+                rarity: "Legendary", // Upgrade the rarity!
+                strength: Math.floor(Math.random() * 100),
+                intelligence: Math.floor(Math.random() * 100),
+                luck: Math.floor(Math.random() * 100)
+            }
         },
-        uri: "https://example.com/artbk/1_updated.json" // Example of updating URI
+        uri: `https://example.com/nft/artbk/${Date.now()}_updated.json`
     };
 
-    const customJsonOperation = [
-        'custom_json',
-        {
-            required_auths: [authorizingAccount],
-            required_posting_auths: [],
-            id: 'sidechain',
-            json: JSON.stringify({
-                contract: 'nft_update_metadata', 
-                payload: updateMetadataData
-            })
-        }
-    ];
-
-    console.log('Attempting to broadcast NFT Update Metadata operation:');
-    console.log(JSON.stringify(customJsonOperation, null, 2));
+    console.log(`Updating NFT metadata with account ${username}:`);
+    console.log(JSON.stringify(updateMetadataData, null, 2));
 
     try {
-        const result = await client.broadcast.sendOperations(
-            [customJsonOperation],
-            PrivateKey.fromString(signingPrivateKeyString)
+        await sendCustomJson(
+            client,
+            sscId,
+            'nft_update_metadata',
+            updateMetadataData,
+            username,
+            privateKey
         );
-        console.log('NFT Update Metadata operation broadcasted successfully!');
-        console.log('Transaction ID:', result.id);
-        console.log('Block Number:', result.block_num);
     } catch (error) {
-        console.error('Error broadcasting NFT Update Metadata operation:', error.message);
-        if (error.data && error.data.stack) {
-            console.error('dsteem error data:', JSON.stringify(error.data, null, 2));
-        }
+        console.error('NFT metadata update failed.');
     }
 }
 

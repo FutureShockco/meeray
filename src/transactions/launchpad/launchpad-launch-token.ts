@@ -15,8 +15,12 @@ import {
   LaunchpadLaunchTokenData,
   LaunchpadStatus,
   Token,
-  Launchpad
+  Launchpad,
+  LaunchpadDB
 } from './launchpad-interfaces.js';
+import { BigIntMath, toString } from '../../utils/bigint-utils.js'; // Removed convertToString as we'll do it manually for deep objects
+import validate from '../../validation/index.js'; // Assuming validate exists
+import config from '../../config.js'; // Import config
 
 
 function generateLaunchpadId(): string {
@@ -35,118 +39,125 @@ function generateTokenId(symbol: string, issuer?: string): string {
 // --------------- TRANSACTION LOGIC ---------------
 
 export async function validateTx(data: LaunchpadLaunchTokenData, sender: string): Promise<boolean> {
-  logger.debug(`[launchpad-launch-token] Validating launch request from ${sender}: ${JSON.stringify(data)}`);
+  logger.debug(`[launchpad-launch-token] Validating launch request from ${sender}`);
 
   if (sender !== data.userId) {
     logger.warn('[launchpad-launch-token] Sender must match userId for the launch request.');
     return false;
   }
 
-  // TODO: Add comprehensive validation logic:
-  // 1. User permissions (is 'sender' authorized to launch tokens?)
-  //    - This might involve checking against a list of authorized users or roles.
-  // 2. Data integrity and sanity checks:
-  //    - tokenName, tokenSymbol, tokenStandard, tokenomics are present.
-  //    - tokenomics.totalSupply > 0, tokenomics.decimals >= 0.
-  //    - Sum of tokenomics.allocations percentages must be 100%.
-  //    - Validate each allocation (e.g., percentages are valid).
-  //    - Validate vesting schedules if present.
-  // 3. PresaleDetails validation (if present):
-  //    - Start time < End time, prices > 0, caps make sense.
-  //    - quoteAssetForPresale exists and is valid.
-  // 4. LiquidityProvisionDetails validation (if present):
-  //    - dexIdentifier is known/supported.
-  //    - quoteAssetForLiquidity exists and is valid.
-  //    - percentages and amounts are positive.
-  // 5. Fee validation:
-  //    - launchFeeTokenSymbol exists.
-  //    - User has sufficient balance of launchFeeTokenSymbol to cover the fee.
-  //      (Fee amount might be defined by system config based on launch parameters).
-  // 6. Check for clashes (e.g., token symbol already exists if it needs to be unique globally or per issuer).
-  //    - `await cache.findOnePromise('tokens', { symbol: data.tokenSymbol /*, issuer: ... if applicable */ })`
-  // 7. Ensure total supply from tokenomics matches presale allocation + liquidity allocation + other allocations.
+  if (!data.tokenName || !data.tokenSymbol || !data.tokenStandard || !data.tokenomics) {
+    logger.warn('[launchpad-launch-token] Missing core token information.');
+    return false;
+  }
 
-  logger.debug('[launchpad-launch-token] Basic validation passed (structure check). Needs full implementation.');
-  return true; 
+  if (!validate.string(data.tokenSymbol, 10, 3, config.tokenSymbolAllowedChars)) {
+      logger.warn('[launchpad-launch-token] Invalid token symbol format.');
+      return false;
+  }
+
+  // Validate tokenomics decimals and totalSupply
+  if (data.tokenomics.tokenDecimals < BigInt(0) || data.tokenomics.tokenDecimals > BigInt(18)) {
+    logger.warn('[launchpad-launch-token] Token decimals must be between 0 and 18.');
+    return false;
+  }
+  if (data.tokenomics.totalSupply <= BigInt(0)) {
+    logger.warn('[launchpad-launch-token] Total supply must be positive.');
+    return false;
+  }
+
+  // TODO: Add other comprehensive validations as listed in comments in original file
+
+  logger.debug('[launchpad-launch-token] Validation passed (structure and basic tokenomics check).');
+  return true;
 }
 
 export async function process(data: LaunchpadLaunchTokenData, sender: string): Promise<boolean> {
-  logger.debug(`[launchpad-launch-token] Processing launch request from ${sender}: ${JSON.stringify(data)}`);
+  logger.debug(`[launchpad-launch-token] Processing launch request from ${sender}`);
   try {
-    // Re-validate before processing (or trust the mempool validation if applicable)
-    // const isValid = await validateTx(data, sender); // Assuming validation is already done by the caller node
-    // if (!isValid) {
-    //   logger.warn(`[launchpad-launch-token] Transaction invalid during process step for ${sender}. Aborting.`);
-    //   return false;
-    // }
+    // Assuming validateTx was called by the node before processing
 
     const launchpadId = generateLaunchpadId();
     const now = new Date().toISOString();
     
-    // TODO: Implement actual processing logic:
-    // 1. Deduct launch fee from sender's account.
-    //    - `await adjustBalance(sender, feeTokenIdentifier, -calculatedFeeAmount);`
-    //    - If fee deduction fails, abort.
+    const tokenDecimalsNumber = BigIntMath.toNumber(data.tokenomics.tokenDecimals);
+    // Additional check, even if validated in validateTx, for safety during conversion
+    if (tokenDecimalsNumber < 0 || tokenDecimalsNumber > 18) {
+        logger.error('[launchpad-launch-token] CRITICAL: Invalid token decimals during processing.');
+        return false; 
+    }
 
-    // 2. Create the Launchpad project document.
-    const launchpadProject: Launchpad = {
+    const launchpadProjectData: Launchpad = {
       _id: launchpadId,
-      projectId: `${data.tokenSymbol}-launch-${launchpadId.substring(0,8)}`, // Example project ID
-      status: LaunchpadStatus.PENDING_VALIDATION, // Or UPCOMING if validation is synchronous and passes here
+      projectId: `${data.tokenSymbol}-launch-${launchpadId.substring(0,8)}`,
+      status: LaunchpadStatus.UPCOMING, // Assuming validation passed if we reach here
       tokenToLaunch: {
         name: data.tokenName,
         symbol: data.tokenSymbol,
         standard: data.tokenStandard,
-        decimals: data.tokenomics.tokenDecimals,
-        totalSupply: data.tokenomics.totalSupply,
+        decimals: tokenDecimalsNumber, // Use converted number
+        totalSupply: data.tokenomics.totalSupply, // Use bigint directly
       },
-      tokenomicsSnapshot: data.tokenomics,
-      presaleDetailsSnapshot: data.presaleDetails,
+      tokenomicsSnapshot: data.tokenomics, // This has BigInt fields
+      presaleDetailsSnapshot: data.presaleDetails, // This has BigInt fields as per interface changes
       liquidityProvisionDetailsSnapshot: data.liquidityProvisionDetails,
       launchedByUserId: sender,
       createdAt: now,
       updatedAt: now,
-      feePaid: false, // Will be set to true after fee deduction
-      // feeDetails will be set after calculating/confirming fee.
+      feePaid: false, 
       presale: data.presaleDetails ? {
-          totalQuoteRaised: 0,
+          totalQuoteRaised: BigInt(0), // Initialize with BigInt(0)
           participants: [],
           status: 'NOT_STARTED'
       } : undefined,
     };
     
-    // Here, we'd ideally save `launchpadProject` to the database (e.g., via cache.insertOne)
-    // and then proceed with other steps. If any subsequent step fails, we might need to update
-    // its status to FAILED or trigger a rollback.
-
-    // For now, we'll assume this is the primary record created by this transaction.
-    // The actual token minting/distribution and presale management would happen in subsequent
-    // phases/transactions or be handled by a dedicated launchpad module/service that watches
-    // for these `Launchpad` documents.
-    
-    // This 'process' function's main job might be to:
-    //   a. Validate (if not already done).
-    //   b. Deduct fees.
-    //   c. Create the initial `Launchpad` record with status `UPCOMING` or `PRESALE_SCHEDULED`.
-    //   d. Emit an event.
-
-    // The actual creation of the Token (_id, owner, etc.) might happen at TGE,
-    // triggered by a separate mechanism or as part of a state transition on the Launchpad object.
-    // For simplicity in this transaction, we are not creating the 'Token' document itself yet,
-    // as that usually happens at TGE after presale success.
+    // Manually construct the object for DB with deep string conversion for BigInts
+    const dbDoc = {
+      ...launchpadProjectData,
+      tokenToLaunch: {
+        ...launchpadProjectData.tokenToLaunch,
+        totalSupply: toString(launchpadProjectData.tokenToLaunch.totalSupply),
+      },
+      tokenomicsSnapshot: {
+        ...launchpadProjectData.tokenomicsSnapshot,
+        totalSupply: toString(launchpadProjectData.tokenomicsSnapshot.totalSupply),
+        tokenDecimals: toString(launchpadProjectData.tokenomicsSnapshot.tokenDecimals),
+      },
+      presaleDetailsSnapshot: launchpadProjectData.presaleDetailsSnapshot ? {
+        ...launchpadProjectData.presaleDetailsSnapshot,
+        pricePerToken: toString(launchpadProjectData.presaleDetailsSnapshot.pricePerToken),
+        minContributionPerUser: toString(launchpadProjectData.presaleDetailsSnapshot.minContributionPerUser),
+        maxContributionPerUser: toString(launchpadProjectData.presaleDetailsSnapshot.maxContributionPerUser),
+        hardCap: toString(launchpadProjectData.presaleDetailsSnapshot.hardCap),
+        softCap: launchpadProjectData.presaleDetailsSnapshot.softCap ? toString(launchpadProjectData.presaleDetailsSnapshot.softCap) : undefined,
+      } : undefined,
+      presale: launchpadProjectData.presale ? {
+        ...launchpadProjectData.presale,
+        totalQuoteRaised: toString(launchpadProjectData.presale.totalQuoteRaised),
+        participants: launchpadProjectData.presale.participants.map(p => ({
+            ...p,
+            quoteAmountContributed: toString(p.quoteAmountContributed),
+            tokensAllocated: p.tokensAllocated ? toString(p.tokensAllocated) : undefined,
+        }))
+      } : undefined,
+      feeDetails: launchpadProjectData.feeDetails ? { // If feeDetails were added and had BigInt
+          ...launchpadProjectData.feeDetails,
+          amount: toString(launchpadProjectData.feeDetails.amount)
+      } : undefined
+    };
 
     await new Promise<void>((resolve, reject) => {
-        cache.insertOne('launchpads', launchpadProject, (err, result) => {
+        cache.insertOne('launchpads', dbDoc as any, (err, result) => { // Use `as any` due to type mismatch with current LaunchpadDB
             if (err || !result) {
-                logger.error(`[launchpad-launch-token] CRITICAL: Failed to save launchpad project ${launchpadId}: ${err || 'no result'}.`);
-                return reject(err || new Error('Failed to save launchpad project'));
+                logger.error(`[launchpad-launch-token] CRITICAL: Failed to save launchpad ${launchpadId}: ${err || 'no result'}.`);
+                return reject(err || new Error('Failed to save launchpad'));
             }
-            logger.debug(`[launchpad-launch-token] Launchpad project ${launchpadId} created for token ${data.tokenSymbol}.`);
+            logger.debug(`[launchpad-launch-token] Launchpad ${launchpadId} created for ${data.tokenSymbol}.`);
             resolve();
         });
     });
 
-    // Log event
     const eventDocument = {
       type: 'launchpadLaunchTokenInitiated',
       timestamp: now,
@@ -155,18 +166,17 @@ export async function process(data: LaunchpadLaunchTokenData, sender: string): P
         launchpadId: launchpadId,
         tokenName: data.tokenName,
         tokenSymbol: data.tokenSymbol,
-        totalSupply: data.tokenomics.totalSupply,
-        status: launchpadProject.status,
+        totalSupply: toString(data.tokenomics.totalSupply),
+        status: launchpadProjectData.status,
       }
     };
     
-    await new Promise<void>((resolve, reject) => {
+    await new Promise<void>((resolve) => {
         cache.insertOne('events', eventDocument, (err, result) => {
             if (err || !result) {
-                logger.error(`[launchpad-launch-token] CRITICAL: Failed to log launchpadLaunchTokenInitiated event for ${launchpadId}: ${err || 'no result'}.`);
-                // Not rejecting the whole transaction for a failed event log, but logging critical error.
+                logger.error(`[launchpad-launch-token] CRITICAL: Failed to log event for ${launchpadId}: ${err || 'no result'}.`);
             }
-            resolve(); // Resolve even if event logging fails, to not halt the main process for this.
+            resolve();
         });
     });
 
@@ -175,7 +185,6 @@ export async function process(data: LaunchpadLaunchTokenData, sender: string): P
 
   } catch (error) {
     logger.error(`[launchpad-launch-token] Error processing launch request by ${sender}: ${error}`);
-    // TODO: Implement rollback logic if necessary (e.g., refund fee if deducted but subsequent step failed)
     return false;
   }
 } 

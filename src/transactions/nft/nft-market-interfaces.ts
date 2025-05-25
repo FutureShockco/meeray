@@ -1,4 +1,68 @@
+import { BigIntToString } from '../../utils/bigint-utils.js';
 import { OrderSide } from '../market/market-interfaces.js'; // Potentially for buy/sell side if making it more generic later
+
+/**
+ * NFT Market interfaces with BigInt values for application logic
+ */
+
+export interface NFTListingCreateData {
+    collectionId: string;   // Collection ID
+    tokenId: string;       // Token ID within the collection
+    price: bigint;         // Listing price in payment token
+    paymentToken: {        // Token accepted as payment
+        symbol: string;
+        issuer: string;
+    };
+    expiration?: string;   // ISO date string for listing expiration
+}
+
+export interface NFTListingCancelData {
+    listingId: string;     // Listing ID to cancel
+}
+
+export interface NFTListingPurchaseData {
+    listingId: string;     // Listing ID to purchase
+    buyer: string;         // Buyer's address
+}
+
+export interface NFTListing {
+    _id: string;           // Listing ID: hash(collectionId, tokenId, seller, timestamp)
+    collectionId: string;  // Collection ID
+    tokenId: string;      // Token ID within the collection
+    seller: string;       // Seller's address
+    price: bigint;        // Listing price in payment token
+    paymentToken: {       // Token accepted as payment
+        symbol: string;
+        issuer: string;
+    };
+    status: 'active' | 'sold' | 'cancelled';
+    expiration?: string;  // ISO date string for listing expiration
+    createdAt: string;
+    lastUpdatedAt?: string;
+}
+
+export interface NFTSale {
+    _id: string;          // Sale ID: hash(listingId, buyer, timestamp)
+    listingId: string;    // Original listing ID
+    collectionId: string; // Collection ID
+    tokenId: string;     // Token ID within the collection
+    seller: string;      // Seller's address
+    buyer: string;       // Buyer's address
+    price: bigint;       // Sale price in payment token
+    paymentToken: {      // Token used for payment
+        symbol: string;
+        issuer: string;
+    };
+    royaltyAmount?: bigint;  // Amount paid as royalty
+    timestamp: string;    // ISO date string
+}
+
+/**
+ * Database types (automatically converted from base types)
+ */
+export type NFTListingCreateDataDB = BigIntToString<NFTListingCreateData>;
+export type NFTListingDB = BigIntToString<NFTListing>;
+export type NFTSaleDB = BigIntToString<NFTSale>;
 
 export interface NftListing {
   _id: string; // Unique ID for the listing (e.g., collectionSymbol-instanceId-listerAddress or a UUID)

@@ -1,5 +1,5 @@
 import validateInteger from './integer.js';
-import validateFloat from './float.js';
+import validateBigInt from './bigint.js';
 
 /**
  * Type validation functions
@@ -20,10 +20,10 @@ interface ParameterGroup {
  * Validation types for different types of values
  */
 const types: Record<string, ValidationType> = {
-    posInt: (val: any) => validateInteger(val, true, false),
-    posNonZeroInt: (val: any) => validateInteger(val, false, false),
-    posFloat: (val: any) => validateFloat(val, true, false),
-    posNonZeroFloat: (val: any) => validateFloat(val, false, false)
+    posInt: (val: any) => validateBigInt(val, false, false),
+    posNonZeroInt: (val: any) => validateBigInt(val, false, false, undefined, BigInt(1)),
+    posAmount: (val: any) => validateBigInt(val, true, false),
+    posNonZeroAmount: (val: any) => validateBigInt(val, false, false, undefined, BigInt(1))
 };
 
 /**
@@ -33,7 +33,7 @@ const types: Record<string, ValidationType> = {
 const groups: Record<string, ParameterGroup> = {
     ecoRentTimes: {
         members: ['ecoRentStartTime', 'ecoRentEndTime', 'ecoClaimTime'],
-        validate: (v1: number, v2: number, v3: number) => v1 < v2 && v2 < v3
+        validate: (v1: bigint, v2: bigint, v3: bigint) => v1 < v2 && v2 < v3
     }
 };
 
@@ -52,10 +52,10 @@ const groupsInv: Record<string, string> = (() => {
  * Chain parameters with their validation functions
  */
 const parameters: Record<string, ValidationType> = {
-    ecoStartRent: types.posFloat,
-    ecoBaseRent: types.posFloat,
-    ecoDvRentFactor: types.posFloat,
-    ecoPunishPercent: types.posFloat,
+    ecoStartRent: types.posAmount,
+    ecoBaseRent: types.posAmount,
+    ecoDvRentFactor: types.posAmount,
+    ecoPunishPercent: types.posAmount,
     ecoRentStartTime: types.posNonZeroInt,
     ecoRentEndTime: types.posNonZeroInt,
     ecoClaimTime: types.posNonZeroInt,

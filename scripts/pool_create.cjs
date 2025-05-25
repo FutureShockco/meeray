@@ -1,67 +1,27 @@
-const { Client, PrivateKey } = require('dsteem');
-const fs = require('fs');
-const path = require('path');
-
-// Configuration
-const STEEM_API_URL = 'https://api.justyy.com';
-const KEYS_FILE_PATH = path.join(__dirname, 'keys.json');
+const { getClient, getRandomAccount, generateRandomPoolData, sendCustomJson } = require('./helpers.cjs');
 
 async function main() {
-    const client = new Client(STEEM_API_URL);
-    let privateKeysData;
-    try {
-        const keysFileContent = fs.readFileSync(KEYS_FILE_PATH, 'utf8');
-        privateKeysData = JSON.parse(keysFileContent);
-        if (!privateKeysData || !Array.isArray(privateKeysData) || privateKeysData.length === 0) {
-            console.error('Error: keys.json is missing, empty, or not an array.');
-            process.exit(1);
-        }
-    } catch (err) {
-        console.error(`Error loading or parsing ${KEYS_FILE_PATH}:`, err.message);
-        process.exit(1);
-    }
+    // Get client and random account
+    const { client, sscId } = await getClient();
+    const { username, privateKey } = await getRandomAccount();
 
-    const signingPrivateKeyString = privateKeysData[0]; // echelon-tesla's active key
-    const steemAccount = 'echelon-tesla'; // Account authorizing the transaction
-    const tokenIssuerAccount = 'echelon-token-issuer'; // Placeholder for token issuer
+    // Generate random pool data
+    const poolCreateData = generateRandomPoolData();
 
-    const poolCreateData = {
-        tokenA_symbol: "TKA",
-        tokenA_issuer: tokenIssuerAccount,
-        tokenB_symbol: "TKB",
-        tokenB_issuer: tokenIssuerAccount,
-        feeTier: 30 // e.g., 0.3%
-    };
-
-    const customJsonOperation = [
-        'custom_json',
-        {
-            required_auths: [steemAccount],
-            required_posting_auths: [],
-            id: 'sidechain',
-            json: JSON.stringify({
-                contract: 'pool_create',
-                payload: poolCreateData
-            })
-        }
-    ];
-
-    console.log('Attempting to broadcast Pool Create operation:');
-    console.log(JSON.stringify(customJsonOperation, null, 2));
+    console.log(`Creating pool with account ${username}:`);
+    console.log(JSON.stringify(poolCreateData, null, 2));
 
     try {
-        const result = await client.broadcast.sendOperations(
-            [customJsonOperation],
-            PrivateKey.fromString(signingPrivateKeyString)
+        await sendCustomJson(
+            client,
+            sscId,
+            'pool_create',
+            poolCreateData,
+            username,
+            privateKey
         );
-        console.log('Pool Create operation broadcasted successfully!');
-        console.log('Transaction ID:', result.id);
-        console.log('Block Number:', result.block_num);
     } catch (error) {
-        console.error('Error broadcasting Pool Create operation:', error.message);
-        if (error.data && error.data.stack) {
-            console.error('dsteem error data:', JSON.stringify(error.data, null, 2));
-        }
+        console.error('Pool creation failed.');
     }
 }
 

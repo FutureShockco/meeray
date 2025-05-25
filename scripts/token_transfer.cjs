@@ -1,66 +1,34 @@
-const { Client, PrivateKey } = require('dsteem');
-const fs = require('fs');
-const path = require('path');
-
-// Configuration
-const STEEM_API_URL = 'https://api.justyy.com';
-const KEYS_FILE_PATH = path.join(__dirname, 'keys.json');
+const { getClient, getRandomAccount, sendCustomJson } = require('./helpers.cjs');
 
 async function main() {
-    const client = new Client(STEEM_API_URL);
-    let privateKeysData;
-    try {
-        const keysFileContent = fs.readFileSync(KEYS_FILE_PATH, 'utf8');
-        privateKeysData = JSON.parse(keysFileContent);
-        if (!privateKeysData || !Array.isArray(privateKeysData) || privateKeysData.length === 0) {
-            console.error('Error: keys.json is missing, empty, or not an array.');
-            process.exit(1);
-        }
-    } catch (err) {
-        console.error(`Error loading or parsing ${KEYS_FILE_PATH}:`, err.message);
-        process.exit(1);
-    }
+    // Get client and random account
+    const { client, sscId } = await getClient();
+    const { username, privateKey } = await getRandomAccount();
 
-    const signingPrivateKeyString = privateKeysData[0]; // echelon-edison's active key
-    const senderAccount = 'echelon-edison'; 
-    const recipientAccount = 'echelon-darwin';
+    // For this example, we'll transfer to a specific account from .env
+    const ACCOUNT_B_NAME = process.env.TEST_ACCOUNT_B_NAME || 'echelon-edison';
 
     const tokenTransferData = {
-        symbol: "FUNKY",
-        to: recipientAccount,
-        amount: 123,
-        memo: "Have some FUNKY tokens!"
+        symbol: "TESTTKN", // Should match an existing token
+        to: ACCOUNT_B_NAME,
+        amount: "100",
+        memo: "Test transfer"
     };
 
-    const customJsonOperation = [
-        'custom_json',
-        {
-            required_auths: [senderAccount],
-            required_posting_auths: [],
-            id: 'sidechain',
-            json: JSON.stringify({
-                contract: 'token_transfer',
-                payload: tokenTransferData
-            })
-        }
-    ];
-
-    console.log('Attempting to broadcast Token Transfer operation:');
-    console.log(JSON.stringify(customJsonOperation, null, 2));
+    console.log(`Transferring tokens with account ${username}:`);
+    console.log(JSON.stringify(tokenTransferData, null, 2));
 
     try {
-        const result = await client.broadcast.sendOperations(
-            [customJsonOperation],
-            PrivateKey.fromString(signingPrivateKeyString)
+        await sendCustomJson(
+            client,
+            sscId,
+            'token_transfer',
+            tokenTransferData,
+            username,
+            privateKey
         );
-        console.log('Token Transfer operation broadcasted successfully!');
-        console.log('Transaction ID:', result.id);
-        console.log('Block Number:', result.block_num);
     } catch (error) {
-        console.error('Error broadcasting Token Transfer operation:', error.message);
-        if (error.data && error.data.stack) {
-            console.error('dsteem error data:', JSON.stringify(error.data, null, 2));
-        }
+        console.error('Token transfer failed.');
     }
 }
 

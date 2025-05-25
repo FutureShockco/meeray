@@ -1,10 +1,10 @@
 import chainConfig from './chainConfig.js';
 import array from './array.js';
 import integer from './integer.js';
-import float from './float.js';
 import json from './json.js';
 import publicKey from './publicKey.js';
 import string from './string.js';
+import bigint from './bigint.js';
 
 /**
  * Chain configuration validation
@@ -25,10 +25,10 @@ export interface ValidationModule {
     chainConfig: ChainConfig;
     array: (value: any, maxLength?: number) => boolean;
     integer: (value: any, canBeZero?: boolean, canBeNegative?: boolean, max?: number, min?: number) => boolean;
-    float: (value: any, canBeZero?: boolean, canBeNegative?: boolean, max?: number, min?: number) => boolean;
     json: (value: any, max: number) => boolean;
     publicKey: (value: any, max?: number) => boolean;
     string: (value: any, maxLength?: number, minLength?: number, allowedChars?: string, allowedCharsMiddle?: string) => boolean;
+    bigint: (value: string | bigint, allowZero?: boolean, allowNegative?: boolean, maxValue?: bigint, minValue?: bigint) => boolean;
 }
 
 /**
@@ -38,10 +38,10 @@ const validation: ValidationModule = {
     chainConfig,
     array,
     integer,
-    float,
     json,
     publicKey,
-    string
+    string,
+    bigint
 };
 
 export default validation; 

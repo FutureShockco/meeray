@@ -2,6 +2,7 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js'; // Shared validation module
 import { TokenUpdateData } from './token-interfaces.js'; // Import from new interfaces file
+import config from '../../config.js';
 
 export async function validateTx(data: TokenUpdateData, sender: string): Promise<boolean> {
   try {
@@ -16,7 +17,7 @@ export async function validateTx(data: TokenUpdateData, sender: string): Promise
         return false;
     }
 
-    if (!validate.string(data.symbol, 10, 3, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")) {
+    if (!validate.string(data.symbol, 10, 3, config.tokenSymbolAllowedChars)) {
       logger.warn(`[token-update] Invalid token symbol format for lookup: ${data.symbol}.`);
       return false;
     }
@@ -101,13 +102,14 @@ export async function process(data: TokenUpdateData, sender: string): Promise<bo
     
     // Log event
     const eventDocument = {
-        type: 'tokenUpdate',
-        timestamp: new Date().toISOString(), 
-        actor: sender,
-        data: {
-            symbol: data.symbol,
-            updatedFields: originalFieldsUpdated // Log only the fields that were actually changed
-        }
+      _id: Date.now().toString(36),
+      type: 'tokenUpdate',
+      timestamp: new Date().toISOString(), 
+      actor: sender,
+      data: {
+          symbol: data.symbol,
+          updatedFields: originalFieldsUpdated // Log only the fields that were actually changed
+      }
     };
     await new Promise<void>((resolve) => {
         cache.insertOne('events', eventDocument, (err, result) => {

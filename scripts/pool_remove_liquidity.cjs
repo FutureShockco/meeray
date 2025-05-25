@@ -1,67 +1,36 @@
-const { Client, PrivateKey } = require('dsteem');
-const fs = require('fs');
-const path = require('path');
-
-// Configuration
-const STEEM_API_URL = 'https://api.justyy.com';
-const KEYS_FILE_PATH = path.join(__dirname, 'keys.json');
+const { getClient, getRandomAccount, generateRandomPoolOperation, sendCustomJson } = require('./helpers.cjs');
 
 async function main() {
-    const client = new Client(STEEM_API_URL);
-    let privateKeysData;
-    try {
-        const keysFileContent = fs.readFileSync(KEYS_FILE_PATH, 'utf8');
-        privateKeysData = JSON.parse(keysFileContent);
-        if (!privateKeysData || !Array.isArray(privateKeysData) || privateKeysData.length === 0) {
-            console.error('Error: keys.json is missing, empty, or not an array.');
-            process.exit(1);
-        }
-    } catch (err) {
-        console.error(`Error loading or parsing ${KEYS_FILE_PATH}:`, err.message);
-        process.exit(1);
-    }
+    // Get client and random account
+    const { client, sscId } = await getClient();
+    const { username, privateKey } = await getRandomAccount();
 
-    const signingPrivateKeyString = privateKeysData[0]; // echelon-edison's active key
-    const providerAccount = 'echelon-edison'; 
+    // IMPORTANT: Replace with an actual poolId and ensure account has LP tokens for this pool
+    const poolIdPlaceholder = `pool-${Date.now()}`; // This is just an example, use a real pool ID
 
-    // IMPORTANT: Replace with an actual poolId and ensure providerAccount has LP tokens for this pool
-    const poolIdPlaceholder = "pool-tka-tkb-example-id";
+    // Generate random LP token amount
+    const { amount: lpTokenAmount } = generateRandomPoolOperation();
 
     const removeLiquidityData = {
         poolId: poolIdPlaceholder,
-        provider: providerAccount,
-        lpTokenAmount: 50.0 // Amount of LP tokens to burn/redeem
+        provider: username,
+        lpTokenAmount // Amount of LP tokens to burn/redeem
     };
 
-    const customJsonOperation = [
-        'custom_json',
-        {
-            required_auths: [providerAccount],
-            required_posting_auths: [],
-            id: 'sidechain',
-            json: JSON.stringify({
-                contract: 'pool_remove_liquidity',
-                payload: removeLiquidityData
-            })
-        }
-    ];
-
-    console.log('Attempting to broadcast Pool Remove Liquidity operation:');
-    console.log(JSON.stringify(customJsonOperation, null, 2));
+    console.log(`Removing liquidity from pool with account ${username}:`);
+    console.log(JSON.stringify(removeLiquidityData, null, 2));
 
     try {
-        const result = await client.broadcast.sendOperations(
-            [customJsonOperation],
-            PrivateKey.fromString(signingPrivateKeyString)
+        await sendCustomJson(
+            client,
+            sscId,
+            'pool_remove_liquidity',
+            removeLiquidityData,
+            username,
+            privateKey
         );
-        console.log('Pool Remove Liquidity operation broadcasted successfully!');
-        console.log('Transaction ID:', result.id);
-        console.log('Block Number:', result.block_num);
     } catch (error) {
-        console.error('Error broadcasting Pool Remove Liquidity operation:', error.message);
-        if (error.data && error.data.stack) {
-            console.error('dsteem error data:', JSON.stringify(error.data, null, 2));
-        }
+        console.error('Pool liquidity removal failed.');
     }
 }
 

@@ -19,7 +19,7 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
       return false;
     }
 
-    if (!validate.string(data.collectionSymbol, 10, 3, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")) {
+    if (!validate.string(data.collectionSymbol, 10, 3, config.tokenSymbolAllowedChars)) {
       logger.warn(`[nft-list-item] Invalid collection symbol format: ${data.collectionSymbol}.`);
       return false;
     }
@@ -119,6 +119,7 @@ export async function process(data: NftListPayload, sender: string): Promise<str
 
     // Log event
     const eventDocument = {
+      _id: Date.now().toString(36),
       type: 'nftListItem',
       timestamp: new Date().toISOString(),
       actor: sender,

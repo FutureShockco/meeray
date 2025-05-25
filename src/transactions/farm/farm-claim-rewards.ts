@@ -3,6 +3,7 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { FarmClaimRewardsData, Farm, UserFarmPosition } from './farm-interfaces.js';
 import { getAccount, adjustBalance } from '../../utils/account-utils.js'; // For actual reward transfer later
+import { toString } from '../../utils/bigint-utils.js'; // Import toString
 
 export async function validateTx(data: FarmClaimRewardsData, sender: string): Promise<boolean> {
   try {
@@ -65,46 +66,47 @@ export async function process(data: FarmClaimRewardsData, sender: string): Promi
     // - farm.rewardRate, farm.rewardState (e.g., accumulatedRewardsPerShare, lastDistributionTime)
     // - userFarmPos.stakedLpAmount, userFarmPos.rewardDebt (if using MasterChef-like model)
     // - Time elapsed since last claim or last update to farm/user position.
-    const rewardsToClaim = 0; // No rewards calculated yet.
-    logger.debug(`[farm-claim-rewards] Placeholder: Calculated ${rewardsToClaim} ${farm.rewardTokenSymbol} rewards for ${data.staker} from farm ${data.farmId}.`);
+    const rewardsToClaim = BigInt(0); // No rewards calculated yet.
+    logger.debug(`[farm-claim-rewards] Placeholder: Calculated ${toString(rewardsToClaim)} ${farm.rewardToken.symbol} rewards for ${data.staker} from farm ${data.farmId}.`);
 
-    if (rewardsToClaim > 0) {
-      // TODO: Transfer rewardsToClaim of farm.rewardTokenSymbol (from farm.rewardTokenIssuer) 
+    if (rewardsToClaim > BigInt(0)) {
+      // TODO: Transfer rewardsToClaim of farm.rewardToken.symbol (from farm.rewardTokenIssuer) 
       // from a designated farm rewards account/escrow to data.staker account.
       // This would involve: 
       // 1. Checking farm's reward pool balance.
       // 2. Calling adjustBalance for the farm's reward pool (debit).
       // 3. Calling adjustBalance for the staker (credit).
       // This needs careful atomicity and error handling.
-      logger.debug(`[farm-claim-rewards] Placeholder: Would transfer ${rewardsToClaim} ${farm.rewardTokenSymbol} to ${data.staker}.`);
+      logger.debug(`[farm-claim-rewards] Placeholder: Would transfer ${toString(rewardsToClaim)} ${farm.rewardToken.symbol} to ${data.staker}.`);
     }
 
     // Update lastClaimedAt in UserFarmPosition, even if rewardsToClaim is 0, to mark the claim attempt.
     const userPosUpdateSuccess = await cache.updateOnePromise(
         'userFarmPositions',
         { _id: userFarmPositionId },
-        { $set: { lastClaimedAt: new Date().toISOString() } }
+        { $set: { lastHarvestTime: new Date().toISOString() } }
     );
 
     if (!userPosUpdateSuccess) {
         // This is not ideal, as the claim was processed (even if 0 rewards) but not marked.
         // However, if rewards were transferred, this becomes more critical.
-        logger.warn(`[farm-claim-rewards] Failed to update lastClaimedAt for ${userFarmPositionId}.`);
+        logger.warn(`[farm-claim-rewards] Failed to update lastHarvestTime for ${userFarmPositionId}.`);
         // Depending on rewards transferred, might not want to return false here if rewards WERE sent.
     }
 
-    logger.debug(`[farm-claim-rewards] ${data.staker} claimed rewards from farm ${data.farmId}. Amount: ${rewardsToClaim} ${farm.rewardTokenSymbol}.`);
+    logger.debug(`[farm-claim-rewards] ${data.staker} claimed rewards from farm ${data.farmId}. Amount: ${toString(rewardsToClaim)} ${farm.rewardToken.symbol}.`);
 
     const eventDocument = {
+      // _id: Date.now().toString(36), // Not needed if MongoDB auto-generates _id for events
       type: 'farmClaimRewards',
       timestamp: new Date().toISOString(),
       actor: sender,
       data: {
         farmId: data.farmId,
         staker: data.staker,
-        rewardTokenSymbol: farm.rewardTokenSymbol,
-        rewardTokenIssuer: farm.rewardTokenIssuer,
-        rewardsClaimed: rewardsToClaim // Will be 0 for now
+        rewardTokenSymbol: farm.rewardToken.symbol,
+        rewardTokenIssuer: farm.rewardToken.issuer,
+        rewardsClaimed: toString(rewardsToClaim) 
       }
     };
     await new Promise<void>((resolve) => {

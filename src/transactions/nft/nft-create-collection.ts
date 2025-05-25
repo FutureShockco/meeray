@@ -12,7 +12,7 @@ export async function validateTx(data: NftCreateCollectionData, sender: string):
     }
 
     // Validate symbol: e.g., 3-10 uppercase letters
-    if (!validate.string(data.symbol, 10, 3, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")) {
+    if (!validate.string(data.symbol, 10, 3, config.tokenSymbolAllowedChars)) {
       logger.warn(`[nft-create-collection] Invalid symbol: ${data.symbol}. Must be 3-10 uppercase letters.`);
       return false;
     }
@@ -122,6 +122,7 @@ export async function process(data: NftCreateCollectionData, sender: string): Pr
 
     // Log event
     const eventDocument = {
+      _id: Date.now().toString(36),
       type: 'nftCreateCollection',
       timestamp: new Date().toISOString(),
       actor: sender,
