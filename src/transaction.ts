@@ -9,6 +9,7 @@ import chain from './chain.js';
 import cache from './cache.js';
 import { transactionHandlers } from './transactions/index.js';
 import cloneDeep from 'clone-deep';
+import { toBigInt, toString } from './utils/bigint-utils.js';
 const MAX_MEMPOOL_SIZE = parseInt(process.env.MEMPOOL_SIZE || '2000', 10);
 
 
@@ -211,7 +212,7 @@ const transaction: TransactionModule = {
         });
     },
 
-    adjustNodeAppr: (acc: any, newCoins: number, cb: (success: boolean) => void): void => {
+    adjustNodeAppr: async (acc: any, newCoins: number, cb: (success: boolean) => void): Promise<void> => {
         if (!acc.votedWitnesses || acc.votedWitnesses.length === 0 || !newCoins || newCoins === 0) {
             cb(true);
             return;
@@ -221,41 +222,59 @@ const transaction: TransactionModule = {
         const witness_share_before = acc.votedWitnesses.length > 0 ? Math.floor(balance_before / acc.votedWitnesses.length) : 0;
 
         const balance_after = balance_before + newCoins;
-        // Ensure balance_after is not negative if newCoins could be negative, though rewards are positive.
-        // const new_balance_non_negative = Math.max(0, balance_after); 
-        // For now, assuming newCoins is always positive as it's from 'reward'.
-
         const witness_share_after = acc.votedWitnesses.length > 0 ? Math.floor(balance_after / acc.votedWitnesses.length) : 0;
 
         const diff_per_witness = witness_share_after - witness_share_before;
 
-        if (diff_per_witness === 0) { // If the share difference is zero, no update needed
+        if (diff_per_witness === 0) { 
             cb(true);
             return;
         }
 
-        const witnesses_to_update: string[] = [...acc.votedWitnesses];
+        const witnesses_to_update_names: string[] = [...acc.votedWitnesses];
 
-        logr.debug(`NodeAppr Update for voter ${acc.name}: newCoins=${newCoins}, balance_before=${balance_before}, balance_after=${balance_after}, share_before=${witness_share_before}, share_after=${witness_share_after}, diff_per_witness=${diff_per_witness}, witnesses_count=${witnesses_to_update.length}`);
+        logr.debug(`NodeAppr Update for voter ${acc.name}: newCoins=${newCoins}, balance_before=${balance_before}, balance_after=${balance_after}, share_before=${witness_share_before}, share_after=${witness_share_after}, diff_per_witness=${diff_per_witness}, witnesses_count=${witnesses_to_update_names.length}`);
 
-        if (witnesses_to_update.length === 0) { 
+        if (witnesses_to_update_names.length === 0) { 
             cb(true);
             return;
         }
 
-        cache.updateMany(
-            'accounts',
-            { name: { $in: witnesses_to_update } },
-            { $inc: { totalVoteWeight: diff_per_witness } }, // This will be applied to each witness in the $in list
-            function (err: Error | null) {
-                if (err) {
-                    logr.error(`[adjustNodeAppr] Error in cache.updateMany for ${acc.name}'s voted witnesses:`, err);
-                    cb(false); 
-                    return;
+        try {
+            const diffBigInt = BigInt(diff_per_witness);
+            // Fetch all witness accounts that need updating
+            // Assuming cache.find can take an array for `name` field with $in operator style, or we loop and fetch one by one.
+            // For simplicity, let's assume we fetch them one by one in a loop for now or use a method that gets multiple.
+            // cache.findPromise or equivalent would be better if it supports $in efficiently.
+            // Here, we iterate through names and update one by one.
+
+            let allUpdatesSuccessful = true;
+            for (const witnessName of witnesses_to_update_names) {
+                const witnessAccount = await cache.findOnePromise('accounts', { name: witnessName });
+                if (witnessAccount) {
+                    const currentVoteWeightStr = witnessAccount.totalVoteWeight || toString(BigInt(0));
+                    const currentVoteWeightBigInt = toBigInt(currentVoteWeightStr);
+                    let newVoteWeightBigInt = currentVoteWeightBigInt + diffBigInt;
+
+                    if (newVoteWeightBigInt < BigInt(0)) {
+                        newVoteWeightBigInt = BigInt(0); // Should not happen if diff_per_witness is positive for rewards
+                    }
+                    await cache.updateOnePromise(
+                        'accounts',
+                        { name: witnessName }, 
+                        { $set: { totalVoteWeight: toString(newVoteWeightBigInt) } }
+                    );
+                } else {
+                    logr.error(`[adjustNodeAppr] Witness account ${witnessName} not found for update by ${acc.name}.`);
+                    // Decide if one failure should mark all as failed. For now, continue but flag.
+                    allUpdatesSuccessful = false; 
                 }
-                cb(true);
             }
-        );
+            cb(allUpdatesSuccessful);
+        } catch (err: any) {
+            logr.error(`[adjustNodeAppr] Error during batch update for ${acc.name}'s voted witnesses:`, err);
+            cb(false); 
+        }
     }
 };
 

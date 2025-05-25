@@ -1,5 +1,7 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
+import { toBigInt, toString } from '../../utils/bigint-utils.js';
+import config from '../../config.js';
 
 export interface WitnessVoteData {
   target: string;
@@ -21,6 +23,11 @@ export async function validateTx(data: WitnessVoteData, sender: string): Promise
       return false;
     }
 
+    // Check if already voting for 30 witnesses
+    if (senderAccount.votedWitnesses?.length >= config.maxWitnesses) {
+      logger.warn(`Invalid witness vote: ${sender} already voting for ${senderAccount.votedWitnesses?.length} witnesses`);
+      return false;
+    }
     // Check if already voting for this witness
     if (senderAccount.votedWitnesses?.includes(data.target)) {
       logger.warn(`Invalid witness vote: ${sender} already voting for witness ${data.target}`);
@@ -42,21 +49,16 @@ export async function process(data: WitnessVoteData, sender: string): Promise<bo
       logger.error(`Sender account ${sender} not found for witness vote`);
       return false;
     }
-    
     // Initialize votedWitnesses array if it doesn't exist
     if (!senderAccount.votedWitnesses) {
       senderAccount.votedWitnesses = [];
     }
-
-    // Validate function should ensure data.target is not already in senderAccount.votedWitnesses
-    // If it might be (e.g., validate was bypassed), this logic needs to be more robust
-    // For now, assume validate works as intended.
-
-    const originalVotedWitnesses = [...senderAccount.votedWitnesses]; // Witnesses before this vote
+    // Witnesses before this vote
+    const originalVotedWitnesses = [...senderAccount.votedWitnesses];
     const balance = senderAccount.tokens?.ECH || 0;
 
     // Calculate the vote share these original witnesses had
-    const oldSharePerWitness = originalVotedWitnesses.length > 0 ? 
+    const oldSharePerWitness = originalVotedWitnesses.length > 0 ?
       Math.floor(balance / originalVotedWitnesses.length) : 0;
 
     // Construct the new list of voted witnesses, ensuring uniqueness using a Set
@@ -65,53 +67,63 @@ export async function process(data: WitnessVoteData, sender: string): Promise<bo
 
     // Check if the list actually changed.
     if (newVotedWitnessesList.length === originalVotedWitnesses.length && originalVotedWitnesses.includes(data.target)) {
-        logger.warn(`[witness-vote process] Sender ${sender} attempted to vote for ${data.target} again, or validate() check failed. No change to votedWitnesses list.`);
-        return true; 
+      logger.warn(`[witness-vote process] Sender ${sender} attempted to vote for ${data.target} again, or validate() check failed. No change to votedWitnesses list.`);
+      return true;
     }
-
     // Calculate the new vote share with the new target included
     const newSharePerWitness = newVotedWitnessesList.length > 0 ?
       Math.floor(balance / newVotedWitnessesList.length) : 0;
-
     try {
       await cache.updateOnePromise('accounts', { name: sender }, { $set: { votedWitnesses: newVotedWitnessesList } });
-      // Their vote share changes from oldSharePerWitness to newSharePerWitness
-      const adjustment = newSharePerWitness - oldSharePerWitness; // This will be negative or zero
+
+      const adjustment = BigInt(newSharePerWitness) - BigInt(oldSharePerWitness);
 
       for (const witnessName of originalVotedWitnesses) {
-        if (adjustment === 0) continue; // No change in share for this witness
+        if (adjustment === BigInt(0)) continue; // No change in share for this witness
 
         const witnessAccount = await cache.findOnePromise('accounts', { name: witnessName });
         if (witnessAccount) {
-          const currentTotalVoteWeight = witnessAccount.totalVoteWeight || 0;
-          // Since adjustment is negative, adding it will decrease. Clamp at 0.
-          const finalTotalVoteWeight = Math.max(0, currentTotalVoteWeight + adjustment);
-          await cache.updateOnePromise('accounts', { name: witnessName }, { $set: { totalVoteWeight: finalTotalVoteWeight } });
+          const currentTotalVoteWeightStr = witnessAccount.totalVoteWeight || toString(BigInt(0));
+          const currentTotalVoteWeightBigInt = toBigInt(currentTotalVoteWeightStr);
+
+          let newTotalVoteWeightBigInt = currentTotalVoteWeightBigInt + adjustment;
+          if (newTotalVoteWeightBigInt < BigInt(0)) {
+            newTotalVoteWeightBigInt = BigInt(0); // Clamp at 0
+          }
+          await cache.updateOnePromise('accounts', { name: witnessName }, { $set: { totalVoteWeight: toString(newTotalVoteWeightBigInt) } });
         } else {
-          logger.error(`[witness-vote] Witness account ${witnessName} not found when trying to adjust totalVoteWeight.`);
-          // Consider error handling/rollback implications
+          throw new Error(`Witness account ${witnessName} (previously voted by ${sender}) not found during vote weight adjustment for new vote on ${data.target}.`);
         }
       }
+      logger.debug(`[witness-vote process] Updating target ${data.target} for sender ${sender}: balance=${balance}, list length=${newVotedWitnessesList.length}, sharePerWitness=${newSharePerWitness}`);
 
-      logger.debug(`[witness-vote process] Updating target ${data.target} for sender ${sender}: balance=${balance}, newVotedWitnessesList.length=${newVotedWitnessesList.length}, newSharePerWitness=${newSharePerWitness}`);
-      await cache.updateOnePromise('accounts', { name: data.target }, { $inc: { totalVoteWeight: newSharePerWitness } });
-      
+      // Update the newly voted witness (data.target)
+      const targetAccount = await cache.findOnePromise('accounts', { name: data.target });
+      if (targetAccount) {
+        const currentTargetVoteWeightStr = targetAccount.totalVoteWeight || toString(BigInt(0));
+        const currentTargetVoteWeightBigInt = toBigInt(currentTargetVoteWeightStr);
+        const newSharePerWitnessBigInt = BigInt(newSharePerWitness);
+        const finalTargetVoteWeightBigInt = currentTargetVoteWeightBigInt + newSharePerWitnessBigInt;
+        // No need to clamp below zero here as newSharePerWitness should be positive
+        await cache.updateOnePromise('accounts', { name: data.target }, { $set: { totalVoteWeight: toString(finalTargetVoteWeightBigInt) } });
+      } else {
+        throw new Error(`Target account ${data.target} not found for final weight update.`);
+      }
       return true;
-    } catch (updateError) {
-      logger.error(`Error updating accounts during witness vote: ${updateError}`);
-      
+    } catch (updateError: any) {
+      logger.error('Error updating accounts during witness vote:', updateError);
       // Attempt to rollback sender's votedWitnesses list
       try {
         await cache.updateOnePromise('accounts', { name: sender }, { $set: { votedWitnesses: originalVotedWitnesses } });
         logger.warn(`Rolled back sender's votedWitnesses list for ${sender} due to update error.`);
-        // Note: Rolling back individual totalVoteWeight adjustments is much more complex and not attempted here.
-      } catch (rollbackError) {
-        logger.error(`Failed to rollback sender's votedWitnesses list: ${rollbackError}`);
+        // Note: We do not attempt to rollback individual totalVoteWeight adjustments here.
+      } catch (rollbackError: any) {
+        logger.error("Failed to rollback sender's votedWitnesses list:", rollbackError);
       }
       return false;
     }
-  } catch (error) {
-    logger.error(`Error processing witness vote: ${error}`);
+  } catch (error: any) {
+    logger.error('Error processing witness vote:', error);
     return false;
   }
 } 

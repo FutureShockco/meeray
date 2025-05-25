@@ -4,7 +4,7 @@ import validate from '../../validation/index.js';
 import config from '../../config.js';
 import transaction from '../../transaction.js';
 import { TokenTransferData, TokenTransferDataDB } from './token-interfaces.js';
-import { convertToBigInt, convertToString, toString, getTokenDecimals } from '../../utils/bigint-utils.js';
+import { convertToBigInt, convertToString, toString, getTokenDecimals, toBigInt } from '../../utils/bigint-utils.js';
 
 const BURN_ACCOUNT_NAME = config.burnAccountName || 'null';
 const NUMERIC_FIELDS: Array<keyof TokenTransferData> = ['amount'];
@@ -53,9 +53,10 @@ export async function validateTx(data: TokenTransferDataDB, sender: string): Pro
             return false;
         }
 
-        const senderBalance = convertToBigInt(senderAccount.balances?.[data.symbol] || '0', ['amount']);
-        if (senderBalance.amount < transferData.amount) {
-            logger.warn(`[token-transfer] Insufficient balance for ${sender}`);
+        const senderBalanceString = senderAccount.balances?.[data.symbol] || '0';
+        const currentSenderBalance = toBigInt(senderBalanceString);
+        if (currentSenderBalance < transferData.amount) {
+            logger.warn(`[token-transfer] Insufficient balance for ${sender}. Has: ${currentSenderBalance}, Needs: ${transferData.amount}`);
             return false;
         }
 
@@ -81,13 +82,19 @@ export async function process(sender: string, data: TokenTransferDataDB): Promis
         // Get sender's current balance
         const senderAccount = await cache.findOnePromise('accounts', { name: data.from });
         if (!senderAccount) {
-            logger.error(`[token-transfer] Sender account ${data.from} not found`);
+            logger.error(`[token-transfer:process] Sender account ${data.from} not found`);
             return false;
         }
 
-        // Convert balance string to BigInt with proper padding
-        const senderBalance = convertToBigInt(senderAccount.balances?.[data.symbol] || '0', ['amount']);
-        const newSenderBalance = senderBalance.amount - transferData.amount;
+        const senderBalanceString = senderAccount.balances?.[data.symbol] || '0';
+        const currentSenderBalance = toBigInt(senderBalanceString);
+        
+        // Defensive check (already in validateTx)
+        if (currentSenderBalance < transferData.amount) {
+            logger.error(`[token-transfer:process] Insufficient balance for ${data.from}. Has: ${currentSenderBalance}, Needs: ${transferData.amount}. Should have been caught by validateTx.`);
+            return false;
+        }
+        const newSenderBalance = currentSenderBalance - transferData.amount;
 
         // Deduct from sender with proper padding
         const deductSuccess = await cache.updateOnePromise(
@@ -105,8 +112,19 @@ export async function process(sender: string, data: TokenTransferDataDB): Promis
         if (data.to !== BURN_ACCOUNT_NAME) {
             // Get recipient's current balance
             const recipientAccount = await cache.findOnePromise('accounts', { name: data.to });
-            const recipientBalance = convertToBigInt(recipientAccount?.balances?.[data.symbol] || '0', ['amount']);
-            const newRecipientBalance = recipientBalance.amount + transferData.amount;
+            if (!recipientAccount) {
+                logger.error(`[token-transfer:process] Recipient account ${data.to} not found. Cannot transfer to non-existent account.`);
+                // Rollback sender deduction
+                 await cache.updateOnePromise(
+                    'accounts',
+                    { name: data.from },
+                    { $set: { [`balances.${data.symbol}`]: toString(currentSenderBalance) } } // Rollback to original balance
+                );
+                return false;
+            }
+            const recipientBalanceString = recipientAccount.balances?.[data.symbol] || '0';
+            const currentRecipientBalance = toBigInt(recipientBalanceString);
+            const newRecipientBalance = currentRecipientBalance + transferData.amount;
 
             // Add to recipient with proper padding
             const addSuccess = await cache.updateOnePromise(
@@ -120,7 +138,7 @@ export async function process(sender: string, data: TokenTransferDataDB): Promis
                 await cache.updateOnePromise(
                     'accounts',
                     { name: data.from },
-                    { $set: { [`balances.${data.symbol}`]: toString(senderBalance.amount) } }
+                    { $set: { [`balances.${data.symbol}`]: toString(currentSenderBalance) } }
                 );
                 logger.error(`[token-transfer] Failed to add to recipient ${data.to}`);
                 return false;
@@ -166,7 +184,7 @@ export async function process(sender: string, data: TokenTransferDataDB): Promis
 
         return true;
     } catch (error) {
-        logger.error(`[token-transfer] Error processing transfer: ${error}`);
+        logger.error(`[token-transfer:process] Error processing transfer: ${error}`);
         return false;
     }
 } 

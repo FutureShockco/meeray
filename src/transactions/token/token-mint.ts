@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { TokenMintData, TokenMintDataDB } from './token-interfaces.js';
 import config from '../../config.js';
-import { convertToBigInt, convertToString, toString } from '../../utils/bigint-utils.js';
+import { convertToBigInt, convertToString, toString, toBigInt } from '../../utils/bigint-utils.js';
 
 const NUMERIC_FIELDS: Array<keyof TokenMintData> = ['amount'];
 
@@ -71,47 +71,7 @@ export async function validateTx(data: TokenMintDataDB, sender: string): Promise
   }
 }
 
-export async function verifyTokenMint(sender: string, data: TokenMintDataDB): Promise<boolean> {
-    try {
-        // Convert string inputs to BigInt for verification
-        const mintData = convertToBigInt<TokenMintData>(data, NUMERIC_FIELDS);
-
-        // Get token info
-        const token = await cache.findOnePromise('tokens', { symbol: data.symbol });
-        if (!token) {
-            logger.error(`[verifyTokenMint] Token ${data.symbol} not found`);
-            return false;
-        }
-
-        // Convert token amounts to BigInt
-        const tokenData = convertToBigInt(token, ['maxSupply', 'currentSupply']);
-
-        // Verify mint amount
-        if (!validate.bigint(mintData.amount, false, false, undefined, BigInt(1))) {
-            logger.error(`[verifyTokenMint] Invalid mint amount: ${mintData.amount}`);
-            return false;
-        }
-
-        // Check if minting would exceed max supply
-        if (tokenData.currentSupply + mintData.amount > tokenData.maxSupply) {
-            logger.error(`[verifyTokenMint] Mint would exceed max supply for ${data.symbol}`);
-            return false;
-        }
-
-        // Verify sender is token creator
-        if (sender !== token.creator) {
-            logger.error(`[verifyTokenMint] Only token creator can mint. Sender: ${sender}, Creator: ${token.creator}`);
-            return false;
-        }
-
-        return true;
-    } catch (error) {
-        logger.error(`[verifyTokenMint] Error: ${error}`);
-        return false;
-    }
-}
-
-export async function processTokenMint(sender: string, data: TokenMintDataDB): Promise<boolean> {
+export async function process(sender: string, data: TokenMintDataDB): Promise<boolean> {
     try {
         // Convert string inputs to BigInt for processing
         const mintData = convertToBigInt<TokenMintData>(data, NUMERIC_FIELDS);
@@ -119,12 +79,25 @@ export async function processTokenMint(sender: string, data: TokenMintDataDB): P
         // Update token supply
         const token = await cache.findOnePromise('tokens', { symbol: data.symbol });
         if (!token) {
-            logger.error(`[processTokenMint] Token ${data.symbol} not found`);
+            logger.error(`[token-mint:process] Token ${data.symbol} not found`);
             return false;
+        }
+        if (!token.mintable) {
+          logger.error(`[token-mint:process] Token ${data.symbol} is not mintable. This should have been caught by validateTx.`);
+          return false;
+        }
+        if (sender !== token.creator) {
+          logger.error(`[token-mint:process] Only token creator can mint. Sender: ${sender}, Creator: ${token.creator}. This should have been caught by validateTx.`);
+          return false;
         }
 
         const tokenData = convertToBigInt(token, ['maxSupply', 'currentSupply']);
         const newSupply = tokenData.currentSupply + mintData.amount;
+
+        if (newSupply > tokenData.maxSupply) {
+          logger.error(`[token-mint:process] Mint would exceed max supply for ${data.symbol}. Current: ${tokenData.currentSupply}, Amount: ${mintData.amount}, Max: ${tokenData.maxSupply}. This should have been caught by validateTx.`);
+          return false;
+        }
 
         const updateTokenSuccess = await cache.updateOnePromise(
             'tokens',
@@ -133,25 +106,32 @@ export async function processTokenMint(sender: string, data: TokenMintDataDB): P
         );
 
         if (!updateTokenSuccess) {
-            logger.error(`[processTokenMint] Failed to update token supply for ${data.symbol}`);
+            logger.error(`[token-mint:process] Failed to update token supply for ${data.symbol}`);
             return false;
         }
 
-        // Update recipient balance with proper padding
-        const updateBalanceSuccess = await cache.updateOnePromise(
+        const recipientAccount = await cache.findOnePromise('accounts', { name: data.to });
+        if (!recipientAccount) {
+            logger.error(`[token-mint:process] Recipient account ${data.to} not found. Cannot mint to non-existent account.`);
+            return false;
+        }
+
+        const currentBalanceStr = recipientAccount.balances?.[data.symbol] || '0';
+        const currentBalance = toBigInt(currentBalanceStr);
+        const newBalance = currentBalance + mintData.amount;
+
+        const updateBalanceProperlySuccess = await cache.updateOnePromise(
             'accounts',
             { name: data.to },
-            { $inc: { [`balances.${data.symbol}`]: toString(mintData.amount) } }
+            { $set: { [`balances.${data.symbol}`]: toString(newBalance) } }
         );
 
-        if (!updateBalanceSuccess) {
-            logger.error(`[processTokenMint] Failed to update balance for ${data.to}`);
+        if (!updateBalanceProperlySuccess) {
+            logger.error(`[token-mint:process] Failed to update balance for ${data.to}`);
             return false;
         }
 
-        // Log event
         const eventDocument = {
-            _id: Date.now().toString(36),
             type: 'tokenMint',
             timestamp: new Date().toISOString(),
             actor: sender,
@@ -166,7 +146,7 @@ export async function processTokenMint(sender: string, data: TokenMintDataDB): P
         await new Promise<void>((resolve) => {
             cache.insertOne('events', eventDocument, (err, result) => {
                 if (err || !result) {
-                    logger.error(`[processTokenMint] Failed to log event: ${err || 'no result'}`);
+                    logger.error(`[token-mint:process] Failed to log event: ${err || 'no result'}`);
                 }
                 resolve();
             });
@@ -174,7 +154,7 @@ export async function processTokenMint(sender: string, data: TokenMintDataDB): P
 
         return true;
     } catch (error) {
-        logger.error(`[processTokenMint] Error: ${error}`);
+        logger.error(`[token-mint:process] Error: ${error}`);
         return false;
     }
 } 

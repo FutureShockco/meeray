@@ -1,5 +1,6 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
+import { toBigInt, toString } from '../../utils/bigint-utils.js';
 
 export interface WitnessUnvoteData {
   target: string;
@@ -62,26 +63,47 @@ export async function process(data: WitnessUnvoteData, sender: string): Promise<
       // 2. Update vote weights for remaining voted witnesses (their share increases)
       if (newVotedWitnesses.length > 0) {
         const adjustmentForRemaining = newVoteWeight - oldVoteWeight; // This will be positive
+        const adjustmentForRemainingBigInt = BigInt(adjustmentForRemaining);
+
         for (const witnessName of newVotedWitnesses) {
-            await cache.updateOnePromise('accounts', { name: witnessName }, { $inc: { totalVoteWeight: adjustmentForRemaining } });
+            const witnessAccount = await cache.findOnePromise('accounts', { name: witnessName });
+            if (witnessAccount) {
+                const currentVoteWeightStr = witnessAccount.totalVoteWeight || toString(BigInt(0));
+                const currentVoteWeightBigInt = toBigInt(currentVoteWeightStr);
+                const newVoteWeightBigInt = currentVoteWeightBigInt + adjustmentForRemainingBigInt;
+                await cache.updateOnePromise('accounts', { name: witnessName }, { $set: { totalVoteWeight: toString(newVoteWeightBigInt) } });
+            } else {
+                logger.error(`[witness-unvote] Witness account ${witnessName} not found when trying to adjust totalVoteWeight during share increase.`);
+                // If a remaining witness isn't found, this could lead to inconsistent vote weights.
+                // Consider throwing to trigger rollback.
+                throw new Error(`Witness ${witnessName} not found for vote weight adjustment.`);
+            }
         }
       }
       
       // 3. Remove votes from unvoted witness (data.target) - ensure totalVoteWeight doesn't go negative
       const targetAccount = await cache.findOnePromise('accounts', { name: data.target });
       if (targetAccount) {
-        const currentTotalVoteWeight = targetAccount.totalVoteWeight || 0;
-        const finalTotalVoteWeight = Math.max(0, currentTotalVoteWeight - oldVoteWeight);
-        await cache.updateOnePromise('accounts', { name: data.target }, { $set: { totalVoteWeight: finalTotalVoteWeight } });
+        const oldVoteWeightBigInt = BigInt(oldVoteWeight);
+        const currentTotalVoteWeightStr = targetAccount.totalVoteWeight || toString(BigInt(0));
+        const currentTotalVoteWeightBigInt = toBigInt(currentTotalVoteWeightStr);
+        
+        let newTotalVoteWeightBigInt = currentTotalVoteWeightBigInt - oldVoteWeightBigInt;
+        if (newTotalVoteWeightBigInt < BigInt(0)) {
+            newTotalVoteWeightBigInt = BigInt(0); // Clamp at 0
+        }
+        await cache.updateOnePromise('accounts', { name: data.target }, { $set: { totalVoteWeight: toString(newTotalVoteWeightBigInt) } });
       } else {
         logger.error(`[witness-unvote] Target account ${data.target} not found when trying to decrement totalVoteWeight.`);
         // Decide if this should throw or be part of a larger transaction rollback
+        // Throwing an error here to ensure the catch block handles rollback
+        throw new Error(`Target account ${data.target} not found for final weight update.`);
       }
       
       logger.debug(`Witness unvote from ${sender} to ${data.target} processed successfully`);
       return true;
-    } catch (updateError) {
-      logger.error(`Error updating accounts during witness unvote: ${updateError}`);
+    } catch (updateError: any) {
+      logger.error('Error updating accounts during witness unvote:', updateError);
       
       // Try to rollback the sender account changes
       try {
@@ -93,14 +115,14 @@ export async function process(data: WitnessUnvoteData, sender: string): Promise<
           await cache.updateOnePromise('accounts', { name: sender }, { $set: { votedWitnesses: rolledBackVotedWitnesses } });
           logger.debug(`Rolled back witness unvote changes for ${sender}`);
         }
-      } catch (rollbackError) {
-        logger.error(`Failed to rollback witness unvote changes: ${rollbackError}`);
+      } catch (rollbackError: any) {
+        logger.error('Failed to rollback witness unvote changes:', rollbackError);
       }
       
       return false;
     }
-  } catch (error) {
-    logger.error(`Error processing witness unvote: ${error}`);
+  } catch (error: any) {
+    logger.error('Error processing witness unvote:', error);
     return false;
   }
 } 

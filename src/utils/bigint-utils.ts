@@ -95,6 +95,18 @@ export type BigIntToString<T> = {
     [K in keyof T]: T[K] extends bigint ? string : T[K];
 };
 
+export type RecursiveBigIntToString<T> = {
+  [P in keyof T]: T[P] extends bigint
+    ? string
+    : T[P] extends Array<infer U>
+    ? Array<RecursiveBigIntToString<U>>
+    : T[P] extends object | null | undefined
+    ? T[P] extends null | undefined
+      ? T[P]
+      : RecursiveBigIntToString<T[P]>
+    : T[P];
+};
+
 export type StringToBigInt<T> = {
     [K in keyof T]: T[K] extends string ? bigint : T[K];
 };
@@ -123,6 +135,37 @@ export function convertToString<T>(obj: T, numericFields: (keyof T)[]): BigIntTo
         }
     }
     return result as BigIntToString<T>;
+}
+
+/**
+ * Recursively convert all BigInt fields in an object (and its nested objects/arrays) to strings.
+ */
+export function convertAllBigIntToStringRecursive<T extends object>(obj: T): RecursiveBigIntToString<T> {
+    if (obj === null || typeof obj !== 'object') {
+        return obj as any; // Should not happen if T is constrained to object, but good for safety
+    }
+
+    const result: any = Array.isArray(obj) ? [] : {};
+
+    for (const key in obj) {
+        if (Object.prototype.hasOwnProperty.call(obj, key)) {
+            const value = obj[key];
+            if (typeof value === 'bigint') {
+                result[key] = toString(value);
+            } else if (Array.isArray(value)) {
+                result[key] = value.map(item => 
+                    typeof item === 'object' && item !== null 
+                        ? convertAllBigIntToStringRecursive(item) 
+                        : item
+                );
+            } else if (typeof value === 'object' && value !== null) {
+                result[key] = convertAllBigIntToStringRecursive(value as object);
+            } else {
+                result[key] = value;
+            }
+        }
+    }
+    return result as RecursiveBigIntToString<T>;
 }
 
 /**

@@ -1,32 +1,51 @@
 /**
  * Base token interfaces with BigInt values for application logic
  */
-export interface TokenCreateData {
+import { RecursiveBigIntToString } from '../../utils/bigint-utils.js'; // Assuming this is where RecursiveBigIntToString is
+
+export interface TokenCreateData { // This is the INPUT to the transaction
+  symbol: string;
+  name: string;
+  precision?: number;      // Defaults to 8 if not provided
+  maxSupply: bigint;       // Will be string in DB
+  initialSupply?: bigint;  // Optional, defaults to 0. Used to set currentSupply. Will be string in DB only for event log / input record if TokenCreateDataDB implies full stringify
+  currentSupply?: bigint;  // Should not be part of create data, it's derived or for mint/burn. We'll set it from initialSupply for storage.
+  mintable?: boolean;
+  burnable?: boolean;
+  description?: string;
+  logoUrl?: string;
+  websiteUrl?: string;
+  // creator is added by the system, not part of direct input data typically
+}
+
+// Represents the actual document structure stored in the 'tokens' collection
+export interface TokenForStorage {
+  _id: string; // Typically the symbol
   symbol: string;
   name: string;
   precision: number;
-  maxSupply: bigint;        // Use bigint for internal operations
-  initialSupply?: bigint;   // Use bigint for internal operations
-  currentSupply?: bigint;   // Use bigint for internal operations
+  maxSupply: bigint;
+  currentSupply: bigint;
   mintable: boolean;
-  burnable: boolean;        // Will be relevant for general token properties, even if burn is via transfer
+  burnable: boolean;
   creator: string;
   description?: string;
   logoUrl?: string;
   websiteUrl?: string;
+  // Potentially other fields like createdAt, updatedAt if managed by the system
 }
 
-export interface TokenMintData {
+export interface TokenMintData { // Input for minting
   symbol: string;
   to: string;
-  amount: bigint;           // Use bigint for internal operations
+  amount: bigint;
 }
 
-export interface TokenTransferData {
+export interface TokenTransferData { // Input for transferring
   symbol: string;
-  from: string;
   to: string;
-  amount: bigint;           // Use bigint for internal operations
+  amount: bigint;
+  from?: string; // Added by the system (sender)
   memo?: string;
 }
 
@@ -50,6 +69,7 @@ export type BigIntToString<T> = {
 /**
  * Database types (automatically converted from base types)
  */
-export type TokenCreateDataDB = BigIntToString<TokenCreateData>;
-export type TokenMintDataDB = BigIntToString<TokenMintData>;
-export type TokenTransferDataDB = BigIntToString<TokenTransferData>; 
+export type TokenCreateDataDB = RecursiveBigIntToString<TokenCreateData>;
+export type TokenForStorageDB = RecursiveBigIntToString<TokenForStorage>;
+export type TokenMintDataDB = RecursiveBigIntToString<TokenMintData>;
+export type TokenTransferDataDB = RecursiveBigIntToString<TokenTransferData>; 

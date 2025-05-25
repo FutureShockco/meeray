@@ -6,8 +6,8 @@ import logger from './logger.js';
 import config from './config.js';
 import { chain } from './chain.js';
 import { Block } from './block.js';
-import { TokenCreateData, TokenCreateDataDB } from './transactions/token/token-interfaces.js';
-import { convertToString, toString, toBigInt, setTokenDecimals } from './utils/bigint-utils.js';
+import { TokenCreateData, TokenCreateDataDB, TokenForStorage, TokenForStorageDB } from './transactions/token/token-interfaces.js';
+import { convertToString, toString, toBigInt, setTokenDecimals, convertAllBigIntToStringRecursive } from './utils/bigint-utils.js';
 
 const DB_NAME = process.env.MONGO_DB || 'echelon';
 const DB_URL = process.env.MONGO_URL || 'mongodb://localhost:27017';
@@ -40,6 +40,9 @@ export const mongo = {
             dbInstance = mongo.db;
 
             logger.info(`Connected to ${DB_URL}/${mongo.db.databaseName}`);
+
+            // Load all token decimals into the registry
+            await mongo.loadAndRegisterAllTokenDecimals();
 
             let state = await mongo.db.collection<StateDoc>('state').findOne({ _id: 0 });
 
@@ -85,6 +88,35 @@ export const mongo = {
         return dbInstance;
     },
 
+    loadAndRegisterAllTokenDecimals: async (): Promise<void> => {
+        if (!dbInstance) {
+            logger.warn('[mongo] DB instance not available for loadAndRegisterAllTokenDecimals. Skipping.');
+            return;
+        }
+        try {
+            logger.info('[mongo] Loading and registering token decimals from database...');
+            const tokensCollection = dbInstance.collection<TokenForStorageDB>('tokens');
+            const allTokens = await tokensCollection.find({}).toArray();
+
+            if (allTokens.length === 0) {
+                logger.info('[mongo] No tokens found in the database to register decimals for.');
+                return;
+            }
+
+            for (const tokenDoc of allTokens) {
+                if (tokenDoc.symbol && typeof tokenDoc.precision === 'number') {
+                    setTokenDecimals(tokenDoc.symbol, tokenDoc.precision);
+                    logger.debug(`[mongo] Registered decimals for ${tokenDoc.symbol}: ${tokenDoc.precision}`);
+                } else {
+                    logger.warn(`[mongo] Token document ${tokenDoc._id} is missing symbol or precision, or precision is not a number. Skipping registration.`);
+                }
+            }
+            logger.info(`[mongo] Finished registering decimals for ${allTokens.length} token(s).`);
+        } catch (error: any) {
+            logger.error(`[mongo] Error loading token decimals: ${error?.message || error}`);
+        }
+    },
+
     initGenesis: async (): Promise<void> => {
         if (process.env.REBUILD_STATE === '1') {
             logger.info('Starting genesis for rebuild...');
@@ -121,7 +153,7 @@ export const mongo = {
             logger.warn('No genesis.zip file found or error during processing. Creating minimal genesis.');
             await mongo.insertMasterAccount();
             await mongo.insertBlockZero();
-            await mongo.insertNativeToken();
+            await mongo.insertNativeTokens();
         }
     },
 
@@ -180,37 +212,115 @@ export const mongo = {
         await currentDb.collection<Block>('blocks').insertOne(genesisBlock as any); 
     },
 
-    insertNativeToken: async (): Promise<void> => {
+    insertNativeTokens: async (): Promise<void> => {
         if (process.env.BLOCKS_DIR) return;
         const currentDb = mongo.getDb();
-        logger.info('Inserting Native Token');
 
-        // Set token decimals in global registry
         setTokenDecimals('ECH', 8);
 
-        const MAX_SUPPLY_BIGINT = BigInt('20000000000000000'); // 200 million with 8 decimals
+        const MAX_SUPPLY_ECH_BIGINT = BigInt(config.masterBalance); // 200 million with 8 decimals
+        const VERY_LARGE_MAX_SUPPLY_BIGINT = BigInt('1000000000000000000000000000000'); // Effectively unlimited for pegged tokens
 
-        // This object is for internal logic, should use BigInt
-        const nativeTokenData: TokenCreateData = {
+        // This object represents the INPUT parameters for creating the native token ECH
+        const nativeTokenCreationParamsECH: TokenCreateData = {
             symbol: 'ECH',
             name: 'Echelon',
             precision: 8,
-            maxSupply: MAX_SUPPLY_BIGINT,
-            initialSupply: MAX_SUPPLY_BIGINT,
-            currentSupply: MAX_SUPPLY_BIGINT,
-            mintable: true,
+            maxSupply: VERY_LARGE_MAX_SUPPLY_BIGINT,
+            initialSupply: MAX_SUPPLY_ECH_BIGINT, 
+            mintable: true, 
             burnable: true,
-            creator: config.masterName,
             description: 'Echelon is the native token of the Echelon Network',
             logoUrl: 'https://echelon.network/logo.png',
             websiteUrl: 'https://echelon.network'
         };
 
-        // Convert the BigInt fields to strings for database storage.
-        // The `convertToString` utility handles this transformation based on the type T (TokenCreateData).
-        const nativeTokenDB = convertToString<TokenCreateData>(nativeTokenData, ['maxSupply', 'initialSupply', 'currentSupply']);
+        const nativeTokenToStoreECH: TokenForStorage = {
+            _id: nativeTokenCreationParamsECH.symbol,
+            symbol: nativeTokenCreationParamsECH.symbol,
+            name: nativeTokenCreationParamsECH.name,
+            precision: nativeTokenCreationParamsECH.precision || 8,
+            maxSupply: nativeTokenCreationParamsECH.maxSupply,
+            currentSupply: nativeTokenCreationParamsECH.initialSupply || MAX_SUPPLY_ECH_BIGINT, 
+            mintable: nativeTokenCreationParamsECH.mintable === undefined ? true : nativeTokenCreationParamsECH.mintable, 
+            burnable: nativeTokenCreationParamsECH.burnable === undefined ? true : nativeTokenCreationParamsECH.burnable, 
+            creator: config.masterName, 
+            description: nativeTokenCreationParamsECH.description,
+            logoUrl: nativeTokenCreationParamsECH.logoUrl,
+            websiteUrl: nativeTokenCreationParamsECH.websiteUrl
+        };
+        const nativeTokenDBECH: TokenForStorageDB = convertAllBigIntToStringRecursive(nativeTokenToStoreECH);
+        await currentDb.collection<TokenForStorageDB>('tokens').insertOne(nativeTokenDBECH);
+        logger.info('Native token ECH inserted.');
 
-        await currentDb.collection<TokenCreateDataDB>('tokens').insertOne(nativeTokenDB);
+        // --- STEEM ---
+        setTokenDecimals('STEEM', 3);
+
+        const nativeTokenCreationParamsSTEEM: TokenCreateData = {
+            symbol: 'STEEM',
+            name: 'Steem',
+            precision: 3,
+            maxSupply: VERY_LARGE_MAX_SUPPLY_BIGINT,
+            initialSupply: BigInt(0), 
+            mintable: true, 
+            burnable: true,
+            description: 'Steem is the native token of the Steem blockchain, pegged on this sidechain.',
+            logoUrl: 'https://steem.com/images/steem-logo.png', // Placeholder URL
+            websiteUrl: 'https://steem.com'
+        };
+
+        const nativeTokenToStoreSTEEM: TokenForStorage = {
+            _id: nativeTokenCreationParamsSTEEM.symbol,
+            symbol: nativeTokenCreationParamsSTEEM.symbol,
+            name: nativeTokenCreationParamsSTEEM.name,
+            precision: nativeTokenCreationParamsSTEEM.precision || 3,
+            maxSupply: nativeTokenCreationParamsSTEEM.maxSupply,
+            currentSupply: nativeTokenCreationParamsSTEEM.initialSupply || BigInt(0), 
+            mintable: nativeTokenCreationParamsSTEEM.mintable === undefined ? true : nativeTokenCreationParamsSTEEM.mintable,
+            burnable: nativeTokenCreationParamsSTEEM.burnable === undefined ? true : nativeTokenCreationParamsSTEEM.burnable,
+            creator: config.masterName,
+            description: nativeTokenCreationParamsSTEEM.description,
+            logoUrl: nativeTokenCreationParamsSTEEM.logoUrl,
+            websiteUrl: nativeTokenCreationParamsSTEEM.websiteUrl
+        };
+        const nativeTokenDBSTEEM: TokenForStorageDB = convertAllBigIntToStringRecursive(nativeTokenToStoreSTEEM);
+        await currentDb.collection<TokenForStorageDB>('tokens').insertOne(nativeTokenDBSTEEM);
+        logger.info('Native token STEEM inserted.');
+
+        // --- SBD ---
+        setTokenDecimals('SBD', 3);
+
+        const nativeTokenCreationParamsSBD: TokenCreateData = {
+            symbol: 'SBD',
+            name: 'Steem Dollar',
+            precision: 3,
+            maxSupply: VERY_LARGE_MAX_SUPPLY_BIGINT,
+            initialSupply: BigInt(0), 
+            mintable: true, 
+            burnable: true,
+            description: 'SBD (Steem Dollar) is a stablecoin on the Steem blockchain, pegged on this sidechain.',
+            logoUrl: 'https://steem.com/images/sbd-logo.png', // Placeholder URL
+            websiteUrl: 'https://steem.com'
+        };
+
+        const nativeTokenToStoreSBD: TokenForStorage = {
+            _id: nativeTokenCreationParamsSBD.symbol,
+            symbol: nativeTokenCreationParamsSBD.symbol,
+            name: nativeTokenCreationParamsSBD.name,
+            precision: nativeTokenCreationParamsSBD.precision || 3,
+            maxSupply: nativeTokenCreationParamsSBD.maxSupply,
+            currentSupply: nativeTokenCreationParamsSBD.initialSupply || BigInt(0),
+            mintable: nativeTokenCreationParamsSBD.mintable === undefined ? true : nativeTokenCreationParamsSBD.mintable,
+            burnable: nativeTokenCreationParamsSBD.burnable === undefined ? true : nativeTokenCreationParamsSBD.burnable,
+            creator: config.masterName,
+            description: nativeTokenCreationParamsSBD.description,
+            logoUrl: nativeTokenCreationParamsSBD.logoUrl,
+            websiteUrl: nativeTokenCreationParamsSBD.websiteUrl
+        };
+        const nativeTokenDBSBD: TokenForStorageDB = convertAllBigIntToStringRecursive(nativeTokenToStoreSBD);
+        await currentDb.collection<TokenForStorageDB>('tokens').insertOne(nativeTokenDBSBD);
+        logger.info('Native token SBD inserted.');
+        
     },
 
     addMongoIndexes: async (): Promise<void> => {

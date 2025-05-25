@@ -1,4 +1,4 @@
-import { BigIntToString } from '../../utils/bigint-utils.js';
+import { BigIntToString, StringToBigInt, RecursiveBigIntToString } from '../../utils/bigint-utils.js';
 
 export enum TokenStandard {
   NATIVE = 'NATIVE',
@@ -225,9 +225,14 @@ export interface LaunchpadPurchase {
 /**
  * Database types (automatically converted from base types)
  */
-export type LaunchpadCreateDataDB = BigIntToString<LaunchpadCreateData>;
-export type LaunchpadPurchaseDataDB = BigIntToString<LaunchpadPurchaseData>;
-export type LaunchpadDB = BigIntToString<Launchpad>;
-export type LaunchpadPurchaseDB = BigIntToString<LaunchpadPurchase>;
-export type PresaleDetailsDB = BigIntToString<PresaleDetails>;
-export type LaunchpadParticipatePresaleDataDB = BigIntToString<LaunchpadParticipatePresaleData>; 
+export type LaunchpadCreateDataDB = RecursiveBigIntToString<LaunchpadCreateData>;
+export type LaunchpadPurchaseDataDB = RecursiveBigIntToString<LaunchpadPurchaseData>;
+export type LaunchpadDB = RecursiveBigIntToString<Launchpad>;
+export type LaunchpadPurchaseDB = RecursiveBigIntToString<LaunchpadPurchase>;
+export type PresaleDetailsDB = RecursiveBigIntToString<PresaleDetails>;
+export type LaunchpadParticipatePresaleDataDB = RecursiveBigIntToString<LaunchpadParticipatePresaleData>;
+export type TokenomicsDB = RecursiveBigIntToString<Tokenomics>;
+export type TokenDB = RecursiveBigIntToString<Token>;
+export type VestingScheduleDB = RecursiveBigIntToString<VestingSchedule>;
+export type TokenAllocationDB = RecursiveBigIntToString<TokenAllocation>;
+export type LiquidityProvisionDetailsDB = RecursiveBigIntToString<LiquidityProvisionDetails>; 

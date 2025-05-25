@@ -438,26 +438,29 @@ export const chain = {
             }
             logger.debug(`Block ID: ${block?._id} passed isValidNewBlock. Witness: ${block?.witness}`); // Changed from console.log
             // straight execution
-            chain.executeBlockTransactions(block, false, function (validTxs: any[], distributed: number) {
-                logger.debug(`[validateAndAddBlock] executeBlockTransactions for Block ID: ${block?._id} completed. Valid Txs: ${validTxs?.length}/${block?.txs?.length}, Distributed: ${distributed}`);
-                // if any transaction is wrong, thats a fatal error
-                if (block.txs.length !== validTxs.length) {
-                    logger.error(`[validateAndAddBlock] Invalid tx(s) in Block ID: ${block?._id}. Expected: ${block.txs.length}, Got: ${validTxs.length}`);
-                    cb(true, block); return
+            chain.executeBlockTransactions(block, false, function (successfullyExecutedTxs: any[], distributed: number) {
+                logger.debug(`[validateAndAddBlock] executeBlockTransactions for Block ID: ${block?._id} completed. Valid Txs: ${successfullyExecutedTxs?.length}/${block?.txs?.length}, Distributed: ${distributed}`);
+                
+                // if any transaction failed execution, reject the block
+                if (block.txs.length !== successfullyExecutedTxs.length) {
+                    logger.error(`[validateAndAddBlock] Not all transactions in Block ID: ${block?._id} executed successfully. Expected: ${block.txs.length}, Executed: ${successfullyExecutedTxs.length}. Rejecting block.`);
+                    cb(true, block); // Signal block error
+                    return;
                 }
+
+                // All transactions executed successfully if we reach here.
 
                 // error if distributed computed amounts are different than the reported one
-                let blockDist = block.dist || 0
+                let blockDist = block.dist || 0;
                 if (blockDist !== distributed) {
-                    logger.error(`[validateAndAddBlock] Wrong dist amount for Block ID: ${block?._id}. Expected: ${blockDist}, Got: ${distributed}`);
-                    cb(true, block); return
+                    logger.error(`[validateAndAddBlock] Wrong dist amount for Block ID: ${block?._id}. Expected: ${blockDist}, Got: ${distributed}. Rejecting block.`);
+                    cb(true, block); // Signal block error
+                    return;
                 }
 
-                // add txs to recents
-                chain.addRecentTxsInBlock(block.txs)
-
-                // remove all transactions from this block from our transaction pool
-                transaction.removeFromPool(block.txs)
+                // Now that the block is fully validated and all txs are good:
+                chain.addRecentTxsInBlock(successfullyExecutedTxs); // Use successfullyExecutedTxs
+                transaction.removeFromPool(successfullyExecutedTxs); // Use successfullyExecutedTxs
 
                 chain.addBlock(block, function () {
                     // and broadcast to peers (if not replaying)

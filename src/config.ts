@@ -11,8 +11,8 @@ const config = {
   tokenCreationFee: 100,
   nftCreationFee: 10,
   tradingFee: 0.0025,
-  maxWitnesses: 30,
-  masterBalance: 1000000,
+  maxWitnesses: 20,
+  masterBalance: '20000000000000000',
   masterName: 'echelon-node1',
   masterPublicKey: 'e27B66QHwRLjnjxi5KAa9G7fLSDajtoB6CxuZ87oTdfS',
   blockTime: 2940, // ms
@@ -40,6 +40,14 @@ const config = {
   logLevel: process.env.LOG_LEVEL || 'debug',
   b58Alphabet: '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz',
   tokenSymbolAllowedChars: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890',
+  tokenNameAllowedChars: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
+  tokenNameMaxLength: 50,
+  tokenSymbolMaxLength: 10,
+  tokenSymbolMinLength: 3,
+  tokenPrecisionMax: 18,
+  tokenPrecisionMin: 0,
+  tokenMinSupply: 1,
+  tokenMaxSupply: 1000000000000000000,
   consensusRounds: 2,
   witnesses: 10, 
   notifPurge: 1000, // how often to purge old notifications (blocks)
@@ -50,7 +58,6 @@ const config = {
   ecoBlocks: 10000, // Added for chain memory management compatibility
   txExpirationTime: 3600000, // 1 hour, for tx memory cleanup compatibility
   witnessShufflePrecision: 8, // Added for witness schedule compatibility
-  masterPub: process.env.MASTER_PUB || '',
   block0ts: 0, // Set to appropriate genesis timestamp if needed
   ecoBlocksIncreasesSoon: undefined, // Set to a number if needed for dynamic block memory
   randomBytesLength: 32,
