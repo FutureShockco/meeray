@@ -10,7 +10,6 @@ export interface Token {
     issuer?: string;            // For non-native tokens
     maxSupply: bigint;          // Maximum token supply
     currentSupply: bigint;      // Current circulating supply
-    creator: string;            // Account that created the token
     // other token fields
 }
 
@@ -27,7 +26,6 @@ export async function getTokenByIdentifier(symbol: string, issuer?: string): Pro
             issuer: undefined,
             maxSupply: 0n,
             currentSupply: 0n,
-            creator: ""
         } as Token;
     }
 

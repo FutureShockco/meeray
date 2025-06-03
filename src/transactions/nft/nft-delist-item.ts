@@ -1,7 +1,7 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
-import { NftDelistPayload, NftListing } from './nft-market-interfaces.js';
+import { NftDelistPayload, NFTListing } from './nft-market-interfaces.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: NftDelistPayload, sender: string): Promise<boolean> {
@@ -15,7 +15,7 @@ export async function validateTx(data: NftDelistPayload, sender: string): Promis
         return false;
     }
 
-    const listing = await cache.findOnePromise('nftListings', { _id: data.listingId }) as NftListing | null;
+    const listing = await cache.findOnePromise('nftListings', { _id: data.listingId }) as NFTListing | null;
 
     if (!listing) {
       logger.warn(`[nft-delist-item] Listing with ID ${data.listingId} not found.`);
@@ -27,7 +27,7 @@ export async function validateTx(data: NftDelistPayload, sender: string): Promis
       return false;
     }
 
-    if (listing.status !== 'ACTIVE') {
+    if (listing.status !== 'active') {
       logger.warn(`[nft-delist-item] Listing ${data.listingId} is not active. Current status: ${listing.status}.`);
       return false;
     }
@@ -39,33 +39,43 @@ export async function validateTx(data: NftDelistPayload, sender: string): Promis
   }
 }
 
-export async function process(data: NftDelistPayload, sender: string): Promise<boolean> {
+export async function process(data: NftDelistPayload, sender: string, id: string): Promise<boolean> {
   try {
-    const updateSuccess = await cache.updateOnePromise(
-      'nftListings',
-      { _id: data.listingId, seller: sender, status: 'ACTIVE' }, // Ensure it's still active and owned by sender
-      { $set: { status: 'CANCELLED', updatedAt: new Date().toISOString() } }
-    );
+    const listing = await cache.findOnePromise('nftListings', { _id: data.listingId }) as NFTListing | null;
 
-    if (!updateSuccess) {
-      logger.error(`[nft-delist-item] Failed to update listing ${data.listingId} to CANCELLED in cache.`);
-      // This could happen if the listing was sold or cancelled by another process just before this update.
-      // Re-fetch to confirm current state for a more accurate log/error if needed.
-      const currentListing = await cache.findOnePromise('nftListings', { _id: data.listingId });
-      logger.error(`[nft-delist-item] Current state of listing ${data.listingId}: ${JSON.stringify(currentListing)}`);
+    if (!listing) {
+      logger.error(`[nft-delist-item] Listing with ID ${data.listingId} not found during processing.`);
       return false;
     }
 
-    logger.debug(`[nft-delist-item] NFT Listing ${data.listingId} cancelled by ${sender}.`);
+    if (listing.seller !== sender) {
+      logger.error(`[nft-delist-item] Sender ${sender} is not the seller of listing ${data.listingId} during processing. Seller: ${listing.seller}.`);
+      return false;
+    }
+
+    if (listing.status !== 'active') {
+      logger.error(`[nft-delist-item] Listing ${data.listingId} is not active during processing. Current status: ${listing.status}.`);
+      return false;
+    }
+
+    const updateSuccess = await cache.updateOnePromise(
+      'nftListings',
+      { _id: data.listingId },
+      { $set: { status: 'cancelled', cancelledAt: new Date().toISOString() } }
+    );
+
+    if (!updateSuccess) {
+      logger.error(`[nft-delist-item] Failed to update listing ${data.listingId} to cancelled status.`);
+      return false;
+    }
 
     // Log event
     const eventData = { listingId: data.listingId };
-    // TODO: The original code was missing the transactionId for logTransactionEvent.
-    // Assuming it should be passed, but it's not available in this scope. 
-    // For now, logging without it. This might need to be addressed.
-    await logTransactionEvent('nftDelistItem', sender, eventData);
+    await logTransactionEvent('nftDelistItem', sender, eventData, id);
 
+    logger.debug(`[nft-delist-item] Listing ${data.listingId} successfully delisted by ${sender}.`);
     return true;
+
   } catch (error) {
     logger.error(`[nft-delist-item] Error processing NFT delist for listing ${data.listingId} by ${sender}: ${error}`);
     return false;

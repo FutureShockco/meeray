@@ -25,9 +25,9 @@ export const notifications = {
         switch (tx.type) {
             case TransactionType.TOKEN_CREATE:
                 const tokenCreateData = tx.data as any;
-                if (tokenCreateData.creator) {
+                if (tokenCreateData.issuer) {
                 notif = {
-                        u: tokenCreateData.creator,
+                        u: tokenCreateData.issuer,
                     tx: tx,
                     ts: ts
                 };

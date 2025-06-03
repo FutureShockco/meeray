@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { FarmClaimRewardsData, Farm, UserFarmPosition } from './farm-interfaces.js';
 import { getAccount, adjustBalance } from '../../utils/account-utils.js'; // For actual reward transfer later
-import { toString } from '../../utils/bigint-utils.js'; // Import toString
+import { toString, convertToString } from '../../utils/bigint-utils.js'; // Import toString and convertToString
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: FarmClaimRewardsData, sender: string): Promise<boolean> {
@@ -48,7 +48,7 @@ export async function validateTx(data: FarmClaimRewardsData, sender: string): Pr
   }
 }
 
-export async function process(data: FarmClaimRewardsData, sender: string): Promise<boolean> {
+export async function process(data: FarmClaimRewardsData, sender: string, id: string): Promise<boolean> {
   try {
     const farm = await cache.findOnePromise('farms', { _id: data.farmId }) as Farm | null;
     if (!farm) {
@@ -65,53 +65,68 @@ export async function process(data: FarmClaimRewardsData, sender: string): Promi
 
     // This is where we'd calculate pending rewards based on:
     // - farm.rewardRate, farm.rewardState (e.g., accumulatedRewardsPerShare, lastDistributionTime)
-    // - userFarmPos.stakedLpAmount, userFarmPos.rewardDebt (if using MasterChef-like model)
-    // - Time elapsed since last claim or last update to farm/user position.
-    const rewardsToClaim = BigInt(0); // No rewards calculated yet.
-    logger.debug(`[farm-claim-rewards] Placeholder: Calculated ${toString(rewardsToClaim)} ${farm.rewardToken.symbol} rewards for ${data.staker} from farm ${data.farmId}.`);
+    // - userFarmPos.stakedAmount, userFarmPos.lastHarvestTime
+    // For simplicity, using hardcoded calculation logic here.
 
-    if (rewardsToClaim > BigInt(0)) {
-      // TODO: Transfer rewardsToClaim of farm.rewardToken.symbol (from farm.rewardTokenIssuer) 
-      // from a designated farm rewards account/escrow to data.staker account.
-      // This would involve: 
-      // 1. Checking farm's reward pool balance.
-      // 2. Calling adjustBalance for the farm's reward pool (debit).
-      // 3. Calling adjustBalance for the staker (credit).
-      // This needs careful atomicity and error handling.
-      logger.debug(`[farm-claim-rewards] Placeholder: Would transfer ${toString(rewardsToClaim)} ${farm.rewardToken.symbol} to ${data.staker}.`);
+    // Simplified reward calculation (in reality, rewards would depend on time staked, pool share, etc.)
+    const timeStaked = Date.now() - new Date(userFarmPos.lastHarvestTime).getTime();
+    const rewardRate = BigInt(100); // Example: 100 reward tokens per day
+    const msPerDay = 24 * 60 * 60 * 1000;
+    const daysStaked = BigInt(Math.floor(timeStaked / msPerDay));
+    const pendingRewards = daysStaked * rewardRate;
+
+    if (pendingRewards <= BigInt(0)) {
+      logger.warn(`[farm-claim-rewards] No rewards available for ${data.staker} in farm ${data.farmId}. Time staked: ${timeStaked}ms`);
+      return true; // Not an error, just no rewards
     }
 
-    // Update lastClaimedAt in UserFarmPosition, even if rewardsToClaim is 0, to mark the claim attempt.
-    const userPosUpdateSuccess = await cache.updateOnePromise(
-        'userFarmPositions',
-        { _id: userFarmPositionId },
-        { $set: { lastHarvestTime: new Date().toISOString() } }
+    logger.debug(`[farm-claim-rewards] Calculated rewards for ${data.staker}: ${pendingRewards} (${daysStaked} days staked).`);
+
+    // Update user's token balance with the claimed rewards
+    const rewardTokenId = `${farm.rewardToken.symbol}${farm.rewardToken.issuer ? '@' + farm.rewardToken.issuer : ''}`;
+    const balanceUpdateSuccess = await cache.updateOnePromise(
+      'accounts',
+      { name: data.staker },
+      { $inc: { [`balances.${rewardTokenId}`]: toString(pendingRewards) } }
     );
 
-    if (!userPosUpdateSuccess) {
-        // This is not ideal, as the claim was processed (even if 0 rewards) but not marked.
-        // However, if rewards were transferred, this becomes more critical.
-        logger.warn(`[farm-claim-rewards] Failed to update lastHarvestTime for ${userFarmPositionId}.`);
-        // Depending on rewards transferred, might not want to return false here if rewards WERE sent.
+    if (!balanceUpdateSuccess) {
+      logger.error(`[farm-claim-rewards] Failed to update balance for ${data.staker} with ${pendingRewards} ${rewardTokenId}.`);
+      return false;
     }
 
-    logger.debug(`[farm-claim-rewards] ${data.staker} claimed rewards from farm ${data.farmId}. Amount: ${toString(rewardsToClaim)} ${farm.rewardToken.symbol}.`);
+    // Update UserFarmPosition to reset harvest time and add to pendingRewards for tracking
+    const updateFarmPosSuccess = await cache.updateOnePromise(
+      'userFarmPositions',
+      { _id: userFarmPositionId },
+      { 
+        $set: { 
+          lastHarvestTime: new Date().toISOString(), 
+          lastUpdatedAt: new Date().toISOString() 
+        },
+        $inc: convertToString({ pendingRewards: pendingRewards }, ['pendingRewards'])
+      }
+    );
+
+    if (!updateFarmPosSuccess) {
+      logger.error(`[farm-claim-rewards] CRITICAL: Failed to update user farm position ${userFarmPositionId} harvest time. Rewards were distributed but tracking may be inconsistent.`);
+      // Distributed rewards, but tracking might be wrong. Log for reconciliation.
+    }
+
+    logger.debug(`[farm-claim-rewards] ${data.staker} claimed ${pendingRewards} rewards from farm ${data.farmId}.`);
 
     const eventData = {
-        farmId: data.farmId,
-        staker: data.staker,
-        rewardTokenSymbol: farm.rewardToken.symbol,
-        rewardTokenIssuer: farm.rewardToken.issuer,
-        rewardsClaimed: toString(rewardsToClaim)
+      farmId: data.farmId,
+      staker: data.staker,
+      rewardTokenSymbol: farm.rewardToken.symbol,
+      rewardTokenIssuer: farm.rewardToken.issuer,
+      rewardAmount: toString(pendingRewards)
     };
-    // TODO: The original code was missing the transactionId for logTransactionEvent.
-    // Assuming it should be passed, but it's not available in this scope. 
-    // For now, logging without it. This might need to be addressed.
-    await logTransactionEvent('farmClaimRewards', sender, eventData);
+    await logTransactionEvent('farmClaimRewards', sender, eventData, id);
 
     return true;
   } catch (error) {
-    logger.error(`[farm-claim-rewards] Error processing claim rewards for farm ${data.farmId} by ${sender}: ${error}`);
+    logger.error(`[farm-claim-rewards] Error processing reward claim for farm ${data.farmId} by ${sender}: ${error}`);
     return false;
   }
 } 

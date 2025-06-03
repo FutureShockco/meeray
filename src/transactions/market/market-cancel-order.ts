@@ -55,7 +55,7 @@ export async function validateTx(data: MarketCancelOrderData, sender: string): P
   return true;
 }
 
-export async function process(data: MarketCancelOrderData, sender: string): Promise<boolean> {
+export async function process(data: MarketCancelOrderData, sender: string, id: string): Promise<boolean> {
   logger.debug(`[market-cancel-order] Processing cancellation from ${sender}: ${JSON.stringify(data)}`);
   try {
     const orderFromCache = await cache.findOnePromise('orders', { _id: data.orderId, userId: sender });
@@ -148,7 +148,7 @@ export async function process(data: MarketCancelOrderData, sender: string): Prom
     // TODO: The original code was missing the transactionId for logTransactionEvent.
     // Assuming it should be passed, but it's not available in this scope. 
     // For now, logging without it. This might need to be addressed.
-    await logTransactionEvent('marketCancelOrder', sender, eventData);
+    await logTransactionEvent('marketCancelOrder', sender, eventData, id);
 
     return true;
   } catch (error) {

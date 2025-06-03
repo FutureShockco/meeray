@@ -54,7 +54,7 @@ export const witnessesModule = {
                 const currentBalanceBigInt = toBigInt(currentBalanceStr);
                 
                 const rewardBigInt = BigInt(reward);
-                logger.info(`[witnessRewards] Applying reward for ${name}: ${rewardBigInt.toString()} smallest units`);
+                logger.debug(`[witnessRewards] Applying reward for ${name}: ${rewardBigInt.toString()}`);
 
                 const newBalanceBigInt = currentBalanceBigInt + rewardBigInt;
                 const newBalancePaddedString = toString(newBalanceBigInt);

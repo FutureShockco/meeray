@@ -60,8 +60,8 @@ export async function validateTx(data: TokenMintDataDB, sender: string): Promise
       return false;
     }
 
-    if (sender !== token.creator) {
-      logger.warn(`[token-mint] Only token creator can mint. Sender: ${sender}, Creator: ${token.creator}`);
+    if (sender !== token.issuer) {
+      logger.warn(`[token-mint] Only token issuer can mint. Sender: ${sender}, Issuer: ${token.issuer}`);
       return false;
     }
 
@@ -72,86 +72,85 @@ export async function validateTx(data: TokenMintDataDB, sender: string): Promise
   }
 }
 
-export async function process(transaction: { data: TokenMintDataDB, sender: string, _id: string }): Promise<boolean> {
-    const { data: dataDb, sender, _id: transactionId } = transaction;
-    try {
-        const mintData = convertToBigInt<TokenMintData>(dataDb, NUMERIC_FIELDS);
+export async function process(data: TokenMintDataDB, sender: string, id: string): Promise<boolean> {
+  try {
+    const mintData = convertToBigInt<TokenMintData>(data, NUMERIC_FIELDS);
 
-        const tokenFromCache = await cache.findOnePromise('tokens', { _id: mintData.symbol });
-        if (!tokenFromCache) {
-            logger.error(`[token-mint:process] Token ${mintData.symbol} not found`);
-            return false;
-        }
-        if (!tokenFromCache.mintable) {
-          logger.error(`[token-mint:process] Token ${mintData.symbol} is not mintable. This should have been caught by validateTx.`);
-          return false;
-        }
-        if (sender !== tokenFromCache.creator) {
-          logger.error(`[token-mint:process] Only token creator can mint. Sender: ${sender}, Creator: ${tokenFromCache.creator}. This should have been caught by validateTx.`);
-          return false;
-        }
-
-        const tokenData = convertToBigInt(tokenFromCache, ['maxSupply', 'currentSupply']);
-        const newSupply = tokenData.currentSupply + mintData.amount;
-
-        if (newSupply > tokenData.maxSupply) {
-          logger.error(`[token-mint:process] Mint would exceed max supply for ${mintData.symbol}. Current: ${tokenData.currentSupply}, Amount: ${mintData.amount}, Max: ${tokenData.maxSupply}. This should have been caught by validateTx.`);
-          return false;
-        }
-
-        const updateTokenSuccess = await cache.updateOnePromise(
-            'tokens',
-            { _id: mintData.symbol },
-            { $set: { currentSupply: toString(newSupply) } }
-        );
-
-        if (!updateTokenSuccess) {
-            logger.error(`[token-mint:process] Failed to update token supply for ${mintData.symbol}`);
-            return false;
-        }
-
-        const recipientAccount = await cache.findOnePromise('accounts', { name: mintData.to });
-        if (!recipientAccount) {
-            logger.error(`[token-mint:process] Recipient account ${mintData.to} not found. Cannot mint to non-existent account.`);
-            await cache.updateOnePromise(
-                'tokens',
-                { _id: mintData.symbol },
-                { $set: { currentSupply: toString(tokenData.currentSupply) } }
-            );
-            return false;
-        }
-
-        const currentBalanceStr = recipientAccount.balances?.[mintData.symbol] || '0';
-        const currentBalance = toBigInt(currentBalanceStr);
-        const newBalance = currentBalance + mintData.amount;
-
-        const updateBalanceSuccess = await cache.updateOnePromise(
-            'accounts',
-            { name: mintData.to },
-            { $set: { [`balances.${mintData.symbol}`]: toString(newBalance) } }
-        );
-
-        if (!updateBalanceSuccess) {
-            logger.error(`[token-mint:process] Failed to update balance for ${mintData.to}. Rolling back token supply.`);
-            await cache.updateOnePromise(
-                'tokens',
-                { _id: mintData.symbol },
-                { $set: { currentSupply: toString(tokenData.currentSupply) } }
-            );
-            return false;
-        }
-
-        const eventData = {
-            symbol: mintData.symbol,
-            to: mintData.to,
-            amount: toString(mintData.amount),
-            newSupply: toString(newSupply)
-        };
-        await logTransactionEvent('tokenMint', sender, eventData, transactionId);
-
-        return true;
-    } catch (error) {
-        logger.error(`[token-mint:process] Error: ${error}`);
-        return false;
+    const tokenFromCache = await cache.findOnePromise('tokens', { _id: mintData.symbol });
+    if (!tokenFromCache) {
+      logger.error(`[token-mint:process] Token ${mintData.symbol} not found`);
+      return false;
     }
+    if (!tokenFromCache.mintable) {
+      logger.error(`[token-mint:process] Token ${mintData.symbol} is not mintable. This should have been caught by validateTx.`);
+      return false;
+    }
+    if (sender !== tokenFromCache.issuer) {
+      logger.error(`[token-mint:process] Only token issuer can mint. Sender: ${sender}, Issuer: ${tokenFromCache.issuer}. This should have been caught by validateTx.`);
+      return false;
+    }
+
+    const tokenData = convertToBigInt(tokenFromCache, ['maxSupply', 'currentSupply']);
+    const newSupply = tokenData.currentSupply + mintData.amount;
+
+    if (newSupply > tokenData.maxSupply) {
+      logger.error(`[token-mint:process] Mint would exceed max supply for ${mintData.symbol}. Current: ${tokenData.currentSupply}, Amount: ${mintData.amount}, Max: ${tokenData.maxSupply}. This should have been caught by validateTx.`);
+      return false;
+    }
+
+    const updateTokenSuccess = await cache.updateOnePromise(
+      'tokens',
+      { _id: mintData.symbol },
+      { $set: { currentSupply: toString(newSupply) } }
+    );
+
+    if (!updateTokenSuccess) {
+      logger.error(`[token-mint:process] Failed to update token supply for ${mintData.symbol}`);
+      return false;
+    }
+
+    const recipientAccount = await cache.findOnePromise('accounts', { name: mintData.to });
+    if (!recipientAccount) {
+      logger.error(`[token-mint:process] Recipient account ${mintData.to} not found. Cannot mint to non-existent account.`);
+      await cache.updateOnePromise(
+        'tokens',
+        { _id: mintData.symbol },
+        { $set: { currentSupply: toString(tokenData.currentSupply) } }
+      );
+      return false;
+    }
+
+    const currentBalanceStr = recipientAccount.balances?.[mintData.symbol] || '0';
+    const currentBalance = toBigInt(currentBalanceStr);
+    const newBalance = currentBalance + mintData.amount;
+
+    const updateBalanceSuccess = await cache.updateOnePromise(
+      'accounts',
+      { name: mintData.to },
+      { $set: { [`balances.${mintData.symbol}`]: toString(newBalance) } }
+    );
+
+    if (!updateBalanceSuccess) {
+      logger.error(`[token-mint:process] Failed to update balance for ${mintData.to}. Rolling back token supply.`);
+      await cache.updateOnePromise(
+        'tokens',
+        { _id: mintData.symbol },
+        { $set: { currentSupply: toString(tokenData.currentSupply) } }
+      );
+      return false;
+    }
+
+    const eventData = {
+      symbol: mintData.symbol,
+      to: mintData.to,
+      amount: toString(mintData.amount),
+      newSupply: toString(newSupply)
+    };
+    await logTransactionEvent('tokenMint', sender, eventData, id);
+
+    return true;
+  } catch (error) {
+    logger.error(`[token-mint:process] Error: ${error}`);
+    return false;
+  }
 } 

@@ -116,10 +116,9 @@ export async function validateTx(data: FarmCreateDataDB, sender: string): Promis
     }
 }
 
-export async function process(transaction: { data: FarmCreateDataDB, sender: string, _id: string }): Promise<boolean> {
-    const { data: farmCreatePayloadDB, sender, _id: transactionId } = transaction;
+export async function process(data: FarmCreateDataDB, sender: string, id: string): Promise<boolean> {
     try {
-        const farmData = convertToBigInt<FarmCreateData>(farmCreatePayloadDB, NUMERIC_FIELDS_FARM_CREATE);
+        const farmData = convertToBigInt<FarmCreateData>(data, NUMERIC_FIELDS_FARM_CREATE);
         const farmId = generateFarmId(farmData.stakingToken.symbol, farmData.rewardToken.symbol, farmData.rewardToken.issuer);
 
         const senderBalanceKey = `balances.${farmData.rewardToken.symbol}`;
@@ -200,7 +199,7 @@ export async function process(transaction: { data: FarmCreateDataDB, sender: str
             startTime: farmData.startTime,
             endTime: farmData.endTime
         };
-        await logTransactionEvent('farmCreate', sender, eventData, transactionId);
+        await logTransactionEvent('farmCreate', sender, eventData, id);
 
         return true;
     } catch (error) {

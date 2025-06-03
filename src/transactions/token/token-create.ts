@@ -105,8 +105,9 @@ export async function validateTx(data: TokenCreateDataDB, sender: string): Promi
   }
 }
 
-export async function process(transaction: { data: TokenCreateData, sender: string, _id: string }): Promise<boolean> {
-    const { data: tokenCreationInput, sender, _id: transactionId } = transaction;
+export async function process(data: TokenCreateData, sender: string, id: string): Promise<boolean> {
+    const tokenCreationInput = data;
+    console.log(data,sender);
     logger.debug(`[token-create] Processing token creation for ${tokenCreationInput.symbol} by ${sender}`);
 
     // Validate
@@ -148,15 +149,16 @@ export async function process(transaction: { data: TokenCreateData, sender: stri
             _id: tokenCreationInput.symbol,
             symbol: tokenCreationInput.symbol,
             name: tokenCreationInput.name,
-            creator: sender,
+            issuer: sender,
             precision: effectivePrecision,
             maxSupply: maxSupplyForLogic,
             currentSupply: initialSupplyForLogic, 
-            mintable: tokenCreationInput.mintable === undefined ? false : tokenCreationInput.mintable,
+            mintable: tokenCreationInput.mintable === undefined ? true : tokenCreationInput.mintable,
             burnable: tokenCreationInput.burnable === undefined ? true : tokenCreationInput.burnable,
             description: tokenCreationInput.description || '',
             logoUrl: tokenCreationInput.logoUrl || '',
             websiteUrl: tokenCreationInput.websiteUrl || '',
+            createdAt: new Date().toISOString()
         };
 
         const tokenToStoreDB: TokenForStorageDB = convertAllBigIntToStringRecursive(tokenToStore);
@@ -198,7 +200,7 @@ export async function process(transaction: { data: TokenCreateData, sender: stri
             burnable: tokenToStore.burnable  
         };
         // Pass the transactionId to link the event to the original transaction
-        await logTransactionEvent('tokenCreate', sender, eventData, transactionId); 
+        await logTransactionEvent('tokenCreate', sender, eventData, id); 
 
         logger.info(`[token-create] Token ${tokenToStoreDB._id} created successfully by ${sender}.`);
         return true;

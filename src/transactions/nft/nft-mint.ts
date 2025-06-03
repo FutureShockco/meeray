@@ -2,6 +2,7 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js'; // Shared validation module
 import { NftMintData, NftCreateCollectionData } from './nft-interfaces.js';
+import { NftInstance } from './nft-transfer.js'; // Import NftInstance type
 // We need NftCreateCollectionData to type the fetched collection document for checks
 import crypto from 'crypto'; // For UUID generation
 import config from '../../config.js';
@@ -100,37 +101,40 @@ export async function validateTx(data: NftMintData, sender: string): Promise<boo
   }
 }
 
-export async function process(transaction: { data: NftMintData, sender: string, _id: string }): Promise<boolean> {
-  const { data: mintPayload, sender, _id: transactionId } = transaction;
+export async function process(data: NftMintData, sender: string, id: string): Promise<boolean> {
   try {
-    const actualInstanceId = mintPayload.instanceId || generateUUID();
-    const fullInstanceId = `${mintPayload.collectionSymbol}-${actualInstanceId}`;
+    // Ensure instanceId is set, generate one if not provided
+    const actualInstanceId = data.instanceId || generateUUID();
+    const fullInstanceId = `${data.collectionSymbol}-${actualInstanceId}`;
 
-    // Re-check uniqueness for generated UUID just in case of an extremely rare collision or if validation was skipped/changed.
-    // This is a safeguard; for UUIDs, collisions are astronomically unlikely.
-    if (!mintPayload.instanceId) { // Only re-check if it was auto-generated
-        const existingNft = await cache.findOnePromise('nfts', { _id: fullInstanceId });
-        if (existingNft) {
-            logger.error(`[nft-mint] CRITICAL: Generated instanceId ${actualInstanceId} (full ID: ${fullInstanceId}) collided for collection ${mintPayload.collectionSymbol}.`);
-            return false; // Critical failure, likely needs investigation
-        }
+    // Check if NFT with this ID already exists
+    const existingNft = await cache.findOnePromise('nfts', { _id: fullInstanceId });
+    if (existingNft) {
+      logger.error(`[nft-mint] NFT with ID ${fullInstanceId} already exists during processing.`);
+      return false;
     }
 
-    const nftDocument = {
-      _id: fullInstanceId, // Composite ID: collectionSymbol-instanceId
-      collectionSymbol: mintPayload.collectionSymbol,
+    const collection = await cache.findOnePromise('nftCollections', { _id: data.collectionSymbol }) as CachedNftCollection | null;
+    if (!collection) {
+      logger.error(`[nft-mint] Collection ${data.collectionSymbol} not found during processing.`);
+      return false;
+    }
+
+    if (collection.creator !== sender) {
+      logger.error(`[nft-mint] Sender ${sender} is not the creator of collection ${data.collectionSymbol} during processing. Creator: ${collection.creator}.`);
+      return false;
+    }
+
+    // Create the NFT instance
+    const nftInstance: NftInstance = {
+      _id: fullInstanceId,
+      collectionSymbol: data.collectionSymbol,
       instanceId: actualInstanceId,
-      owner: mintPayload.owner,
-      minter: sender, // The account that executed the mint transaction (collection creator in this model)
-      mintedAt: new Date().toISOString(),
-      properties: mintPayload.properties || {},
-      uri: mintPayload.uri || null,
-      // immutableProperties: data.immutableProperties === undefined ? false : data.immutableProperties, // If added to interface
+      owner: data.owner
     };
 
-
-    const createNftSuccess = await new Promise<boolean>((resolve) => {
-      cache.insertOne('nfts', nftDocument, (err, result) => {
+    const insertSuccess = await new Promise<boolean>((resolve) => {
+      cache.insertOne('nfts', nftInstance, (err, result) => {
         if (err || !result) {
           logger.error(`[nft-mint] Failed to insert NFT ${fullInstanceId} into cache: ${err || 'no result'}`);
           resolve(false);
@@ -140,32 +144,41 @@ export async function process(transaction: { data: NftMintData, sender: string, 
       });
     });
 
-    if (!createNftSuccess) {
+    if (!insertSuccess) {
       return false;
     }
 
-    // Increment currentSupply in the collection
-    const collectionUpdateSuccess = await cache.updateOnePromise(
+    // Update collection's totalSupply
+    const newTotalSupply = collection.currentSupply + 1;
+    const updateCollectionSuccess = await cache.updateOnePromise(
       'nftCollections',
-      { _id: mintPayload.collectionSymbol }, 
-      { $inc: { currentSupply: 1 } }
+      { _id: data.collectionSymbol },
+      { $set: { currentSupply: newTotalSupply } }
     );
 
-    if (!collectionUpdateSuccess) {
-      logger.error(`[nft-mint] CRITICAL: Failed to update currentSupply for collection ${mintPayload.collectionSymbol} after minting ${fullInstanceId}. NFT created but collection supply incorrect.`);
-      // This is a critical inconsistency. May need manual reconciliation or a rollback of NFT creation.
-      // For now, we log and the NFT is minted, but supply is off.
-      // await cache.deleteOnePromise('nfts', { _id: fullInstanceId }); // Example of a rollback attempt (needs deleteOnePromise)
+    if (!updateCollectionSuccess) {
+      logger.error(`[nft-mint] Failed to update total supply for collection ${data.collectionSymbol}.`);
+      // Consider removing the NFT we just inserted as a rollback
+      await cache.deleteOnePromise('nfts', { _id: fullInstanceId });
+      return false;
     }
 
-    logger.debug(`[nft-mint] NFT ${fullInstanceId} minted successfully into collection ${mintPayload.collectionSymbol} by ${sender} for owner ${mintPayload.owner}.`);
+    logger.debug(`[nft-mint] NFT ${fullInstanceId} minted successfully by ${sender} for owner ${data.owner}.`);
 
-    // Log event using the new centralized logger
-    await logTransactionEvent('nftMint', sender, { ...nftDocument }, transactionId);
+    // Log event
+    const eventData = { 
+      collectionSymbol: data.collectionSymbol,
+      instanceId: actualInstanceId,
+      owner: data.owner,
+      properties: data.properties,
+      uri: data.uri
+    };
+    await logTransactionEvent('nftMint', sender, eventData, id);
 
     return true;
+
   } catch (error) {
-    logger.error(`[nft-mint] Error processing mint for collection ${mintPayload.collectionSymbol} by ${sender}: ${error}`);
+    logger.error(`[nft-mint] Error processing NFT mint for ${data.collectionSymbol}-${data.instanceId || 'auto-generated'} by ${sender}: ${error}`);
     return false;
   }
 } 

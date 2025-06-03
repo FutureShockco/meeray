@@ -92,7 +92,7 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
   }
 }
 
-export async function process(data: NftListPayload, sender: string): Promise<string | null> {
+export async function process(data: NftListPayload, sender: string, id: string): Promise<string | null> {
   try {
     const listingId = generateListingId(data.collectionSymbol, data.instanceId, sender);
     const priceAsBigInt = toBigInt(data.price);
@@ -133,7 +133,7 @@ export async function process(data: NftListPayload, sender: string): Promise<str
       ...listingDocument,
       price: toString(listingDocument.price)
     };
-    await logTransactionEvent('nftListItem', sender, eventData);
+    await logTransactionEvent('nftListItem', sender, eventData, id);
 
     return listingId; // Return the ID of the created listing
 

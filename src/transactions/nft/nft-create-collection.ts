@@ -84,51 +84,62 @@ export async function validateTx(data: NftCreateCollectionData, sender: string):
   }
 }
 
-export async function process(transaction: { data: NftCreateCollectionData, sender: string, _id: string }): Promise<boolean> {
-  const { data: createCollectionPayload, sender, _id: transactionId } = transaction;
-  try {
-    const collectionDocument = {
-      _id: createCollectionPayload.symbol, // Use symbol as the primary key for the collection
-      symbol: createCollectionPayload.symbol,
-      name: createCollectionPayload.name,
-      creator: sender,
-      createdAt: new Date().toISOString(),
-      maxSupply: createCollectionPayload.maxSupply === undefined || createCollectionPayload.maxSupply === 0 ? Number.MAX_SAFE_INTEGER : createCollectionPayload.maxSupply, // Store a large number for effectively unlimited
-      currentSupply: 0,
-      mintable: createCollectionPayload.mintable,
-      burnable: createCollectionPayload.burnable === undefined ? true : createCollectionPayload.burnable,           // Default true
-      transferable: createCollectionPayload.transferable === undefined ? true : createCollectionPayload.transferable, // Default true
-      creatorFee: createCollectionPayload.creatorFee === undefined ? 0 : createCollectionPayload.creatorFee, // Default to 0 if not provided
-      schema: createCollectionPayload.schema || null,
-      description: createCollectionPayload.description || '',
-      logoUrl: createCollectionPayload.logoUrl || '',
-      websiteUrl: createCollectionPayload.websiteUrl || '',
-    };
-
-
-    const createSuccess = await new Promise<boolean>((resolve) => {
-      cache.insertOne('nftCollections', collectionDocument, (err, result) => {
-        if (err || !result) {
-          logger.error(`[nft-create-collection] Failed to insert collection ${createCollectionPayload.symbol} into cache: ${err || 'no result'}`);
-          resolve(false);
-        } else {
-          resolve(true);
+export async function process(data: NftCreateCollectionData, sender: string, id: string): Promise<boolean> {
+    try {
+        const existingCollection = await cache.findOnePromise('nftCollections', { _id: data.symbol });
+        if (existingCollection) {
+            logger.error(`[nft-create-collection] Collection with symbol ${data.symbol} already exists during processing.`);
+            return false;
         }
-      });
-    });
 
-    if (!createSuccess) {
-      return false;
+        const collectionToStore = {
+            _id: data.symbol,
+            symbol: data.symbol,
+            name: data.name,
+            description: data.description || '',
+            creator: sender,
+            currentSupply: 0,
+            maxSupply: data.maxSupply === undefined ? Number.MAX_SAFE_INTEGER : data.maxSupply,
+            mintable: data.mintable === undefined ? true : data.mintable,
+            burnable: data.burnable === undefined ? true : data.burnable,
+            transferable: data.transferable === undefined ? true : data.transferable,
+            logoUrl: data.logoUrl || '',
+            websiteUrl: data.websiteUrl || '',
+            createdAt: new Date().toISOString()
+        };
+
+        const insertSuccess = await new Promise<boolean>((resolve) => {
+            cache.insertOne('nftCollections', collectionToStore, (err, result) => {
+                if (err || !result) {
+                    logger.error(`[nft-create-collection] Failed to insert collection ${data.symbol}: ${err || 'no result'}`);
+                    resolve(false);
+                } else {
+                    resolve(true);
+                }
+            });
+        });
+
+        if (!insertSuccess) {
+            return false;
+        }
+
+        logger.debug(`[nft-create-collection] Collection ${data.symbol} created successfully by ${sender}.`);
+
+        // Log event
+        const eventData = { 
+            symbol: data.symbol,
+            name: data.name,
+            description: data.description,
+            maxSupply: data.maxSupply,
+            mintable: data.mintable,
+            burnable: data.burnable,
+            transferable: data.transferable
+        };
+        await logTransactionEvent('nftCreateCollection', sender, eventData, id);
+
+        return true;
+    } catch (error) {
+        logger.error(`[nft-create-collection] Error processing collection creation for ${data.symbol} by ${sender}: ${error}`);
+        return false;
     }
-    logger.debug(`[nft-create-collection] NFT Collection ${createCollectionPayload.symbol} created by ${sender}.`);
-
-    // Log event using the new centralized logger
-    // The existing logic already logs the entire collectionDocument, so we pass it as eventData.
-    await logTransactionEvent('nftCreateCollection', sender, { ...collectionDocument }, transactionId);
-
-    return true;
-  } catch (error) {
-    logger.error(`[nft-create-collection] Error processing creation for ${createCollectionPayload.symbol} by ${sender}: ${error}`);
-    return false;
-  }
 } 

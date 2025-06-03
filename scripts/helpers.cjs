@@ -261,7 +261,7 @@ async function getClient() {
     const CLIENT_OPTIONS = {};
     if (process.env.CHAIN_ID) CLIENT_OPTIONS.chainId = process.env.CHAIN_ID;
     if (process.env.ADDRESS_PREFIX) CLIENT_OPTIONS.addressPrefix = process.env.ADDRESS_PREFIX;
-
+    
     return {
         client: new Client(STEEM_API_URL, CLIENT_OPTIONS),
         sscId: SSC_ID

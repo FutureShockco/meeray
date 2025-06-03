@@ -15,7 +15,7 @@ export interface TokenCreateData { // This is the INPUT to the transaction
   description?: string;
   logoUrl?: string;
   websiteUrl?: string;
-  // creator is added by the system, not part of direct input data typically
+  // issuer is added by the system, not part of direct input data typically
 }
 
 // Represents the actual document structure stored in the 'tokens' collection
@@ -28,11 +28,12 @@ export interface TokenForStorage {
   currentSupply: bigint;
   mintable: boolean;
   burnable: boolean;
-  creator: string;
+  issuer: string;
   description?: string;
   logoUrl?: string;
   websiteUrl?: string;
-  // Potentially other fields like createdAt, updatedAt if managed by the system
+  createdAt: string; // Added for sorting new listings
+  // Potentially other fields like updatedAt if managed by the system
 }
 
 export interface TokenMintData { // Input for minting

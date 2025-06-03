@@ -80,133 +80,132 @@ export async function validateTx(data: PoolAddLiquidityDataDB, sender: string): 
   }
 }
 
-export async function process(transaction: { data: PoolAddLiquidityDataDB, sender: string, _id: string }): Promise<boolean> {
-  const { data: dataDb, sender, _id: transactionId } = transaction;
-  try {
-    // Convert string amounts to BigInt for processing
-    const addLiquidityData = convertToBigInt<PoolAddLiquidityData>(dataDb, NUMERIC_FIELDS);
+export async function process(data: PoolAddLiquidityDataDB, sender: string, id: string): Promise<boolean> {
+    try {
+        // Convert string amounts to BigInt for processing
+        const addLiquidityData = convertToBigInt<PoolAddLiquidityData>(data, NUMERIC_FIELDS);
 
-    const poolDB = await cache.findOnePromise('liquidityPools', { _id: addLiquidityData.poolId }) as LiquidityPoolDB | null;
-    if (!poolDB) {
-      logger.error(`[pool-add-liquidity] CRITICAL: Pool ${addLiquidityData.poolId} not found during processing.`);
-      return false;
-    }
+        const poolDB = await cache.findOnePromise('liquidityPools', { _id: addLiquidityData.poolId }) as LiquidityPoolDB | null;
+        if (!poolDB) {
+            logger.error(`[pool-add-liquidity] CRITICAL: Pool ${addLiquidityData.poolId} not found during processing.`);
+            return false;
+        }
 
-    // Convert pool amounts to BigInt for calculations
-    const pool = convertToBigInt<LiquidityPool>(poolDB, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens', 'feeTier']);
+        // Convert pool amounts to BigInt for calculations
+        const pool = convertToBigInt<LiquidityPool>(poolDB, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens', 'feeTier']);
 
-    // Calculate LP tokens to mint
-    const lpTokensToMint = calculateLpTokensToMint(addLiquidityData.tokenA_amount, addLiquidityData.tokenB_amount, pool);
-    if (lpTokensToMint <= BigInt(0)) {
-      logger.error('[pool-add-liquidity] CRITICAL: LP token calculation resulted in zero or negative amount.');
-      return false;
-    }
+        // Calculate LP tokens to mint
+        const lpTokensToMint = calculateLpTokensToMint(addLiquidityData.tokenA_amount, addLiquidityData.tokenB_amount, pool);
+        if (lpTokensToMint <= BigInt(0)) {
+            logger.error('[pool-add-liquidity] CRITICAL: LP token calculation resulted in zero or negative amount.');
+            return false;
+        }
 
-    // Update pool reserves and total LP tokens with proper padding
-    const poolUpdateSuccess = await cache.updateOnePromise(
-      'liquidityPools',
-      { _id: addLiquidityData.poolId },
-      {
-        $set: {
-          ...convertToString(
+        // Update pool reserves and total LP tokens with proper padding
+        const poolUpdateSuccess = await cache.updateOnePromise(
+            'liquidityPools',
+            { _id: addLiquidityData.poolId },
             {
-              tokenA_reserve: pool.tokenA_reserve + addLiquidityData.tokenA_amount,
-              tokenB_reserve: pool.tokenB_reserve + addLiquidityData.tokenB_amount,
-              totalLpTokens: pool.totalLpTokens + lpTokensToMint
-            },
-            ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens']
-          ),
-          lastUpdatedAt: new Date().toISOString()
+                $set: {
+                    ...convertToString(
+                        {
+                            tokenA_reserve: pool.tokenA_reserve + addLiquidityData.tokenA_amount,
+                            tokenB_reserve: pool.tokenB_reserve + addLiquidityData.tokenB_amount,
+                            totalLpTokens: pool.totalLpTokens + lpTokensToMint
+                        },
+                        ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens']
+                    ),
+                    lastUpdatedAt: new Date().toISOString()
+                }
+            }
+        );
+
+        if (!poolUpdateSuccess) {
+            logger.error(`[pool-add-liquidity] Failed to update pool ${addLiquidityData.poolId}. Add liquidity aborted.`);
+            return false;
         }
-      }
-    );
 
-    if (!poolUpdateSuccess) {
-      logger.error(`[pool-add-liquidity] Failed to update pool ${addLiquidityData.poolId}. Add liquidity aborted.`);
-      return false;
-    }
+        // Update or create user liquidity position with proper padding
+        const userPositionId = `${addLiquidityData.provider}-${addLiquidityData.poolId}`;
+        const existingUserPosDB = await cache.findOnePromise('userLiquidityPositions', { _id: userPositionId }) as UserLiquidityPositionDB | null;
+        const existingUserPos = existingUserPosDB ? convertToBigInt<UserLiquidityPosition>(existingUserPosDB, ['lpTokenBalance']) : null;
 
-    // Update or create user liquidity position with proper padding
-    const userPositionId = `${addLiquidityData.provider}-${addLiquidityData.poolId}`;
-    const existingUserPosDB = await cache.findOnePromise('userLiquidityPositions', { _id: userPositionId }) as UserLiquidityPositionDB | null;
-    const existingUserPos = existingUserPosDB ? convertToBigInt<UserLiquidityPosition>(existingUserPosDB, ['lpTokenBalance']) : null;
+        let userPosUpdateSuccess = false;
 
-    let userPosUpdateSuccess = false;
+        if (existingUserPos) {
+            userPosUpdateSuccess = await cache.updateOnePromise(
+                'userLiquidityPositions',
+                { _id: userPositionId },
+                {
+                    $set: {
+                        ...convertToString(
+                            { lpTokenBalance: existingUserPos.lpTokenBalance + lpTokensToMint },
+                            ['lpTokenBalance']
+                        ),
+                        lastUpdatedAt: new Date().toISOString()
+                    }
+                }
+            );
+        } else {
+            const newUserPosition: UserLiquidityPosition = {
+                _id: userPositionId,
+                provider: addLiquidityData.provider,
+                poolId: addLiquidityData.poolId,
+                lpTokenBalance: lpTokensToMint,
+                createdAt: new Date().toISOString(),
+                lastUpdatedAt: new Date().toISOString()
+            };
 
-    if (existingUserPos) {
-      userPosUpdateSuccess = await cache.updateOnePromise(
-        'userLiquidityPositions',
-        { _id: userPositionId },
-        {
-          $set: {
-            ...convertToString(
-              { lpTokenBalance: existingUserPos.lpTokenBalance + lpTokensToMint },
-              ['lpTokenBalance']
-            ),
-            lastUpdatedAt: new Date().toISOString()
-          }
+            // Convert BigInt fields to strings for database storage with proper padding
+            const newUserPositionDB = convertToString(newUserPosition, ['lpTokenBalance']);
+
+            userPosUpdateSuccess = await new Promise<boolean>((resolve) => {
+                cache.insertOne('userLiquidityPositions', newUserPositionDB, (err, success) => {
+                    if (err || !success) {
+                        logger.error(`[pool-add-liquidity] Failed to insert new user position ${userPositionId}: ${err || 'insert not successful'}`);
+                        resolve(false);
+                    } else {
+                        resolve(true);
+                    }
+                });
+            });
         }
-      );
-    } else {
-      const newUserPosition: UserLiquidityPosition = {
-        _id: userPositionId,
-        provider: addLiquidityData.provider,
-        poolId: addLiquidityData.poolId,
-        lpTokenBalance: lpTokensToMint,
-        createdAt: new Date().toISOString(),
-        lastUpdatedAt: new Date().toISOString()
-      };
 
-      // Convert BigInt fields to strings for database storage with proper padding
-      const newUserPositionDB = convertToString(newUserPosition, ['lpTokenBalance']);
-
-      userPosUpdateSuccess = await new Promise<boolean>((resolve) => {
-        cache.insertOne('userLiquidityPositions', newUserPositionDB, (err, success) => {
-          if (err || !success) {
-            logger.error(`[pool-add-liquidity] Failed to insert new user position ${userPositionId}: ${err || 'insert not successful'}`);
-            resolve(false);
-          } else {
-            resolve(true);
-          }
-        });
-      });
-    }
-
-    if (!userPosUpdateSuccess) {
-      logger.error(`[pool-add-liquidity] CRITICAL: Failed to update user position. Rolling back pool update.`);
-      // Rollback pool update
-      await cache.updateOnePromise(
-        'liquidityPools',
-        { _id: addLiquidityData.poolId },
-        {
-          $set: convertToString(
-            {
-              tokenA_reserve: pool.tokenA_reserve,
-              tokenB_reserve: pool.tokenB_reserve,
-              totalLpTokens: pool.totalLpTokens
-            },
-            ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens']
-          )
+        if (!userPosUpdateSuccess) {
+            logger.error(`[pool-add-liquidity] CRITICAL: Failed to update user position. Rolling back pool update.`);
+            // Rollback pool update
+            await cache.updateOnePromise(
+                'liquidityPools',
+                { _id: addLiquidityData.poolId },
+                {
+                    $set: convertToString(
+                        {
+                            tokenA_reserve: pool.tokenA_reserve,
+                            tokenB_reserve: pool.tokenB_reserve,
+                            totalLpTokens: pool.totalLpTokens
+                        },
+                        ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens']
+                    )
+                }
+            );
+            return false;
         }
-      );
-      return false;
+
+        logger.debug(`[pool-add-liquidity] Provider ${addLiquidityData.provider} added liquidity to pool ${addLiquidityData.poolId}. Token A: ${bigintToString(addLiquidityData.tokenA_amount)}, Token B: ${bigintToString(addLiquidityData.tokenB_amount)}, LP tokens minted: ${bigintToString(lpTokensToMint)}`);
+
+        // Log event using the new centralized logger
+        const eventData = {
+            poolId: addLiquidityData.poolId,
+            provider: addLiquidityData.provider,
+            tokenA_amount: bigintToString(addLiquidityData.tokenA_amount),
+            tokenB_amount: bigintToString(addLiquidityData.tokenB_amount),
+            lpTokensMinted: bigintToString(lpTokensToMint)
+        };
+        await logTransactionEvent('poolAddLiquidity', sender, eventData, id);
+
+        return true;
+    } catch (error) {
+        logger.error(`[pool-add-liquidity] Error processing add liquidity for pool ${data.poolId} by ${sender}: ${error}`);
+        return false;
     }
-
-    logger.debug(`[pool-add-liquidity] Provider ${addLiquidityData.provider} added liquidity to pool ${addLiquidityData.poolId}. Token A: ${bigintToString(addLiquidityData.tokenA_amount)}, Token B: ${bigintToString(addLiquidityData.tokenB_amount)}, LP tokens minted: ${bigintToString(lpTokensToMint)}`);
-
-    // Log event using the new centralized logger
-    const eventData = {
-        poolId: addLiquidityData.poolId,
-        provider: addLiquidityData.provider,
-        tokenA_amount: bigintToString(addLiquidityData.tokenA_amount),
-        tokenB_amount: bigintToString(addLiquidityData.tokenB_amount),
-        lpTokensMinted: bigintToString(lpTokensToMint)
-    };
-    await logTransactionEvent('poolAddLiquidity', sender, eventData, transactionId);
-
-    return true;
-  } catch (error) {
-    logger.error(`[pool-add-liquidity] Error processing add liquidity for pool ${dataDb.poolId} by ${sender}: ${error}`);
-    return false;
-  }
 } 

@@ -62,14 +62,14 @@ export async function validateTx(data: FarmUnstakeDataDB, sender: string): Promi
   }
 }
 
-export async function process(data: FarmUnstakeDataDB, sender: string): Promise<boolean> {
+export async function process(data: FarmUnstakeDataDB, sender: string, id: string): Promise<boolean> {
   try {
     // Convert string amounts to BigInt for processing
     const unstakeData = convertToBigInt<FarmUnstakeData>(data, NUMERIC_FIELDS);
 
     const farm = await cache.findOnePromise('farms', { _id: unstakeData.farmId }) as Farm | null;
     if (!farm) {
-      logger.error(`[farm-unstake] CRITICAL: Farm ${unstakeData.farmId} not found during processing.`);
+      logger.error(`[farm-unstake] Farm ${unstakeData.farmId} not found during processing.`);
       return false;
     }
 
@@ -196,7 +196,7 @@ export async function process(data: FarmUnstakeDataDB, sender: string): Promise<
         lpTokenIssuer: farm.stakingToken.issuer,
         lpTokenAmount: toString(unstakeData.lpTokenAmount)
     };
-    await logTransactionEvent('farmUnstake', sender, eventData);
+    await logTransactionEvent('farmUnstake', sender, eventData, id);
 
     return true;
   } catch (error) {

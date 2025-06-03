@@ -59,8 +59,8 @@ export async function validateTx(data: TokenUpdateData, sender: string): Promise
       return false;
     }
 
-    if (token.creator !== sender) {
-      logger.warn(`[token-update] Sender ${sender} is not the creator of token ${data.symbol}. Only creator can update.`);
+    if (token.issuer !== sender) {
+      logger.warn(`[token-update] Sender ${sender} is not the issuer of token ${data.symbol}. Only issuer can update.`);
       return false;
     }
 
@@ -71,49 +71,52 @@ export async function validateTx(data: TokenUpdateData, sender: string): Promise
   }
 }
 
-export async function process(transaction: { data: TokenUpdateData, sender: string, _id: string }): Promise<boolean> {
-  const { data: updatePayload, sender, _id: transactionId } = transaction;
-  try {
-    const fieldsToUpdate: Partial<Pick<TokenUpdateData, 'name' | 'description' | 'logoUrl' | 'websiteUrl'>> & { lastUpdatedAt?: string } = {};
-    
-    if (updatePayload.name !== undefined) fieldsToUpdate.name = updatePayload.name;
-    if (updatePayload.description !== undefined) fieldsToUpdate.description = updatePayload.description;
-    if (updatePayload.logoUrl !== undefined) fieldsToUpdate.logoUrl = updatePayload.logoUrl;
-    if (updatePayload.websiteUrl !== undefined) fieldsToUpdate.websiteUrl = updatePayload.websiteUrl;
+export async function process(data: TokenUpdateData, sender: string, id: string): Promise<boolean> {
+    try {
+        const token = await cache.findOnePromise('tokens', { _id: data.symbol });
+        if (!token) {
+            logger.error(`[token-update:process] Token ${data.symbol} not found`);
+            return false;
+        }
 
-    if (Object.keys(fieldsToUpdate).length === 0) {
-      logger.debug(`[token-update] No actual fields to update for token ${updatePayload.symbol}, though validation should have caught empty updates.`);
-      return true; 
+        if (token.issuer !== sender) {
+            logger.error(`[token-update:process] Only token issuer can update token. Sender: ${sender}, Issuer: ${token.issuer}`);
+            return false;
+        }
+
+        const updateData: any = {};
+        if (data.name !== undefined) updateData.name = data.name;
+        if (data.description !== undefined) updateData.description = data.description;
+        if (data.logoUrl !== undefined) updateData.logoUrl = data.logoUrl;
+        if (data.websiteUrl !== undefined) updateData.websiteUrl = data.websiteUrl;
+
+        if (Object.keys(updateData).length === 0) {
+            logger.warn(`[token-update:process] No fields to update for token ${data.symbol}`);
+            return false;
+        }
+
+        const updateSuccess = await cache.updateOnePromise(
+            'tokens',
+            { _id: data.symbol },
+            { $set: updateData }
+        );
+
+        if (!updateSuccess) {
+            logger.error(`[token-update:process] Failed to update token ${data.symbol}`);
+            return false;
+        }
+
+        // Log event using the new centralized logger
+        const eventData = { 
+            symbol: data.symbol,
+            ...updateData
+        };
+        await logTransactionEvent('tokenUpdate', sender, eventData, id);
+
+        logger.info(`[token-update:process] Token ${data.symbol} updated successfully by ${sender}`);
+        return true;
+    } catch (error) {
+        logger.error(`[token-update:process] Error updating token ${data.symbol}: ${error}`);
+        return false;
     }
-
-    const originalFieldsUpdated = { ...fieldsToUpdate }; // Clone for event log, before adding lastUpdatedAt
-    fieldsToUpdate.lastUpdatedAt = new Date().toISOString();
-
-    const updateSuccess = await cache.updateOnePromise(
-      'tokens',
-      { _id: updatePayload.symbol, creator: sender }, 
-      { $set: fieldsToUpdate }
-    );
-
-    if (!updateSuccess) {
-      logger.error(`[token-update] Failed to update token ${updatePayload.symbol}.`);
-      return false;
-    }
-
-    logger.debug(`[token-update] Token ${updatePayload.symbol} updated successfully by ${sender}. Fields updated: ${Object.keys(originalFieldsUpdated).join(', ')}`);
-    
-    // Log event using the new centralized logger
-    const eventData = {
-        symbol: updatePayload.symbol,
-        updatedFields: originalFieldsUpdated 
-    };
-    // Pass the transactionId to link the event to the original transaction
-    await logTransactionEvent('tokenUpdate', sender, eventData, transactionId);
-
-    return true;
-
-  } catch (error) {
-    logger.error(`[token-update] Error processing token update for ${updatePayload.symbol} by ${sender}: ${error}`);
-    return false;
-  }
 } 

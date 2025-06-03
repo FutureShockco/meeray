@@ -18,7 +18,7 @@ export interface Transaction {
 // Define transaction handler interface
 interface TransactionHandler<T> {
   validate: (data: T, sender: string) => Promise<boolean>;
-  process: (data: T, sender: string) => Promise<boolean>;
+  process: (data: T, sender: string, id: string) => Promise<boolean>;
 }
 
 // Create a map of transaction handlers

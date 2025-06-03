@@ -19,7 +19,7 @@ const MARKET_EVENT_TYPES = new Set([
  * Represents the structure of an event document to be stored.
  */
 export interface EventDocument {
-    _id: string; 
+    _id: string;
     type: string;
     timestamp: string;
     actor: string;
@@ -45,7 +45,9 @@ export async function logTransactionEvent(
     // We do this here to ensure it's ready before the first event might be sent.
     // If Kafka is optional, this could be moved or made conditional based on config.
     try {
-        await initializeKafkaProducer();
+        if (process.env.USE_NOTIFICATION === 'true') {
+            await initializeKafkaProducer();
+        }
     } catch (initError) {
         // Log and continue if Kafka initialization fails, as it's for notifications
         logger.error(`[event-logger] Kafka producer initialization failed: ${initError instanceof Error ? initError.message : String(initError)}. Event logging will continue without Kafka notifications.`);
@@ -69,10 +71,10 @@ export async function logTransactionEvent(
                 if (err || !result) {
                     logger.error(`[event-logger] CRITICAL: Failed to log event type '${eventType}' for actor '${actor}': ${err || 'no result'}. Data: ${JSON.stringify(eventData)}`);
                     // We might still want to try sending to Kafka or handle this more gracefully
-                    reject(err || new Error('Failed to log event to cache')); 
+                    reject(err || new Error('Failed to log event to cache'));
                     return;
                 }
-                
+
                 logger.debug(`[event-logger] Event logged to cache: Type: ${eventType}, Actor: ${actor}, EventID: ${eventDocument._id}`);
 
                 let kafkaTopic = KAFKA_NOTIFICATIONS_TOPIC;
@@ -88,18 +90,19 @@ export async function logTransactionEvent(
                         // Optionally, could send to a specific "problem_market_events" topic or handle differently
                     }
                 }
-
-                sendKafkaEvent(kafkaTopic, eventDocument, kafkaKey)
-                    .then(() => {
-                        logger.debug(`[event-logger] Event ${eventDocument._id} (Key: ${kafkaKey}) successfully queued to Kafka topic '${kafkaTopic}'.`);
-                    })
-                    .catch(kafkaError => {
-                        // This error is for Kafka sending, the event is already in cache.
-                        logger.error(`[event-logger] Failed to send event ${eventDocument._id} (Key: ${kafkaKey}) to Kafka topic '${kafkaTopic}': ${kafkaError instanceof Error ? kafkaError.message : String(kafkaError)}`);
-                    })
-                    .finally(() => {
-                        resolve(); // Resolve the promise whether Kafka send succeeded or failed, as cache log was successful.
-                    });
+                if (process.env.USE_NOTIFICATION === 'true')
+                    sendKafkaEvent(kafkaTopic, eventDocument, kafkaKey)
+                        .then(() => {
+                            logger.debug(`[event-logger] Event ${eventDocument._id} (Key: ${kafkaKey}) successfully queued to Kafka topic '${kafkaTopic}'.`);
+                        })
+                        .catch(kafkaError => {
+                            // This error is for Kafka sending, the event is already in cache.
+                            logger.error(`[event-logger] Failed to send event ${eventDocument._id} (Key: ${kafkaKey}) to Kafka topic '${kafkaTopic}': ${kafkaError instanceof Error ? kafkaError.message : String(kafkaError)}`);
+                        })
+                        .finally(() => {
+                            resolve(); // Resolve the promise whether Kafka send succeeded or failed, as cache log was successful.
+                        });
+                else resolve()
             });
         });
     } catch (error) {

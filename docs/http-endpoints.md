@@ -1,1523 +1,500 @@
-# Echelon Blockchain HTTP API Documentation
-
-This document provides a comprehensive guide to all HTTP API endpoints available in the Echelon blockchain.
-
-## Base URL
-
-All endpoints are relative to the base URL of the API server. By default, the API server runs on port 3001.
-
-```
-http://localhost:3001
-```
-
-## Endpoint Categories
-
-- [Accounts](#accounts)
-- [Blocks](#blocks)
-- [Farms](#farms)
-- [Markets](#markets)
-- [Mining](#mining)
-- [NFTs](#nfts)
-- [Pools](#pools)
-- [Tokens](#tokens)
-- [Witnesses](#witnesses)
-
-## Accounts
-
-### GET /accounts
-
-Lists accounts with pagination and filtering options.
-
-**Query Parameters:**
-- `limit` (optional) - Number of results to return (default: 10)
-- `offset` (optional) - Number of results to skip (default: 0)
-- `hasToken` (optional) - Filter accounts that hold a specific token (token symbol)
-- `isWitness` (optional) - Filter for witness accounts (true/false)
-- `sortBy` (optional) - Field to sort by (default: 'name')
-- `sortDirection` (optional) - Sort direction ('asc' or 'desc', default: 'asc')
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "_id": "string",
-      "name": "string",
-      "balances": {},
-      "tokens": {},
-      "votedWitnesses": [],
-      "totalVoteWeight": 0
-    }
-  ],
-  "total": 0,
-  "limit": 10,
-  "skip": 0
-}
-```
-
-### GET /accounts/:name
-
-Retrieves details for a specific account.
-
-**Parameters:**
-- `name` (path parameter) - The name of the account to retrieve
-
-**Response:**
-```json
-{
-  "success": true,
-  "account": {
-    "_id": "string",
-    "name": "string",
-    "balances": {},
-    "tokens": {},
-    "votedWitnesses": [],
-    "totalVoteWeight": 0
-  }
-}
-```
-
-### GET /accounts/:name/transactions
-
-Retrieves transactions involving a specific account.
-
-**Parameters:**
-- `name` (path parameter) - The name of the account to retrieve transactions for
-
-**Query Parameters:**
-- `limit` (optional) - Number of results to return (default: 10)
-- `offset` (optional) - Number of results to skip (default: 0)
-- `type` (optional) - Filter by transaction type (numeric value)
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "type": 0,
-      "data": {},
-      "sender": "string",
-      "ts": 0,
-      "ref": "string",
-      "hash": "string"
-    }
-  ],
-  "total": 0,
-  "limit": 10,
-  "skip": 0
-}
-```
-
-### GET /accounts/:name/tokens
-
-Retrieves token balances for a specific account.
-
-**Parameters:**
-- `name` (path parameter) - The name of the account to retrieve token balances for
-
-**Response:**
-```json
-{
-  "success": true,
-  "account": "string",
-  "tokens": [
-    {
-      "symbol": "string",
-      "amount": 0
-    }
-  ]
-}
-```
-
-## Blocks
-
-### GET /blocks
-
-Lists blocks with pagination and filtering options.
-
-**Query Parameters:**
-- `limit` (optional) - Number of results to return (default: 10)
-- `offset` (optional) - Number of results to skip (default: 0)
-- `hasTransactionType` (optional) - Filter blocks containing a specific transaction type
-- `minTimestamp` (optional) - Filter blocks after a specific timestamp
-- `maxTimestamp` (optional) - Filter blocks before a specific timestamp
-- `sortDirection` (optional) - Sort direction ('asc' for oldest first, 'desc' for newest first, default: 'desc')
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "hash": "string",
-      "timestamp": 0,
-      "transactions": [],
-      "height": 0
-    }
-  ],
-  "total": 0,
-  "limit": 10,
-  "skip": 0
-}
-```
-
-### GET /blocks/latest
-
-Retrieves the latest block information.
-
-**Response:**
-```json
-{
-  "success": true,
-  "block": {
-    "hash": "string",
-    "timestamp": 0,
-    "transactions": [],
-    "height": 0
-  }
-}
-```
-
-### GET /blocks/height/:height
-
-Retrieves a block by its height.
-
-**Parameters:**
-- `height` (path parameter) - The height of the block to retrieve
-
-**Response:**
-```json
-{
-  "success": true,
-  "block": {
-    "hash": "string",
-    "timestamp": 0,
-    "transactions": [],
-    "height": 0
-  }
-}
-```
-
-### GET /blocks/hash/:hash
-
-Retrieves a block by its hash.
-
-**Parameters:**
-- `hash` (path parameter) - The hash of the block to retrieve
-
-**Response:**
-```json
-{
-  "success": true,
-  "block": {
-    "hash": "string",
-    "timestamp": 0,
-    "transactions": [],
-    "height": 0
-  }
-}
-```
-
-### GET /blocks/:height/transactions
-
-Retrieves all transactions in a specific block.
-
-**Parameters:**
-- `height` (path parameter) - The height of the block to retrieve transactions from
-
-**Response:**
-```json
-{
-  "success": true,
-  "blockHeight": 0,
-  "transactions": [
-    {
-      "type": 0,
-      "data": {},
-      "sender": "string",
-      "ts": 0,
-      "ref": "string",
-      "hash": "string"
-    }
-  ]
-}
-```
-
-## Farms
-
-### GET /farms
-
-Lists all farms with pagination.
-
-**Query Parameters:**
-- `limit` (optional) - Number of results to return (default: 10)
-- `offset` (optional) - Number of results to skip (default: 0)
-- `status` (optional) - Filter by farm status
-- `rewardTokenSymbol` (optional) - Filter by reward token symbol
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "_id": "string",
-      "lpTokenSymbol": "string",
-      "lpTokenIssuer": "string",
-      "rewardTokenSymbol": "string",
-      "rewardTokenIssuer": "string",
-      "totalLpStaked": 0,
-      "createdAt": "string"
-    }
-  ],
-  "total": 0,
-  "limit": 10,
-  "skip": 0
-}
-```
-
-### GET /farms/:farmId
-
-Retrieves details for a specific farm.
-
-**Parameters:**
-- `farmId` (path parameter) - The ID of the farm to retrieve
-
-**Response:**
-```json
-{
-  "_id": "string",
-  "lpTokenSymbol": "string",
-  "lpTokenIssuer": "string",
-  "rewardTokenSymbol": "string",
-  "rewardTokenIssuer": "string",
-  "totalLpStaked": 0,
-  "createdAt": "string"
-}
-```
-
-### GET /farms/positions/user/:userId
-
-Lists all farm positions for a specific user with pagination.
-
-**Parameters:**
-- `userId` (path parameter) - The ID of the user whose positions to retrieve
-
-**Query Parameters:**
-- `limit` (optional) - Number of results to return (default: 10)
-- `offset` (optional) - Number of results to skip (default: 0)
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "_id": "string",
-      "staker": "string",
-      "farmId": "string",
-      "stakedLpAmount": 0,
-      "createdAt": "string",
-      "lastStakedAt": "string",
-      "lastClaimedAt": "string"
-    }
-  ],
-  "total": 0,
-  "limit": 10,
-  "skip": 0
-}
-```
-
-### GET /farms/positions/farm/:farmId
-
-Lists all user positions for a specific farm with pagination.
-
-**Parameters:**
-- `farmId` (path parameter) - The ID of the farm whose positions to retrieve
-
-**Query Parameters:**
-- `limit` (optional) - Number of results to return (default: 10)
-- `offset` (optional) - Number of results to skip (default: 0)
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "_id": "string",
-      "staker": "string",
-      "farmId": "string",
-      "stakedLpAmount": 0,
-      "createdAt": "string",
-      "lastStakedAt": "string",
-      "lastClaimedAt": "string"
-    }
-  ],
-  "total": 0,
-  "limit": 10,
-  "skip": 0
-}
-```
-
-### GET /farms/positions/:positionId
-
-Retrieves details for a specific farm position.
-
-**Parameters:**
-- `positionId` (path parameter) - The ID of the farm position to retrieve
-
-**Response:**
-```json
-{
-  "_id": "string",
-  "staker": "string",
-  "farmId": "string",
-  "stakedLpAmount": 0,
-  "createdAt": "string",
-  "lastStakedAt": "string",
-  "lastClaimedAt": "string"
-}
-```
-
-### GET /farms/positions/user/:userId/farm/:farmId
-
-Retrieves a specific user's position in a specific farm.
-
-**Parameters:**
-- `userId` (path parameter) - The ID of the user
-- `farmId` (path parameter) - The ID of the farm
-
-**Response:**
-```json
-{
-  "_id": "string",
-  "staker": "string",
-  "farmId": "string",
-  "stakedLpAmount": 0,
-  "createdAt": "string",
-  "lastStakedAt": "string",
-  "lastClaimedAt": "string"
-}
-```
-
-## Markets
-
-### GET /markets/pairs
-
-Lists all trading pairs with pagination.
-
-**Query Parameters:**
-- `limit` (optional) - Number of results to return (default: 10)
-- `offset` (optional) - Number of results to skip (default: 0)
-- `status` (optional) - Filter by pair status
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "_id": "string",
-      "baseAssetSymbol": "string",
-      "baseAssetIssuer": "string",
-      "quoteAssetSymbol": "string",
-      "quoteAssetIssuer": "string",
-      "status": "string"
-    }
-  ],
-  "total": 0,
-  "limit": 10,
-  "skip": 0
-}
-```
-
-### GET /markets/pairs/:pairId
-
-Retrieves details for a specific trading pair.
-
-**Parameters:**
-- `pairId` (path parameter) - The ID of the pair to retrieve
-
-**Response:**
-```json
-{
-  "_id": "string",
-  "baseAssetSymbol": "string",
-  "baseAssetIssuer": "string",
-  "quoteAssetSymbol": "string",
-  "quoteAssetIssuer": "string",
-  "status": "string"
-}
-```
-
-### GET /markets/orders/pair/:pairId
-
-Lists all orders for a specific trading pair with pagination.
-
-**Parameters:**
-- `pairId` (path parameter) - The ID of the pair whose orders to retrieve
-
-**Query Parameters:**
-- `limit` (optional) - Number of results to return (default: 10)
-- `offset` (optional) - Number of results to skip (default: 0)
-- `status` (optional) - Filter by order status
-- `side` (optional) - Filter by order side
-- `userId` (optional) - Filter by user ID
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "_id": "string",
-      "userId": "string",
-      "pairId": "string",
-      "type": "string",
-      "side": "string",
-      "price": 0,
-      "quantity": 0,
-      "status": "string",
-      "createdAt": "string"
-    }
-  ],
-  "total": 0,
-  "limit": 10,
-  "skip": 0
-}
-```
-
-### GET /markets/orders/user/:userId
-
-Lists all orders for a specific user with pagination.
-
-**Parameters:**
-- `userId` (path parameter) - The ID of the user whose orders to retrieve
-
-**Query Parameters:**
-- `limit` (optional) - Number of results to return (default: 10)
-- `offset` (optional) - Number of results to skip (default: 0)
-- `pairId` (optional) - Filter by pair ID
-- `status` (optional) - Filter by order status
-- `side` (optional) - Filter by order side
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "_id": "string",
-      "userId": "string",
-      "pairId": "string",
-      "type": "string",
-      "side": "string",
-      "price": 0,
-      "quantity": 0,
-      "status": "string",
-      "createdAt": "string"
-    }
-  ],
-  "total": 0,
-  "limit": 10,
-  "skip": 0
-}
-```
-
-### GET /markets/orders/:orderId
-
-Retrieves details for a specific order.
-
-**Parameters:**
-- `orderId` (path parameter) - The ID of the order to retrieve
-
-**Response:**
-```json
-{
-  "_id": "string",
-  "userId": "string",
-  "pairId": "string",
-  "type": "string",
-  "side": "string",
-  "price": 0,
-  "quantity": 0,
-  "status": "string",
-  "createdAt": "string"
-}
-```
-
-### GET /markets/trades/pair/:pairId
-
-Lists all trades for a specific trading pair with pagination.
-
-**Parameters:**
-- `pairId` (path parameter) - The ID of the pair whose trades to retrieve
-
-**Query Parameters:**
-- `limit` (optional) - Number of results to return (default: 10)
-- `offset` (optional) - Number of results to skip (default: 0)
-- `fromTimestamp` (optional) - Filter by minimum timestamp
-- `toTimestamp` (optional) - Filter by maximum timestamp
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "_id": "string",
-      "pairId": "string",
-      "makerOrderId": "string",
-      "takerOrderId": "string",
-      "price": 0,
-      "quantity": 0,
-      "timestamp": "string"
-    }
-  ],
-  "total": 0,
-  "limit": 10,
-  "skip": 0
-}
-```
-
-### GET /markets/trades/order/:orderId
-
-Lists all trades involving a specific order (as maker or taker).
-
-**Parameters:**
-- `orderId` (path parameter) - The ID of the order whose trades to retrieve
-
-**Query Parameters:**
-- `limit` (optional) - Number of results to return (default: 10)
-- `offset` (optional) - Number of results to skip (default: 0)
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "_id": "string",
-      "pairId": "string",
-      "makerOrderId": "string",
-      "takerOrderId": "string",
-      "price": 0,
-      "quantity": 0,
-      "timestamp": "string"
-    }
-  ],
-  "total": 0,
-  "limit": 10,
-  "skip": 0
-}
-```
-
-### GET /markets/trades/:tradeId
-
-Retrieves details for a specific trade.
-
-**Parameters:**
-- `tradeId` (path parameter) - The ID of the trade to retrieve
-
-**Response:**
-```json
-{
-  "_id": "string",
-  "pairId": "string",
-  "makerOrderId": "string",
-  "takerOrderId": "string",
-  "price": 0,
-  "quantity": 0,
-  "timestamp": "string"
-}
-```
-
-## Mining
-
-### GET /mine
-
-Triggers the mining of a new block.
-
-**Response:**
-```json
-{
-  "success": true,
-  "block": {
-    "hash": "string",
-    "timestamp": "string",
-    "transactions": [],
-    "height": 0
-  }
-}
-```
-
-## NFTs
-
-### GET /nfts/collections
-
-Lists all NFT collections with pagination and filtering.
-
-**Query Parameters:**
-- `limit` (optional) - Number of results to return (default: 10)
-- `offset` (optional) - Number of results to skip (default: 0)
-- `creator` (optional) - Filter by creator account name
-- `allowDelegation` (optional) - Filter by delegation status (true/false)
-- `createdAfter` (optional) - Filter collections created after a specific date
-- `createdBefore` (optional) - Filter collections created before a specific date
-- `nameSearch` (optional) - Search within collection names (case insensitive partial match)
-- `sortBy` (optional) - Field to sort by (default: 'createdAt')
-- `sortDirection` (optional) - Sort direction ('asc' or 'desc', default: 'desc')
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "_id": "string",
-      "symbol": "string",
-      "name": "string",
-      "creator": "string",
-      "allowDelegation": true,
-      "metadata": "string",
-      "createdAt": "string"
-    }
-  ],
-  "total": 0,
-  "limit": 10,
-  "skip": 0
-}
-```
-
-### GET /nfts/collections/:collectionSymbol
-
-Retrieves details for a specific NFT collection.
-
-**Parameters:**
-- `collectionSymbol` (path parameter) - The symbol of the collection to retrieve
-
-**Response:**
-```json
-{
-  "_id": "string",
-  "symbol": "string",
-  "name": "string",
-  "creator": "string",
-  "allowDelegation": true,
-  "metadata": "string",
-  "createdAt": "string"
-}
-```
-
-### GET /nfts/collections/creator/:creatorName
-
-Lists all NFT collections by a specific creator with pagination.
-
-**Parameters:**
-- `creatorName` (path parameter) - The name of the creator whose collections to retrieve
-
-**Query Parameters:**
-- `limit` (optional) - Number of results to return (default: 10)
-- `offset` (optional) - Number of results to skip (default: 0)
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "_id": "string",
-      "symbol": "string",
-      "name": "string",
-      "creator": "string",
-      "allowDelegation": true,
-      "metadata": "string",
-      "createdAt": "string"
-    }
-  ],
-  "total": 0,
-  "limit": 10,
-  "skip": 0
-}
-```
-
-### GET /nfts/collections/stats
-
-Retrieves statistics about NFT collections.
-
-**Response:**
-```json
-{
-  "topCollectionsBySize": [
-    {
-      "_id": "string",
-      "symbol": "string",
-      "name": "string",
-      "creator": "string",
-      "totalNfts": 0,
-      "createdAt": "string"
-    }
-  ],
-  "topCollectionsBySales": [
-    {
-      "_id": "string",
-      "totalSales": 0,
-      "totalVolume": 0
-    }
-  ]
-}
-```
-
-### GET /nfts/instances
-
-Lists all NFT instances with advanced filtering options.
-
-**Query Parameters:**
-- `limit` (optional) - Number of results to return (default: 10)
-- `offset` (optional) - Number of results to skip (default: 0)
-- `collectionSymbol` (optional) - Filter by collection symbol
-- `owner` (optional) - Filter by owner account
-- `createdAfter` (optional) - Filter NFTs created after a specific date
-- `createdBefore` (optional) - Filter NFTs created before a specific date
-- `metadataKey` (optional) - Filter by metadata key (requires metadataValue)
-- `metadataValue` (optional) - Filter by metadata value (requires metadataKey)
-- `sortBy` (optional) - Field to sort by (default: 'createdAt')
-- `sortDirection` (optional) - Sort direction ('asc' or 'desc', default: 'desc')
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "_id": "string",
-      "collectionSymbol": "string",
-      "instanceId": "string",
-      "owner": "string",
-      "metadata": "string",
-      "properties": "string",
-      "createdAt": "string"
-    }
-  ],
-  "total": 0,
-  "limit": 10,
-  "skip": 0
-}
-```
-
-### GET /nfts/instances/collection/:collectionSymbol
-
-Lists all NFT instances within a specific collection with pagination.
-
-**Parameters:**
-- `collectionSymbol` (path parameter) - The symbol of the collection whose instances to retrieve
-
-**Query Parameters:**
-- `limit` (optional) - Number of results to return (default: 10)
-- `offset` (optional) - Number of results to skip (default: 0)
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "_id": "string",
-      "collectionSymbol": "string",
-      "instanceId": "string",
-      "owner": "string",
-      "metadata": "string",
-      "properties": "string",
-      "createdAt": "string"
-    }
-  ],
-  "total": 0,
-  "limit": 10,
-  "skip": 0
-}
-```
-
-### GET /nfts/instances/owner/:ownerName
-
-Lists all NFT instances owned by a specific account with pagination.
-
-**Parameters:**
-- `ownerName` (path parameter) - The name of the owner whose instances to retrieve
-
-**Query Parameters:**
-- `limit` (optional) - Number of results to return (default: 10)
-- `offset` (optional) - Number of results to skip (default: 0)
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "_id": "string",
-      "collectionSymbol": "string",
-      "instanceId": "string",
-      "owner": "string",
-      "metadata": "string",
-      "properties": "string",
-      "createdAt": "string"
-    }
-  ],
-  "total": 0,
-  "limit": 10,
-  "skip": 0
-}
-```
-
-### GET /nfts/instances/id/:nftId
-
-Retrieves details for a specific NFT instance.
-
-**Parameters:**
-- `nftId` (path parameter) - The ID of the NFT instance to retrieve (format: "COLLECTION-INSTANCE")
-
-**Response:**
-```json
-{
-  "_id": "string",
-  "collectionSymbol": "string",
-  "instanceId": "string",
-  "owner": "string",
-  "metadata": "string",
-  "properties": "string",
-  "createdAt": "string"
-}
-```
-
-### GET /nfts/instances/id/:nftId/history
-
-Retrieves the ownership and transaction history for a specific NFT.
-
-**Parameters:**
-- `nftId` (path parameter) - The ID of the NFT instance to retrieve history for
-
-**Query Parameters:**
-- `limit` (optional) - Number of results to return (default: 10)
-- `offset` (optional) - Number of results to skip (default: 0)
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "type": 0,
-      "data": {},
-      "sender": "string",
-      "ts": 0,
-      "ref": "string",
-      "hash": "string"
-    }
-  ],
-  "nftId": "string",
-  "collectionSymbol": "string",
-  "instanceId": "string",
-  "total": 0,
-  "limit": 10,
-  "skip": 0
-}
-```
-
-### GET /nfts/listings
-
-Lists all active NFT listings with pagination and filtering.
-
-**Query Parameters:**
-- `limit` (optional) - Number of results to return (default: 10)
-- `offset` (optional) - Number of results to skip (default: 0)
-- `status` (optional) - Filter by listing status (default: "ACTIVE")
-- `collectionSymbol` (optional) - Filter by collection symbol
-- `seller` (optional) - Filter by seller account
-- `paymentTokenSymbol` (optional) - Filter by payment token symbol
-- `minPrice` (optional) - Filter listings with price >= minPrice
-- `maxPrice` (optional) - Filter listings with price <= maxPrice
-- `sortBy` (optional) - Field to sort by (default: 'createdAt')
-- `sortDirection` (optional) - Sort direction ('asc' or 'desc', default: 'desc')
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "_id": "string",
-      "collectionSymbol": "string",
-      "instanceId": "string",
-      "seller": "string",
-      "price": 0,
-      "paymentTokenSymbol": "string",
-      "status": "string",
-      "createdAt": "string"
-    }
-  ],
-  "total": 0,
-  "limit": 10,
-  "skip": 0
-}
-```
-
-### GET /nfts/listings/id/:listingId
-
-Retrieves details for a specific NFT listing.
-
-**Parameters:**
-- `listingId` (path parameter) - The ID of the listing to retrieve
-
-**Response:**
-```json
-{
-  "_id": "string",
-  "collectionSymbol": "string",
-  "instanceId": "string",
-  "seller": "string",
-  "price": 0,
-  "paymentTokenSymbol": "string",
-  "status": "string",
-  "createdAt": "string"
-}
-```
-
-### GET /nfts/listings/nft/:nftInstanceId
-
-Retrieves the active listing for a specific NFT instance.
-
-**Parameters:**
-- `nftInstanceId` (path parameter) - The ID of the NFT instance whose listing to retrieve (format: "COLLECTION-INSTANCE")
-
-**Response:**
-```json
-{
-  "_id": "string",
-  "collectionSymbol": "string",
-  "instanceId": "string",
-  "seller": "string",
-  "price": 0,
-  "paymentTokenSymbol": "string",
-  "status": "string",
-  "createdAt": "string"
-}
-```
-
-### GET /nfts/listings/nft/:nftInstanceId/history
-
-Retrieves the price history for an NFT, including all listings and sales.
-
-**Parameters:**
-- `nftInstanceId` (path parameter) - The ID of the NFT instance to retrieve price history for
-
-**Query Parameters:**
-- `limit` (optional) - Number of results to return (default: 10)
-- `offset` (optional) - Number of results to skip (default: 0)
-
-**Response:**
-```json
-{
-  "nftId": "string",
-  "listings": {
-    "data": [
-      {
-        "_id": "string",
-        "collectionSymbol": "string",
-        "instanceId": "string",
-        "seller": "string",
-        "price": 0,
-        "paymentTokenSymbol": "string",
-        "status": "string",
-        "createdAt": "string"
-      }
-    ],
-    "total": 0
-  },
-  "sales": {
-    "data": [
-      {
-        "type": 6,
-        "data": {
-          "collectionSymbol": "string",
-          "instanceId": "string",
-          "price": 0
-        },
-        "sender": "string",
-        "ts": 0,
-        "ref": "string",
-        "hash": "string"
-      }
-    ],
-    "total": 0
-  },
-  "limit": 10,
-  "skip": 0
-}
-```
-
-## Pools
-
-### GET /pools
-
-Lists all liquidity pools with pagination.
-
-**Query Parameters:**
-- `limit` (optional) - Number of results to return (default: 10)
-- `offset` (optional) - Number of results to skip (default: 0)
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "_id": "string",
-      "tokenA_symbol": "string",
-      "tokenA_issuer": "string",
-      "tokenA_reserve": 0,
-      "tokenB_symbol": "string",
-      "tokenB_issuer": "string",
-      "tokenB_reserve": 0,
-      "totalLpTokens": 0,
-      "lpTokenSymbol": "string",
-      "feeRate": 0,
-      "createdAt": "string"
-    }
-  ],
-  "total": 0,
-  "limit": 10,
-  "skip": 0
-}
-```
-
-### GET /pools/:poolId
-
-Retrieves details for a specific liquidity pool.
-
-**Parameters:**
-- `poolId` (path parameter) - The ID of the pool to retrieve
-
-**Response:**
-```json
-{
-  "_id": "string",
-  "tokenA_symbol": "string",
-  "tokenA_issuer": "string",
-  "tokenA_reserve": 0,
-  "tokenB_symbol": "string",
-  "tokenB_issuer": "string",
-  "tokenB_reserve": 0,
-  "totalLpTokens": 0,
-  "lpTokenSymbol": "string",
-  "feeRate": 0,
-  "createdAt": "string"
-}
-```
-
-### GET /pools/token/:tokenSymbol
-
-Lists all liquidity pools that include a specific token with pagination.
-
-**Parameters:**
-- `tokenSymbol` (path parameter) - The symbol of the token whose pools to retrieve
-
-**Query Parameters:**
-- `limit` (optional) - Number of results to return (default: 10)
-- `offset` (optional) - Number of results to skip (default: 0)
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "_id": "string",
-      "tokenA_symbol": "string",
-      "tokenA_issuer": "string",
-      "tokenA_reserve": 0,
-      "tokenB_symbol": "string",
-      "tokenB_issuer": "string",
-      "tokenB_reserve": 0,
-      "totalLpTokens": 0,
-      "lpTokenSymbol": "string",
-      "feeRate": 0,
-      "createdAt": "string"
-    }
-  ],
-  "total": 0,
-  "limit": 10,
-  "skip": 0
-}
-```
-
-### GET /pools/positions/user/:userId
-
-Lists all liquidity positions for a specific user with pagination.
-
-**Parameters:**
-- `userId` (path parameter) - The ID of the user whose positions to retrieve
-
-**Query Parameters:**
-- `limit` (optional) - Number of results to return (default: 10)
-- `offset` (optional) - Number of results to skip (default: 0)
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "_id": "string",
-      "provider": "string",
-      "poolId": "string",
-      "lpTokenBalance": 0,
-      "createdAt": "string",
-      "lastUpdatedAt": "string"
-    }
-  ],
-  "total": 0,
-  "limit": 10,
-  "skip": 0
-}
-```
-
-### GET /pools/positions/pool/:poolId
-
-Lists all liquidity positions for a specific pool with pagination.
-
-**Parameters:**
-- `poolId` (path parameter) - The ID of the pool whose positions to retrieve
-
-**Query Parameters:**
-- `limit` (optional) - Number of results to return (default: 10)
-- `offset` (optional) - Number of results to skip (default: 0)
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "_id": "string",
-      "provider": "string",
-      "poolId": "string",
-      "lpTokenBalance": 0,
-      "createdAt": "string",
-      "lastUpdatedAt": "string"
-    }
-  ],
-  "total": 0,
-  "limit": 10,
-  "skip": 0
-}
-```
-
-### GET /pools/positions/:positionId
-
-Retrieves details for a specific liquidity position.
-
-**Parameters:**
-- `positionId` (path parameter) - The ID of the position to retrieve
-
-**Response:**
-```json
-{
-  "_id": "string",
-  "provider": "string",
-  "poolId": "string",
-  "lpTokenBalance": 0,
-  "createdAt": "string",
-  "lastUpdatedAt": "string"
-}
-```
-
-### GET /pools/positions/user/:userId/pool/:poolId
-
-Retrieves a specific user's liquidity position in a specific pool.
-
-**Parameters:**
-- `userId` (path parameter) - The ID of the user
-- `poolId` (path parameter) - The ID of the pool
-
-**Response:**
-```json
-{
-  "_id": "string",
-  "provider": "string",
-  "poolId": "string",
-  "lpTokenBalance": 0,
-  "createdAt": "string",
-  "lastUpdatedAt": "string"
-}
-```
-
-### GET /pools/route-swap
-
-Finds the best swap route between two tokens using available liquidity pools, considering up to 4 hops. This endpoint helps in constructing the `hops` array for a `pool_swap` transaction.
-
-**Query Parameters:**
-- `fromTokenSymbol` (required) - The symbol of the token to swap from.
-- `toTokenSymbol` (required) - The symbol of the token to swap to.
-- `amountIn` (required) - The amount of `fromTokenSymbol` to swap (numeric string).
-
-**Response (Success):**
-```json
-{
-  "success": true,
-  "fromTokenSymbol": "string",
-  "toTokenSymbol": "string",
-  "amountIn": 0,
-  "bestRoute": {
-    "hops": [
-      {
-        "poolId": "string",
-        "tokenIn": "string",
-        "tokenOut": "string",
-        "amountOut": 0
-      }
-    ],
-    "totalAmountOut": 0
-  }
-}
-```
-
-## Tokens
-
-### GET /tokens
-
-Lists all registered tokens with pagination.
-
-**Query Parameters:**
-- `limit` (optional) - Number of results to return (default: 10)
-- `offset` (optional) - Number of results to skip (default: 0)
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "_id": "string",
-      "symbol": "string",
-      "name": "string",
-      "precision": 0,
-      "maxSupply": 0,
-      "currentSupply": 0,
-      "creator": "string",
-      "mintable": true,
-      "burnable": true,
-      "description": "string",
-      "logoUrl": "string",
-      "websiteUrl": "string"
-    }
-  ],
-  "total": 0,
-  "limit": 10,
-  "skip": 0
-}
-```
-
-### GET /tokens/:symbol
-
-Retrieves details for a specific token.
-
-**Parameters:**
-- `symbol` (path parameter) - The symbol of the token to retrieve
-
-**Response:**
-```json
-{
-  "_id": "string",
-  "symbol": "string",
-  "name": "string",
-  "precision": 0,
-  "maxSupply": 0,
-  "currentSupply": 0,
-  "creator": "string",
-  "mintable": true,
-  "burnable": true,
-  "description": "string",
-  "logoUrl": "string",
-  "websiteUrl": "string"
-}
-```
-
-### GET /tokens/issuer/:issuerName
-
-Lists tokens created by a specific issuer with pagination.
-
-**Parameters:**
-- `issuerName` (path parameter) - The name of the issuer whose tokens to retrieve
-
-**Query Parameters:**
-- `limit` (optional) - Number of results to return (default: 10)
-- `offset` (optional) - Number of results to skip (default: 0)
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "_id": "string",
-      "symbol": "string",
-      "name": "string",
-      "precision": 0,
-      "maxSupply": 0,
-      "currentSupply": 0,
-      "creator": "string",
-      "mintable": true,
-      "burnable": true,
-      "description": "string",
-      "logoUrl": "string",
-      "websiteUrl": "string"
-    }
-  ],
-  "total": 0,
-  "limit": 10,
-  "skip": 0
-}
-```
-
-### GET /tokens/name/:searchName
-
-Searches for tokens by name (partial match) with pagination.
-
-**Parameters:**
-- `searchName` (path parameter) - The search string to match against token names
-
-**Query Parameters:**
-- `limit` (optional) - Number of results to return (default: 10)
-- `offset` (optional) - Number of results to skip (default: 0)
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "_id": "string",
-      "symbol": "string",
-      "name": "string",
-      "precision": 0,
-      "maxSupply": 0,
-      "currentSupply": 0,
-      "creator": "string",
-      "mintable": true,
-      "burnable": true,
-      "description": "string",
-      "logoUrl": "string",
-      "websiteUrl": "string"
-    }
-  ],
-  "total": 0,
-  "limit": 10,
-  "skip": 0
-}
-```
-
-## Witnesses
-
-### GET /witnesses
-
-Lists top witnesses by vote weight with pagination.
-
-**Query Parameters:**
-- `limit` (optional) - Number of results to return (default: 10)
-- `offset` (optional) - Number of results to skip (default: 0)
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "name": "string",
-      "witnessPublicKey": "string",
-      "totalVoteWeight": 0
-    }
-  ],
-  "total": 0,
-  "limit": 10,
-  "skip": 0
-}
-```
-
-### GET /witnesses/:name/details
-
-Retrieves account details for a specific witness.
-
-**Parameters:**
-- `name` (path parameter) - The name of the witness account to retrieve
-
-**Response:**
-```json
-{
-  "name": "string",
-  "witnessPublicKey": "string",
-  "totalVoteWeight": 0,
-  "balance": 0,
-  "votedWitnesses": []
-}
-```
-
-### GET /witnesses/votescastby/:voterName
-
-Lists witnesses that a specific account has voted for.
-
-**Parameters:**
-- `voterName` (path parameter) - The name of the voter account
-
-**Response:**
-```json
-{
-  "votedWitnesses": [
-    "string"
-  ]
-}
-```
-
-### GET /witnesses/votersfor/:witnessName
-
-Lists accounts that voted for a specific witness with pagination.
-
-**Parameters:**
-- `witnessName` (path parameter) - The name of the witness account
-
-**Query Parameters:**
-- `limit` (optional) - Number of results to return (default: 10)
-- `offset` (optional) - Number of results to skip (default: 0)
-
-**Response:**
-```json
-{
-  "data": [
-    "string"
-  ],
-  "total": 0,
-  "limit": 10,
-  "skip": 0
-}
-```
-
-## Transaction Payloads
-
-This section describes the expected JSON payloads for various `custom_json` operations with `id: "sidechain"`.
-
-### `pool_swap` (Type ID: 17)
-
-Executes a token swap. Can be a direct swap within a single pool or a routed swap through multiple pools.
-
-**Contract Name:** `pool_swap`
-
-**Payload for Direct Swap (`json.payload`):
-```json
-{
-  "poolId": "string",          // ID of the liquidity pool for the direct swap
-  "tokenInSymbol": "string",  // Symbol of the token being sent
-  "tokenOutSymbol": "string", // Symbol of the token to be received
-  "amountIn": "string",        // Amount of tokenInSymbol to swap (as a string to preserve precision)
-  "minAmountOut": "string"   // Minimum amount of tokenOutSymbol expected (as a string, for slippage protection)
-}
-```
-
-**Payload for Routed Swap (`json.payload`):
-```json
-{
-  "fromTokenSymbol": "string", // Symbol of the initial token being sent
-  "toTokenSymbol": "string",   // Symbol of the final token to be received
-  "amountIn": "string",       // Amount of fromTokenSymbol to swap (as a string to preserve precision)
-  "minAmountOut": "string",   // Minimum amount of toTokenSymbol expected (as a string, for slippage protection)
-  "hops": [
-    {
-      "poolId": "string",      // ID of the liquidity pool for this hop
-      "tokenIn": "string",    // Symbol of the token input to this specific pool hop
-      "tokenOut": "string"   // Symbol of the token output from this specific pool hop
-      // Note: amountOut for each hop is calculated by the chain
-    }
-    // ... up to 4 hops (or as defined by chain limits)
-  ]
-}
-```
-
-**Note on Routed Swaps:** The `GET /pools/route-swap` endpoint can be used to determine the optimal `hops` array. 
+# HTTP API Endpoints
+
+This document outlines the available HTTP API endpoints for interacting with the sidechain.
+
+**Common Query Parameters for Pagination:**
+
+*   `limit` (number, optional, default: 10): Number of items to return.
+*   `offset` (number, optional, default: 0): Number of items to skip.
+
+## `/accounts`
+
+Handler: `src/modules/http/accounts.ts`
+
+*   **GET `/`**
+    *   Description: List accounts with pagination and filtering.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+        *   `hasToken` (string, optional): Filter accounts holding a specific token (e.g., `ECH`). Returns accounts where the balance of this token is > 0.
+        *   `isWitness` (string, optional, e.g. `true`): Filter for accounts that are registered witnesses (have a `witnessPublicKey`).
+        *   `sortBy` (string, optional, default: `name`): Field to sort by (e.g., `name`, `totalVoteWeight`).
+        *   `sortDirection` (string, optional, default: `asc`): Sort direction (`asc` or `desc`).
+    *   Response: `{ success: boolean, data: Account[], total: number, limit: number, skip: number }`
+
+*   **GET `/:name`**
+    *   Description: Get a specific account by its name or ObjectId.
+    *   Path Parameters:
+        *   `name` (string): The account name or ObjectId.
+    *   Response: `{ success: boolean, account: Account }` or `{ success: false, error: string }`
+
+*   **GET `/:name/transactions`**
+    *   Description: Get transactions involving a specific account (as sender), sorted by most recent.
+    *   Path Parameters:
+        *   `name` (string): The account name.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+        *   `type` (number, optional): Filter transactions by a specific `TransactionType` number.
+    *   Response: `{ success: boolean, data: Transaction[], total: number, limit: number, skip: number }` or `{ success: false, error: string }`
+
+*   **GET `/:name/tokens`**
+    *   Description: Get all token balances held by a specific account.
+    *   Path Parameters:
+        *   `name` (string): The account name or ObjectId.
+    *   Response: `{ success: boolean, account: string, tokens: { symbol: string, amount: number }[] }` or `{ success: false, error: string }`
+
+## `/blocks`
+
+Handler: `src/modules/http/blocks.ts`
+
+*   **GET `/`**
+    *   Description: Get a range of blocks with pagination and filtering.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+        *   `hasTransactionType` (number, optional): Filter blocks containing a specific `TransactionType` number.
+        *   `minTimestamp` (number, optional): Filter blocks with a timestamp greater than or equal to this value.
+        *   `maxTimestamp` (number, optional): Filter blocks with a timestamp less than or equal to this value.
+        *   `sortDirection` (string, optional, default: `desc` for height): Sort direction for block height (`asc` or `desc`).
+    *   Response: `{ success: boolean, data: Block[], total: number, limit: number, skip: number }`
+
+*   **GET `/latest`**
+    *   Description: Returns the latest block processed by the node.
+    *   Response: `{ success: boolean, block: Block }` or `{ success: false, error: string }`
+
+*   **GET `/height/:height`**
+    *   Description: Get a specific block by its height (block number).
+    *   Path Parameters:
+        *   `height` (number): The block height.
+    *   Response: `{ success: boolean, block: Block }` or `{ success: false, error: string }`
+
+*   **GET `/hash/:hash`**
+    *   Description: Get a specific block by its hash.
+    *   Path Parameters:
+        *   `hash` (string): The block hash.
+    *   Response: `{ success: boolean, block: Block }` or `{ success: false, error: string }`
+
+*   **GET `/:height/transactions`**
+    *   Description: Get all transactions included in a specific block.
+    *   Path Parameters:
+        *   `height` (number): The block height.
+    *   Response: `{ success: boolean, blockHeight: number, transactions: Transaction[] }` or `{ success: false, error: string }`
+
+## `/farms`
+
+Handler: `src/modules/http/farms.ts`
+
+*   **GET `/`**
+    *   Description: List all farms with pagination and filtering.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+        *   `status` (string, optional): Filter farms by status (e.g., `ACTIVE`, `ENDED`).
+        *   `rewardTokenSymbol` (string, optional): Filter farms by their reward token symbol.
+    *   Response: `{ data: Farm[], total: number, limit: number, skip: number }`
+
+*   **GET `/:farmId`**
+    *   Description: Get details of a specific farm.
+    *   Path Parameters:
+        *   `farmId` (string): The ID of the farm.
+    *   Response: `Farm` object or `{ message: string }` if not found.
+
+*   **GET `/positions/user/:userId`**
+    *   Description: List farm positions (stakes) for a specific user.
+    *   Path Parameters:
+        *   `userId` (string): The user's account name (staker).
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+    *   Response: `{ data: UserFarmPosition[], total: number, limit: number, skip: number }`
+
+*   **GET `/positions/farm/:farmId`**
+    *   Description: List all user positions (stakes) in a specific farm.
+    *   Path Parameters:
+        *   `farmId` (string): The ID of the farm.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+    *   Response: `{ data: UserFarmPosition[], total: number, limit: number, skip: number }`
+
+*   **GET `/positions/:positionId`**
+    *   Description: Get a specific user farm position by its composite ID (e.g., `stakerName-farmId`).
+    *   Path Parameters:
+        *   `positionId` (string): The composite ID of the user's farm position.
+    *   Response: `UserFarmPosition` object or `{ message: string }` if not found.
+
+*   **GET `/positions/user/:userId/farm/:farmId`**
+    *   Description: Get a specific user's farm position in a specific farm.
+    *   Path Parameters:
+        *   `userId` (string): The user's account name (staker).
+        *   `farmId` (string): The ID of the farm.
+    *   Response: `UserFarmPosition` object or `{ message: string }` if not found.
+
+## `/launchpad`
+
+Handler: `src/modules/http/launchpad.ts`
+
+*   **GET `/`**
+    *   Description: List all launchpad projects.
+    *   Response: `Launchpad[]` or `{ message: string }`
+
+*   **GET `/:launchpadId`**
+    *   Description: Get details of a specific launchpad project.
+    *   Path Parameters:
+        *   `launchpadId` (string): The ID of the launchpad.
+    *   Response: `Launchpad` object or `{ message: string }` if not found.
+
+*   **GET `/:launchpadId/user/:userId`**
+    *   Description: Get a user's participation details in a specific launchpad.
+    *   Path Parameters:
+        *   `launchpadId` (string): The ID of the launchpad.
+        *   `userId` (string): The user's account name.
+    *   Response: Participant object or `{ message: string }` if not found.
+
+*   **GET `/:launchpadId/user/:userId/claimable`**
+    *   Description: Get the amount of tokens a user can claim from a specific launchpad.
+    *   Path Parameters:
+        *   `launchpadId` (string): The ID of the launchpad.
+        *   `userId` (string): The user's account name.
+    *   Response: `{ launchpadId: string, userId: string, totalAllocated: number, claimed: number, claimable: number }` or `{ message: string }`
+
+## `/markets`
+
+Handler: `src/modules/http/markets.ts`
+
+*   **GET `/pairs`**
+    *   Description: List all trading pairs with pagination and filtering.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+        *   `status` (string, optional): Filter pairs by status.
+    *   Response: `{ data: TradingPair[], total: number, limit: number, skip: number }`
+
+*   **GET `/pairs/:pairId`**
+    *   Description: Get details of a specific trading pair.
+    *   Path Parameters:
+        *   `pairId` (string): The ID of the trading pair (e.g., `ECH-STM`).
+    *   Response: `TradingPair` object or `{ message: string }` if not found.
+
+*   **GET `/orders/pair/:pairId`**
+    *   Description: List orders for a specific trading pair.
+    *   Path Parameters:
+        *   `pairId` (string): The ID of the trading pair.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+        *   `status` (string, optional): Filter orders by status (e.g., `OPEN`, `FILLED`, `CANCELLED`).
+        *   `side` (string, optional): Filter orders by side (`BUY` or `SELL`).
+        *   `userId` (string, optional): Filter orders by user.
+    *   Response: `{ data: Order[], total: number, limit: number, skip: number }`
+
+*   **GET `/orders/user/:userId`**
+    *   Description: List orders for a specific user.
+    *   Path Parameters:
+        *   `userId` (string): The user's account name.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+        *   `pairId` (string, optional): Filter orders by trading pair.
+        *   `status` (string, optional): Filter orders by status.
+        *   `side` (string, optional): Filter orders by side.
+    *   Response: `{ data: Order[], total: number, limit: number, skip: number }`
+
+*   **GET `/orders/:orderId`**
+    *   Description: Get details of a specific order.
+    *   Path Parameters:
+        *   `orderId` (string): The ID of the order.
+    *   Response: `Order` object or `{ message: string }` if not found.
+
+*   **GET `/trades/pair/:pairId`**
+    *   Description: List trades for a specific trading pair, sorted by newest first.
+    *   Path Parameters:
+        *   `pairId` (string): The ID of the trading pair.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+        *   `fromTimestamp` (number, optional): Filter trades from this UNIX timestamp.
+        *   `toTimestamp` (number, optional): Filter trades up to this UNIX timestamp.
+    *   Response: `{ data: Trade[], total: number, limit: number, skip: number }`
+
+*   **GET `/trades/order/:orderId`**
+    *   Description: List trades involving a specific order ID (either as maker or taker).
+    *   Path Parameters:
+        *   `orderId` (string): The ID of the order.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+    *   Response: `{ data: Trade[], total: number, limit: number, skip: number }` or `{ message: string }` if no trades found.
+
+
+*   **GET `/trades/:tradeId`**
+    *   Description: Get details of a specific trade by its ID.
+    *   Path Parameters:
+        *   `tradeId` (string): The ID of the trade.
+    *   Response: `Trade` object or `{ message: string }` if not found.
+
+## `/mine`
+
+Handler: `src/modules/http/mine.ts`
+
+*   **GET `/`**
+    *   Description: Manually trigger the mining of a new block. (Primarily for development/testing)
+    *   Response: `{ success: boolean, block?: Block, error?: string }`
+
+## `/nfts`
+
+Handler: `src/modules/http/nfts.ts`
+
+### Collections
+
+*   **GET `/collections`**
+    *   Description: List all NFT collections with filtering and sorting.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+        *   `creator` (string, optional): Filter by collection creator's account name.
+        *   `allowDelegation` (boolean, optional): Filter by `allowDelegation` status.
+        *   `createdAfter` (string, optional, ISO Date): Filter collections created on or after this date.
+        *   `createdBefore` (string, optional, ISO Date): Filter collections created on or before this date.
+        *   `nameSearch` (string, optional): Case-insensitive search for collections by name.
+        *   `sortBy` (string, optional, default: `createdAt`): Field to sort by.
+        *   `sortDirection` (string, optional, default: `desc`): Sort direction (`asc` or `desc`).
+    *   Response: `{ data: NFTCollection[], total: number, limit: number, skip: number }`
+
+*   **GET `/collections/:collectionSymbol`**
+    *   Description: Get a specific NFT collection by its symbol.
+    *   Path Parameters:
+        *   `collectionSymbol` (string): The symbol of the NFT collection (e.g., `MYCOL`).
+    *   Response: `NFTCollection` object or `{ message: string }` if not found.
+
+*   **GET `/collections/creator/:creatorName`**
+    *   Description: List NFT collections created by a specific account.
+    *   Path Parameters:
+        *   `creatorName` (string): The creator's account name.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+    *   Response: `{ data: NFTCollection[], total: number, limit: number, skip: number }` or `{ message: string }` if none found.
+
+### Instances (NFTs)
+
+*   **GET `/instances`**
+    *   Description: List all NFT instances with advanced filtering and sorting.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+        *   `collectionSymbol` (string, optional): Filter by collection symbol.
+        *   `owner` (string, optional): Filter by current owner's account name.
+        *   `createdAfter` (string, optional, ISO Date): Filter NFTs minted on or after this date.
+        *   `createdBefore` (string, optional, ISO Date): Filter NFTs minted on or before this date.
+        *   `metadataKey` (string, optional): Key for metadata search (e.g., `color`). Requires `metadataValue`.
+        *   `metadataValue` (string, optional): Value for metadata search (e.g., `red`). Case-insensitive regex search.
+        *   `sortBy` (string, optional, default: `createdAt`): Field to sort by.
+        *   `sortDirection` (string, optional, default: `desc`): Sort direction (`asc` or `desc`).
+    *   Response: `{ data: NFTInstance[], total: number, limit: number, skip: number }` or `{ message: string }` if none found.
+
+
+*   **GET `/instances/collection/:collectionSymbol`**
+    *   Description: List all NFT instances within a specific collection.
+    *   Path Parameters:
+        *   `collectionSymbol` (string): The symbol of the NFT collection.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+    *   Response: `{ data: NFTInstance[], total: number, limit: number, skip: number }` or `{ message: string }` if none found.
+
+*   **GET `/instances/owner/:ownerName`**
+    *   Description: List all NFT instances owned by a specific account.
+    *   Path Parameters:
+        *   `ownerName` (string): The owner's account name.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+    *   Response: `{ data: NFTInstance[], total: number, limit: number, skip: number }` or `{ message: string }` if none found.
+
+*   **GET `/instances/id/:nftId`**
+    *   Description: Get a specific NFT instance by its full ID (e.g., `MYCOL-001`).
+    *   Path Parameters:
+        *   `nftId` (string): The full ID of the NFT instance.
+    *   Response: `NFTInstance` object or `{ message: string }` if not found.
+
+*   **GET `/instances/id/:nftId/history`**
+    *   Description: Get ownership and transaction history for a specific NFT.
+    *   Path Parameters:
+        *   `nftId` (string): The full ID of the NFT instance.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+    *   Response: `{ data: NFTHistoryEntry[], total: number, limit: number, skip: number }` (Structure of `NFTHistoryEntry` might include event type, involved parties, timestamp, transaction ID).
+
+*   **GET `/instances/id/:nftId/delegations`**
+    *   Description: Get active delegation information for a specific NFT.
+    *   Path Parameters:
+        *   `nftId` (string): The full ID of the NFT instance.
+    *   Response: `NFTDelegation` object or `{ message: string }` if not delegated or not found.
+
+*   **GET `/instances/delegatedto/:userName`**
+    *   Description: List NFT instances currently delegated to a specific user.
+    *   Path Parameters:
+        *   `userName` (string): The account name of the delegatee.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+    *   Response: `{ data: NFTInstance[], total: number, limit: number, skip: number }`
+
+### Market Listings
+
+*   **GET `/market/listings`**
+    *   Description: List all active NFT market listings.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+        *   `collectionSymbol` (string, optional): Filter by collection symbol.
+        *   `seller` (string, optional): Filter by seller's account name.
+        *   `priceMin` (number, optional): Filter by minimum price.
+        *   `priceMax` (number, optional): Filter by maximum price.
+        *   `paymentSymbol` (string, optional): Filter by the symbol of the payment token.
+        *   `sortBy` (string, optional, default: `listedAt`): Field to sort by (e.g., `price`, `listedAt`).
+        *   `sortDirection` (string, optional, default: `desc`): Sort direction (`asc` or `desc`).
+    *   Response: `{ data: NFTMarketListing[], total: number, limit: number, skip: number }`
+
+*   **GET `/market/listings/nft/:nftId`**
+    *   Description: Get the active market listing for a specific NFT.
+    *   Path Parameters:
+        *   `nftId` (string): The full ID of the NFT instance.
+    *   Response: `NFTMarketListing` object or `{ message: string }` if not listed or not found.
+
+*   **GET `/market/listings/seller/:sellerName`**
+    *   Description: List active market listings by a specific seller.
+    *   Path Parameters:
+        *   `sellerName` (string): The seller's account name.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+    *   Response: `{ data: NFTMarketListing[], total: number, limit: number, skip: number }`
+
+*   **GET `/market/listings/collection/:collectionSymbol`**
+    *   Description: List active market listings for a specific NFT collection.
+    *   Path Parameters:
+        *   `collectionSymbol` (string): The symbol of the NFT collection.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+    *   Response: `{ data: NFTMarketListing[], total: number, limit: number, skip: number }`
+
+## `/peers`
+
+Handler: `src/modules/http/peers.ts`
+
+*   **GET `/`**
+    *   Description: List currently connected P2P peers.
+    *   Response: `{ success: boolean, peers: string[] }` (Array of peer WebSocket URLs)
+
+## `/pools`
+
+Handler: `src/modules/http/pools.ts`
+
+### Liquidity Pools
+
+*   **GET `/`**
+    *   Description: List all liquidity pools with pagination.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+    *   Response: `{ data: Pool[], total: number, limit: number, skip: number }`
+
+*   **GET `/:poolId`**
+    *   Description: Get details of a specific liquidity pool.
+    *   Path Parameters:
+        *   `poolId` (string): The ID of the liquidity pool (e.g., `ECH-STM`).
+    *   Response: `Pool` object or `{ message: string }` if not found.
+
+*   **GET `/token/:tokenSymbol`**
+    *   Description: List liquidity pools that include a specific token.
+    *   Path Parameters:
+        *   `tokenSymbol` (string): The symbol of the token.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+    *   Response: `{ data: Pool[], total: number, limit: number, skip: number }`
+
+### User Liquidity Positions
+
+*   **GET `/positions/user/:userId`**
+    *   Description: List liquidity positions for a specific user.
+    *   Path Parameters:
+        *   `userId` (string): The user's account name (provider).
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+    *   Response: `{ data: UserLiquidityPosition[], total: number, limit: number, skip: number }`
+
+*   **GET `/positions/pool/:poolId`**
+    *   Description: List all user liquidity positions in a specific pool.
+    *   Path Parameters:
+        *   `poolId` (string): The ID of the liquidity pool.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+    *   Response: `{ data: UserLiquidityPosition[], total: number, limit: number, skip: number }`
+
+*   **GET `/positions/:positionId`**
+    *   Description: Get a specific user liquidity position by its composite ID (e.g., `providerName-poolId`).
+    *   Path Parameters:
+        *   `positionId` (string): The composite ID of the user's liquidity position.
+    *   Response: `UserLiquidityPosition` object or `{ message: string }` if not found.
+
+*   **GET `/positions/user/:userId/pool/:poolId`**
+    *   Description: Get a specific user's liquidity position in a specific pool.
+    *   Path Parameters:
+        *   `userId` (string): The user's account name (provider).
+        *   `poolId` (string): The ID of the pool.
+    *   Response: `UserLiquidityPosition` object or `{ message: string }` if not found.
+
+### Swap Routing
+
+*   **GET `/route-swap`**
+    *   Description: Find potential swap routes between two tokens.
+    *   Query Parameters:
+        *   `fromTokenSymbol` (string, required): Symbol of the token to swap from.
+        *   `toTokenSymbol` (string, required): Symbol of the token to swap to.
+        *   `amountIn` (number, required): The amount of `fromTokenSymbol` to swap.
+    *   Response: `{ routes: TradeRoute[] }` where `TradeRoute` details hops and amounts, or `{ message: string }` on error.
+
+## `/tokens`
+
+Handler: `src/modules/http/tokens.ts`
+
+*   **GET `/`**
+    *   Description: List all registered tokens with pagination.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+    *   Response: `{ data: Token[], total: number, limit: number, skip: number }`
+
+*   **GET `/:symbol`**
+    *   Description: Get details of a specific token by its symbol.
+    *   Path Parameters:
+        *   `symbol` (string): The token symbol (e.g., `ECH`).
+    *   Response: `Token` object or `{ message: string }` if not found.
+
+*   **GET `/issuer/:issuerName`**
+    *   Description: List tokens created by a specific issuer.
+    *   Path Parameters:
+        *   `issuerName` (string): The account name of the issuer.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+    *   Response: `{ data: Token[], total: number, limit: number, skip: number }`
+
+*   **GET `/name/:searchName`**
+    *   Description: Search for tokens by name (case-insensitive, partial match).
+    *   Path Parameters:
+        *   `searchName` (string): The search term for the token name.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+    *   Response: `{ data: Token[], total: number, limit: number, skip: number }`
+
+## `/witnesses`
+
+Handler: `src/modules/http/witnesses.ts`
+
+*   **GET `/`**
+    *   Description: List top witnesses by total vote weight, with pagination.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+    *   Response: `{ data: Account[], total: number, limit: number, skip: number }` (Accounts are witness accounts)
+
+*   **GET `/:name/details`**
+    *   Description: Get account details for a specific witness (similar to `/accounts/:name`).
+    *   Path Parameters:
+        *   `name` (string): The witness's account name.
+    *   Response: `Account` object or `{ message: string }` if not found.
+
+*   **GET `/votescastby/:voterName`**
+    *   Description: List witnesses that a specific account has voted for.
+    *   Path Parameters:
+        *   `voterName` (string): The account name of the voter.
+    *   Response: `{ votedWitnesses: string[] }` or `{ message: string }` if voter not found.
+
+*   **GET `/votersfor/:witnessName`**
+    *   Description: List accounts that have voted for a specific witness, with pagination.
+    *   Path Parameters:
+        *   `witnessName` (string): The witness's account name.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+    *   Response: `{ data: string[], total: number, limit: number, skip: number }` (Array of voter names) 

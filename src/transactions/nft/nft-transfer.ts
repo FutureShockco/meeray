@@ -95,7 +95,7 @@ export async function validateTx(data: NftTransferData, sender: string): Promise
   }
 }
 
-export async function process(data: NftTransferData, sender: string): Promise<boolean> {
+export async function process(data: NftTransferData, sender: string, id: string): Promise<boolean> {
   const isBurning = data.to === BURN_ACCOUNT_NAME;
   const fullInstanceId = `${data.collectionSymbol}-${data.instanceId}`;
   let originalNftOwner: string | null = null; // For potential rollback if transfer fails
@@ -161,7 +161,7 @@ export async function process(data: NftTransferData, sender: string): Promise<bo
         to: data.to, 
         memo: data.memo || null 
       };
-      await logTransactionEvent('nftTransfer', sender, eventDataTransfer);
+      await logTransactionEvent('nftTransfer', sender, eventDataTransfer, id);
     }
     return true;
   } catch (error) {

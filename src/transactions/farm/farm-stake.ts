@@ -66,7 +66,7 @@ export async function validateTx(data: FarmStakeDataDB, sender: string): Promise
   }
 }
 
-export async function process(data: FarmStakeDataDB, sender: string): Promise<boolean> {
+export async function process(data: FarmStakeDataDB, sender: string, id: string): Promise<boolean> {
   try {
     // Convert string amounts to BigInt for processing
     const stakeData = convertToBigInt<FarmStakeData>(data, NUMERIC_FIELDS);
@@ -195,13 +195,13 @@ export async function process(data: FarmStakeDataDB, sender: string): Promise<bo
     logger.debug(`[farm-stake] Staker ${stakeData.staker} staked ${stakeData.lpTokenAmount} LP tokens (from pool ${poolIdForLp}) into farm ${stakeData.farmId}.`);
 
     const eventData = {
-        farmId: stakeData.farmId,
-        staker: stakeData.staker,
-        lpTokenSymbol: farm.stakingToken.symbol,
-        lpTokenIssuer: farm.stakingToken.issuer,
-        lpTokenAmount: toString(stakeData.lpTokenAmount) // Convert BigInt to string for logging
+      farmId: stakeData.farmId,
+      staker: stakeData.staker,
+      lpTokenSymbol: farm.stakingToken.symbol,
+      lpTokenIssuer: farm.stakingToken.issuer,
+      lpTokenAmount: toString(stakeData.lpTokenAmount) // Convert BigInt to string for logging
     };
-    await logTransactionEvent('farmStake', sender, eventData);
+    await logTransactionEvent('farmStake', sender, eventData, id);
 
     return true;
   } catch (error) {

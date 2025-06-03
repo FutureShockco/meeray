@@ -111,65 +111,64 @@ export async function validateTx(dataDb: PoolCreateDataDB, sender: string): Prom
   }
 }
 
-export async function process(transaction: { data: PoolCreateDataDB, sender: string, _id: string }): Promise<boolean> {
-  const { data: dataDb, sender, _id: transactionId } = transaction;
-  try {
-    const data = convertToBigInt<PoolCreateData>(dataDb, NUMERIC_FIELDS_POOL_CREATE);
-    let chosenFeeTier = data.feeTier;
-    if (chosenFeeTier === undefined) {
-        chosenFeeTier = DEFAULT_FEE_TIER;
-    }
-    // feeRate calculation removed as it's not stored in LiquidityPool interface
-
-    const poolId = generatePoolId(data.tokenA_symbol, data.tokenA_issuer, data.tokenB_symbol, data.tokenB_issuer, chosenFeeTier);
-    const lpTokenSymbol = generateLpTokenSymbol(data.tokenA_symbol, data.tokenB_symbol, chosenFeeTier);
-
-    let tokenA_details = { symbol: data.tokenA_symbol, issuer: data.tokenA_issuer };
-    let tokenB_details = { symbol: data.tokenB_symbol, issuer: data.tokenB_issuer };
-    if (`${tokenA_details.symbol}@${tokenA_details.issuer}` > `${tokenB_details.symbol}@${tokenB_details.issuer}`) {
-        [tokenA_details, tokenB_details] = [tokenB_details, tokenA_details];
-    }
-
-    const poolDocumentApp: LiquidityPool = {
-      _id: poolId,
-      tokenA_symbol: tokenA_details.symbol,
-      tokenA_issuer: tokenA_details.issuer,
-      tokenA_reserve: BigInt(0),
-      tokenB_symbol: tokenB_details.symbol,
-      tokenB_issuer: tokenB_details.issuer,
-      tokenB_reserve: BigInt(0),
-      totalLpTokens: BigInt(0),
-      // lpTokenSymbol: lpTokenSymbol, // LiquidityPool interface does not have lpTokenSymbol
-      feeTier: chosenFeeTier, // This is BigInt
-      createdAt: new Date().toISOString(),
-      status: 'ACTIVE' // Default status
-    };
-
-    const poolDocumentDB = convertToString<LiquidityPool>(poolDocumentApp, LIQUIDITY_POOL_NUMERIC_FIELDS);
-
-    const createSuccess = await new Promise<boolean>((resolve) => {
-      cache.insertOne('liquidityPools', poolDocumentDB, (err, result) => {
-        if (err || !result) {
-          logger.error(`[pool-create] Failed to insert pool ${poolId} into cache: ${err || 'no result'}`);
-          resolve(false);
-        } else {
-          resolve(true);
+export async function process(data: PoolCreateDataDB, sender: string, id: string): Promise<boolean> {
+    try {
+        const createData = convertToBigInt<PoolCreateData>(data, NUMERIC_FIELDS_POOL_CREATE);
+        let chosenFeeTier = createData.feeTier;
+        if (chosenFeeTier === undefined) {
+            chosenFeeTier = DEFAULT_FEE_TIER;
         }
-      });
-    });
+        // feeRate calculation removed as it's not stored in LiquidityPool interface
 
-    if (!createSuccess) {
-      return false;
+        const poolId = generatePoolId(createData.tokenA_symbol, createData.tokenA_issuer, createData.tokenB_symbol, createData.tokenB_issuer, chosenFeeTier);
+        const lpTokenSymbol = generateLpTokenSymbol(createData.tokenA_symbol, createData.tokenB_symbol, chosenFeeTier);
+
+        let tokenA_details = { symbol: createData.tokenA_symbol, issuer: createData.tokenA_issuer };
+        let tokenB_details = { symbol: createData.tokenB_symbol, issuer: createData.tokenB_issuer };
+        if (`${tokenA_details.symbol}@${tokenA_details.issuer}` > `${tokenB_details.symbol}@${tokenB_details.issuer}`) {
+            [tokenA_details, tokenB_details] = [tokenB_details, tokenA_details];
+        }
+
+        const poolDocumentApp: LiquidityPool = {
+            _id: poolId,
+            tokenA_symbol: tokenA_details.symbol,
+            tokenA_issuer: tokenA_details.issuer,
+            tokenA_reserve: BigInt(0),
+            tokenB_symbol: tokenB_details.symbol,
+            tokenB_issuer: tokenB_details.issuer,
+            tokenB_reserve: BigInt(0),
+            totalLpTokens: BigInt(0),
+            // lpTokenSymbol: lpTokenSymbol, // LiquidityPool interface does not have lpTokenSymbol
+            feeTier: chosenFeeTier, // This is BigInt
+            createdAt: new Date().toISOString(),
+            status: 'ACTIVE' // Default status
+        };
+
+        const poolDocumentDB = convertToString<LiquidityPool>(poolDocumentApp, LIQUIDITY_POOL_NUMERIC_FIELDS);
+
+        const createSuccess = await new Promise<boolean>((resolve) => {
+            cache.insertOne('liquidityPools', poolDocumentDB, (err, result) => {
+                if (err || !result) {
+                    logger.error(`[pool-create] Failed to insert pool ${poolId} into cache: ${err || 'no result'}`);
+                    resolve(false);
+                } else {
+                    resolve(true);
+                }
+            });
+        });
+
+        if (!createSuccess) {
+            return false;
+        }
+        logger.debug(`[pool-create] Liquidity Pool ${poolId} (${tokenA_details.symbol}-${tokenB_details.symbol}, Fee: ${toString(chosenFeeTier)}bps) created by ${sender}. LP Token: ${lpTokenSymbol}`);
+
+        // Log event using the new centralized logger
+        const eventData = { ...poolDocumentDB, lpTokenSymbol: lpTokenSymbol };
+        await logTransactionEvent('poolCreate', sender, eventData, id);
+
+        return true;
+    } catch (error) {
+        logger.error(`[pool-create] Error processing pool creation by ${sender}: ${error}`);
+        return false;
     }
-    logger.debug(`[pool-create] Liquidity Pool ${poolId} (${tokenA_details.symbol}-${tokenB_details.symbol}, Fee: ${toString(chosenFeeTier)}bps) created by ${sender}. LP Token: ${lpTokenSymbol}`);
-
-    // Log event using the new centralized logger
-    const eventData = { ...poolDocumentDB, lpTokenSymbol: lpTokenSymbol };
-    await logTransactionEvent('poolCreate', sender, eventData, transactionId);
-
-    return true;
-  } catch (error) {
-    logger.error(`[pool-create] Error processing pool creation by ${sender}: ${error}`);
-    return false;
-  }
 } 

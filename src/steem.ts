@@ -114,7 +114,7 @@ const apiUrls = process.env.STEEM_API
 let currentEndpointIndex = 0;
 let client = null as any;
 
-if(process.env.NODE_ENV === 'production') {
+if (process.env.NODE_ENV === 'production') {
     client = new DsteemClient(apiUrls[currentEndpointIndex], {
         addressPrefix: 'STM',
         chainId: '0000000000000000000000000000000000000000000000000000000000000000',
@@ -122,11 +122,11 @@ if(process.env.NODE_ENV === 'production') {
     });
 }
 else
-client = new DsteemClient(apiUrls[currentEndpointIndex], {
-    addressPrefix: process.env.ADDRESS_PREFIX || 'STM',
-    chainId: process.env.CHAIN_ID || '0000000000000000000000000000000000000000000000000000000000000000',
-    timeout: 15000  // Increased timeout for better reliability
-});
+    client = new DsteemClient("https://testapi.moecki.online", {
+        addressPrefix: 'MTN',
+        chainId: '1aa939649afcc54c67e01a809967f75b8bee5d928aa6bdf237d0d5d6bfbc5c22',
+        timeout: 15000  // Increased timeout for better reliability
+    });
 
 let nextSteemBlock = 0;
 // Map to store peer sync statuses
@@ -317,12 +317,12 @@ function broadcastSyncStatusLoop(): void {
     }
     const statusToBroadcast: SyncStatus = {
         nodeId: p2p.nodeId?.pub || 'unknown',
-            behindBlocks: behindBlocks,
-            steemBlock: currentSteemBlock,
-            isSyncing: isSyncing,
+        behindBlocks: behindBlocks,
+        steemBlock: currentSteemBlock,
+        isSyncing: isSyncing,
         blockId: chain.getLatestBlock()?._id || 0,
         consensusBlocks: {},
-            exitTarget: syncExitTargetBlock,
+        exitTarget: syncExitTargetBlock,
         timestamp: Date.now()
     };
     const targetInterval = isSyncing ? FAST_BROADCAST_INTERVAL : DEFAULT_BROADCAST_INTERVAL;
@@ -475,7 +475,7 @@ const isNetworkReadyToExitSyncMode = (): boolean => {
 
         if (!selfAlreadyCountedAsPeer) {
             consideredNodes++;
-    if (behindBlocks <= SYNC_EXIT_THRESHOLD) {
+            if (behindBlocks <= SYNC_EXIT_THRESHOLD) {
                 nodesReadyToExit++;
             }
         } else {
@@ -499,7 +499,7 @@ const shouldExitSyncMode = (currentBlockId: number): boolean => {
     if (!isSyncing) return false;
     const localCaughtUp = behindBlocks <= SYNC_EXIT_THRESHOLD;
     if (!localCaughtUp) {
-    return false;
+        return false;
     }
     if (isNetworkReadyToExitSyncMode()) { // Calls the restored/original isNetworkReadyToExitSyncMode
         logger.info(`Local node caught up and network is ready to exit sync mode at block ${currentBlockId}.`);
@@ -770,12 +770,12 @@ const incrementConsecutiveErrors = (): void => {
 const resetConsecutiveErrors = (): void => {
     if (consecutiveErrors > 0) { // Only log if there were errors
         logger.debug(`Reset consecutive errors counter from ${consecutiveErrors}`);
-    consecutiveErrors = 0;
-    retryDelay = MIN_RETRY_DELAY;
+        consecutiveErrors = 0;
+        retryDelay = MIN_RETRY_DELAY;
     }
     if (circuitBreakerOpen) {
         logger.info('Circuit breaker closed.');
-    circuitBreakerOpen = false;
+        circuitBreakerOpen = false;
     }
 };
 
@@ -890,7 +890,7 @@ const checkNetworkSyncStatus = async (): Promise<void> => {
         // Use sidechain's last processed Steem block
         const lastProcessedSteemBlockOnSidechain = chain?.getLatestBlock()?.steemBlockNum || 0;
         behindBlocks = Math.max(0, latestSteemBlock - lastProcessedSteemBlockOnSidechain);
-        
+
         const now = Date.now();
         for (const [nodeId, status] of networkSteemHeights.entries()) {
             if (now - status.timestamp > 120000) { // 2 minutes expiry
@@ -900,7 +900,7 @@ const checkNetworkSyncStatus = async (): Promise<void> => {
         const networkStatus = getNetworkSyncStatus();
         logger.debug(`Network sync status: Highest Sidechain Block: ${networkStatus.highestBlock}, Ref Node: ${networkStatus.referenceNodeId}, Nodes In Sync: ${networkStatus.nodesInSync}/${networkStatus.totalNodes}, Median Sidechain Block: ${networkStatus.medianBlock}, Our Sidechain Block: ${chain?.getLatestBlock()?._id || 0}, Behind Steem: ${behindBlocks} blocks`);
 
-        if (networkStatus.referenceExists && 
+        if (networkStatus.referenceExists &&
             networkStatus.referenceNodeId !== 'self' &&
             networkStatus.highestBlock > (chain?.getLatestBlock()?._id || 0) + 10) { // 10 blocks behind network
             logger.warn(`Significantly behind network: our block ${chain?.getLatestBlock()?._id || 0} vs network ${networkStatus.highestBlock}`);
@@ -935,7 +935,7 @@ const receivePeerSyncStatus = (nodeId: string, status: SyncStatus): void => {
     if (isSyncing && status.exitTarget !== null) {
         const currentChainBlockId = chain?.getLatestBlock()?._id || 0;
         // Only adopt if the target is in the future and peer seems reasonably caught up
-        if (status.exitTarget > currentChainBlockId && status.behindBlocks <= SYNC_EXIT_THRESHOLD + ((config as any).syncExitTargetLeadBlocks || 3) ) { // Peer is caught up or will be by its target
+        if (status.exitTarget > currentChainBlockId && status.behindBlocks <= SYNC_EXIT_THRESHOLD + ((config as any).syncExitTargetLeadBlocks || 3)) { // Peer is caught up or will be by its target
             if (syncExitTargetBlock === null || (status.exitTarget < syncExitTargetBlock)) {
                 // Further check: only adopt if the sender is not excessively behind compared to self or network median
                 const overallNetworkStatus = getNetworkOverallBehindBlocks();
@@ -1016,7 +1016,7 @@ const isOnSteemBlock = async (block: Block): Promise<boolean> => {
                         const opData = op[1] as any;
                         if (opType !== 'custom_json' || !opData || typeof opData !== 'object' || !opData.id || typeof opData.json !== 'string') continue;
 
-                            if (opData.id === 'sidechain') {
+                        if (opData.id === 'sidechain') {
                             try {
                                 const jsonData = JSON.parse(opData.json);
                                 if (jsonData &&
@@ -1025,11 +1025,11 @@ const isOnSteemBlock = async (block: Block): Promise<boolean> => {
                                     foundOnSteem = true;
                                     logger.debug(`Block ${block._id}, tx #${i} (hash: ${tx.hash}): Found matching transaction in Steem block ${block.steemBlockNum}`);
                                     break;
-                            }
-                        } catch (parseErr) {
+                                }
+                            } catch (parseErr) {
                                 logger.error(`Error parsing JSON in Steem operation for block ${block.steemBlockNum}, tx ${tx.hash}:`, parseErr);
+                            }
                         }
-                    }
                     }
                     if (foundOnSteem) break;
                 } catch (txErr) {
@@ -1083,7 +1083,7 @@ function updateSteemBlockPolling(): void {
     }
     const jitter = Math.floor(Math.random() * 500);
     const finalInterval = Math.max(500, interval + jitter); // Ensure interval is not too small
-    
+
     steemBlockPollingInterval = setInterval(async () => {
         try {
             // Smart skipping: if not syncing, caught up, and few peers or peers are also caught up.
@@ -1091,7 +1091,7 @@ function updateSteemBlockPolling(): void {
                 const networkState = getNetworkSyncStatus(); // Check if network is also calm
                 if (networkState.totalNodes === 0 || (networkState.nodesInSync === networkState.totalNodes && networkState.medianBlock !== undefined && networkState.medianBlock >= (chain.getLatestBlock()?._id || 0) - 1)) {
                     logger.debug('Skipping Steem block check - system appears stable and caught up.');
-                return;
+                    return;
                 }
             }
 
@@ -1137,7 +1137,7 @@ function updateSteemBlockPolling(): void {
                         const newTarget = currentChainBlockId + leadBlocks;
                         logger.info(`Local node caught up (${behindBlocks} behind) and network is ready. Initiating coordinated exit. Setting syncExitTargetBlock to ${newTarget}.`);
                         syncExitTargetBlock = newTarget; // Set the local target
-                        
+
                         // Immediately broadcast this new target
                         if (p2p.nodeId && p2p.sockets && p2p.sockets.length > 0) {
                             const statusUpdate: SyncStatus = {

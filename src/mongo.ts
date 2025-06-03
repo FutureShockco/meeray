@@ -244,10 +244,11 @@ export const mongo = {
             currentSupply: nativeTokenCreationParamsECH.initialSupply || MAX_SUPPLY_ECH_BIGINT, 
             mintable: nativeTokenCreationParamsECH.mintable === undefined ? true : nativeTokenCreationParamsECH.mintable, 
             burnable: nativeTokenCreationParamsECH.burnable === undefined ? true : nativeTokenCreationParamsECH.burnable, 
-            creator: config.masterName, 
+            issuer: config.masterName, 
             description: nativeTokenCreationParamsECH.description,
             logoUrl: nativeTokenCreationParamsECH.logoUrl,
-            websiteUrl: nativeTokenCreationParamsECH.websiteUrl
+            websiteUrl: nativeTokenCreationParamsECH.websiteUrl,
+            createdAt: new Date().toISOString()
         };
         const nativeTokenDBECH: TokenForStorageDB = convertAllBigIntToStringRecursive(nativeTokenToStoreECH);
         await currentDb.collection<TokenForStorageDB>('tokens').insertOne(nativeTokenDBECH);
@@ -278,10 +279,11 @@ export const mongo = {
             currentSupply: nativeTokenCreationParamsSTEEM.initialSupply || BigInt(0), 
             mintable: nativeTokenCreationParamsSTEEM.mintable === undefined ? true : nativeTokenCreationParamsSTEEM.mintable,
             burnable: nativeTokenCreationParamsSTEEM.burnable === undefined ? true : nativeTokenCreationParamsSTEEM.burnable,
-            creator: config.masterName,
+            issuer: config.masterName,
             description: nativeTokenCreationParamsSTEEM.description,
             logoUrl: nativeTokenCreationParamsSTEEM.logoUrl,
-            websiteUrl: nativeTokenCreationParamsSTEEM.websiteUrl
+            websiteUrl: nativeTokenCreationParamsSTEEM.websiteUrl,
+            createdAt: new Date().toISOString()
         };
         const nativeTokenDBSTEEM: TokenForStorageDB = convertAllBigIntToStringRecursive(nativeTokenToStoreSTEEM);
         await currentDb.collection<TokenForStorageDB>('tokens').insertOne(nativeTokenDBSTEEM);
@@ -312,10 +314,11 @@ export const mongo = {
             currentSupply: nativeTokenCreationParamsSBD.initialSupply || BigInt(0),
             mintable: nativeTokenCreationParamsSBD.mintable === undefined ? true : nativeTokenCreationParamsSBD.mintable,
             burnable: nativeTokenCreationParamsSBD.burnable === undefined ? true : nativeTokenCreationParamsSBD.burnable,
-            creator: config.masterName,
+            issuer: config.masterName,
             description: nativeTokenCreationParamsSBD.description,
             logoUrl: nativeTokenCreationParamsSBD.logoUrl,
-            websiteUrl: nativeTokenCreationParamsSBD.websiteUrl
+            websiteUrl: nativeTokenCreationParamsSBD.websiteUrl,
+            createdAt: new Date().toISOString()
         };
         const nativeTokenDBSBD: TokenForStorageDB = convertAllBigIntToStringRecursive(nativeTokenToStoreSBD);
         await currentDb.collection<TokenForStorageDB>('tokens').insertOne(nativeTokenDBSBD);

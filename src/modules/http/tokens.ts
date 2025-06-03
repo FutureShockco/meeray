@@ -3,6 +3,7 @@ import cache from '../../cache.js';
 import { mongo } from '../../mongo.js';
 import logger from '../../logger.js';
 import { toBigInt } from '../../utils/bigint-utils.js';
+import { TokenForStorageDB } from '../../transactions/token/token-interfaces.js';
 
 const router: Router = express.Router();
 
@@ -19,12 +20,12 @@ const getPagination = (req: Request) => {
 router.get('/', (async (req: Request, res: Response) => {
     const { limit, skip } = getPagination(req);
     try {
-        const tokensFromDB: any[] | null = await cache.findPromise('tokens', {}, { limit, skip, sort: { _id: 1 } });
+        const tokensFromDB: TokenForStorageDB[] | null = await cache.findPromise('tokens', {}, { limit, skip, sort: { _id: 1 } }) as TokenForStorageDB[] | null;
         const total = await mongo.getDb().collection('tokens').countDocuments({});
         
         let tokens: any[] = [];
         if (tokensFromDB && tokensFromDB.length > 0) {
-            tokens = tokensFromDB.map((tokenDoc: any) => {
+            tokens = tokensFromDB.map((tokenDoc: TokenForStorageDB) => {
                 const { maxSupply, currentSupply, ...rest } = tokenDoc;
                 const transformedToken: any = { ...rest };
                 if (maxSupply) {
@@ -45,15 +46,50 @@ router.get('/', (async (req: Request, res: Response) => {
     }
 }) as RequestHandler);
 
+// GET /tokens/new - List newest tokens
+router.get('/new', (async (req: Request, res: Response) => {
+    const { limit, skip } = getPagination(req);
+    try {
+        // Ensure your TokenForStorage and TokenForStorageDB interfaces include 'createdAt'
+        // And that your token creation logic populates this field.
+        const tokensFromDB: TokenForStorageDB[] | null = await cache.findPromise(
+            'tokens', 
+            {}, 
+            { limit, skip, sort: { createdAt: -1 } } // Sort by createdAt in descending order
+        ) as TokenForStorageDB[] | null;
+        const total = await mongo.getDb().collection('tokens').countDocuments({});
+        
+        let tokens: any[] = [];
+        if (tokensFromDB && tokensFromDB.length > 0) {
+            tokens = tokensFromDB.map((tokenDoc: TokenForStorageDB) => {
+                const { maxSupply, currentSupply, createdAt, ...rest } = tokenDoc; // Include createdAt if you want to return it, otherwise it's just for sorting
+                const transformedToken: any = { ...rest, createdAt }; // Add createdAt to the response
+                if (maxSupply) {
+                    transformedToken.maxSupply = toBigInt(maxSupply as string).toString();
+                }
+                if (currentSupply) {
+                    transformedToken.currentSupply = toBigInt(currentSupply as string).toString();
+                }
+                return transformedToken;
+            });
+        }
+
+        res.json({ data: tokens, total, limit, skip });
+    } catch (error: any) {
+        logger.error('Error fetching new tokens:', error);
+        res.status(500).json({ message: 'Error fetching new tokens', error: error.message });
+    }
+}) as RequestHandler);
+
 // GET /tokens/:symbol - Get a specific token by its symbol
 router.get('/:symbol', (async (req: Request, res: Response) => {
     const { symbol } = req.params;
     try {
-        const tokenFromDB = await cache.findOnePromise('tokens', { _id: symbol });
+        const tokenFromDB = await cache.findOnePromise('tokens', { _id: symbol }) as TokenForStorageDB | null;
         if (!tokenFromDB) {
             return res.status(404).json({ message: `Token ${symbol} not found.` });
         }
-        const { maxSupply, currentSupply, ...rest } = tokenFromDB as any;
+        const { maxSupply, currentSupply, ...rest } = tokenFromDB;
         const token: any = { ...rest };
         if (maxSupply) {
             token.maxSupply = toBigInt(maxSupply as string).toString();
@@ -73,12 +109,12 @@ router.get('/issuer/:issuerName', (async (req: Request, res: Response) => {
     const { issuerName } = req.params;
     const { limit, skip } = getPagination(req);
     try {
-        const tokensFromDB: any[] | null = await cache.findPromise('tokens', { issuer: issuerName }, { limit, skip, sort: { _id: 1 } });
+        const tokensFromDB: TokenForStorageDB[] | null = await cache.findPromise('tokens', { issuer: issuerName }, { limit, skip, sort: { _id: 1 } }) as TokenForStorageDB[] | null;
         const total = await mongo.getDb().collection('tokens').countDocuments({ issuer: issuerName });
 
         let tokens: any[] = [];
         if (tokensFromDB && tokensFromDB.length > 0) {
-            tokens = tokensFromDB.map((tokenDoc: any) => {
+            tokens = tokensFromDB.map((tokenDoc: TokenForStorageDB) => {
                 const { maxSupply, currentSupply, ...rest } = tokenDoc;
                 const transformedToken: any = { ...rest };
                 if (maxSupply) {
@@ -103,12 +139,12 @@ router.get('/name/:searchName', (async (req: Request, res: Response) => {
     const { limit, skip } = getPagination(req);
     try {
         const query = { name: { $regex: searchName, $options: 'i' } };
-        const tokensFromDB: any[] | null = await cache.findPromise('tokens', query, { limit, skip, sort: { _id: 1 } });
+        const tokensFromDB: TokenForStorageDB[] | null = await cache.findPromise('tokens', query, { limit, skip, sort: { _id: 1 } }) as TokenForStorageDB[] | null;
         const total = await mongo.getDb().collection('tokens').countDocuments(query);
 
         let tokens: any[] = [];
         if (tokensFromDB && tokensFromDB.length > 0) {
-            tokens = tokensFromDB.map((tokenDoc: any) => {
+            tokens = tokensFromDB.map((tokenDoc: TokenForStorageDB) => {
                 const { maxSupply, currentSupply, ...rest } = tokenDoc;
                 const transformedToken: any = { ...rest };
                 if (maxSupply) {
@@ -126,6 +162,38 @@ router.get('/name/:searchName', (async (req: Request, res: Response) => {
         logger.error(`Error searching tokens by name ${searchName}:`, error);
         res.status(500).json({ message: 'Error searching tokens by name', error: error.message });
     }
+}) as RequestHandler);
+
+// GET /tokens/hot - Placeholder for Hot Coins
+router.get('/hot', (async (req: Request, res: Response) => {
+    logger.info('[tokens/hot] Endpoint called. This is a placeholder and needs metrics for "hotness".');
+    // TODO: Implement logic to determine "hot" coins.
+    // This might involve:
+    // - Tracking recent transaction volume (requires transaction logging with timestamps and token symbols).
+    // - Monitoring social media mentions or trending scores (external data integration).
+    // - Counting recent queries or views for specific tokens on your platform.
+    res.status(501).json({ message: 'Endpoint not implemented: Hot coins determination logic needed.' });
+}) as RequestHandler);
+
+// GET /tokens/top-gainers - Placeholder for Top Gainers
+router.get('/top-gainers', (async (req: Request, res: Response) => {
+    logger.info('[tokens/top-gainers] Endpoint called. This is a placeholder and needs price history.');
+    // TODO: Implement logic for Top Gainers.
+    // This requires:
+    // - Storing historical price data for tokens (e.g., daily/hourly snapshots).
+    // - Calculating percentage price change over a defined period (e.g., last 24 hours).
+    // - Accessing current price data.
+    res.status(501).json({ message: 'Endpoint not implemented: Price history and calculation logic needed.' });
+}) as RequestHandler);
+
+// GET /tokens/top-volume - Placeholder for Top Volume
+router.get('/top-volume', (async (req: Request, res: Response) => {
+    logger.info('[tokens/top-volume] Endpoint called. This is a placeholder and needs volume tracking.');
+    // TODO: Implement logic for Top Volume.
+    // This requires:
+    // - Logging transaction volume for each token (e.g., sum of amounts in transfers/trades).
+    // - Aggregating this volume over a specific period (e.g., 24-hour rolling volume).
+    res.status(501).json({ message: 'Endpoint not implemented: Transaction volume tracking and aggregation needed.' });
 }) as RequestHandler);
 
 export default router; 

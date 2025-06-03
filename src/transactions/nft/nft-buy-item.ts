@@ -1,7 +1,7 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
-import { NftBuyPayload, NftListing } from './nft-market-interfaces.js';
+import { NftBuyPayload, NFTListing, NftListPayload } from './nft-market-interfaces.js';
 import { NftInstance, CachedNftCollectionForTransfer } from './nft-transfer.js'; // Assuming NftInstance, CachedNftCollectionForTransfer are exported
 import { Account, adjustBalance, getAccount } from '../../utils/account-utils.js';
 import { Token, getTokenByIdentifier } from '../../utils/token-utils.js';
@@ -20,12 +20,12 @@ export async function validateTx(data: NftBuyPayload, sender: string): Promise<b
         return false;
     }
 
-    const listing = await cache.findOnePromise('nftListings', { _id: data.listingId }) as NftListing | null;
+    const listing = await cache.findOnePromise('nftListings', { _id: data.listingId }) as NFTListing | null;
     if (!listing) {
       logger.warn(`[nft-buy-item] Listing ${data.listingId} not found.`);
       return false;
     }
-    if (listing.status !== 'ACTIVE') {
+    if (listing.status !== 'active') {
       logger.warn(`[nft-buy-item] Listing ${data.listingId} is not active. Status: ${listing.status}.`);
       return false;
     }
@@ -34,9 +34,9 @@ export async function validateTx(data: NftBuyPayload, sender: string): Promise<b
       return false;
     }
 
-    const paymentToken = await getTokenByIdentifier(listing.paymentTokenSymbol, listing.paymentTokenIssuer);
+    const paymentToken = await getTokenByIdentifier(listing.paymentToken.symbol, listing.paymentToken.issuer);
     if (!paymentToken) {
-        logger.warn(`[nft-buy-item] Payment token ${listing.paymentTokenSymbol} for listing ${data.listingId} not found.`);
+        logger.warn(`[nft-buy-item] Payment token ${listing.paymentToken.symbol} for listing ${data.listingId} not found.`);
         return false;
     }
 
@@ -46,16 +46,16 @@ export async function validateTx(data: NftBuyPayload, sender: string): Promise<b
       return false;
     }
     
-    const paymentTokenIdentifier = `${listing.paymentTokenSymbol}${listing.paymentTokenIssuer ? '@' + listing.paymentTokenIssuer : ''}`;
+    const paymentTokenIdentifier = `${listing.paymentToken.symbol}${listing.paymentToken.issuer ? '@' + listing.paymentToken.issuer : ''}`;
     const buyerBalance = BigIntMath.toBigInt(buyerAccount.balances?.[paymentTokenIdentifier] || 0);
     const listingPrice = BigIntMath.toBigInt(listing.price);
     
     if (buyerBalance < listingPrice) {
-      logger.warn(`[nft-buy-item] Buyer ${sender} has insufficient balance of ${listing.paymentTokenSymbol}. Has ${buyerBalance}, needs ${listingPrice}.`);
+      logger.warn(`[nft-buy-item] Buyer ${sender} has insufficient balance of ${listing.paymentToken.symbol}. Has ${buyerBalance}, needs ${listingPrice}.`);
       return false;
     }
 
-    const fullInstanceId = `${listing.collectionSymbol}-${listing.instanceId}`;
+    const fullInstanceId = `${listing.collectionId}-${listing.tokenId}`;
     const nft = await cache.findOnePromise('nfts', { _id: fullInstanceId }) as NftInstance | null;
     if (!nft) {
       logger.warn(`[nft-buy-item] NFT ${fullInstanceId} for listing ${data.listingId} not found in nfts collection.`);
@@ -66,13 +66,13 @@ export async function validateTx(data: NftBuyPayload, sender: string): Promise<b
       return false;
     }
 
-    const collection = await cache.findOnePromise('nftCollections', { _id: listing.collectionSymbol }) as CachedNftCollectionForTransfer | null;
+    const collection = await cache.findOnePromise('nftCollections', { _id: listing.collectionId }) as CachedNftCollectionForTransfer | null;
     if (!collection) {
-        logger.warn(`[nft-buy-item] Collection ${listing.collectionSymbol} for NFT ${fullInstanceId} not found.`);
+        logger.warn(`[nft-buy-item] Collection ${listing.collectionId} for NFT ${fullInstanceId} not found.`);
         return false;
     }
     if (collection.transferable === false) {
-        logger.warn(`[nft-buy-item] NFT Collection ${listing.collectionSymbol} is not transferable.`);
+        logger.warn(`[nft-buy-item] NFT Collection ${listing.collectionId} is not transferable.`);
         return false;
     }
 
@@ -83,9 +83,9 @@ export async function validateTx(data: NftBuyPayload, sender: string): Promise<b
   }
 }
 
-export async function process(transaction: { data: NftBuyPayload, sender: string, _id: string }): Promise<boolean> {
-  const { data: buyPayload, sender: buyer, _id: transactionId } = transaction;
-  let listing: NftListing | null = null;
+export async function process(data: NftBuyPayload, sender: string, id: string): Promise<boolean> {
+  const buyer = sender;
+  let listing: NFTListing | null = null;
   let collection: (CachedNftCollectionForTransfer & { creatorFee?: number }) | null = null; // Ensure creatorFee is accessible
   let paymentToken: Token | null = null;
   const originalBuyerBalances: { [tokenIdentifier: string]: bigint } = {};
@@ -94,9 +94,9 @@ export async function process(transaction: { data: NftBuyPayload, sender: string
   let nftOriginalOwner: string | null = null;
 
   try {
-    listing = await cache.findOnePromise('nftListings', { _id: buyPayload.listingId, status: 'ACTIVE' }) as NftListing | null;
+    listing = await cache.findOnePromise('nftListings', { _id: data.listingId, status: 'ACTIVE' }) as NFTListing | null;
     if (!listing) {
-      logger.error(`[nft-buy-item] CRITICAL: Listing ${buyPayload.listingId} not found or not active during processing.`);
+      logger.error(`[nft-buy-item] CRITICAL: Listing ${data.listingId} not found or not active during processing.`);
       return false;
     }
 
@@ -105,16 +105,16 @@ export async function process(transaction: { data: NftBuyPayload, sender: string
         return false;
     }
 
-    collection = await cache.findOnePromise('nftCollections', { _id: listing.collectionSymbol }) as (CachedNftCollectionForTransfer & { creatorFee?: number }) | null;
+    collection = await cache.findOnePromise('nftCollections', { _id: listing.collectionId }) as (CachedNftCollectionForTransfer & { creatorFee?: number }) | null;
     if (!collection || collection.transferable === false) {
-      logger.error(`[nft-buy-item] CRITICAL: Collection ${listing.collectionSymbol} not found or not transferable during processing.`);
+      logger.error(`[nft-buy-item] CRITICAL: Collection ${listing.collectionId} not found or not transferable during processing.`);
       return false;
     }
     const creatorFeePercent = BigIntMath.toBigInt(collection.creatorFee || 0);
 
-    paymentToken = await getTokenByIdentifier(listing.paymentTokenSymbol, listing.paymentTokenIssuer);
+    paymentToken = await getTokenByIdentifier(listing.paymentToken.symbol, listing.paymentToken.issuer);
     if (!paymentToken) {
-        logger.error(`[nft-buy-item] CRITICAL: Payment token ${listing.paymentTokenSymbol} not found during processing.`);
+        logger.error(`[nft-buy-item] CRITICAL: Payment token ${listing.paymentToken.symbol} not found during processing.`);
         return false;
     }
     const paymentTokenIdentifier = `${paymentToken.symbol}${paymentToken.issuer ? '@' + paymentToken.issuer : ''}`; 
@@ -135,7 +135,7 @@ export async function process(transaction: { data: NftBuyPayload, sender: string
     const royaltyAmount = BigIntMath.div(BigIntMath.mul(price, creatorFeePercent), BigInt(100));
     const sellerProceeds = BigIntMath.sub(price, royaltyAmount);
 
-    logger.debug(`[nft-buy-item] Processing sale of listing ${buyPayload.listingId}: Price=${price}, Royalty=${royaltyAmount} (${creatorFeePercent}%), SellerGets=${sellerProceeds} ${paymentToken.symbol}`);
+    logger.debug(`[nft-buy-item] Processing sale of listing ${data.listingId}: Price=${price}, Royalty=${royaltyAmount} (${creatorFeePercent}%), SellerGets=${sellerProceeds} ${paymentToken.symbol}`);
 
     // 1. Deduct price from buyer
     if (!await adjustBalance(buyer, paymentTokenIdentifier, -price)) {
@@ -163,7 +163,7 @@ export async function process(transaction: { data: NftBuyPayload, sender: string
     }
 
     // 4. Transfer NFT ownership
-    const fullInstanceId = `${listing.collectionSymbol}-${listing.instanceId}`;
+    const fullInstanceId = `${listing.collectionId}-${listing.tokenId}`;
     const nft = await cache.findOnePromise('nfts', { _id: fullInstanceId }) as NftInstance | null;
     if(!nft || nft.owner !== listing.seller) {
         logger.error(`[nft-buy-item] CRITICAL: NFT ${fullInstanceId} not found or owner changed mid-transaction. Current owner: ${nft?.owner}`);
@@ -193,7 +193,7 @@ export async function process(transaction: { data: NftBuyPayload, sender: string
     // 5. Update listing status to SOLD
     const updateListingStatusSuccess = await cache.updateOnePromise(
       'nftListings',
-      { _id: buyPayload.listingId },
+      { _id: data.listingId },
       { 
         $set: { 
           status: 'SOLD', 
@@ -205,17 +205,17 @@ export async function process(transaction: { data: NftBuyPayload, sender: string
       }
     );
     if (!updateListingStatusSuccess) {
-      logger.error(`[nft-buy-item] CRITICAL: Failed to update listing ${buyPayload.listingId} status to SOLD. NFT and funds transferred but listing state inconsistent.`);
+      logger.error(`[nft-buy-item] CRITICAL: Failed to update listing ${data.listingId} status to SOLD. NFT and funds transferred but listing state inconsistent.`);
       // This is a problematic state. The sale happened, but the listing isn't marked correctly.
     }
 
-    logger.debug(`[nft-buy-item] NFT Listing ${buyPayload.listingId} successfully processed for buyer ${buyer}.`);
+    logger.debug(`[nft-buy-item] NFT Listing ${data.listingId} successfully processed for buyer ${buyer}.`);
 
     // Log event using the new centralized logger
     const eventData = { 
-        listingId: buyPayload.listingId,
-        collectionSymbol: listing.collectionSymbol,
-        instanceId: listing.instanceId,
+        listingId: data.listingId,
+        collectionSymbol: listing.collectionId,
+        instanceId: listing.tokenId,
         seller: listing.seller,
         buyer: buyer,
         price: bigintToString(price),
@@ -224,12 +224,12 @@ export async function process(transaction: { data: NftBuyPayload, sender: string
         royaltyAmount: bigintToString(royaltyAmount),
         collectionCreator: collection.creator, 
     };
-    await logTransactionEvent('nftBuyItem', buyer, eventData, transactionId);
+    await logTransactionEvent('nftBuyItem', buyer, eventData, id);
 
     return true;
 
   } catch (error: any) {
-    logger.error(`[nft-buy-item] CATASTROPHIC ERROR processing NFT buy for listing ${buyPayload.listingId} by ${buyer}: ${error.message || error}`, error.stack);
+    logger.error(`[nft-buy-item] CATASTROPHIC ERROR processing NFT buy for listing ${data.listingId} by ${buyer}: ${error.message || error}`, error.stack);
     // --- Attempt Full Rollback on Catastrophic Error ---
     // This is best-effort and non-atomic, order of operations matters.
     logger.error('[nft-buy-item] Attempting catastrophic error rollback...');
@@ -240,8 +240,8 @@ export async function process(transaction: { data: NftBuyPayload, sender: string
         const sellerProceeds = BigIntMath.sub(price, royaltyAmount);
 
         // Try to revert NFT ownership if it was changed
-        if (nftOriginalOwner && listing.collectionSymbol && listing.instanceId) {
-            const fullId = `${listing.collectionSymbol}-${listing.instanceId}`;
+        if (nftOriginalOwner && listing.collectionId && listing.tokenId) {
+            const fullId = `${listing.collectionId}-${listing.tokenId}`;
             logger.warn(`[nft-buy-item-ROLLBACK] Attempting to revert NFT ${fullId} ownership to ${nftOriginalOwner}`);
             await cache.updateOnePromise('nfts', { _id: fullId, owner: buyer }, { $set: { owner: nftOriginalOwner } });
         }

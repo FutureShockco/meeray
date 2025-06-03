@@ -59,13 +59,12 @@ export async function validateTx(data: TokenTransferDataDB, sender: string): Pro
     }
 }
 
-export async function process(transactionObj: { data: TokenTransferDataDB, sender: string, _id: string }): Promise<boolean> {
-    const { data: dataDb, sender, _id: transactionId } = transactionObj;
+export async function process(data: TokenTransferDataDB, sender: string, id: string): Promise<boolean> {
     try {
-        const transferData = convertToBigInt<TokenTransferData>(dataDb, NUMERIC_FIELDS);
+        const transferData = convertToBigInt<TokenTransferData>(data, NUMERIC_FIELDS);
 
-        if (sender !== dataDb.from) {
-            logger.error(`[token-transfer:process] Transaction sender ${sender} does not match data.from ${dataDb.from}. Aborting.`);
+        if (sender !== data.from) {
+            logger.error(`[token-transfer:process] Transaction sender ${sender} does not match data.from ${data.from}. Aborting.`);
             return false;
         }
 
@@ -153,7 +152,7 @@ export async function process(transactionObj: { data: TokenTransferDataDB, sende
             amount: toString(transferData.amount),
             memo: transferData.memo
         };
-        await logTransactionEvent('tokenTransfer', sender, eventData, transactionId);
+        await logTransactionEvent('tokenTransfer', sender, eventData, id);
 
         return true;
     } catch (error) {
