@@ -40,8 +40,7 @@ export async function validateTx(data: WitnessRegisterData, sender: string): Pro
   }
 }
 
-export async function process(transaction: { data: WitnessRegisterData, sender: string, _id: string }): Promise<boolean> {
-  const { data, sender, _id: transactionId } = transaction;
+export async function process(data: WitnessRegisterData, sender: string, transactionId: string): Promise<boolean> {
   try {
     // Direct check of account state before transaction
     const beforeAccount = await cache.findOnePromise('accounts', { name: sender });

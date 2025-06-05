@@ -60,8 +60,7 @@ export async function validateTx(dataDb: PoolRemoveLiquidityDataDB, sender: stri
   }
 }
 
-export async function process(transaction: { data: PoolRemoveLiquidityDataDB, sender: string, _id: string }): Promise<boolean> {
-  const { data: dataDb, sender, _id: transactionId } = transaction;
+export async function process(dataDb: PoolRemoveLiquidityDataDB, sender: string, transactionId: string): Promise<boolean> {
   // Only convert lpTokenAmount as defined in NUMERIC_FIELDS_REMOVE_LIQ for the core data object.
   // minTokenA_amount/minTokenB_amount from dataDb would be ignored by this specific convertToBigInt call if not in NUMERIC_FIELDS_REMOVE_LIQ
   const data = convertToBigInt<PoolRemoveLiquidityData>(dataDb, NUMERIC_FIELDS_REMOVE_LIQ);

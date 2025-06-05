@@ -119,8 +119,7 @@ export async function validateTx(data: MarketPlaceOrderDataDB, sender: string): 
   }
 }
 
-export async function process(transaction: { data: MarketPlaceOrderDataDB, sender: string, _id: string }): Promise<boolean> {
-  const { data: dataDb, sender, _id: transactionId } = transaction;
+export async function process(dataDb: MarketPlaceOrderDataDB, sender: string, transactionId: string): Promise<boolean> {
   try {
     const orderInput = convertToBigInt<MarketPlaceOrderData>(dataDb, NUMERIC_FIELDS_MARKET_PLACE_ORDER_DATA);
 

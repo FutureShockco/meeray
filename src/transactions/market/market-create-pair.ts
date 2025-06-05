@@ -108,8 +108,7 @@ export async function validateTx(dataDb: MarketCreatePairDataDB, sender: string)
   return true;
 }
 
-export async function process(transaction: { data: MarketCreatePairDataDB, sender: string, _id: string }): Promise<boolean> {
-  const { data: dataDb, sender, _id: transactionId } = transaction;
+export async function process(dataDb: MarketCreatePairDataDB, sender: string, transactionId: string): Promise<boolean> {
   const data = convertToBigInt<MarketCreatePairData>(dataDb, NUMERIC_FIELDS_CREATE_PAIR);
   logger.debug(`[market-create-pair] Processing request from ${sender} to create pair: ${JSON.stringify(data)}`);
   try {

@@ -72,8 +72,7 @@ export async function validateTx(dataDb: PoolSwapDataDB, sender: string): Promis
     }
 }
 
-export async function process(transaction: { data: PoolSwapDataDB, sender: string, _id: string }): Promise<boolean> {
-    const { data: dataDb, sender, _id: transactionId } = transaction;
+export async function process(dataDb: PoolSwapDataDB, sender: string, transactionId: string): Promise<boolean> {
     const data = convertToBigInt<PoolSwapData>(dataDb, NUMERIC_FIELDS_SWAP);
 
     // Get pool data

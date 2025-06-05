@@ -35,8 +35,7 @@ export async function validateTx(data: WitnessUnvoteData, sender: string): Promi
   }
 }
 
-export async function process(transaction: { data: WitnessUnvoteData, sender: string, _id: string }): Promise<boolean> {
-  const { data, sender, _id: transactionId } = transaction;
+export async function process(data: WitnessUnvoteData, sender: string, transactionId: string): Promise<boolean> {
   try {
     // Get sender account
     const senderAccount = await cache.findOnePromise('accounts', { name: sender });

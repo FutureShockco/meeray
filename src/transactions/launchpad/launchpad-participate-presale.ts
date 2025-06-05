@@ -93,8 +93,7 @@ export async function validateTx(dataDb: LaunchpadParticipatePresaleDataDB, send
   return true;
 }
 
-export async function process(transaction: { data: LaunchpadParticipatePresaleDataDB, sender: string, _id: string }): Promise<boolean> {
-  const { data: dataDb, sender, _id: transactionId } = transaction;
+export async function process(dataDb: LaunchpadParticipatePresaleDataDB, sender: string, transactionId: string): Promise<boolean> {
   const data = convertToBigInt<LaunchpadParticipatePresaleData>(dataDb, NUMERIC_FIELDS_PARTICIPATE);
   logger.debug(`[launchpad-participate-presale] Processing participation from ${sender} for ${data.launchpadId}: amount ${toString(data.contributionAmount)}`);
   try {
