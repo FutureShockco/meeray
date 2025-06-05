@@ -74,6 +74,14 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                     opIndex++;
                     continue;
                 }
+
+                // Validate that the first required auth is a valid non-empty string
+                const sender = opData.required_auths[0];
+                if (!sender || typeof sender !== 'string' || sender.trim() === '') {
+                    logger.warn(`Skipping transaction in block ${blockNum}, operation ${opIndex}: Invalid sender (${sender})`);
+                    opIndex++;
+                    continue;
+                }
                 logger.debug(`Transaction added: ${json.contract}`);
 
                 let txType: number;
@@ -187,7 +195,7 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                 const newTx: ParsedTransaction = {
                     type: txType,
                     data: json.payload,
-                    sender: opData.required_auths[0],
+                    sender: sender.trim(),
                     ts: new Date(steemBlock.timestamp + 'Z').getTime(),
                     ref: blockNum + ':' + opIndex
                 };
