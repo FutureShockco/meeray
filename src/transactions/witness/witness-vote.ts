@@ -42,7 +42,7 @@ export async function validateTx(data: WitnessVoteData, sender: string): Promise
   }
 }
 
-export async function process(data: WitnessVoteData, sender: string): Promise<boolean> {
+export async function process(data: WitnessVoteData, sender: string, transactionId: string): Promise<boolean> {
   try {
     const senderAccount = await cache.findOnePromise('accounts', { name: sender });
     if (!senderAccount) {
@@ -135,7 +135,7 @@ export async function process(data: WitnessVoteData, sender: string): Promise<bo
       // TODO: The original code was missing the transactionId for logTransactionEvent.
       // Assuming it should be passed, but it's not available in this scope. 
       // For now, logging without it. This might need to be addressed.
-      await logTransactionEvent('witnessVote', sender, eventData);
+      await logTransactionEvent('witnessVote', sender, eventData, transactionId);
 
       return true;
     } catch (updateError: any) {
