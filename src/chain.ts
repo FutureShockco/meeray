@@ -22,7 +22,7 @@ import _ from 'lodash';
 // Add constants for block-based broadcasting
 const SYNC_MODE_BROADCAST_INTERVAL_BLOCKS = 3; // Broadcast every 3 blocks in sync mode
 const NORMAL_MODE_BROADCAST_INTERVAL_BLOCKS = 6; // Broadcast every 6 blocks in normal mode
-
+const REPLAY_OUTPUT = process.env.REPLAY_OUTPUT ? parseInt(process.env.REPLAY_OUTPUT) : 1000;
 // Counter and interval for periodic cache writes during P2P recovery
 let p2pRecoveryWriteCounter = 0;
 const P2P_RECOVERY_WRITE_INTERVAL_BLOCKS = 100;
@@ -250,8 +250,11 @@ export const chain = {
                 outputLog += ` (NORMAL - KnownLag: ${localLag}, NetMedLag: ${netMedian})`;
             }
         }
-
-        logger.info(outputLog);
+        if (block._id%REPLAY_OUTPUT === 0 || (!rebuilding && !p2p.recovering))
+            logger.info(outputLog);
+        else
+            logger.debug(outputLog);
+        
         chain.nextOutput = { txs: 0, dist: 0 };
     },
 

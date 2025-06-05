@@ -851,7 +851,7 @@ export const p2p = {
 
                 case MessageType.BLOCK:
                     // a peer sends us a block we requested with QUERY_BLOCK
-                    logger.info(`[P2P] Received block #${message.d?._id} with ${message.d?.txs?.length ?? 0} txs`);
+                    logger.debug(`[P2P] Received block #${message.d?._id} with ${message.d?.txs?.length ?? 0} txs`);
                     if (!message.d._id || !p2p.recoveringBlocks.includes(message.d._id)) return;
                     for (let i = 0; i < p2p.recoveringBlocks.length; i++)
                         if (p2p.recoveringBlocks[i] === message.d._id) {
@@ -1121,7 +1121,7 @@ export const p2p = {
             return;
         }
 
-        logger.info(`[P2P:recover] Requesting block #${nextBlockToFetch} from champion ${championId} (Head: ${champion.node_status!.head_block}). Our head: ${currentChainHeadId}.`);
+        logger.debug(`[P2P:recover] Requesting block #${nextBlockToFetch} from champion ${championId} (Head: ${champion.node_status!.head_block}). Our head: ${currentChainHeadId}.`);
         p2p.sendJSON(champion, { t: MessageType.QUERY_BLOCK, d: nextBlockToFetch });
         
         pendingBlockRequests.add(nextBlockToFetch);
