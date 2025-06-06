@@ -63,11 +63,6 @@ export async function process(data: TokenTransferDataDB, sender: string, id: str
     try {
         const transferData = convertToBigInt<TokenTransferData>(data, NUMERIC_FIELDS);
 
-        if (sender !== data.from) {
-            logger.error(`[token-transfer:process] Transaction sender ${sender} does not match data.from ${data.from}. Aborting.`);
-            return false;
-        }
-
         const token = await cache.findOnePromise('tokens', { _id: transferData.symbol }); 
         if (!token) {
             logger.error(`[token-transfer] Token ${transferData.symbol} not found`);
