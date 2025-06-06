@@ -272,7 +272,7 @@ export const mining = {
                     } else {
                         mineInMs = blockTime * (i + 1);
                     }
-                    logger.info(`[MINING:minerWorker] Scheduled as backup witness (slot ${i + 1}). Initial mineInMs: ${mineInMs}ms`);
+                    logger.debug(`[MINING:minerWorker] Scheduled as backup witness (slot ${i + 1}). Initial mineInMs: ${mineInMs}ms`);
                     break;
                 }
             }
