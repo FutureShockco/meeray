@@ -440,7 +440,7 @@ export const chain = {
             logger.debug(`[validateAndAddBlock] isValidNewBlock for Block ID: ${block?._id} returned: ${isValid}`);
             if (!isValid) {
                 logger.warn(`[validateAndAddBlock] Block ID: ${block?._id} failed isValidNewBlock. Witness: ${block?.witness}`);
-                return cb(true, block);
+                return cb("Block failed basic validation", null);
             }
             logger.debug(`Block ID: ${block?._id} passed isValidNewBlock. Witness: ${block?.witness}`); // Changed from console.log
             // straight execution
@@ -450,7 +450,7 @@ export const chain = {
                 // if any transaction failed execution, reject the block
                 if (block.txs.length !== successfullyExecutedTxs.length) {
                     logger.error(`[validateAndAddBlock] Not all transactions in Block ID: ${block?._id} executed successfully. Expected: ${block.txs.length}, Executed: ${successfullyExecutedTxs.length}. Rejecting block.`);
-                    cb(true, block); // Signal block error
+                    cb("Not all transactions executed successfully", null); // Signal block error
                     return;
                 }
 
@@ -460,7 +460,7 @@ export const chain = {
                 let blockDist = block.dist || 0;
                 if (blockDist !== distributed) {
                     logger.error(`[validateAndAddBlock] Wrong dist amount for Block ID: ${block?._id}. Expected: ${blockDist}, Got: ${distributed}. Rejecting block.`);
-                    cb(true, block); // Signal block error
+                    cb("Wrong distribution amount", null); // Signal block error
                     return;
                 }
 
