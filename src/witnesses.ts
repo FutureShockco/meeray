@@ -36,16 +36,16 @@ export const witnessesModule = {
     },
 
 
-    witnessRewards: (name: string, ts: number, cb: (dist: number) => void) => {
+    witnessRewards: (name: string, ts: number, cb: (dist: string) => void) => {
         cache.findOne('accounts', { name: name }, async function (err: any, account: any) {
             if (err) {
                 logger.error('Error finding account for witness rewards:', err);
-                return cb(0);
+                return cb('0');
             }
 
             if (!account) {
                 logger.error('Account not found for witness rewards:', name);
-                return cb(0);
+                return cb('0');
             }
 
             const reward = config.witnessReward;
@@ -66,7 +66,7 @@ export const witnessesModule = {
                     function (err: Error | null, result?: boolean) {
                         if (err) {
                             logger.error('Error updating account balance for rewards:', err);
-                            return cb(0);
+                            return cb('0');
                         }
                         
                         if (result === false) {
@@ -87,12 +87,12 @@ export const witnessesModule = {
 
                         transaction.adjustWitnessWeight(account, reward, function () {
                             logger.debug(`Distributed reward (${rewardBigInt.toString()} smallest units) to witness ${name}`);
-                            cb(reward);
+                            cb(toString(rewardBigInt));
                         });
                     }
                 );
             } else {
-                cb(0);
+                cb('0');
             }
         });
     },

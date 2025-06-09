@@ -5,6 +5,7 @@ import p2p, { MessageType } from './p2p.js';
 import { isValidNewBlock } from './block.js';
 import { signMessage } from './crypto.js';
 import steem from './steem.js';
+import mining from './mining.js';
 
 const consensus_need = 2;
 const consensus_total = 3;
@@ -113,7 +114,64 @@ export const consensus: Consensus = {
                             possBlocksById[possBlock.block._id][j].block.timestamp,
                         ]);
                     logger.warn('Block collision detected at height ' + possBlock.block._id + ', the witnesses are:', collisions);
+                    
+                    // In sync mode, reject all colliding blocks and wait for next witness
+                    if (steem.isInSyncMode()) {
+                        logger.info(`[SYNC-COLLISION] Rejecting all ${collisions.length} colliding blocks at height ${possBlock.block._id}. Waiting for next witness.`);
+                        
+                        // Remove all colliding blocks from consideration
+                        let newPossBlocks = [];
+                        for (let y = 0; y < this.possBlocks.length; y++) {
+                            if (this.possBlocks[y].block._id !== possBlock.block._id) {
+                                newPossBlocks.push(this.possBlocks[y]);
+                            }
+                        }
+                        this.possBlocks = newPossBlocks;
+                        this.finalizing = false; // Reset finalizing status
+                        
+                        // Chain head remains unchanged - no phash confusion
+                        logger.info(`[SYNC-COLLISION] Chain head unchanged at ${chain.getLatestBlock()._id}#${chain.getLatestBlock().hash.substr(0, 4)}. Next witness can mine cleanly.`);
+                        return; // Exit without applying any block
+                    }
+                    
+                    // In normal mode, apply the winning block as before
                     logger.info('Applying block ' + possBlock.block._id + '#' + possBlock.block.hash.substr(0, 4) + ' by ' + possBlock.block.witness + ' with timestamp ' + possBlock.block.timestamp);
+                    
+                    // Store alternative blocks for sync reconciliation (diagnostic only now)
+                    const alternativeBlocks = possBlocksById[possBlock.block._id].filter(pb => pb.block.hash !== possBlock.block.hash);
+                    if (alternativeBlocks.length > 0) {
+                        logger.info(`[COLLISION-TRACKING] Storing ${alternativeBlocks.length} alternative blocks for height ${possBlock.block._id} for diagnostics`);
+                        
+                        for (const altBlock of alternativeBlocks) {
+                            // Security check: Only store blocks that passed basic validation
+                            if (!altBlock.block.hash || !altBlock.block.witness || !altBlock.block.signature) {
+                                logger.warn(`[COLLISION-TRACKING] Skipping invalid alternative block from ${altBlock.block.witness}`);
+                                continue;
+                            }
+                            
+                            // Add alternative blocks for diagnostic purposes
+                            const tempBlock = { 
+                                ...altBlock.block, 
+                                _isAlternative: true,
+                                _storedAt: Date.now() // Timestamp for cleanup
+                            };
+                            
+                            // Store in a way that can be referenced but doesn't interfere with main chain
+                            if (!chain.alternativeBlocks) chain.alternativeBlocks = [];
+                            chain.alternativeBlocks.push(tempBlock);
+                            
+                            // Enhanced memory management: Keep only recent alternatives
+                            const maxAlternatives = 25;
+                            const maxAge = 300000; // 5 minutes max age
+                            const now = Date.now();
+                            
+                            // Clean by both count and age
+                            chain.alternativeBlocks = chain.alternativeBlocks.filter(ab => 
+                                now - ab._storedAt < maxAge && // Remove old blocks
+                                ab._id >= possBlock.block._id - 10 // Keep only last 10 block heights
+                            ).slice(-maxAlternatives); // Keep only last N blocks
+                        }
+                    }
                 } else {
                     logger.debug('block ' + possBlock.block._id + '#' + possBlock.block.hash.substr(0, 4) + ' got finalized');
                 }

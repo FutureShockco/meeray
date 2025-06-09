@@ -45,12 +45,12 @@ const processBlockAddQueue = () => {
         // that contains the original logic and handles releasing the lock.
         // This is a placeholder for a more detailed refactor if needed.
         // The key is that validateAndAddBlockInternal will call cb, then release lock & process queue.
-        
+
         // Simplified: Re-call validateAndAddBlock, but it will acquire the lock now.
         // This isn't ideal as it re-checks the lock. A better refactor would separate
         // the lock acquisition from the core logic that can be called from the queue.
         // Let's proceed with a slight refactor of validateAndAddBlock structure.
-        
+
         // We'll call the original function which will now see the lock is free
         // and then immediately acquire it.
         chain.validateAndAddBlock(nextTask.block, nextTask.revalidate, nextTask.cb);
@@ -63,13 +63,14 @@ export const chain = {
     schedule: null as any,
     recentBlocks: [] as any[],
     recentTxs: {} as Record<string, any>,
-    nextOutput: { txs: 0, dist: 0 },
+    nextOutput: { txs: 0, dist: '0' },
     lastRebuildOutput: 0,
     worker: null as any,
     shuttingDown: false,
     latestSteemBlock: 0,
     lastWriteWasSlow: false, // New property to track slow cache writes
     lastBlockTime: 0, // Timestamp of when the last mining cycle started or block was processed
+    alternativeBlocks: [] as any[], // Store alternative blocks for sync reconciliation
 
     getGenesisBlock: () => {
         const genesisBlock: Block = {
@@ -82,7 +83,7 @@ export const chain = {
             txs: [], // txs: []
             witness: config.masterName, // witness: config.masterName
             missedBy: '', // missedBy: ''
-            dist: 0, // dist: config.witnessReward > 0 ? config.witnessReward : 0
+            dist: '0', // dist: config.witnessReward > 0 ? config.witnessReward : 0
             sync: false, // sync: false
             signature: '0000000000000000000000000000000000000000000000000000000000000000',
             hash: config.originHash
@@ -127,7 +128,7 @@ export const chain = {
     output: async (block: any, rebuilding?: boolean) => {
         chain.nextOutput.txs += block.txs.length;
         if (block.dist)
-            chain.nextOutput.dist += block.dist;
+            chain.nextOutput.dist = (BigInt(chain.nextOutput.dist) + BigInt(block.dist)).toString();
 
         let currentOutTime = new Date().getTime();
         let outputLog = '';
@@ -141,7 +142,8 @@ export const chain = {
         outputLog += '  ' + chain.nextOutput.txs + ' tx';
         if (chain.nextOutput.txs > 1)
             outputLog += 's';
-        outputLog += '  dist: ' + (chain.nextOutput.dist);
+        const distInECH = (Number(chain.nextOutput.dist) / Math.pow(10, config.nativeTokenPrecision));
+        outputLog += '  dist: ' + distInECH + ' ' + config.nativeToken;
         outputLog += '  delay: ' + (currentOutTime - block.timestamp);
         if (block.missedBy && !rebuilding)
             outputLog += '  MISS: ' + block.missedBy;
@@ -208,7 +210,7 @@ export const chain = {
                             const criticalLocalDelayThreshold = (config as any).steemBlockDelayCritical || 20;
                             const networkMedianEntryThreshold = (config as any).steemBlockDelayNetworkEntry || Math.max(10, ((config as any).steemBlockDelay || 10) * 1.5);
                             const witnessLagThreshold = (config as any).steemBlockDelayWitnessLagThreshold || ((config as any).steemBlockDelay || 10);
-                            
+
                             const activeWitnessAccounts = chain.schedule?.active_witnesses || (config as any).activeWitnesses || [];
                             const minWitnessesLaggingForEntryFactor = activeWitnessAccounts.length > 0 ? Math.max(1, Math.ceil(activeWitnessAccounts.length * ((config as any).syncEntryWitnessQuorumMinPercentForFactor || 0.3))) : 0;
 
@@ -250,12 +252,12 @@ export const chain = {
                 outputLog += ` (NORMAL - KnownLag: ${localLag}, NetMedLag: ${netMedian})`;
             }
         }
-        if (block._id%REPLAY_OUTPUT === 0 || (!rebuilding && !p2p.recovering))
+        if (block._id % REPLAY_OUTPUT === 0 || (!rebuilding && !p2p.recovering))
             logger.info(outputLog);
         else
             logger.debug(outputLog);
-        
-        chain.nextOutput = { txs: 0, dist: 0 };
+
+        chain.nextOutput = { txs: 0, dist: '0' };
     },
 
     applyHardfork: (block: any, cb: (err: any, result: any) => void) => {
@@ -303,7 +305,7 @@ export const chain = {
 
             try {
                 // Execute transactions in the block
-                this.executeBlockTransactions(blockToRebuild, true, (validTxs: Transaction[], dist: number) => {
+                this.executeBlockTransactions(blockToRebuild, true, (validTxs: Transaction[], dist: string) => {
                     if (blockToRebuild.txs.length !== validTxs.length) {
                         logger.error('Invalid transaction found in block during rebuild');
                         return cb('Invalid transaction in block', blockNum);
@@ -442,9 +444,9 @@ export const chain = {
             }
             logger.debug(`Block ID: ${block?._id} passed isValidNewBlock. Witness: ${block?.witness}`); // Changed from console.log
             // straight execution
-            chain.executeBlockTransactions(block, false, function (successfullyExecutedTxs: any[], distributed: number) {
+            chain.executeBlockTransactions(block, false, function (successfullyExecutedTxs: any[], distributed: string) {
                 logger.debug(`[validateAndAddBlock] executeBlockTransactions for Block ID: ${block?._id} completed. Valid Txs: ${successfullyExecutedTxs?.length}/${block?.txs?.length}, Distributed: ${distributed}`);
-                
+
                 // if any transaction failed execution, reject the block
                 if (block.txs.length !== successfullyExecutedTxs.length) {
                     logger.error(`[validateAndAddBlock] Not all transactions in Block ID: ${block?._id} executed successfully. Expected: ${block.txs.length}, Executed: ${successfullyExecutedTxs.length}. Rejecting block.`);
@@ -473,7 +475,7 @@ export const chain = {
 
                     // process notifications and witness stats (non blocking)
                     if (process.env.USE_NOTIFICATION === 'true')
-                    notifications.processBlock(block)
+                        notifications.processBlock(block)
 
                     // emit event to confirm new transactions in the http api
                     if (!p2p.recovering)
@@ -486,7 +488,7 @@ export const chain = {
         });
     },
 
-    executeBlockTransactions: async (block: any, revalidate: boolean, cb: (validTxs: any[], dist: number) => void) => {
+    executeBlockTransactions: async (block: any, revalidate: boolean, cb: (validTxs: any[], dist: string) => void) => {
         // revalidating transactions in orders if revalidate = true
         // adding transaction to recent transactions (to prevent tx re-use) if isFinal = true
         let executions: any[] = [];
@@ -539,7 +541,7 @@ export const chain = {
             }
             // First result is from account creation
             let executedSuccesfully: any[] = [];
-            let distributedInBlock = 0;
+            let distributedInBlock = BigInt(0);
             for (let i = 0; i < block.txs.length; i++) {
                 const result = results[i];
                 if (result && result.executed) {
@@ -548,10 +550,9 @@ export const chain = {
                 }
             }
             // add rewards for the witness who mined this block
-            witnessesModule.witnessRewards(block.witness, block.timestamp, function (dist: number) {
-                distributedInBlock += dist;
-                distributedInBlock = Math.round(distributedInBlock * 1000) / 1000;
-                cb(executedSuccesfully, distributedInBlock);
+            witnessesModule.witnessRewards(block.witness, block.timestamp, function (dist: string) {
+                distributedInBlock = BigInt(distributedInBlock) + BigInt(dist);
+                cb(executedSuccesfully, distributedInBlock.toString());
             });
         });
     },

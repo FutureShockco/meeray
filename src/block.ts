@@ -18,7 +18,7 @@ export class Block {
     txs!: any[];
     witness!: string;
     missedBy: string;
-    dist: number;
+    dist: string;
     sync: boolean;
     signature?: string;
     hash?: string;
@@ -33,7 +33,7 @@ export class Block {
         txs: any[],
         witness: string,
         missedBy?: string,
-        dist?: number,
+        dist?: string,
         sync?: boolean,
         signature?: string,
         hash?: string
@@ -47,7 +47,7 @@ export class Block {
         this.txs = txs;
         this.witness = witness;
         this.missedBy = missedBy || '';
-        this.dist = dist || 0;
+        this.dist = dist || '0';
         this.sync = sync || false;
         if (signature) this.signature = signature;
         if (hash) this.hash = hash;
@@ -171,11 +171,48 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
         logger.error('invalid index')
         cb(false); return
     }
-    // from the same chain
+    
+    // Enhanced phash validation with sync mode reconciliation
     if (previousBlock.hash !== newBlock.phash) {
+        // Check if this is a sync mode scenario where we should be more lenient with logging
+        const isSyncMode = steem.isInSyncMode();
+        const isLenientMode = steem.shouldBeLenient && steem.shouldBeLenient(newBlock._id);
+        
+        if (isSyncMode || isLenientMode) {
+            // In sync mode, log the mismatch but still reject to maintain consensus
+            // This provides better diagnostics without risking chain forks
+            logger.warn(`[SYNC-MODE] Block ${newBlock._id} from ${newBlock.witness} has phash mismatch. Expected: ${previousBlock.hash}, got: ${newBlock.phash}. Rejecting to maintain consensus.`);
+            
+            // Check if this references a recently seen block for diagnostic purposes
+            const maxLookback = Math.min(chain.recentBlocks.length, 5); // Small lookback for diagnostics only
+            let foundReference = false;
+            
+            for (let i = 1; i <= maxLookback; i++) {
+                const historicalBlock = chain.recentBlocks[chain.recentBlocks.length - i];
+                if (historicalBlock && historicalBlock.hash === newBlock.phash) {
+                    foundReference = true;
+                    logger.info(`[SYNC-DIAGNOSTIC] Block references historical block ${historicalBlock._id}#${historicalBlock.hash.substr(0, 4)} by ${historicalBlock.witness}. This suggests delayed block propagation.`);
+                    break;
+                }
+            }
+            
+            if (!foundReference && chain.alternativeBlocks) {
+                const altBlock = chain.alternativeBlocks.find(ab => ab.hash === newBlock.phash);
+                if (altBlock) {
+                    logger.info(`[SYNC-DIAGNOSTIC] Block references alternative block ${altBlock._id}#${altBlock.hash.substr(0, 4)} by ${altBlock.witness}. This suggests post-collision block creation.`);
+                }
+            }
+            
+            if (!foundReference) {
+                logger.info(`[SYNC-DIAGNOSTIC] Block phash ${newBlock.phash.substr(0, 8)} does not match any recently seen blocks. This may indicate a deeper sync issue.`);
+            }
+        }
+        
+        // Always reject phash mismatches to maintain consensus integrity
         logger.error('invalid phash')
         cb(false); return
     }
+    
     // check that the witness is scheduled
     let witnessPriority = 0;
     if (chain.schedule.shuffle[(newBlock._id - 1) % config.witnesses].name === newBlock.witness) {

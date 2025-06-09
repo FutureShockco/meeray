@@ -106,13 +106,13 @@ export const mining = {
                 txs: txs,
                 witness: process.env.STEEM_ACCOUNT || '',
                 missedBy: '',
-                dist: 0,
+                dist: '0',
                 sync: steem.isInSyncMode() || false
             };
 
             // Set distribution amount based on witness rewards
             if (config.witnessReward > 0) {
-                newBlock.dist = config.witnessReward
+                newBlock.dist = BigInt(config.witnessReward).toString()
             }
             logger.debug(`[MINING:prepareBlock] Prepared Echelon block candidate for _id ${newBlock._id}: ${JSON.stringify(newBlock)}`);
             cb(null, newBlock)
@@ -161,7 +161,7 @@ export const mining = {
             // BUT with a different ts and without checking for double spend
             // so we will execute transactions in order and revalidate after each execution
             logger.debug(`[MINING:mineBlock] Before executeBlockTransactions for _id ${newBlock._id}. Initial Txs: ${newBlock.txs?.length}`);
-            chain.executeBlockTransactions(newBlock, true, function (validTxs: Transaction[], distributed: number) {
+            chain.executeBlockTransactions(newBlock, true, function (validTxs: Transaction[], distributed: string) {
                 logger.debug(`[MINING:mineBlock] After executeBlockTransactions for _id ${newBlock._id}. Valid Txs: ${validTxs?.length}, Distributed: ${distributed}`);
                 try {
                     cache.rollback()
