@@ -457,7 +457,7 @@ export const chain = {
                 // All transactions executed successfully if we reach here.
 
                 // error if distributed computed amounts are different than the reported one
-                let blockDist = block.dist || 0;
+                let blockDist = block.dist || "0";
                 if (blockDist !== distributed) {
                     logger.error(`[validateAndAddBlock] Wrong dist amount for Block ID: ${block?._id}. Expected: ${blockDist}, Got: ${distributed}. Rejecting block.`);
                     cb("Wrong distribution amount", null); // Signal block error
