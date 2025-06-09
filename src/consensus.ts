@@ -116,7 +116,7 @@ export const consensus: Consensus = {
                     logger.warn('Block collision detected at height ' + possBlock.block._id + ', the witnesses are:', collisions);
                     
                     // In sync mode, reject all colliding blocks and wait for next witness
-                    if (steem.isInSyncMode()) {
+                    if (steem.isInSyncMode() && !p2p.recovering) {
                         logger.info(`[SYNC-COLLISION] Rejecting all ${collisions.length} colliding blocks at height ${possBlock.block._id}. Waiting for next witness.`);
                         
                         // Remove all colliding blocks from consideration
