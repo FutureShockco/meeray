@@ -107,6 +107,31 @@ export const consensus: Consensus = {
                 // && possBlock[0] && possBlock[0].indexOf(process.env.STEEM_ACCOUNT) !== -1 // Temporarily commented out for testing churn
             ) {
                 this.finalizing = true;
+                
+                // In sync mode, add a grace period for potential collisions (all blocks)
+                if (steem.isInSyncMode() && !p2p.recovering) {
+                    const hasCollision = possBlocksById[possBlock.block._id] && possBlocksById[possBlock.block._id].length > 1;
+                    
+                    if (!hasCollision) {
+                        // No collision detected yet - wait briefly for competing blocks to arrive
+                        const isOurBlock = possBlock.block.witness === process.env.STEEM_ACCOUNT;
+                        const blockSource = isOurBlock ? "our mined" : "received";
+                        logger.debug(`[SYNC-GRACE] Block ${possBlock.block._id} (${blockSource}) waiting for collision detection`);
+                        this.finalizing = false; // Reset to allow collision detection
+                        
+                        setTimeout(() => {
+                            // Re-check for collision after grace period
+                            const stillNoCollision = !possBlocksById[possBlock.block._id] || possBlocksById[possBlock.block._id].length <= 1;
+                            if (stillNoCollision && !this.finalizing) {
+                                logger.debug(`[SYNC-GRACE] No collision after grace period. Finalizing block ${possBlock.block._id} (${blockSource})`);
+                                this.finalizing = true;
+                                this.tryNextStep(); // Re-trigger consensus
+                            }
+                        }, 150); // 150ms grace period for all blocks in sync mode
+                        return;
+                    }
+                }
+                
                 // log which block got applied if collision exists
                 if (possBlocksById[possBlock.block._id] && possBlocksById[possBlock.block._id].length > 1) {
                     let collisions = [];
@@ -117,23 +142,45 @@ export const consensus: Consensus = {
                         ]);
                     logger.warn('Block collision detected at height ' + possBlock.block._id + ', the witnesses are:', collisions);
                     
-                    // In sync mode, use adaptive collision handling
+                    // In sync mode, use deterministic collision resolution
                     if (steem.isInSyncMode() && !p2p.recovering) {
-                        logger.info(`[SYNC-COLLISION] Detected ${collisions.length} colliding blocks at height ${possBlock.block._id}. Assessing network consensus...`);
+                        logger.info(`[SYNC-COLLISION] Detected ${collisions.length} colliding blocks at height ${possBlock.block._id}. Using deterministic resolution...`);
                         
-                        // Store collision context for delayed processing
-                        const collisionHeight = possBlock.block._id;
-                        const currentPossBlocks = [...this.possBlocks]; // Snapshot current state
+                        // Find the winning block using deterministic criteria
+                        let winningBlock = possBlock;
+                        for (const collidingPossBlock of possBlocksById[possBlock.block._id]) {
+                            const currentBlock = collidingPossBlock.block;
+                            const winningBlockData = winningBlock.block;
+                            
+                            // Primary: Earliest timestamp wins
+                            if (currentBlock.timestamp < winningBlockData.timestamp) {
+                                winningBlock = collidingPossBlock;
+                            } 
+                            // Tie-breaker: Lexicographically smallest hash wins
+                            else if (currentBlock.timestamp === winningBlockData.timestamp && 
+                                     currentBlock.hash < winningBlockData.hash) {
+                                winningBlock = collidingPossBlock;
+                            }
+                        }
                         
-                        // Reset finalizing to prevent other consensus attempts
-                        this.finalizing = false;
+                        // If this isn't the winning block, remove it and wait for the winner
+                        if (possBlock.block.hash !== winningBlock.block.hash) {
+                            logger.info(`[SYNC-COLLISION] Block ${possBlock.block._id} by ${possBlock.block.witness} lost collision. Winner: ${winningBlock.block.witness} (timestamp: ${winningBlock.block.timestamp})`);
+                            
+                            // Remove losing blocks from consideration
+                            let newPossBlocks = [];
+                            for (let y = 0; y < this.possBlocks.length; y++) {
+                                if (this.possBlocks[y].block.hash !== possBlock.block.hash) {
+                                    newPossBlocks.push(this.possBlocks[y]);
+                                }
+                            }
+                            this.possBlocks = newPossBlocks;
+                            this.finalizing = false; // Reset and wait for winning block
+                            return;
+                        }
                         
-                        // Wait and query network consensus
-                        setTimeout(() => {
-                            this.handleSyncCollisionWithNetworkQuery(collisionHeight, collisions, currentPossBlocks);
-                        }, 1500); // 1.5 seconds to let network stabilize
-                        
-                        return; // Exit current processing, resume in timeout
+                        logger.info(`[SYNC-COLLISION] Block ${possBlock.block._id} by ${possBlock.block.witness} won collision (timestamp: ${possBlock.block.timestamp})`);
+                        // Continue with processing the winning block
                     }
                     
                     // In normal mode, apply the winning block as before

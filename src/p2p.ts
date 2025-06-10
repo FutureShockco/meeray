@@ -377,6 +377,36 @@ export const p2p = {
         let peers = process.env.PEERS ? process.env.PEERS.split(',') : [];
         let toConnect: string[] = [];
 
+        // Filter out IPv6 link-local and private addresses from PEERS environment variable
+        peers = peers.filter(peer => {
+            try {
+                const normalizedPeerUrl = normalizeWsUrl(peer);
+                const url = new URL(normalizedPeerUrl);
+                const peerHost = url.hostname;
+
+                // Filter out IPv6 link-local addresses (fe80::/10)
+                if (peerHost.startsWith('fe80:')) {
+                    logger.debug(`[P2P:keepAlive] Filtering out IPv6 link-local address from PEERS: ${peer}`);
+                    return false;
+                }
+
+                // Filter out private IPv4 ranges and localhost
+                if (peerHost === '127.0.0.1' || peerHost === 'localhost' || 
+                    peerHost.startsWith('10.') || 
+                    peerHost.startsWith('192.168.') ||
+                    (peerHost.startsWith('172.') && peerHost.split('.')[1] && 
+                     parseInt(peerHost.split('.')[1]) >= 16 && parseInt(peerHost.split('.')[1]) <= 31)) {
+                    logger.debug(`[P2P:keepAlive] Filtering out private/local address from PEERS: ${peer}`);
+                    return false;
+                }
+
+                return true;
+            } catch (e: any) {
+                logger.warn(`[P2P:keepAlive] Invalid peer URL in PEERS: ${peer}`);
+                return false;
+            }
+        });
+
         logger.debug(`[P2P:keepAlive] Processing PEERS list: ${JSON.stringify(peers)}. Sockets: ${p2p.sockets.length}`);
 
         const maxAttemptsPerCycle = 2;
@@ -530,6 +560,22 @@ export const p2p = {
             }
             if (alreadyConnectedToThisIp) {
                 logger.debug(`[P2P:connect] Already have an established connection to IP ${resolvedTargetIp} (target URL was ${url}), skipping new outgoing attempt.`);
+                continue;
+            }
+
+            // Filter out IPv6 link-local addresses (fe80::/10) - these are not routable across networks
+            if (resolvedTargetIp.startsWith('fe80:')) {
+                logger.debug(`[P2P:connect] Skipping IPv6 link-local address: ${url} (resolved to ${resolvedTargetIp})`);
+                continue;
+            }
+
+            // Filter out private IPv4 ranges (except if we're explicitly configured to connect to them)
+            if (resolvedTargetIp === '127.0.0.1' || 
+                resolvedTargetIp.startsWith('10.') || 
+                resolvedTargetIp.startsWith('192.168.') ||
+                (resolvedTargetIp.startsWith('172.') && resolvedTargetIp.split('.')[1] && 
+                 parseInt(resolvedTargetIp.split('.')[1]) >= 16 && parseInt(resolvedTargetIp.split('.')[1]) <= 31)) {
+                logger.debug(`[P2P:connect] Skipping private IP address: ${url} (resolved to ${resolvedTargetIp})`);
                 continue;
             }
             
@@ -1006,6 +1052,23 @@ export const p2p = {
                                 logger.debug(`[P2P:messageHandler] Filtering out self from received peer list: ${peerUrl} (normalized: ${normalizedPeerUrl})`);
                                 return false;
                             }
+
+                            // Filter out IPv6 link-local addresses (fe80::/10) - these are not routable across networks
+                            if (peerHost.startsWith('fe80:')) {
+                                logger.debug(`[P2P:messageHandler] Filtering out IPv6 link-local address: ${peerUrl}`);
+                                return false;
+                            }
+
+                            // Filter out private IPv4 ranges and localhost
+                            if (peerHost === '127.0.0.1' || peerHost === 'localhost' || 
+                                peerHost.startsWith('10.') || 
+                                peerHost.startsWith('192.168.') ||
+                                (peerHost.startsWith('172.') && peerHost.split('.')[1] && 
+                                 parseInt(peerHost.split('.')[1]) >= 16 && parseInt(peerHost.split('.')[1]) <= 31)) {
+                                logger.debug(`[P2P:messageHandler] Filtering out private/local address: ${peerUrl}`);
+                                return false;
+                            }
+
                             return true;
                         } catch (e: any) {
                             logger.warn(`[P2P:messageHandler] Invalid peer URL in PEER_LIST: ${peerUrl} (normalization attempt failed or URL still invalid after norm)`);

@@ -23,39 +23,7 @@ import _ from 'lodash';
 const SYNC_MODE_BROADCAST_INTERVAL_BLOCKS = 3; // Broadcast every 3 blocks in sync mode
 const NORMAL_MODE_BROADCAST_INTERVAL_BLOCKS = 6; // Broadcast every 6 blocks in normal mode
 const REPLAY_OUTPUT = process.env.REPLAY_OUTPUT ? parseInt(process.env.REPLAY_OUTPUT) : 1000;
-// Counter and interval for periodic cache writes during P2P recovery
-let p2pRecoveryWriteCounter = 0;
-const P2P_RECOVERY_WRITE_INTERVAL_BLOCKS = 100;
 
-let isAddingBlockLocked = false; // Lock flag for validateAndAddBlock
-const blockAddQueue: any[] = []; // Queue for pending block additions
-
-// Function to process the next item in the block add queue
-const processBlockAddQueue = () => {
-    if (isAddingBlockLocked || blockAddQueue.length === 0) {
-        return;
-    }
-    const nextTask = blockAddQueue.shift();
-    if (nextTask) {
-        isAddingBlockLocked = true; // Set lock before processing
-        // Directly call the core logic of validateAndAddBlock, 
-        // but ensure the lock is released in its callback.
-        // We need to refactor validateAndAddBlock slightly or wrap its core.
-        // For now, let's assume we can call a conceptual "executeValidateAndAddBlock"
-        // that contains the original logic and handles releasing the lock.
-        // This is a placeholder for a more detailed refactor if needed.
-        // The key is that validateAndAddBlockInternal will call cb, then release lock & process queue.
-
-        // Simplified: Re-call validateAndAddBlock, but it will acquire the lock now.
-        // This isn't ideal as it re-checks the lock. A better refactor would separate
-        // the lock acquisition from the core logic that can be called from the queue.
-        // Let's proceed with a slight refactor of validateAndAddBlock structure.
-
-        // We'll call the original function which will now see the lock is free
-        // and then immediately acquire it.
-        chain.validateAndAddBlock(nextTask.block, nextTask.revalidate, nextTask.cb);
-    }
-};
 
 export const chain = {
     blocksToRebuild: [] as any[],
@@ -225,7 +193,7 @@ export const chain = {
 
                             if (isLocallyCritical || isNetworkMedianLagHigh || areEnoughWitnessesLagging) {
                                 logger.info(`Primary condition(s) for sync mode met: ${entryReason}Local Lag: ${localSteemDelayCorrected}, Network Median: ${networkOverall.medianBehind}, Reporting Witnesses Lagging: ${networkOverall.witnessesBehindThreshold}/${minWitnessesLaggingForEntryFactor} (threshold: >${witnessLagThreshold}).`);
-                                if (steem.isNetworkReadyToEnterSyncMode(localSteemDelayCorrected)) {
+                                if (steem.isNetworkReadyToEnterSyncMode(localSteemDelayCorrected, steem.isInSyncMode())) {
                                     logger.info("Network IS ready for coordinated sync mode entry. Attempting entry.");
                                     steem.enterSyncMode();
                                     outputLog += ` (Entering Sync - Lag: ${localSteemDelayCorrected}, NetMedLag: ${networkOverall.medianBehind})`;
