@@ -74,6 +74,7 @@ export interface EnhancedWebSocket extends WebSocket {
     challengeHash?: string;
     pendingDisconnect?: NodeJS.Timeout;
     sentUs?: [string, number][];
+    _peerUrl?: string;
 }
 
 export interface NodeKeyPair {
