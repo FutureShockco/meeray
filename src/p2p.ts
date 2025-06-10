@@ -354,7 +354,7 @@ export const p2p = {
 
         const wsNodeId = message.d.nodeId;
         if (wsNodeId === p2p.nodeId?.pub) {
-            logger.warn('Peer disconnected: same P2P ID');
+            logger.debug('Peer disconnected: same P2P ID');
             ws.close();
             return;
         }

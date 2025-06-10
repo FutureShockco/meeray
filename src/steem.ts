@@ -10,28 +10,21 @@ import BlockProcessor from './steem/blockProcessor.js';
 import NetworkStatusManager from './steem/networkStatus.js';
 import steemConfig from './steem/config.js';
 
-// Simplified module state
 let currentSteemBlock = 0;
 let nextSteemBlock = 0;
 let readyToReceiveTransactions = false;
 let steemBlockPollingInterval: NodeJS.Timeout | null = null;
 
-// Initialize managers
 const apiClient = new SteemApiClient();
 const syncManager = new SyncManager(apiClient);
 const blockProcessor = new BlockProcessor(apiClient);
 const networkStatus = new NetworkStatusManager();
 
-/**
- * Set whether we're ready to receive transactions
- */
+
 const setReadyToReceiveTransactions = (ready: boolean): void => {
     readyToReceiveTransactions = ready;
 };
 
-/**
- * Initialize Steem sync
- */
 const initSteemSync = (blockNum: number): void => {
     if (steemBlockPollingInterval) {
         clearInterval(steemBlockPollingInterval);
@@ -327,7 +320,7 @@ const steemModule = {
     handlePostSyncReady: (blockId: number) => syncManager.handlePostSyncReady(blockId),
     getLastSyncExitTime: () => syncManager.getLastSyncExitTime(),
 
-    // Additional delegated methods
+    // Delegated methods
     updateLocalSteemState: (localDelay: number, headSteemBlock: number) => networkStatus.updateLocalSteemState(localDelay, headSteemBlock),
     getNetworkOverallBehindBlocks: () => networkStatus.getNetworkOverallBehindBlocks(),
     isNetworkReadyToEnterSyncMode: (localBehind: number, isSyncing: boolean) => networkStatus.isNetworkReadyToEnterSyncMode(localBehind, isSyncing),

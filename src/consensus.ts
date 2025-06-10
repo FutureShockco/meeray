@@ -11,6 +11,11 @@ const consensus_need = 2;
 const consensus_total = 3;
 const consensus_threshold = consensus_need / consensus_total;
 
+// Sync mode collision detection window - 200ms
+const SYNC_COLLISION_WINDOW_MS = 200;
+const syncCollisionTimers: { [height: number]: NodeJS.Timeout } = {};
+const syncPendingBlocks: { [height: number]: any[] } = {};
+
 export interface Consensus {
     observer: boolean;
     validating: string[];
@@ -23,11 +28,72 @@ export interface Consensus {
     activeWitnesses: () => string[];
     tryNextStep: () => void;
     round: (round: number, block: any, cb?: (result: number) => void) => void;
+    processBlockNormally: (round: number, block: any, cb?: (result: number) => void) => void;
     endRound: (round: number, block: any, roundCallback?: Function) => void;
     remoteRoundConfirm: (message: any) => void;
     handleSyncCollisionWithNetworkQuery: (collisionHeight: number, collisions: any[], savedPossBlocks: any[]) => void;
     rejectCollisionAndWait: (collisionHeight: number) => void;
 }
+
+// Function to process collected blocks after collision window
+const processSyncCollisionWindow = (height: number) => {
+    const pendingBlocks = syncPendingBlocks[height];
+    if (!pendingBlocks || pendingBlocks.length === 0) {
+        logger.warn(`[SYNC-COLLISION-WINDOW] No pending blocks for height ${height}`);
+        return;
+    }
+
+    logger.info(`[SYNC-COLLISION-WINDOW] Processing ${pendingBlocks.length} blocks for height ${height} after 200ms window`);
+
+    if (pendingBlocks.length === 1) {
+        // Only one block - process normally
+        const block = pendingBlocks[0].block;
+        const cb = pendingBlocks[0].cb;
+        logger.debug(`[SYNC-COLLISION-WINDOW] Single block for height ${height}, processing normally`);
+        consensus.processBlockNormally(0, block, cb);
+    } else {
+        // Multiple blocks - apply deterministic resolution
+        logger.info(`[SYNC-COLLISION-WINDOW] Collision detected for height ${height} with ${pendingBlocks.length} blocks. Applying deterministic resolution.`);
+        
+        // Sort by timestamp first, then by hash for deterministic ordering
+        pendingBlocks.sort((a, b) => {
+            if (a.block.timestamp !== b.block.timestamp) {
+                return a.block.timestamp - b.block.timestamp;
+            }
+            return a.block.hash < b.block.hash ? -1 : 1;
+        });
+
+        const winningBlock = pendingBlocks[0];
+        logger.info(`[SYNC-COLLISION-WINDOW] Winner: Block ${height} by ${winningBlock.block.witness} (timestamp: ${winningBlock.block.timestamp})`);
+
+        // Log the losing blocks
+        for (let i = 1; i < pendingBlocks.length; i++) {
+            const losingBlock = pendingBlocks[i];
+            logger.info(`[SYNC-COLLISION-WINDOW] Rejected: Block ${height} by ${losingBlock.block.witness} (timestamp: ${losingBlock.block.timestamp})`);
+        }
+
+        // Process the winning block
+        consensus.processBlockNormally(0, winningBlock.block, winningBlock.cb);
+    }
+
+    // Cleanup
+    delete syncCollisionTimers[height];
+    delete syncPendingBlocks[height];
+    
+    // Additional cleanup: Remove any stale collision windows (older than 2 seconds)
+    const now = Date.now();
+    const staleThreshold = 2000; // 2 seconds
+    
+    Object.keys(syncCollisionTimers).forEach(heightStr => {
+        const h = parseInt(heightStr);
+        if (h < height - 5) { // Clean up timers for heights more than 5 blocks old
+            logger.debug(`[SYNC-COLLISION-WINDOW] Cleaning up stale collision timer for height ${h}`);
+            clearTimeout(syncCollisionTimers[h]);
+            delete syncCollisionTimers[h];
+            delete syncPendingBlocks[h];
+        }
+    });
+};
 
 export const consensus: Consensus = {
     observer: false,
@@ -226,6 +292,33 @@ export const consensus: Consensus = {
             if (cb) cb(-1);
             return;
         }
+
+        // SYNC MODE COLLISION WINDOW - Only for round 0 in sync mode
+        if (round === 0 && steem.isInSyncMode() && !p2p.recovering) {
+            const blockHeight = block._id;
+            
+            // Check if we already have a timer for this height
+            if (!syncCollisionTimers[blockHeight]) {
+                // Start new collision window
+                logger.debug(`[SYNC-COLLISION-WINDOW] Starting 200ms collision window for height ${blockHeight}`);
+                syncPendingBlocks[blockHeight] = [];
+                
+                syncCollisionTimers[blockHeight] = setTimeout(() => {
+                    processSyncCollisionWindow(blockHeight);
+                }, SYNC_COLLISION_WINDOW_MS);
+            }
+            
+            // Add this block to pending blocks for this height
+            syncPendingBlocks[blockHeight].push({ block, cb });
+            logger.debug(`[SYNC-COLLISION-WINDOW] Added block from ${block.witness} to collision window for height ${blockHeight} (${syncPendingBlocks[blockHeight].length} total)`);
+            return; // Don't process immediately
+        }
+
+        // Normal processing (non-sync mode or non-round-0)
+        this.processBlockNormally(round, block, cb);
+    },
+    
+    processBlockNormally: function (round: number, block: any, cb?: (result: number) => void) {
         if (round === 0) {
             for (let i = 0; i < this.possBlocks.length; i++)
                 if (this.possBlocks[i].block.hash === block.hash) {
