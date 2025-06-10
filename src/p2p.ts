@@ -1004,6 +1004,27 @@ export const p2p = {
                         });
 
                         logger.debug(`Received sync status from ${message.d.nodeId}: ${message.d.behindBlocks} blocks behind, isSyncing: ${message.d.isSyncing}`);
+
+                        // Relay sync status to other peers (hub functionality)
+                        // Only relay if we have multiple connections and this isn't a relayed message
+                        if (p2p.sockets.length > 1 && !message.d.relayed) {
+                            const relayedMessage = {
+                                ...message.d,
+                                relayed: true // Mark as relayed to prevent loops
+                            };
+
+                            // Forward to all other connected peers (except the sender)
+                            p2p.sockets.forEach(otherWs => {
+                                if (otherWs !== ws && otherWs.node_status?.nodeId) {
+                                    p2p.sendJSON(otherWs, {
+                                        t: MessageType.STEEM_SYNC_STATUS,
+                                        d: relayedMessage
+                                    });
+                                }
+                            });
+
+                            logger.debug(`Relayed sync status from ${message.d.nodeId} to ${p2p.sockets.length - 1} other peers`);
+                        }
                     }
                     break;
                 // On receiving QUERY_PEER_LIST:
