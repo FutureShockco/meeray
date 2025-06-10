@@ -721,19 +721,18 @@ export const p2p = {
             try {
                 const url = new URL(peerUrl);
                 const peerHost = url.hostname;
-                const peerPort = p2p_port.toString();
+                const peerPort = parseInt(url.port) || p2p_port;
 
                 // Check if already connecting
                 if (p2p.connectingPeers.has(peerUrl)) {
                     return false;
                 }
 
-                // Check if already connected
+                // Check if already connected (compare by IP only, since remotePort is ephemeral)
                 const alreadyConnected = p2p.sockets.some(socket => {
-                    if (socket._socket?.remoteAddress && socket._socket?.remotePort) {
+                    if (socket._socket?.remoteAddress) {
                         const remoteAddr = socket._socket.remoteAddress.replace('::ffff:', '');
-                        const remotePort = socket._socket.remotePort;
-                        return remoteAddr === peerHost && remotePort === peerPort;
+                        return remoteAddr === peerHost;
                     }
                     return false;
                 });
@@ -750,8 +749,19 @@ export const p2p = {
 
         if (peersToConnect.length > 0) {
             p2p.lastPeerListConnection = now;
-            logger.info(`[PEER_LIST] Connecting to ${peersToConnect.length} new peers: ${peersToConnect.join(', ')}`);
-            p2p.connect(peersToConnect);
+            
+            // Reconstruct URLs to use proper P2P port instead of ephemeral ports
+            const properPeerUrls = peersToConnect.map(peerUrl => {
+                try {
+                    const url = new URL(peerUrl);
+                    return `ws://${url.hostname}:${p2p_port}`;
+                } catch (e) {
+                    return peerUrl; // fallback to original if parsing fails
+                }
+            });
+            
+            logger.info(`[PEER_LIST] Connecting to ${properPeerUrls.length} new peers: ${properPeerUrls.join(', ')}`);
+            p2p.connect(properPeerUrls);
         } else {
             logger.debug('[PEER_LIST] No suitable new peers to connect to');
         }
