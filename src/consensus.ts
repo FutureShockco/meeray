@@ -11,8 +11,8 @@ const consensus_need = 2;
 const consensus_total = 3;
 const consensus_threshold = consensus_need / consensus_total;
 
-// Sync mode collision detection window - 50ms
-const SYNC_COLLISION_WINDOW_MS = 50;
+// Sync mode collision detection window - 200ms
+const SYNC_COLLISION_WINDOW_MS = 200;
 const syncCollisionTimers: { [height: number]: NodeJS.Timeout } = {};
 const syncPendingBlocks: { [height: number]: any[] } = {};
 
