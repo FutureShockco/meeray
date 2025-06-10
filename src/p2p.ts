@@ -413,9 +413,8 @@ export const p2p = {
 
     handleBlockQuery: async (ws: EnhancedWebSocket, message: any): Promise<void> => {
         const blockId = message.d;
-        console.log('Received QUERY_BLOCK for block:', blockId);
         if (typeof blockId !== 'number') {
-            console.log('Invalid block ID type:', typeof blockId);
+            logger.warn('Invalid block ID type:', typeof blockId);
             return;
         }
 
@@ -425,11 +424,10 @@ export const p2p = {
         if (blocks.isOpen) {
             try {
                 block = blocks.read(blockId);
-                console.log('Found block', blockId, 'in blocks store, sending response');
                 p2p.sendJSON(ws, { t: MessageType.BLOCK, d: block });
                 return;
             } catch (e) {
-                console.log('Block', blockId, 'not found in blocks store, trying MongoDB');
+                logger.warn('Block', blockId, 'not found in blocks store, trying MongoDB');
             }
         } else {
             // Fallback to MongoDB
@@ -444,7 +442,7 @@ export const p2p = {
                     }
                 }
             } catch (mongoError: any) {
-                console.log('MongoDB query failed for block', blockId, ':', mongoError.message);
+                logger.warn('MongoDB query failed for block', blockId, ':', mongoError.message);
             }
         }
 
@@ -453,29 +451,22 @@ export const p2p = {
 
     handleBlock: (ws: EnhancedWebSocket, message: any): void => {
         const block = message.d;
-        console.log('Received BLOCK message for block:', block?._id);
-        console.log('Currently recovering blocks:', p2p.recoveringBlocks);
-        console.log('Is block in recovering list:', block?._id ? p2p.recoveringBlocks.includes(block._id) : false);
 
         if (!block?._id || !p2p.recoveringBlocks.includes(block._id)) {
-            console.log('Ignoring block - not in recovering list');
+            logger.warn('Ignoring block - not in recovering list');
             return;
         }
 
-        console.log('Processing received block', block._id);
         const index = p2p.recoveringBlocks.indexOf(block._id);
         if (index !== -1) {
             p2p.recoveringBlocks.splice(index, 1);
         }
 
         const currentHead = chain.getLatestBlock()._id;
-        console.log('Current head:', currentHead, 'Received block:', block._id);
 
         if (currentHead + 1 === block._id) {
-            console.log('Block is next in sequence, adding recursively');
             p2p.addRecursive(block);
         } else {
-            console.log('Block is not next, storing and continuing recovery');
             p2p.recoveredBlocks[block._id] = block;
             p2p.recover();
         }
@@ -626,8 +617,6 @@ export const p2p = {
 
     // Core P2P functions
     recover: (): void => {
-        console.log('recovering', p2p.recovering);
-        console.log('sockets', p2p.sockets.length);
         if (!p2p.sockets.length) return;
         if (Object.keys(p2p.recoveredBlocks).length + p2p.recoveringBlocks.length > max_blocks_buffer) return;
 
@@ -636,12 +625,12 @@ export const p2p = {
         }
 
         const currentBlock = chain.getLatestBlock()._id;
-        console.log('Current block:', currentBlock);
-        console.log('Origin hash:', config.originHash);
+        logger.debug('Current block:', currentBlock);
+        logger.debug('Origin hash:', config.originHash);
 
         // Debug each socket's status
         p2p.sockets.forEach((socket, index) => {
-            console.log(`Peer ${index}:`, {
+            logger.debug(`Peer ${index}:`, {
                 hasNodeStatus: !!socket.node_status,
                 headBlock: socket.node_status?.head_block,
                 originBlock: socket.node_status?.origin_block,
@@ -656,7 +645,6 @@ export const p2p = {
             socket.node_status.origin_block === config.originHash
         );
 
-        console.log('Peers ahead:', peersAhead.length);
 
         if (peersAhead.length === 0) {
             p2p.recovering = false;
@@ -666,25 +654,19 @@ export const p2p = {
         const champion = peersAhead[Math.floor(Math.random() * peersAhead.length)];
         const nextBlock = (p2p.recovering as number) + 1;
 
-        console.log('Champion selected, head block:', champion.node_status!.head_block);
-        console.log('Next block to request:', nextBlock);
-        console.log('Will request:', nextBlock <= champion.node_status!.head_block);
 
         if (nextBlock <= champion.node_status!.head_block) {
             p2p.recovering = nextBlock;
-            console.log('Sending QUERY_BLOCK for block', nextBlock);
             p2p.sendJSON(champion, { t: MessageType.QUERY_BLOCK, d: nextBlock });
             p2p.recoveringBlocks.push(nextBlock);
-            console.log('Recovering blocks array:', p2p.recoveringBlocks);
 
             logger.debug(`Querying block #${nextBlock} from peer (head: ${champion.node_status!.head_block})`);
 
             if (nextBlock % 2) {
-                console.log('Recursing recovery for next block');
                 p2p.recover();
             }
         } else {
-            console.log('Next block exceeds peer head block');
+            logger.warn('Next block exceeds peer head block');
         }
     },
 
