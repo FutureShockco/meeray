@@ -11,8 +11,8 @@ const consensus_need = 2;
 const consensus_total = 3;
 const consensus_threshold = consensus_need / consensus_total;
 
-// Sync mode collision detection window - 200ms
-const SYNC_COLLISION_WINDOW_MS = 100;
+// Sync mode collision detection window - 50ms
+const SYNC_COLLISION_WINDOW_MS = 50;
 const syncCollisionTimers: { [height: number]: NodeJS.Timeout } = {};
 const syncPendingBlocks: { [height: number]: any[] } = {};
 
@@ -43,7 +43,7 @@ const processSyncCollisionWindow = (height: number) => {
         return;
     }
 
-    logger.debug(`[SYNC-COLLISION-WINDOW] Processing ${pendingBlocks.length} blocks for height ${height} after 200ms window`);
+    logger.debug(`[SYNC-COLLISION-WINDOW] Processing ${pendingBlocks.length} blocks for height ${height} after 50ms window`);
 
     // Debug: Log all pending blocks to help troubleshoot
     for (let i = 0; i < pendingBlocks.length; i++) {
