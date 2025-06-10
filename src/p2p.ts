@@ -113,6 +113,10 @@ export const p2p = {
             p2p.discoveryWorker(true);
         }
 
+        // Initialize peer list requests (primary discovery method)
+        setInterval(() => p2p.requestPeerLists(), 15000); // Every 15 seconds
+        setTimeout(() => p2p.requestPeerLists(), 5000); // Initial delay
+
         // Initialize keep-alive and cleanup
         setTimeout(() => p2p.keepAlive(), keep_alive_interval);
         setInterval(() => p2p.cleanRoundConfHistory(), history_interval);
@@ -125,54 +129,73 @@ export const p2p = {
         }
     },
 
-
-
-
-    discoveryWorker: async (isInit: boolean = false): Promise<void> => {
-        // Request peer lists from all connected peers first
-        if (!isInit && p2p.sockets.length > 0) {
-            logger.debug(`Requesting peer lists from ${p2p.sockets.length} connected peers`);
-            p2p.sockets.forEach(socket => {
-                if (socket.node_status) {
-                    p2p.sendJSON(socket, { t: MessageType.QUERY_PEER_LIST, d: {} });
-                }
-            });
+    requestPeerLists: (): void => {
+        const connectedPeers = p2p.sockets.filter(s => s.node_status);
+        const currentPeerCount = connectedPeers.length;
+        const totalWitnesses = config.witnesses || 5;
+        const minPeersForConsensus = Math.ceil(totalWitnesses * 0.6);
+        
+        if (connectedPeers.length === 0) {
+            logger.debug('[PEER_REQUEST] No connected peers to request peer lists from');
+            return;
         }
 
-        const witnesses = witnessesModule.generateWitnesses(false, true, config.witnesses * 3, 0);
+        // Request peer lists more aggressively if below consensus threshold
+        const shouldRequestAll = currentPeerCount < minPeersForConsensus;
+        const peersToQuery = shouldRequestAll ? connectedPeers : connectedPeers.slice(0, Math.max(1, Math.ceil(connectedPeers.length / 2)));
+        
+        logger.debug(`[PEER_REQUEST] Requesting peer lists from ${peersToQuery.length}/${connectedPeers.length} peers (current: ${currentPeerCount}, min needed: ${minPeersForConsensus})`);
+        
+        peersToQuery.forEach(socket => {
+            p2p.sendJSON(socket, { t: MessageType.QUERY_PEER_LIST, d: {} });
+        });
+    },
 
-        for (const witness of witnesses) {
-            if (p2p.sockets.length >= max_peers) {
-                logger.debug(`Max peers reached: ${p2p.sockets.length}/${max_peers}`);
-                break;
+    discoveryWorker: async (isInit: boolean = false): Promise<void> => {
+        const currentPeerCount = p2p.sockets.filter(s => s.node_status).length;
+        const totalWitnesses = config.witnesses || 5;
+        
+        // Calculate consensus requirements
+        const minPeersForConsensus = Math.ceil(totalWitnesses * 0.6);
+        const optimalPeerCount = Math.min(totalWitnesses - 1, max_peers);
+        
+        logger.debug(`[DISCOVERY] Current peers: ${currentPeerCount}, Min needed: ${minPeersForConsensus}, Optimal: ${optimalPeerCount}`);
+
+        // Only use witness endpoints if we're critically low on peers or during init
+        if (isInit || currentPeerCount < Math.max(1, minPeersForConsensus - 1)) {
+            if (!isInit) {
+                logger.warn(`[DISCOVERY] Critically low peer count! Using witness endpoints as emergency fallback`);
             }
+            
+            const witnesses = witnessesModule.generateWitnesses(false, true, config.witnesses * 2, 0);
+            for (const witness of witnesses) {
+                if (p2p.sockets.length >= max_peers) break;
+                if (!witness.ws) continue;
 
-            if (!witness.ws) continue;
+                const excluded = process.env.DISCOVERY_EXCLUDE ? process.env.DISCOVERY_EXCLUDE.split(',') : [];
+                if (excluded.includes(witness.name)) continue;
 
-            const excluded = process.env.DISCOVERY_EXCLUDE ? process.env.DISCOVERY_EXCLUDE.split(',') : [];
-            if (excluded.includes(witness.name)) continue;
-
-            let isConnected = false;
-            for (const socket of p2p.sockets) {
-                let ip = socket._socket.remoteAddress || '';
-                if (ip.startsWith('::ffff:')) ip = ip.slice(7);
-
-                try {
-                    const witnessIp = witness.ws.split('://')[1].split(':')[0];
-                    if (witnessIp === ip) {
-                        logger.debug(`Already connected to witness ${witness.name}`);
-                        isConnected = true;
-                        break;
+                let isConnected = false;
+                for (const socket of p2p.sockets) {
+                    try {
+                        const witnessIp = witness.ws.split('://')[1].split(':')[0];
+                        const socketIp = socket._socket.remoteAddress?.replace('::ffff:', '') || '';
+                        if (witnessIp === socketIp) {
+                            isConnected = true;
+                            break;
+                        }
+                    } catch (error) {
+                        logger.debug(`Invalid ws for witness ${witness.name}: ${witness.ws}`);
                     }
-                } catch (error) {
-                    logger.debug(`Invalid ws for witness ${witness.name}: ${witness.ws}`, error);
+                }
+
+                if (!isConnected) {
+                    logger[isInit ? 'info' : 'warn'](`[DISCOVERY] Connecting to witness ${witness.name} at ${witness.ws} (${isInit ? 'init' : 'emergency'})`);
+                    p2p.connect([witness.ws], isInit);
                 }
             }
-
-            if (!isConnected) {
-                logger[isInit ? 'info' : 'debug'](`Connecting to witness ${witness.name} at ${witness.ws}`);
-                p2p.connect([witness.ws], isInit);
-            }
+        } else {
+            logger.debug(`[DISCOVERY] Relying on peer list discovery system (peer requests handle ongoing discovery)`);
         }
     },
 
@@ -183,7 +206,7 @@ export const p2p = {
         for (const peer of peers) {
             let connected = false;
             const colonSplit = peer.replace('ws://', '').split(':');
-            const port = parseInt(colonSplit.pop() || '6001');
+            const port = parseInt(colonSplit.pop() || p2p_port.toString());
             let address = colonSplit.join(':').replace(/[\[\]]/g, '');
 
             if (!net.isIP(address)) {
@@ -645,17 +668,40 @@ export const p2p = {
         const receivedPeers: string[] = message.d?.peers || [];
         if (!Array.isArray(receivedPeers)) return;
 
-        logger.debug(`Received peer list with ${receivedPeers.length} peers, currently connected to ${p2p.sockets.length}/${max_peers}`);
+        const currentPeerCount = p2p.sockets.filter(s => s.node_status).length;
+        const totalWitnesses = config.witnesses || 5;
+        const minPeersForConsensus = Math.ceil(totalWitnesses * 0.6);
+        const optimalPeerCount = Math.min(totalWitnesses - 1, max_peers);
+        
+        logger.debug(`[PEER_LIST] Received ${receivedPeers.length} peers. Current: ${currentPeerCount}, Min needed: ${minPeersForConsensus}, Optimal: ${optimalPeerCount}`);
 
-        // Be more aggressive about connecting when we have few peers
-        const maxNewPeers = p2p.sockets.length < 3 ? 5 : 3;
+        // Calculate how many new peers we need based on consensus requirements
+        let maxNewPeers = 0;
+        if (currentPeerCount < minPeersForConsensus) {
+            // Emergency: try to reach minimum consensus
+            maxNewPeers = Math.min(minPeersForConsensus - currentPeerCount + 2, max_peers - p2p.sockets.length);
+            logger.warn(`[PEER_LIST] Below consensus threshold! Attempting to connect to ${maxNewPeers} new peers`);
+        } else if (currentPeerCount < optimalPeerCount) {
+            // Normal: try to reach optimal
+            maxNewPeers = Math.min(optimalPeerCount - currentPeerCount, 3);
+            logger.debug(`[PEER_LIST] Below optimal, attempting to connect to ${maxNewPeers} new peers`);
+        } else {
+            // We have enough peers, be conservative
+            maxNewPeers = Math.max(0, max_peers - p2p.sockets.length);
+            if (maxNewPeers > 0) {
+                logger.debug(`[PEER_LIST] Peer count optimal, will connect to ${maxNewPeers} additional peers if slots available`);
+            } else {
+                logger.debug(`[PEER_LIST] Peer count optimal and at max capacity`);
+                return;
+            }
+        }
 
-        // Filter and connect to new peers
+        // Filter and prioritize new peers
         const peersToConnect = receivedPeers.filter(peerUrl => {
             try {
                 const url = new URL(peerUrl);
                 const peerHost = url.hostname;
-                const peerPort = '6001';
+                const peerPort = parseInt(url.port) || 6001;
 
                 // Check if already connecting
                 if (p2p.connectingPeers.has(peerUrl)) {
@@ -663,26 +709,30 @@ export const p2p = {
                 }
 
                 // Check if already connected
-                return !p2p.sockets.some(socket => {
+                const alreadyConnected = p2p.sockets.some(socket => {
                     if (socket._socket?.remoteAddress && socket._socket?.remotePort) {
                         const remoteAddr = socket._socket.remoteAddress.replace('::ffff:', '');
-                        const remotePort = socket._socket.remotePort.toString();
+                        const remotePort = socket._socket.remotePort;
                         return remoteAddr === peerHost && remotePort === peerPort;
                     }
                     return false;
                 });
 
+                return !alreadyConnected;
+
             } catch (e) {
-                logger.debug(`Invalid peer URL: ${peerUrl}`);
+                logger.debug(`[PEER_LIST] Invalid peer URL: ${peerUrl}`);
                 return false;
             }
-        }).slice(0, maxNewPeers);
+        })
+        .slice(0, maxNewPeers) // Limit based on consensus needs
+        .sort(() => Math.random() - 0.5); // Randomize to distribute load
 
         if (peersToConnect.length > 0) {
-            logger.debug(`Connecting to ${peersToConnect.length} new peers from peer list: ${peersToConnect.join(', ')}`);
+            logger.info(`[PEER_LIST] Connecting to ${peersToConnect.length} new peers for consensus: ${peersToConnect.join(', ')}`);
             p2p.connect(peersToConnect);
         } else {
-            logger.debug('No new peers to connect to from peer list');
+            logger.debug('[PEER_LIST] No suitable new peers to connect to');
         }
     },
 
@@ -802,14 +852,26 @@ export const p2p = {
         const index = p2p.sockets.indexOf(ws);
         if (index !== -1) {
             p2p.sockets.splice(index, 1);
-            logger.debug(`Peer disconnected, ${p2p.sockets.length} peers remaining`);
+            const currentPeerCount = p2p.sockets.filter(s => s.node_status).length;
+            const totalWitnesses = config.witnesses || 5;
+            const minPeersForConsensus = Math.ceil(totalWitnesses * 0.6);
+            
+            logger.debug(`Peer disconnected, ${p2p.sockets.length} total peers remaining (${currentPeerCount} with node status)`);
 
-            // Trigger aggressive discovery if we have too few peers
-            if (p2p.sockets.length < 2) {
-                logger.warn(`Low peer count (${p2p.sockets.length}), triggering emergency discovery`);
+            // Trigger emergency actions based on consensus requirements
+            if (currentPeerCount < minPeersForConsensus) {
+                logger.warn(`[CONNECTION] Below consensus threshold! (${currentPeerCount}/${minPeersForConsensus}) - triggering emergency discovery`);
+                
+                // Immediate peer list request to remaining peers
+                p2p.requestPeerLists();
+                
+                // Trigger discovery worker after short delay
                 setTimeout(() => {
                     p2p.discoveryWorker(false);
-                }, 1000); // Short delay to allow other disconnections to complete
+                }, 1000);
+            } else if (currentPeerCount < (minPeersForConsensus + 1)) {
+                logger.warn(`[CONNECTION] Near consensus threshold (${currentPeerCount}/${minPeersForConsensus}) - requesting peer lists`);
+                p2p.requestPeerLists();
             }
         }
     },
