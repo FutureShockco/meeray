@@ -45,6 +45,12 @@ const processSyncCollisionWindow = (height: number) => {
 
     logger.info(`[SYNC-COLLISION-WINDOW] Processing ${pendingBlocks.length} blocks for height ${height} after 200ms window`);
 
+    // Debug: Log all pending blocks to help troubleshoot
+    for (let i = 0; i < pendingBlocks.length; i++) {
+        const block = pendingBlocks[i].block;
+        logger.debug(`[SYNC-COLLISION-WINDOW] Block ${i}: height=${block?._id || 'unknown'}, witness=${block?.witness || 'unknown'}, timestamp=${block?.timestamp || 'unknown'}, hash=${block?.hash?.substr(0, 8) || 'unknown'}`);
+    }
+
     if (pendingBlocks.length === 1) {
         // Only one block - process normally
         const block = pendingBlocks[0].block;
@@ -64,12 +70,12 @@ const processSyncCollisionWindow = (height: number) => {
         });
 
         const winningBlock = pendingBlocks[0];
-        logger.info(`[SYNC-COLLISION-WINDOW] Winner: Block ${height} by ${winningBlock.block.witness} (timestamp: ${winningBlock.block.timestamp})`);
+        logger.info(`[SYNC-COLLISION-WINDOW] Winner: Block ${height} by ${winningBlock.block?.witness || 'unknown'} (timestamp: ${winningBlock.block?.timestamp || 'unknown'})`);
 
         // Log the losing blocks
         for (let i = 1; i < pendingBlocks.length; i++) {
             const losingBlock = pendingBlocks[i];
-            logger.info(`[SYNC-COLLISION-WINDOW] Rejected: Block ${height} by ${losingBlock.block.witness} (timestamp: ${losingBlock.block.timestamp})`);
+            logger.info(`[SYNC-COLLISION-WINDOW] Rejected: Block ${height} by ${losingBlock.block?.witness || 'unknown'} (timestamp: ${losingBlock.block?.timestamp || 'unknown'})`);
         }
 
         // Process the winning block
