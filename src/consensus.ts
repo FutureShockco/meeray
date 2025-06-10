@@ -185,8 +185,8 @@ export const consensus: Consensus = {
             if (
                 possBlock[(config.consensusRounds || 2) - 1].length > threshold &&
                 !this.finalizing &&
-                possBlock.block._id === chain.getLatestBlock?.()._id + 1
-                // && possBlock[0] && possBlock[0].indexOf(process.env.STEEM_ACCOUNT) !== -1 // Temporarily commented out for testing churn
+                possBlock.block._id === chain.getLatestBlock?.()._id + 1 &&
+                possBlock[0] && possBlock[0].indexOf(process.env.STEEM_ACCOUNT) !== -1
             ) {
                 this.finalizing = true;
 
@@ -309,25 +309,65 @@ export const consensus: Consensus = {
             return;
         }
 
-        // SYNC MODE COLLISION WINDOW - Only for round 0 in sync mode with FULL blocks (not just hash references)
-        if (round === 0 && steem.isInSyncMode() && !p2p.recovering && 
-            block._id && block.witness && block.timestamp && block.hash) {
+        // COLLISION WINDOW - Use synchronized window for all nodes in round 0 to prevent network splits
+        if (round === 0 && block._id && block.witness && block.timestamp && block.hash) {
             const blockHeight = block._id;
             
             // Check if we already have a timer for this height
             if (!syncCollisionTimers[blockHeight]) {
-                // Start new collision window
-                logger.debug(`[SYNC-COLLISION-WINDOW] Starting 200ms collision window for height ${blockHeight}`);
-                syncPendingBlocks[blockHeight] = [];
+                // Use the earliest block timestamp we've seen + collision window as the deadline
+                // This ensures all nodes use the same reference point once they see any block for this height
+                let earliestTimestamp = block.timestamp;
+                
+                // Check if we have other pending blocks for this height to find the earliest timestamp
+                if (syncPendingBlocks[blockHeight]) {
+                    for (const pendingBlock of syncPendingBlocks[blockHeight]) {
+                        if (pendingBlock.block.timestamp < earliestTimestamp) {
+                            earliestTimestamp = pendingBlock.block.timestamp;
+                        }
+                    }
+                }
+                
+                const windowEndTime = earliestTimestamp + SYNC_COLLISION_WINDOW_MS;
+                const currentTime = Date.now();
+                const timeUntilWindowEnd = Math.max(50, windowEndTime - currentTime); // Minimum 50ms
+                
+                logger.debug(`[COLLISION-WINDOW] Starting synchronized collision window for height ${blockHeight}, ends in ${timeUntilWindowEnd}ms (reference: ${earliestTimestamp})`);
+                if (!syncPendingBlocks[blockHeight]) {
+                    syncPendingBlocks[blockHeight] = [];
+                }
                 
                 syncCollisionTimers[blockHeight] = setTimeout(() => {
                     processSyncCollisionWindow(blockHeight);
-                }, SYNC_COLLISION_WINDOW_MS);
+                }, timeUntilWindowEnd);
+            } else {
+                // Update the collision window if this block has an earlier timestamp
+                if (syncPendingBlocks[blockHeight] && syncPendingBlocks[blockHeight].length > 0) {
+                    let earliestTimestamp = block.timestamp;
+                    for (const pendingBlock of syncPendingBlocks[blockHeight]) {
+                        if (pendingBlock.block.timestamp < earliestTimestamp) {
+                            earliestTimestamp = pendingBlock.block.timestamp;
+                        }
+                    }
+                    
+                    // If this is the new earliest block, reset the timer
+                    if (block.timestamp < earliestTimestamp) {
+                        clearTimeout(syncCollisionTimers[blockHeight]);
+                        const windowEndTime = block.timestamp + SYNC_COLLISION_WINDOW_MS;
+                        const currentTime = Date.now();
+                        const timeUntilWindowEnd = Math.max(50, windowEndTime - currentTime);
+                        
+                        logger.debug(`[COLLISION-WINDOW] Updated collision window for height ${blockHeight} with earlier timestamp, ends in ${timeUntilWindowEnd}ms`);
+                        syncCollisionTimers[blockHeight] = setTimeout(() => {
+                            processSyncCollisionWindow(blockHeight);
+                        }, timeUntilWindowEnd);
+                    }
+                }
             }
             
             // Add this block to pending blocks for this height
             syncPendingBlocks[blockHeight].push({ block, cb });
-            logger.debug(`[SYNC-COLLISION-WINDOW] Added block from ${block.witness} to collision window for height ${blockHeight} (${syncPendingBlocks[blockHeight].length} total)`);
+            logger.debug(`[COLLISION-WINDOW] Added block from ${block.witness} to collision window for height ${blockHeight} (${syncPendingBlocks[blockHeight].length} total)`);
             return; // Don't process immediately
         }
 
