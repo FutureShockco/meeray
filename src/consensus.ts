@@ -43,7 +43,17 @@ const processSyncCollisionWindow = (height: number) => {
         return;
     }
 
-    logger.debug(`[SYNC-COLLISION-WINDOW] Processing ${pendingBlocks.length} blocks for height ${height} after 50ms window`);
+    // Check if this block height has already been processed (chain already advanced)
+    const currentChainHead = chain.getLatestBlock()._id;
+    if (currentChainHead >= height) {
+        logger.debug(`[SYNC-COLLISION-WINDOW] Block height ${height} already processed (chain head: ${currentChainHead}). Skipping collision window.`);
+        // Cleanup and return
+        delete syncCollisionTimers[height];
+        delete syncPendingBlocks[height];
+        return;
+    }
+
+    logger.debug(`[SYNC-COLLISION-WINDOW] Processing ${pendingBlocks.length} blocks for height ${height} after collision window`);
 
     // Debug: Log all pending blocks to help troubleshoot
     for (let i = 0; i < pendingBlocks.length; i++) {
