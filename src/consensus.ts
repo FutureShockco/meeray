@@ -108,25 +108,6 @@ export const consensus: Consensus = {
             ) {
                 this.finalizing = true;
 
-                const hasCollision = possBlocksById[possBlock.block._id] && possBlocksById[possBlock.block._id].length > 1;
-                const isOurBlock = possBlock.block.witness === process.env.STEEM_ACCOUNT;
-                if (steem.isInSyncMode() && !p2p.recovering && !hasCollision && isOurBlock) {
-                    // We mined this block but no collision detected yet - wait briefly for competing blocks
-                    logger.debug(`[SYNC-GRACE] Our mined block ${possBlock.block._id} waiting for collision detection`);
-                    this.finalizing = false; // Reset to allow collision detection
-
-                    setTimeout(() => {
-                        // Re-check for collision after grace period
-                        const stillNoCollision = !possBlocksById[possBlock.block._id] || possBlocksById[possBlock.block._id].length <= 1;
-                        if (stillNoCollision && !this.finalizing) {
-                            logger.debug(`[SYNC-GRACE] No collision after grace period. Finalizing our block ${possBlock.block._id}`);
-                            this.finalizing = true;
-                            this.tryNextStep(); // Re-trigger consensus
-                        }
-                    }, 100); // 100ms grace period - only for blocks we mined
-                    return;
-                }
-
                 // log which block got applied if collision exists
                 if (possBlocksById[possBlock.block._id] && possBlocksById[possBlock.block._id].length > 1) {
                     let collisions = [];
