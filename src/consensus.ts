@@ -299,8 +299,9 @@ export const consensus: Consensus = {
             return;
         }
 
-        // SYNC MODE COLLISION WINDOW - Only for round 0 in sync mode
-        if (round === 0 && steem.isInSyncMode() && !p2p.recovering) {
+        // SYNC MODE COLLISION WINDOW - Only for round 0 in sync mode with FULL blocks (not just hash references)
+        if (round === 0 && steem.isInSyncMode() && !p2p.recovering && 
+            block._id && block.witness && block.timestamp && block.hash) {
             const blockHeight = block._id;
             
             // Check if we already have a timer for this height
