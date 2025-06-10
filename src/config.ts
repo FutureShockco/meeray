@@ -47,7 +47,7 @@ const config = {
   tokenMinSupply: 1,
   tokenMaxSupply: 1000000000000000000,
   consensusRounds: 2,
-  witnesses: 10, 
+  witnesses: 5, 
   notifPurge: 1000, // how often to purge old notifications (blocks)
   notifPurgeAfter: 10, // how many purge intervals to keep
   notifMaxMentions: 5, // max mentions per comment
