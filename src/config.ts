@@ -17,8 +17,6 @@ const config = {
   masterPublicKey: 'e27B66QHwRLjnjxi5KAa9G7fLSDajtoB6CxuZ87oTdfS',
   blockTime: 2940, // ms
   syncBlockTime: 1000, // ms
-  steemSyncThreshold: 5, // blocks behind Steem to trigger sync mode
-  steemSyncCheckInterval: 30000, // ms - how often to check if we need sync mode
   witnessReward: 100000000, // 1 ECH in smallest units (1 * 10^8)
   steemChainId: '0000000000000000000000000000000000000000000000000000000000000000',
   steemStartBlock: process.env.NODE_ENV === 'development' ? 769546 : 95762370, // starting Steem block for sidechain

@@ -43,7 +43,7 @@ const processSyncCollisionWindow = (height: number) => {
         return;
     }
 
-    logger.info(`[SYNC-COLLISION-WINDOW] Processing ${pendingBlocks.length} blocks for height ${height} after 200ms window`);
+    logger.debug(`[SYNC-COLLISION-WINDOW] Processing ${pendingBlocks.length} blocks for height ${height} after 200ms window`);
 
     // Debug: Log all pending blocks to help troubleshoot
     for (let i = 0; i < pendingBlocks.length; i++) {
