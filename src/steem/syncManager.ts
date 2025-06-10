@@ -1,7 +1,8 @@
-import logger from '../logger.js';
-import { chain } from '../chain.js';
 import steemConfig from './config.js';
+import logger from '../logger.js';
 import p2p from '../p2p.js';
+import chain from '../chain.js';
+import SteemApiClient from './apiClient.js';
 
 interface SyncStatus {
     nodeId: string;
@@ -22,15 +23,18 @@ class SyncManager {
     private lastSyncExitTime: number | null = null;
     private readySent = false;
     private networkSyncStatus = new Map<string, SyncStatus>();
+    private apiClient: SteemApiClient;
 
-    // Broadcasting state
+    // Sync status broadcasting management
     private syncStatusBroadcastInterval: NodeJS.Timeout | null = null;
     private lastBroadcastInterval: number | null = null;
     private lastBroadcastedSyncStatus: Partial<SyncStatus> = {};
     private lastForcedBroadcast = 0;
     private statusBroadcastCounter = 0;
 
-    constructor() {}
+    constructor(apiClient: SteemApiClient) {
+        this.apiClient = apiClient;
+    }
 
     enterSyncMode(): void {
         if (this.isSyncing) {
@@ -162,17 +166,57 @@ class SyncManager {
         this.syncStatusBroadcastInterval = setTimeout(() => this.broadcastSyncStatusLoop(), checkFrequency);
     }
 
-    shouldExitSyncMode(currentBlockId: number): boolean {
+    async shouldExitSyncMode(currentBlockId: number): Promise<boolean> {
         if (!this.isSyncing) return false;
         
-        const localCaughtUp = this.behindBlocks <= steemConfig.syncExitThreshold;
-        if (!localCaughtUp) return false;
+        // CRITICAL: Always verify current Steem lag in real-time before allowing sync exit
+        try {
+            const currentSteemHead = await this.apiClient.getLatestBlockNumber();
+            const ourLastProcessedSteemBlock = chain.getLatestBlock()?.steemBlockNum || 0;
+            
+            if (currentSteemHead && ourLastProcessedSteemBlock) {
+                const realTimeBehindBlocks = Math.max(0, currentSteemHead - ourLastProcessedSteemBlock);
+                
+                // Update our cached value if it's significantly different
+                if (Math.abs(realTimeBehindBlocks - this.behindBlocks) > 10) {
+                    logger.info(`DEBUG: Updating behindBlocks from ${this.behindBlocks} to ${realTimeBehindBlocks} (real-time check)`);
+                    this.behindBlocks = realTimeBehindBlocks;
+                }
+                
+                // Use the real-time value for the exit decision
+                const localCaughtUp = realTimeBehindBlocks <= steemConfig.syncExitThreshold;
+                
+                logger.info(`DEBUG shouldExitSyncMode: realTimeBehindBlocks=${realTimeBehindBlocks}, cachedBehindBlocks=${this.behindBlocks}, syncExitThreshold=${steemConfig.syncExitThreshold}, localCaughtUp=${localCaughtUp}, currentBlockId=${currentBlockId}`);
+                
+                if (!localCaughtUp) {
+                    logger.info(`DEBUG: Not exiting sync mode - still ${realTimeBehindBlocks} blocks behind Steem (threshold: ${steemConfig.syncExitThreshold})`);
+                    return false;
+                }
+            } else {
+                logger.warn('DEBUG: Could not get real-time Steem lag for sync exit decision, using cached value');
+            }
+        } catch (error) {
+            logger.warn('DEBUG: Error checking real-time Steem lag for sync exit decision:', error);
+        }
         
+        // Fallback to cached value if real-time check failed
+        const localCaughtUp = this.behindBlocks <= steemConfig.syncExitThreshold;
+        
+        // DEBUG: Log the exact values being used for sync exit decision
+        logger.info(`DEBUG shouldExitSyncMode (fallback): behindBlocks=${this.behindBlocks}, syncExitThreshold=${steemConfig.syncExitThreshold}, localCaughtUp=${localCaughtUp}, currentBlockId=${currentBlockId}`);
+        
+        if (!localCaughtUp) {
+            logger.info(`DEBUG: Not exiting sync mode - still ${this.behindBlocks} blocks behind Steem (threshold: ${steemConfig.syncExitThreshold})`);
+            return false;
+        }
+        
+        // Only check network consensus if we're actually caught up with Steem
         if (this.isNetworkReadyToExitSyncMode()) {
-            logger.info(`Local node caught up and network is ready to exit sync mode at block ${currentBlockId}.`);
+            logger.info(`Local node caught up with Steem (${this.behindBlocks} blocks behind) and network is ready to exit sync mode at block ${currentBlockId}.`);
             return true;
         }
         
+        logger.info(`Local node caught up with Steem but network consensus not reached for sync mode exit`);
         return false;
     }
 
@@ -242,7 +286,13 @@ class SyncManager {
     getLastSyncExitTime(): number | null { return this.lastSyncExitTime; }
     shouldBeLenient(blockId: number): boolean { return !!this.postSyncLenientUntil && blockId <= this.postSyncLenientUntil; }
     
-    updateBehindBlocks(count: number): void { this.behindBlocks = count; }
+    updateBehindBlocks(count: number): void { 
+        const oldValue = this.behindBlocks;
+        this.behindBlocks = count;
+        if (oldValue !== count) {
+            logger.info(`DEBUG updateBehindBlocks: ${oldValue} -> ${count} (change: ${count - oldValue})`);
+        }
+    }
     setSyncExitTarget(target: number | null): void { this.syncExitTargetBlock = target; }
 
     handlePostSyncReady(blockId: number): void {

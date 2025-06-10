@@ -18,7 +18,7 @@ let steemBlockPollingInterval: NodeJS.Timeout | null = null;
 
 // Initialize managers
 const apiClient = new SteemApiClient();
-const syncManager = new SyncManager();
+const syncManager = new SyncManager(apiClient);
 const blockProcessor = new BlockProcessor(apiClient);
 const networkStatus = new NetworkStatusManager();
 
@@ -275,7 +275,7 @@ function updateSteemBlockPolling(): void {
                     if (exitTarget && currentChainBlockId >= exitTarget) {
                         logger.info(`Reached syncExitTargetBlock ${exitTarget} at block ${currentChainBlockId}. Exiting sync mode.`);
                         syncManager.exitSyncMode(currentChainBlockId, lastSteemBlockInSidechain);
-                    } else if (!exitTarget && syncManager.shouldExitSyncMode(currentChainBlockId)) {
+                    } else if (!exitTarget && await syncManager.shouldExitSyncMode(currentChainBlockId)) {
                         const leadBlocks = 3;
                         const newTarget = currentChainBlockId + leadBlocks;
                         logger.info(`Local node caught up. Setting syncExitTargetBlock to ${newTarget}.`);
@@ -331,7 +331,7 @@ const steemModule = {
     updateLocalSteemState: (localDelay: number, headSteemBlock: number) => networkStatus.updateLocalSteemState(localDelay, headSteemBlock),
     getNetworkOverallBehindBlocks: () => networkStatus.getNetworkOverallBehindBlocks(),
     isNetworkReadyToEnterSyncMode: (localBehind: number, isSyncing: boolean) => networkStatus.isNetworkReadyToEnterSyncMode(localBehind, isSyncing),
-    shouldExitSyncMode: (blockId: number) => syncManager.shouldExitSyncMode(blockId),
+    shouldExitSyncMode: async (blockId: number) => await syncManager.shouldExitSyncMode(blockId),
     enterSyncMode: () => syncManager.enterSyncMode(),
     exitSyncMode: (blockId: number, steemBlock: number) => syncManager.exitSyncMode(blockId, steemBlock),
     isNetworkReadyToExitSyncMode: () => syncManager.shouldExitSyncMode(chain?.getLatestBlock()?._id || 0)

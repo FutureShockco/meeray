@@ -166,7 +166,7 @@ export const chain = {
                             }
                             outputLog += ')';
 
-                            if (steem.shouldExitSyncMode(block._id)) {
+                            if (await steem.shouldExitSyncMode(block._id)) {
                                 logger.info(`CONDITIONS MET TO EXIT SYNC MODE. Local delay: ${localSteemDelayCorrected}. Network consensus for exit is YES. Attempting exit.`);
                                 steem.exitSyncMode(block._id, currentSteemHead); // Pass current Steem head
                                 outputLog += ' (Exiting Sync Mode)';
