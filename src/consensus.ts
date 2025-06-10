@@ -108,26 +108,25 @@ export const consensus: Consensus = {
             ) {
                 this.finalizing = true;
                 
-                // In sync mode, add a grace period for potential collisions (all blocks)
+                // In sync mode, add a brief grace period only for blocks we mined (to detect competing blocks)
                 if (steem.isInSyncMode() && !p2p.recovering) {
                     const hasCollision = possBlocksById[possBlock.block._id] && possBlocksById[possBlock.block._id].length > 1;
+                    const isOurBlock = possBlock.block.witness === process.env.STEEM_ACCOUNT;
                     
-                    if (!hasCollision) {
-                        // No collision detected yet - wait briefly for competing blocks to arrive
-                        const isOurBlock = possBlock.block.witness === process.env.STEEM_ACCOUNT;
-                        const blockSource = isOurBlock ? "our mined" : "received";
-                        logger.debug(`[SYNC-GRACE] Block ${possBlock.block._id} (${blockSource}) waiting for collision detection`);
+                    if (!hasCollision && isOurBlock) {
+                        // We mined this block but no collision detected yet - wait briefly for competing blocks
+                        logger.debug(`[SYNC-GRACE] Our mined block ${possBlock.block._id} waiting for collision detection`);
                         this.finalizing = false; // Reset to allow collision detection
                         
                         setTimeout(() => {
                             // Re-check for collision after grace period
                             const stillNoCollision = !possBlocksById[possBlock.block._id] || possBlocksById[possBlock.block._id].length <= 1;
                             if (stillNoCollision && !this.finalizing) {
-                                logger.debug(`[SYNC-GRACE] No collision after grace period. Finalizing block ${possBlock.block._id} (${blockSource})`);
+                                logger.debug(`[SYNC-GRACE] No collision after grace period. Finalizing our block ${possBlock.block._id}`);
                                 this.finalizing = true;
                                 this.tryNextStep(); // Re-trigger consensus
                             }
-                        }, 150); // 150ms grace period for all blocks in sync mode
+                        }, 100); // 100ms grace period - only for blocks we mined
                         return;
                     }
                 }
