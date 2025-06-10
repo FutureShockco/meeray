@@ -630,7 +630,7 @@ export const p2p = {
             try {
                 const url = new URL(peerUrl);
                 const peerHost = url.hostname;
-                const peerPort = url.port || '6001';
+                const peerPort = '6001';
 
                 // Check if already connected
                 return !p2p.sockets.some(socket => {
