@@ -10,7 +10,7 @@ const logsDir = path.join(__dirname, '..', 'logs');
 if (!fs.existsSync(logsDir)) {
     fs.mkdirSync(logsDir, { recursive: true });
 }
-const validLogLevels = ['fatal', 'error', , 'perf', 'warn', 'info', 'http', 'verbose', 'debug', 'silly', 'trace', 'cons'];
+const validLogLevels = ['fatal', 'error', 'perf', 'warn', 'info', 'http', 'verbose', 'debug', 'silly', 'trace', 'cons'];
 let logLevel = (process.env.LOG_LEVEL || 'info').toLowerCase();
 
 if (!validLogLevels.includes(logLevel)) {

@@ -17,7 +17,7 @@ import { Block } from './block.js';
 import steem from './steem.js';
 
 process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
-    console.error('CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
+    logger.error('CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
     if (typeof logger !== 'undefined' && logger.fatal) {
         logger.fatal('CRITICAL: Unhandled Rejection at:', { promise_details: String(promise), reason_details: String(reason) });
         if (reason instanceof Error && reason.stack) {
@@ -25,17 +25,17 @@ process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
         }
     } else {
         if (reason instanceof Error && reason.stack) {
-            console.error('Stack Trace:', reason.stack);
+            logger.error('Stack Trace:', reason.stack);
         }
     }
 });
 
 process.on('uncaughtException', (error: Error) => {
-    console.error('CRITICAL: Uncaught Exception:', error);
+    logger.error('CRITICAL: Uncaught Exception:', error);
     if (typeof logger !== 'undefined' && logger.fatal) {
         logger.fatal('CRITICAL: Uncaught Exception:', { errorName: error.name, errorMessage: error.message, stack: error.stack });
     } else {
-        console.error('Stack Trace:', error.stack);
+        logger.error('Stack Trace:', error.stack);
     }
 });
 

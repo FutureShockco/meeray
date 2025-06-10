@@ -18,8 +18,6 @@ import steem from './steem.js';
 import { witnessesModule } from './witnesses.js';
 import { getNewKeyPair, verifySignature, signMessage } from './crypto.js';
 import mongo from './mongo.js';
-import { internalIpV4Sync } from 'internal-ip';
-// import { Message, MessageType, signMessage } from './messages.js'; // Temporarily commented out
 
 const bs58 = baseX(config.b58Alphabet || '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz');
 
@@ -709,13 +707,9 @@ export const p2p = {
 
             if (!message || typeof message.t === 'undefined') return;
             if (!message.d) return;
-            // logger.debug('P2P-IN '+message.t)
-
-
 
             switch (message.t) {
                 case MessageType.QUERY_NODE_STATUS:
-                    // a peer is requesting our node status
                     if (typeof message.d !== 'object'
                         || typeof message.d.nodeId !== 'string'
                         || typeof message.d.random !== 'string')
@@ -740,7 +734,6 @@ export const p2p = {
                         };
                     }
 
-                    // Using bs58 from the global import
                     const signature = secp256k1.ecdsaSign(Buffer.from(message.d.random, 'hex'), bs58.decode(p2p.nodeId?.priv || ''));
                     const signatureStr = bs58.encode(signature.signature);
 
@@ -850,7 +843,6 @@ export const p2p = {
                     break;
 
                 case MessageType.BLOCK:
-                    // a peer sends us a block we requested with QUERY_BLOCK
                     logger.debug(`[P2P] Received block #${message.d?._id} with ${message.d?.txs?.length ?? 0} txs`);
                     if (!message.d._id || !p2p.recoveringBlocks.includes(message.d._id)) return;
                     for (let i = 0; i < p2p.recoveringBlocks.length; i++)
@@ -872,10 +864,6 @@ export const p2p = {
                     break;
 
                 case MessageType.NEW_BLOCK:
-
-                    // we received a new block we didn't request from a peer
-                    // we save the head_block of our peers
-                    // and we forward the message to consensus if we are not replaying
                     if (!message.d) return;
                     let block = message.d;
 
@@ -895,8 +883,7 @@ export const p2p = {
                     break;
 
                 case MessageType.BLOCK_CONF_ROUND:
-                    // we are receiving a consensus round confirmation
-                    // it should come from one of the elected leaders, so let's verify signature
+
                     if (p2p.recovering) return;
                     if (!message.s || !message.s.s || !message.s.n) return;
                     if (!message.d || !message.d.ts ||

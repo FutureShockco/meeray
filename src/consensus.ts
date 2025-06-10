@@ -25,6 +25,8 @@ export interface Consensus {
     round: (round: number, block: any, cb?: (result: number) => void) => void;
     endRound: (round: number, block: any, roundCallback?: Function) => void;
     remoteRoundConfirm: (message: any) => void;
+    handleSyncCollisionWithNetworkQuery: (collisionHeight: number, collisions: any[], savedPossBlocks: any[]) => void;
+    rejectCollisionAndWait: (collisionHeight: number) => void;
 }
 
 export const consensus: Consensus = {
@@ -115,23 +117,23 @@ export const consensus: Consensus = {
                         ]);
                     logger.warn('Block collision detected at height ' + possBlock.block._id + ', the witnesses are:', collisions);
                     
-                    // In sync mode, reject all colliding blocks and wait for next witness
+                    // In sync mode, use adaptive collision handling
                     if (steem.isInSyncMode() && !p2p.recovering) {
-                        logger.info(`[SYNC-COLLISION] Rejecting all ${collisions.length} colliding blocks at height ${possBlock.block._id}. Waiting for next witness.`);
+                        logger.info(`[SYNC-COLLISION] Detected ${collisions.length} colliding blocks at height ${possBlock.block._id}. Assessing network consensus...`);
                         
-                        // Remove all colliding blocks from consideration
-                        let newPossBlocks = [];
-                        for (let y = 0; y < this.possBlocks.length; y++) {
-                            if (this.possBlocks[y].block._id !== possBlock.block._id) {
-                                newPossBlocks.push(this.possBlocks[y]);
-                            }
-                        }
-                        this.possBlocks = newPossBlocks;
-                        this.finalizing = false; // Reset finalizing status
+                        // Store collision context for delayed processing
+                        const collisionHeight = possBlock.block._id;
+                        const currentPossBlocks = [...this.possBlocks]; // Snapshot current state
                         
-                        // Chain head remains unchanged - no phash confusion
-                        logger.info(`[SYNC-COLLISION] Chain head unchanged at ${chain.getLatestBlock()._id}#${chain.getLatestBlock().hash.substr(0, 4)}. Next witness can mine cleanly.`);
-                        return; // Exit without applying any block
+                        // Reset finalizing to prevent other consensus attempts
+                        this.finalizing = false;
+                        
+                        // Wait and query network consensus
+                        setTimeout(() => {
+                            this.handleSyncCollisionWithNetworkQuery(collisionHeight, collisions, currentPossBlocks);
+                        }, 1500); // 1.5 seconds to let network stabilize
+                        
+                        return; // Exit current processing, resume in timeout
                     }
                     
                     // In normal mode, apply the winning block as before
@@ -287,6 +289,67 @@ export const consensus: Consensus = {
                 break;
             }
         }
+    },
+    
+    handleSyncCollisionWithNetworkQuery: function (collisionHeight: number, collisions: any[], savedPossBlocks: any[]) {
+        logger.debug(`[SYNC-COLLISION] Querying network consensus for collision at height ${collisionHeight}`);
+        
+        // Query peer head blocks to see if majority advanced
+        const peersWithStatus = p2p.sockets.filter(ws => 
+            ws.node_status && 
+            ws.node_status.head_block !== undefined &&
+            ws.node_status.origin_block === config.read(0).originHash
+        );
+        
+        if (peersWithStatus.length === 0) {
+            logger.warn(`[SYNC-COLLISION] No peers available for consensus query. Defaulting to collision rejection.`);
+            this.rejectCollisionAndWait(collisionHeight);
+            return;
+        }
+        
+        // Check if majority of peers advanced beyond collision height
+        const peersAdvanced = peersWithStatus.filter(ws => ws.node_status!.head_block > collisionHeight);
+        const majorityThreshold = Math.ceil(peersWithStatus.length / 2);
+        
+        if (peersAdvanced.length >= majorityThreshold) {
+            logger.info(`[SYNC-COLLISION] Network majority (${peersAdvanced.length}/${peersWithStatus.length}) advanced past collision. Requesting winning block.`);
+            
+            // Find the most common head block among advanced peers
+            const headBlocks: { [key: number]: number } = {};
+            peersAdvanced.forEach(ws => {
+                const headBlock = ws.node_status!.head_block;
+                headBlocks[headBlock] = (headBlocks[headBlock] || 0) + 1;
+            });
+            
+            const winningHeight = Object.keys(headBlocks).map(Number).reduce((a, b) => 
+                headBlocks[a] > headBlocks[b] ? a : b
+            );
+            
+            // Request the winning block for collision height
+            logger.info(`[SYNC-COLLISION] Requesting block ${collisionHeight} from peer with head ${winningHeight}`);
+            const championPeer = peersAdvanced.find(ws => ws.node_status!.head_block >= winningHeight);
+            if (championPeer) {
+                p2p.sendJSON(championPeer, { t: MessageType.QUERY_BLOCK, d: collisionHeight });
+            }
+        } else {
+            logger.info(`[SYNC-COLLISION] Network majority (${peersWithStatus.length - peersAdvanced.length}/${peersWithStatus.length}) did not advance. Proceeding with collision rejection.`);
+            this.rejectCollisionAndWait(collisionHeight);
+        }
+    },
+    
+    rejectCollisionAndWait: function (collisionHeight: number) {
+        logger.info(`[SYNC-COLLISION] Rejecting all colliding blocks at height ${collisionHeight}. Chain head unchanged.`);
+        
+        // Remove all blocks at collision height from consideration
+        let newPossBlocks = [];
+        for (let y = 0; y < this.possBlocks.length; y++) {
+            if (this.possBlocks[y].block._id !== collisionHeight) {
+                newPossBlocks.push(this.possBlocks[y]);
+            }
+        }
+        this.possBlocks = newPossBlocks;
+        
+        logger.info(`[SYNC-COLLISION] Chain head remains at ${chain.getLatestBlock()._id}#${chain.getLatestBlock().hash.substr(0, 4)}. Next witness can mine cleanly.`);
     },
 };
 

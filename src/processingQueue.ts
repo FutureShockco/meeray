@@ -1,3 +1,5 @@
+import logger from "./logger.js";
+
 export class ProcessingQueue {
     queue: Array<(callback: (err: any, result?: any) => void) => void>;
     processing: boolean;
@@ -20,8 +22,7 @@ export class ProcessingQueue {
         if (first) {
             first((err: any, result?: any) => {
                 if (err) {
-                    console.error('Error in ProcessingQueue task:', err);
-
+                    logger.error('Error in ProcessingQueue task:', err);
                 }
                 if (this.queue.length > 0) {
                     this.execute();
