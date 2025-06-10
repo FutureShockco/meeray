@@ -11,6 +11,7 @@ import logger from './logger.js';
 import cache from './cache.js';
 import consensus from './consensus.js';
 import steem from './steem.js';
+import mongo from './mongo.js';
 import { witnessesModule } from './witnesses.js';
 import { getNewKeyPair } from './crypto.js';
 import { Block } from './block.js';
@@ -272,6 +273,8 @@ export const p2p = {
             
             if (!message || typeof message.t === 'undefined' || !message.d) return;
             
+            console.log('P2P-IN message type:', message.t, 'from peer with head block:', ws.node_status?.head_block);
+            
             switch (message.t) {
                 case MessageType.QUERY_NODE_STATUS:
                     p2p.handleNodeStatusQuery(ws, message);
@@ -436,10 +439,9 @@ export const p2p = {
         
         // Fallback to MongoDB
         try {
-            const mongo = require('./mongo.js');
             if (mongo.getDb) {
                 const db = mongo.getDb();
-                block = await db.collection('blocks').findOne({ _id: blockId });
+                block = await db.collection('blocks').findOne({ _id: blockId } as any);
                 if (block) {
                     console.log('Found block', blockId, 'in MongoDB, sending response');
                     p2p.sendJSON(ws, { t: MessageType.BLOCK, d: block });
