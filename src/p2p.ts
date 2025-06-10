@@ -90,6 +90,8 @@ export const p2p = {
     recovering: false as boolean | number,
     recoverAttempt: 0,
     nodeId: null as NodeKeyPair | null,
+    connectingPeers: new Set<string>(),
+
 
     init: async (): Promise<void> => {
         p2p.generateNodeId();
@@ -123,7 +125,10 @@ export const p2p = {
         }
     },
 
-        discoveryWorker: async (isInit: boolean = false): Promise<void> => {
+
+
+
+    discoveryWorker: async (isInit: boolean = false): Promise<void> => {
         // Request peer lists from all connected peers first
         if (!isInit && p2p.sockets.length > 0) {
             logger.debug(`Requesting peer lists from ${p2p.sockets.length} connected peers`);
@@ -133,25 +138,25 @@ export const p2p = {
                 }
             });
         }
-        
+
         const witnesses = witnessesModule.generateWitnesses(false, true, config.witnesses * 3, 0);
-        
+
         for (const witness of witnesses) {
             if (p2p.sockets.length >= max_peers) {
                 logger.debug(`Max peers reached: ${p2p.sockets.length}/${max_peers}`);
                 break;
             }
-            
+
             if (!witness.ws) continue;
-            
+
             const excluded = process.env.DISCOVERY_EXCLUDE ? process.env.DISCOVERY_EXCLUDE.split(',') : [];
             if (excluded.includes(witness.name)) continue;
-            
+
             let isConnected = false;
             for (const socket of p2p.sockets) {
                 let ip = socket._socket.remoteAddress || '';
                 if (ip.startsWith('::ffff:')) ip = ip.slice(7);
-                
+
                 try {
                     const witnessIp = witness.ws.split('://')[1].split(':')[0];
                     if (witnessIp === ip) {
@@ -163,7 +168,7 @@ export const p2p = {
                     logger.debug(`Invalid ws for witness ${witness.name}: ${witness.ws}`, error);
                 }
             }
-            
+
             if (!isConnected) {
                 logger[isInit ? 'info' : 'debug'](`Connecting to witness ${witness.name} at ${witness.ws}`);
                 p2p.connect([witness.ws], isInit);
@@ -214,10 +219,30 @@ export const p2p = {
 
     connect: (newPeers: string[], isInit: boolean = false): void => {
         newPeers.forEach((peer) => {
+            // Skip if already connecting to this peer
+            if (p2p.connectingPeers.has(peer)) {
+                logger.debug(`Already connecting to peer: ${peer}`);
+                return;
+            }
+
+            // Mark as connecting
+            p2p.connectingPeers.add(peer);
+
             const ws = new WebSocket(peer) as EnhancedWebSocket;
-            ws.on('open', () => p2p.handshake(ws));
+            ws._peerUrl = peer; // Store original URL for cleanup
+
+            ws.on('open', () => {
+                p2p.connectingPeers.delete(peer);
+                p2p.handshake(ws);
+            });
+
             ws.on('error', () => {
+                p2p.connectingPeers.delete(peer);
                 logger[isInit ? 'warn' : 'debug']('Peer connection failed: ' + peer);
+            });
+
+            ws.on('close', () => {
+                p2p.connectingPeers.delete(peer);
             });
         });
     },
@@ -575,7 +600,7 @@ export const p2p = {
 
     handlePeerListQuery: (ws: EnhancedWebSocket, message: any): void => {
         const knownPeers: string[] = [];
-        
+
         // Add currently connected peers
         p2p.sockets
             .filter(socket => socket !== ws && socket.node_status?.nodeId && socket._socket?.remoteAddress)
@@ -587,7 +612,7 @@ export const p2p = {
                     knownPeers.push(peerUrl);
                 }
             });
-        
+
         // Add peers from environment (bootstrap peers)
         const envPeers = process.env.PEERS ? process.env.PEERS.split(',') : [];
         envPeers.forEach(peer => {
@@ -595,7 +620,7 @@ export const p2p = {
                 knownPeers.push(peer);
             }
         });
-        
+
         // Add witness endpoints we know about
         try {
             const witnesses = witnessesModule.generateWitnesses(false, true, Math.min(config.witnesses * 2, 10), 0);
@@ -607,7 +632,7 @@ export const p2p = {
         } catch (e) {
             // Ignore witness generation errors
         }
-        
+
         logger.debug(`Sending peer list with ${knownPeers.length} peers to requesting peer`);
 
         p2p.sendJSON(ws, {
@@ -616,21 +641,26 @@ export const p2p = {
         });
     },
 
-        handlePeerList: (ws: EnhancedWebSocket, message: any): void => {
+    handlePeerList: (ws: EnhancedWebSocket, message: any): void => {
         const receivedPeers: string[] = message.d?.peers || [];
         if (!Array.isArray(receivedPeers)) return;
-        
+
         logger.debug(`Received peer list with ${receivedPeers.length} peers, currently connected to ${p2p.sockets.length}/${max_peers}`);
-        
+
         // Be more aggressive about connecting when we have few peers
         const maxNewPeers = p2p.sockets.length < 3 ? 5 : 3;
-        
+
         // Filter and connect to new peers
         const peersToConnect = receivedPeers.filter(peerUrl => {
             try {
                 const url = new URL(peerUrl);
                 const peerHost = url.hostname;
                 const peerPort = '6001';
+
+                // Check if already connecting
+                if (p2p.connectingPeers.has(peerUrl)) {
+                    return false;
+                }
 
                 // Check if already connected
                 return !p2p.sockets.some(socket => {
@@ -641,15 +671,15 @@ export const p2p = {
                     }
                     return false;
                 });
-                
+
             } catch (e) {
                 logger.debug(`Invalid peer URL: ${peerUrl}`);
                 return false;
             }
         }).slice(0, maxNewPeers);
-        
+
         if (peersToConnect.length > 0) {
-            logger.info(`Connecting to ${peersToConnect.length} new peers from peer list: ${peersToConnect.join(', ')}`);
+            logger.debug(`Connecting to ${peersToConnect.length} new peers from peer list: ${peersToConnect.join(', ')}`);
             p2p.connect(peersToConnect);
         } else {
             logger.debug('No new peers to connect to from peer list');
@@ -772,8 +802,8 @@ export const p2p = {
         const index = p2p.sockets.indexOf(ws);
         if (index !== -1) {
             p2p.sockets.splice(index, 1);
-            logger.info(`Peer disconnected, ${p2p.sockets.length} peers remaining`);
-            
+            logger.debug(`Peer disconnected, ${p2p.sockets.length} peers remaining`);
+
             // Trigger aggressive discovery if we have too few peers
             if (p2p.sockets.length < 2) {
                 logger.warn(`Low peer count (${p2p.sockets.length}), triggering emergency discovery`);
