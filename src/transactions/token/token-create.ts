@@ -105,8 +105,13 @@ export async function validateTx(data: TokenCreateDataDB, sender: string): Promi
   }
 }
 
-export async function process(data: TokenCreateData, sender: string, id: string): Promise<boolean> {
-    const tokenCreationInput = data;
+export async function process(data: TokenCreateDataDB, sender: string, id: string): Promise<boolean> {
+    // Convert string numerics to BigInts for logic, to prevent string comparison issues.
+    const tokenCreationInput = convertToBigInt<TokenCreateData>(data, NUMERIC_FIELDS_INPUT);
+    if (data.precision !== undefined) {
+        tokenCreationInput.precision = data.precision;
+    }
+    
     console.log(data,sender);
     logger.debug(`[token-create] Processing token creation for ${tokenCreationInput.symbol} by ${sender}`);
 

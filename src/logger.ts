@@ -26,6 +26,7 @@ const logFile = path.join(logsDir, `output-${nodeIdentifier}.log`);
 const logr = winston.createLogger({
     level: logLevel,
     format: winston.format.combine(
+        winston.format.errors({ stack: true }),
         winston.format.timestamp(),
         winston.format.colorize(),
         winston.format.printf(({ timestamp, level, message, ...meta }) => {
