@@ -37,13 +37,13 @@ interface CacheCopyCollections {
     tradingPairs: CacheCollectionStore;
     orders: CacheCollectionStore;
     nftListings: CacheCollectionStore;
-    pools: CacheCollectionStore;
     events: CacheCollectionStore;
     farms: CacheCollectionStore;
     userFarmPositions: CacheCollectionStore;
     userLiquidityPositions: CacheCollectionStore;
     trades: CacheCollectionStore;
     launchpads: CacheCollectionStore;
+    liquidityPools: CacheCollectionStore;
     // Add other collections from original TS if they were in `copy`
 }
 
@@ -57,13 +57,13 @@ interface CacheMainDataCollections {
     tradingPairs: CacheCollectionStore;
     orders: CacheCollectionStore;
     nftListings: CacheCollectionStore;
-    pools: CacheCollectionStore;
     events: CacheCollectionStore;
     farms: CacheCollectionStore;
     userFarmPositions: CacheCollectionStore;
     userLiquidityPositions: CacheCollectionStore;
     trades: CacheCollectionStore;
     launchpads: CacheCollectionStore;
+    liquidityPools: CacheCollectionStore;
     // Add other collections from original TS if they were direct properties
 }
 
@@ -130,15 +130,17 @@ const cache: CacheType = {
     copy: {
         accounts: {}, blocks: {}, state: {}, tokens: {},
         nftCollections: {}, nfts: {}, tradingPairs: {}, orders: {},
-        nftListings: {}, pools: {}, events: {}, farms: {}, userFarmPositions: {}, userLiquidityPositions: {},
+        nftListings: {}, events: {}, farms: {}, userFarmPositions: {}, userLiquidityPositions: {},
         trades: {},
-        launchpads: {}
+        launchpads: {},
+        liquidityPools: {}
     },
     accounts: {}, blocks: {}, state: {}, tokens: {},
     nftCollections: {}, nfts: {}, tradingPairs: {}, orders: {},
-    nftListings: {}, pools: {}, events: {}, farms: {}, userFarmPositions: {}, userLiquidityPositions: {},
+    nftListings: {}, events: {}, farms: {}, userFarmPositions: {}, userLiquidityPositions: {},
     trades: {},
     launchpads: {},
+    liquidityPools: {},
 
     changes: [],
     inserts: [],
@@ -240,6 +242,7 @@ const cache: CacheType = {
         // DEBUGGING LOGS END
 
         if (!this.copy[collectionName as keyof CacheCopyCollections]) { // Check against known copy collections
+            logger.warn(`[CACHE findOne] Invalid collection in copy: '${collectionName}'. Available in copy: ${Object.keys(this.copy).join(', ')}`);
             return cb(new Error('invalid collection in copy'));
         }
         if (!db) return cb(new Error('Database not initialized'));
