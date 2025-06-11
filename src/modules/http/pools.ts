@@ -86,7 +86,7 @@ async function findAllTradeRoutesBigInt(
     }
     const initialAmountInBigInt = toBigInt(initialAmountInString);
 
-    const allPoolsFromDB: any[] = await mongo.getDb().collection('pools').find({}).toArray();
+    const allPoolsFromDB: any[] = await mongo.getDb().collection('liquidityPools').find({}).toArray();
     const allPools: Pool[] = allPoolsFromDB.map(p => ({
         ...p,
         _id: p._id.toString(), // ensure _id is string
@@ -194,8 +194,8 @@ const transformUserLiquidityPositionData = (positionData: any): any => {
 router.get('/', (async (req: Request, res: Response) => {
     const { limit, skip } = getPagination(req);
     try {
-        const poolsFromDB = await cache.findPromise('pools', {}, { limit, skip, sort: { _id: 1 } });
-        const total = await mongo.getDb().collection('pools').countDocuments({});
+        const poolsFromDB = await cache.findPromise('liquidityPools', {}, { limit, skip, sort: { _id: 1 } });
+        const total = await mongo.getDb().collection('liquidityPools').countDocuments({});
         const pools = (poolsFromDB || []).map(transformPoolData);
         res.json({ data: pools, total, limit, skip });
     } catch (error: any) {
@@ -207,7 +207,7 @@ router.get('/', (async (req: Request, res: Response) => {
 router.get('/:poolId', (async (req: Request, res: Response) => {
     const { poolId } = req.params;
     try {
-        const poolFromDB = await cache.findOnePromise('pools', { _id: poolId });
+        const poolFromDB = await cache.findOnePromise('liquidityPools', { _id: poolId });
         if (!poolFromDB) {
             return res.status(404).json({ message: `Liquidity pool ${poolId} not found.` });
         }
@@ -228,8 +228,8 @@ router.get('/token/:tokenSymbol', (async (req: Request, res: Response) => {
         ]
     };
     try {
-        const poolsFromDB = await cache.findPromise('pools', query, { limit, skip, sort: { _id: 1 } });
-        const total = await mongo.getDb().collection('pools').countDocuments(query);
+        const poolsFromDB = await cache.findPromise('liquidityPools', query, { limit, skip, sort: { _id: 1 } });
+        const total = await mongo.getDb().collection('liquidityPools').countDocuments(query);
         const pools = (poolsFromDB || []).map(transformPoolData);
         res.json({ data: pools, total, limit, skip });
     } catch (error: any) {
