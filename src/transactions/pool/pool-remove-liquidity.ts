@@ -145,21 +145,24 @@ export async function process(dataDb: PoolRemoveLiquidityDataDB, sender: string,
         return false;
     }
 
-    const tokenAIdentifier = `${pool.tokenA_symbol}@${pool.tokenA_issuer}`;
-    const tokenBIdentifier = `${pool.tokenB_symbol}@${pool.tokenB_issuer}`;
-
-    if (!await adjustBalance(data.provider, tokenAIdentifier, tokenAAmountToReturn)) {
-        logger.error(`[pool-remove-liquidity] CRITICAL: Failed to credit ${toString(tokenAAmountToReturn)} ${tokenAIdentifier} to ${data.provider}.`);
-        const rollbackUserLpPayload = { ...convertToString({ lpTokenBalance: userPosition.lpTokenBalance }, ['lpTokenBalance']), lastUpdatedAt: new Date().toISOString() };
+    // Credit the provider's account with the withdrawn tokens
+    const creditASuccess = await adjustBalance(data.provider, pool.tokenA_symbol, tokenAAmountToReturn);
+    if (!creditASuccess) {
+        logger.error(`[pool-remove-liquidity] CRITICAL: Failed to credit ${toString(tokenAAmountToReturn)} ${pool.tokenA_symbol} to ${data.provider}. Rolling back.`);
+        // Attempt to roll back user position and pool state
+        const rollbackUserLpPayload = { ...convertToString({ lpTokenBalance: userPosition.lpTokenBalance }, ['lpTokenBalance']) };
         await cache.updateOnePromise('userLiquidityPositions', { _id: userLpPositionId }, { $set: rollbackUserLpPayload });
         const rollbackPoolPayload = convertToString(pool, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens']);
         await cache.updateOnePromise('liquidityPools', { _id: data.poolId }, { $set: rollbackPoolPayload });
         return false; 
     }
-    if (!await adjustBalance(data.provider, tokenBIdentifier, tokenBAmountToReturn)) {
-        logger.error(`[pool-remove-liquidity] CRITICAL: Failed to credit ${toString(tokenBAmountToReturn)} ${tokenBIdentifier} to ${data.provider}.`);
-        await adjustBalance(data.provider, tokenAIdentifier, -tokenAAmountToReturn);
-        const rollbackUserLpPayload = { ...convertToString({ lpTokenBalance: userPosition.lpTokenBalance }, ['lpTokenBalance']), lastUpdatedAt: new Date().toISOString() };
+
+    const creditBSuccess = await adjustBalance(data.provider, pool.tokenB_symbol, tokenBAmountToReturn);
+    if (!creditBSuccess) {
+        logger.error(`[pool-remove-liquidity] CRITICAL: Failed to credit ${toString(tokenBAmountToReturn)} ${pool.tokenB_symbol} to ${data.provider}. Rolling back.`);
+        // Rollback token A credit, user position, and pool state
+        await adjustBalance(data.provider, pool.tokenA_symbol, -tokenAAmountToReturn); // Debit back token A
+        const rollbackUserLpPayload = { ...convertToString({ lpTokenBalance: userPosition.lpTokenBalance }, ['lpTokenBalance']) };
         await cache.updateOnePromise('userLiquidityPositions', { _id: userLpPositionId }, { $set: rollbackUserLpPayload });
         const rollbackPoolPayload = convertToString(pool, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens']);
         await cache.updateOnePromise('liquidityPools', { _id: data.poolId }, { $set: rollbackPoolPayload });
@@ -173,10 +176,8 @@ export async function process(dataDb: PoolRemoveLiquidityDataDB, sender: string,
         provider: data.provider,
         lpTokensBurned: toString(data.lpTokenAmount),
         tokenA_symbol: pool.tokenA_symbol,
-        tokenA_issuer: pool.tokenA_issuer,
         tokenA_amount_returned: toString(tokenAAmountToReturn),
         tokenB_symbol: pool.tokenB_symbol,
-        tokenB_issuer: pool.tokenB_issuer,
         tokenB_amount_returned: toString(tokenBAmountToReturn)
     };
     await logTransactionEvent('poolRemoveLiquidity', sender, eventData, transactionId);
