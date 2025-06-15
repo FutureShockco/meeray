@@ -30,6 +30,10 @@ export async function validateTx(data: TokenTransferDataDB, sender: string): Pro
             logger.warn(`[token-transfer] Invalid recipient account name format: ${data.to}.`);
             return false;
         }
+        if (data.to === sender) {
+            logger.warn(`[token-transfer] Sender and recipient cannot be the same: ${data.to}.`);
+            return false;
+        }
         
         const precision = typeof token.precision === 'number' ? token.precision : (typeof token.precision === 'string' ? parseInt(token.precision, 10) : 8);
         // Use a default of 30 for total digits if config.maxTokenAmountDigits is not set
