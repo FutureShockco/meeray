@@ -738,7 +738,7 @@ This document provides a comprehensive list of all transaction types implemented
   }
   ```
 
-### UserLiquidityPosition
+### uidityPosition
 - **File**: `src/transactions/pool/pool-interfaces.ts`
 - **Purpose**: Represents a user's share and balance of LP tokens in a specific liquidity pool.
 - **Data Structure**:

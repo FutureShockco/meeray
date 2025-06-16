@@ -9,15 +9,23 @@ export interface Account {
 }
 
 export async function getAccount(accountId: string): Promise<Account | null> {
-    return await cache.findOnePromise('accounts', { _id: accountId }) as Account | null;
+    return await cache.findOnePromise('accounts', { name: accountId }) as Account | null;
 }
 
 export async function adjustBalance(
-    accountId: string, 
+    accountId: string,
     tokenIdentifier: string, 
     amount: bigint
 ): Promise<boolean> {
     try {
+        // Retrieve token to get its precision
+        const token = await cache.findOnePromise('tokens', { symbol: tokenIdentifier });
+        if (!token) {
+            logger.error(`[account-utils] Token ${tokenIdentifier} not found`);
+            return false;
+        }
+        const precision = token.precision ?? 0;
+
         const account = await getAccount(accountId);
         if (!account) {
             logger.error(`[account-utils] Account ${accountId} not found`);
@@ -32,10 +40,13 @@ export async function adjustBalance(
             return false;
         }
 
+        // Format new balance with precision if needed (optional, depends on your toString implementation)
+        const formattedBalance = toString(newBalance, precision);
+
         const updateResult = await cache.updateOnePromise(
             'accounts',
-            { _id: accountId },
-            { $set: { [`balances.${tokenIdentifier}`]: toString(newBalance) } }
+            { name: accountId },
+            { $set: { [`balances.${tokenIdentifier}`]: formattedBalance } }
         );
 
         if (!updateResult) {
@@ -43,10 +54,10 @@ export async function adjustBalance(
             return false;
         }
 
-        logger.debug(`[account-utils] Updated balance for ${accountId}: ${tokenIdentifier} ${currentBalance} -> ${newBalance}`);
+        logger.debug(`[account-utils] Updated balance for ${accountId}: ${tokenIdentifier} ${currentBalance} -> ${newBalance} (precision: ${precision})`);
         return true;
     } catch (error) {
         logger.error(`[account-utils] Error adjusting balance for ${accountId}: ${error}`);
         return false;
     }
-} 
+}

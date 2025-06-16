@@ -177,14 +177,25 @@ const transformPoolData = (poolData: any): any => {
 const transformUserLiquidityPositionData = (positionData: any): any => {
     if (!positionData) return positionData;
     const transformed = { ...positionData };
-    // _id for userLiquidityPositions is typically a string like `userId-poolId`.
     transformed.id = transformed._id.toString();
     if (transformed._id && transformed.id !== transformed._id) delete transformed._id;
 
-    const numericFields = ['liquidityTokensOwned', 'tokenA_provided', 'tokenB_provided', 'feesEarnedTokenA', 'feesEarnedTokenB'];
+    // Always use toBigInt to remove padding, then .toString() for API output
+    const numericFields = [
+        'liquidityTokensOwned',
+        'tokenA_provided',
+        'tokenB_provided',
+        'feesEarnedTokenA',
+        'feesEarnedTokenB',
+        'lpTokenBalance' 
+    ];
     for (const field of numericFields) {
-        if (transformed[field] && typeof transformed[field] === 'string') {
-             try { transformed[field] = toBigInt(transformed[field]).toString(); } catch (e) { /* keep as is */ }
+        if (transformed[field] !== undefined && transformed[field] !== null) {
+            try {
+                transformed[field] = toBigInt(transformed[field]).toString();
+            } catch (e) {
+                // keep as is if not convertible
+            }
         }
     }
     return transformed;
@@ -363,4 +374,4 @@ router.get('/route-swap', (async (req: Request, res: Response) => {
     }
 }) as RequestHandler);
 
-export default router; 
+export default router;
