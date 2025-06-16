@@ -8,6 +8,7 @@ import { chain } from './chain.js';
 import { Block } from './block.js';
 import { TokenCreateData, TokenCreateDataDB, TokenForStorage, TokenForStorageDB } from './transactions/token/token-interfaces.js';
 import { convertToString, toString, toBigInt, setTokenDecimals, convertAllBigIntToStringRecursive } from './utils/bigint-utils.js';
+import { logTransactionEvent } from './utils/event-logger.js';
 
 const DB_NAME = process.env.MONGO_DB || 'echelon';
 const DB_URL = process.env.MONGO_URL || 'mongodb://localhost:27017';
@@ -254,6 +255,18 @@ export const mongo = {
         await currentDb.collection<TokenForStorageDB>('tokens').insertOne(nativeTokenDBECH);
         logger.info('Native token ECH inserted.');
 
+        // Log event for ECH token creation
+        const eventDataECH = {
+            symbol: nativeTokenCreationParamsECH.symbol,
+            name: nativeTokenCreationParamsECH.name,
+            precision: nativeTokenCreationParamsECH.precision,
+            maxSupply: toString(nativeTokenCreationParamsECH.maxSupply || BigInt(0)),
+            initialSupply: toString(nativeTokenCreationParamsECH.initialSupply || BigInt(0)),
+            mintable: nativeTokenCreationParamsECH.mintable,
+            burnable: nativeTokenCreationParamsECH.burnable
+        };
+        await logTransactionEvent('tokenCreate', config.masterName, eventDataECH);
+
         // --- STEEM ---
         setTokenDecimals('STEEM', 3);
 
@@ -289,6 +302,18 @@ export const mongo = {
         await currentDb.collection<TokenForStorageDB>('tokens').insertOne(nativeTokenDBSTEEM);
         logger.info('Native token STEEM inserted.');
 
+        // Log event for STEEM token creation
+        const eventDataSTEEM = {
+            symbol: nativeTokenCreationParamsSTEEM.symbol,
+            name: nativeTokenCreationParamsSTEEM.name,
+            precision: nativeTokenCreationParamsSTEEM.precision,
+            maxSupply: toString(nativeTokenCreationParamsSTEEM.maxSupply || BigInt(0)),
+            initialSupply: toString(nativeTokenCreationParamsSTEEM.initialSupply || BigInt(0)),
+            mintable: nativeTokenCreationParamsSTEEM.mintable,
+            burnable: nativeTokenCreationParamsSTEEM.burnable
+        };
+        await logTransactionEvent('tokenCreate', config.masterName, eventDataSTEEM);
+
         // --- SBD ---
         setTokenDecimals('SBD', 3);
 
@@ -323,6 +348,18 @@ export const mongo = {
         const nativeTokenDBSBD: TokenForStorageDB = convertAllBigIntToStringRecursive(nativeTokenToStoreSBD);
         await currentDb.collection<TokenForStorageDB>('tokens').insertOne(nativeTokenDBSBD);
         logger.info('Native token SBD inserted.');
+
+        // Log event for SBD token creation
+        const eventDataSBD = {
+            symbol: nativeTokenCreationParamsSBD.symbol,
+            name: nativeTokenCreationParamsSBD.name,
+            precision: nativeTokenCreationParamsSBD.precision,
+            maxSupply: toString(nativeTokenCreationParamsSBD.maxSupply || BigInt(0)),
+            initialSupply: toString(nativeTokenCreationParamsSBD.initialSupply || BigInt(0)),
+            mintable: nativeTokenCreationParamsSBD.mintable,
+            burnable: nativeTokenCreationParamsSBD.burnable
+        };
+        await logTransactionEvent('tokenCreate', config.masterName, eventDataSBD);
         
     },
 
