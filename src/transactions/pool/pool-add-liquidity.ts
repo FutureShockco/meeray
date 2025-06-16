@@ -5,6 +5,7 @@ import { PoolAddLiquidityData, LiquidityPool, UserLiquidityPosition, PoolAddLiqu
 import { adjustBalance, getAccount, Account } from '../../utils/account-utils.js';
 import { convertToBigInt, convertToString, BigIntMath, toString as bigintToString } from '../../utils/bigint-utils.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
+import { toBigInt } from '../../utils/bigint-utils.js';
 
 const NUMERIC_FIELDS: Array<keyof PoolAddLiquidityData> = ['tokenA_amount', 'tokenB_amount'];
 
@@ -48,6 +49,27 @@ export async function validateTx(data: PoolAddLiquidityDataDB, sender: string): 
     // Convert pool amounts to BigInt for calculations
     const pool = convertToBigInt<LiquidityPool>(poolDB, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens', 'feeTier']);
 
+    // Check provider's balance for both tokens
+    const providerAccount = await getAccount(addLiquidityData.provider);
+    if (!providerAccount) {
+      logger.warn(`[pool-add-liquidity] Provider account ${addLiquidityData.provider} not found.`);
+      return false;
+    }
+
+    // Check if provider has sufficient balance for both tokens
+    const tokenABalance = toBigInt(providerAccount.balances[pool.tokenA_symbol] || '0');
+    const tokenBBalance = toBigInt(providerAccount.balances[pool.tokenB_symbol] || '0');
+
+    if (tokenABalance < addLiquidityData.tokenA_amount) {
+      logger.warn(`[pool-add-liquidity] Insufficient balance for ${pool.tokenA_symbol}. Required: ${addLiquidityData.tokenA_amount}, Available: ${tokenABalance}`);
+      return false;
+    }
+
+    if (tokenBBalance < addLiquidityData.tokenB_amount) {
+      logger.warn(`[pool-add-liquidity] Insufficient balance for ${pool.tokenB_symbol}. Required: ${addLiquidityData.tokenB_amount}, Available: ${tokenBBalance}`);
+      return false;
+    }
+
     // For initial liquidity provision, both token amounts must be positive
     if (pool.totalLpTokens === BigInt(0)) {
       if (addLiquidityData.tokenA_amount <= BigInt(0) || addLiquidityData.tokenB_amount <= BigInt(0)) {
@@ -65,12 +87,6 @@ export async function validateTx(data: PoolAddLiquidityDataDB, sender: string): 
         logger.warn(`[pool-add-liquidity] Token amounts do not match current pool ratio. Expected B: ${expectedTokenBAmount}, Got: ${addLiquidityData.tokenB_amount}. Pool A reserve: ${pool.tokenA_reserve}, B reserve: ${pool.tokenB_reserve}, A amount: ${addLiquidityData.tokenA_amount}`);
         return false;
       }
-    }
-
-    const providerAccount = await getAccount(addLiquidityData.provider);
-    if (!providerAccount) {
-      logger.warn(`[pool-add-liquidity] Provider account ${addLiquidityData.provider} not found.`);
-      return false;
     }
 
     return true;
