@@ -7,7 +7,7 @@ import { BigIntToString } from '../../utils/bigint-utils.js';
 export interface PoolCreateData {
   tokenA_symbol: string;      // Symbol of the first token in the pair
   tokenB_symbol: string;      // Symbol of the second token in the pair
-  feeTier?: bigint;           // Fee tier in basis points (e.g., 5 = 0.05%, 30 = 0.3%, 100 = 1%)
+  feeTier?: number;           // Fee tier in basis points (e.g., 10 = 0.01%, 50 = 0.05%, 300 = 0.3%, 1000 = 1%)
   // poolId will be generated, including feeTier if provided
   // initialLiquidityTokenA: number; // Amount of token A to provide as initial liquidity - handled by AddLiquidity
   // initialLiquidityTokenB: number; // Amount of token B to provide as initial liquidity - handled by AddLiquidity
@@ -46,7 +46,7 @@ export interface LiquidityPool {
   tokenB_symbol: string;     // Symbol of token B
   tokenB_reserve: bigint;    // Current balance of token B in the pool
   totalLpTokens: bigint;     // Total amount of LP tokens issued for this pool
-  feeTier: bigint;          // Fee tier in basis points (e.g., 30 = 0.3%)
+  feeTier: number;          // Fee tier in basis points (e.g., 10 = 0.01%, 50 = 0.05%, 300 = 0.3%, 1000 = 1%)
   createdAt: string;        // ISO date string
   lastTradeAt?: string;     // ISO date string of last trade
   status: string;           // Pool status (e.g., 'active', 'paused')

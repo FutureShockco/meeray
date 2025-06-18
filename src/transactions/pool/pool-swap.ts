@@ -41,7 +41,7 @@ export async function validateTx(dataDb: PoolSwapDataDB, sender: string): Promis
             logger.warn(`[pool-swap] Pool ${data.poolId} not found.`);
             return false;
         }
-        const pool = convertToBigInt<LiquidityPool>(poolFromDb, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens', 'feeTier']);
+        const pool = convertToBigInt<LiquidityPool>(poolFromDb, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens']);
 
         // Verify token symbols match
         if (!((pool.tokenA_symbol === data.tokenIn_symbol && pool.tokenB_symbol === data.tokenOut_symbol) ||
@@ -80,7 +80,7 @@ export async function process(dataDb: PoolSwapDataDB, sender: string, transactio
         logger.warn(`[pool-swap] Pool ${data.poolId} not found during processing.`);
         return false;
     }
-    const pool = convertToBigInt<LiquidityPool>(poolFromDb, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens', 'feeTier']);
+    const pool = convertToBigInt<LiquidityPool>(poolFromDb, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens']);
 
     // Determine token indices
     const tokenInIsA = data.tokenIn_symbol === pool.tokenA_symbol;
@@ -90,7 +90,8 @@ export async function process(dataDb: PoolSwapDataDB, sender: string, transactio
     const reserveOut = tokenInIsA ? pool.tokenB_reserve : pool.tokenA_reserve;
 
     // Calculate output amount using constant product formula (x * y = k)
-    const feeMultiplier = BigInt(10000) - pool.feeTier; // e.g., 10000 - 30 = 9970
+    // Fee tiers are in basis points: 10 = 0.01%, 50 = 0.05%, 300 = 0.3%, 1000 = 1%
+    const feeMultiplier = BigInt(10000) - BigInt(pool.feeTier); // e.g., 10000 - 300 = 9700 for 0.3% fee
     const feeDivisor = BigInt(10000);
 
     const amountInAfterFee = BigIntMath.div(BigIntMath.mul(data.amountIn, feeMultiplier), feeDivisor);
@@ -170,7 +171,7 @@ export async function process(dataDb: PoolSwapDataDB, sender: string, transactio
         amountIn: bigintToString(data.amountIn),
         tokenOut_symbol: tokenOut_symbol,
         amountOut: bigintToString(amountOut),
-        feeTier: bigintToString(pool.feeTier),
+        feeTier: pool.feeTier,
     };
     await logTransactionEvent('poolSwap', sender, eventData, transactionId);
 

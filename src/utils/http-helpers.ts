@@ -1,5 +1,5 @@
 import logger from '../logger.js';
-import { toBigInt } from './bigint-utils.js';
+import { toBigInt, formatTokenAmount, getTokenDecimals } from './bigint-utils.js';
 
 // Helper to transform numeric string fields in a transaction's data object
 export const transformTransactionData = (txData: any): any => {
@@ -47,3 +47,85 @@ export const transformTransactionData = (txData: any): any => {
 
     return transformedData;
 }; 
+
+/**
+ * Formats a token amount for HTTP response with both formatted and raw values
+ * @param amount The amount as string or BigInt
+ * @param symbol The token symbol to determine decimal places
+ * @returns Object with formatted and raw amount
+ */
+export function formatTokenAmountForResponse(amount: string | bigint | number, symbol: string): {
+    amount: string;        // Formatted amount with decimals (e.g., "123.456")
+    rawAmount: string;     // Raw amount in smallest units (e.g., "123456000")
+} {
+    const bigIntAmount = toBigInt(amount);
+    const formatted = formatTokenAmount(bigIntAmount, symbol);
+    const raw = bigIntAmount.toString();
+    
+    return {
+        amount: formatted,
+        rawAmount: raw
+    };
+}
+
+/**
+ * Formats multiple token amounts in an object for HTTP response
+ * @param balances Object with token symbols as keys and amounts as values
+ * @returns Object with formatted and raw amounts for each token
+ */
+export function formatTokenBalancesForResponse(balances: Record<string, string | bigint | number>): {
+    [symbol: string]: {
+        amount: string;
+        rawAmount: string;
+    };
+} {
+    const result: any = {};
+    
+    for (const [symbol, amount] of Object.entries(balances)) {
+        result[symbol] = formatTokenAmountForResponse(amount, symbol);
+    }
+    
+    return result;
+}
+
+/**
+ * Formats a single token amount for simple responses (just formatted value)
+ * @param amount The amount as string or BigInt
+ * @param symbol The token symbol to determine decimal places
+ * @returns Formatted amount string
+ */
+export function formatTokenAmountSimple(amount: string | bigint | number, symbol: string): string {
+    const bigIntAmount = toBigInt(amount);
+    return formatTokenAmount(bigIntAmount, symbol);
+}
+
+/**
+ * Transforms transaction data for HTTP responses
+ * @param data The transaction data object
+ * @returns Transformed transaction data
+ */
+export function transformTransactionDataForResponse(data: any): any {
+    if (!data) return data;
+    
+    const transformed = { ...data };
+    
+    // Handle token amounts in transaction data
+    const amountFields = ['amount', 'amountIn', 'amountOut', 'minAmountOut', 'tokenA_amount', 'tokenB_amount', 'lpTokenAmount'];
+    const tokenFields = ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens', 'maxSupply', 'currentSupply'];
+    
+    for (const field of amountFields) {
+        if (transformed[field] && typeof transformed[field] === 'string') {
+            // For amount fields, we need to know the token symbol
+            // This is a simplified approach - in practice, you might need more context
+            transformed[field] = toBigInt(transformed[field]).toString();
+        }
+    }
+    
+    for (const field of tokenFields) {
+        if (transformed[field] && typeof transformed[field] === 'string') {
+            transformed[field] = toBigInt(transformed[field]).toString();
+        }
+    }
+    
+    return transformed;
+} 

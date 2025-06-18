@@ -4,7 +4,7 @@ import { mongo } from '../../mongo.js';
 import logger from '../../logger.js';
 import { toBigInt } from '../../utils/bigint-utils.js';
 import { ObjectId } from 'mongodb';
-import { transformTransactionData } from '../../utils/http-helpers.js';
+import { transformTransactionData, formatTokenAmountForResponse, formatTokenAmountSimple } from '../../utils/http-helpers.js';
 
 const router: Router = express.Router();
 
@@ -20,12 +20,24 @@ const transformNftCollectionData = (collectionData: any): any => {
     const transformed = { ...collectionData };
     // _id is collectionSymbol (string), typically no transformation to 'id' needed unless for extreme consistency.
 
-    const numericFields = ['maxSupply', 'currentSupply', 'mintPrice', 'royaltyFeePercentage']; // Added royaltyFeePercentage
+    // Get the collection symbol for formatting
+    const collectionSymbol = transformed.symbol || transformed._id || 'UNKNOWN';
+    
+    // Format collection amounts using the collection symbol
+    const numericFields = ['maxSupply', 'currentSupply', 'mintPrice'];
     for (const field of numericFields) {
-        if (transformed[field] && typeof transformed[field] === 'string') {
-            transformed[field] = toBigInt(transformed[field]).toString();
+        if (transformed[field]) {
+            const formatted = formatTokenAmountForResponse(transformed[field], collectionSymbol);
+            transformed[field] = formatted.amount;
+            transformed[`raw${field.charAt(0).toUpperCase() + field.slice(1)}`] = formatted.rawAmount;
         }
     }
+    
+    // Royalty fee is typically a percentage, so keep as raw value
+    if (transformed.royaltyFeePercentage) {
+        transformed.royaltyFeePercentage = toBigInt(transformed.royaltyFeePercentage).toString();
+    }
+    
     return transformed;
 };
 
@@ -33,6 +45,9 @@ const transformNftInstanceData = (instanceData: any): any => {
     if (!instanceData) return instanceData;
     const transformed = { ...instanceData };
     // _id is nftId (string, e.g. SYMBOL-001), typically no transformation to 'id' needed.
+
+    // Get the collection symbol for formatting
+    const collectionSymbol = transformed.collectionSymbol || 'UNKNOWN';
 
     // instanceId is likely already a number, but if it could be a numeric string:
     // if (transformed.instanceId && typeof transformed.instanceId === 'string') {
@@ -43,8 +58,11 @@ const transformNftInstanceData = (instanceData: any): any => {
         const sd = { ...transformed.saleData };
         const saleNumericFields = ['price', 'minBid', 'buyNowPrice'];
         for (const field of saleNumericFields) {
-            if (sd[field] && typeof sd[field] === 'string') {
-                sd[field] = toBigInt(sd[field]).toString();
+            if (sd[field]) {
+                // Sale prices are typically in the native token (e.g., STEEM)
+                const formatted = formatTokenAmountForResponse(sd[field], 'STEEM');
+                sd[field] = formatted.amount;
+                sd[`raw${field.charAt(0).toUpperCase() + field.slice(1)}`] = formatted.rawAmount;
             }
         }
         transformed.saleData = sd;
@@ -54,8 +72,11 @@ const transformNftInstanceData = (instanceData: any): any => {
         const ad = { ...transformed.auctionData };
         const auctionNumericFields = ['startPrice', 'currentBid', 'buyNowPrice', 'bidIncrement'];
         for (const field of auctionNumericFields) {
-            if (ad[field] && typeof ad[field] === 'string') {
-                ad[field] = toBigInt(ad[field]).toString();
+            if (ad[field]) {
+                // Auction prices are typically in the native token (e.g., STEEM)
+                const formatted = formatTokenAmountForResponse(ad[field], 'STEEM');
+                ad[field] = formatted.amount;
+                ad[`raw${field.charAt(0).toUpperCase() + field.slice(1)}`] = formatted.rawAmount;
             }
         }
         transformed.auctionData = ad;
@@ -74,12 +95,17 @@ const transformNftListingData = (listingData: any): any => {
         // transformed.id = transformed._id;
         // delete transformed._id;
     }
-    const numericFields = ['price', 'startingPrice', 'currentPrice', 'endingPrice', 'royaltyFeeAmount'];
-    for (const field of numericFields) {
-        if (transformed[field] && typeof transformed[field] === 'string') {
-            transformed[field] = toBigInt(transformed[field]).toString();
+    
+    // Listing prices are typically in the native token (e.g., STEEM)
+    const priceFields = ['price', 'startingPrice', 'currentPrice', 'endingPrice', 'royaltyFeeAmount'];
+    for (const field of priceFields) {
+        if (transformed[field]) {
+            const formatted = formatTokenAmountForResponse(transformed[field], 'STEEM');
+            transformed[field] = formatted.amount;
+            transformed[`raw${field.charAt(0).toUpperCase() + field.slice(1)}`] = formatted.rawAmount;
         }
     }
+    
     return transformed;
 };
 

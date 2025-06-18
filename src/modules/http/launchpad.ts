@@ -2,6 +2,7 @@ import express, { Request, Response, Router, RequestHandler } from 'express';
 import cache from '../../cache.js';
 import logger from '../../logger.js';
 import { toBigInt } from '../../utils/bigint-utils.js';
+import { formatTokenAmountForResponse, formatTokenAmountSimple } from '../../utils/http-helpers.js';
 // Remove imports related to POST data and transaction module if no longer needed here
 // import { TransactionType } from '../../transactions/types.js';
 // import { LaunchpadLaunchTokenData } from '../../transactions/launchpad/launchpad-launch-token.js';
@@ -22,18 +23,25 @@ const transformLaunchpadData = (launchpadData: any): any => {
         delete transformed._id;
     }
 
+    // Get token symbol for formatting
+    const tokenSymbol = transformed.tokenSymbol || 'UNKNOWN';
+
     // Tokenomics Snapshot
     if (transformed.tokenomicsSnapshot) {
         const ts = { ...transformed.tokenomicsSnapshot };
-        if (ts.totalSupply && typeof ts.totalSupply === 'string') {
-            ts.totalSupply = toBigInt(ts.totalSupply).toString();
+        if (ts.totalSupply) {
+            const formatted = formatTokenAmountForResponse(ts.totalSupply, tokenSymbol);
+            ts.totalSupply = formatted.amount;
+            ts.rawTotalSupply = formatted.rawAmount;
         }
         // allocations[].amount (if it exists and is a string)
         if (ts.allocations && Array.isArray(ts.allocations)) {
             ts.allocations = ts.allocations.map((alloc: any) => {
                 const transformedAlloc = { ...alloc };
-                if (transformedAlloc.amount && typeof transformedAlloc.amount === 'string') {
-                    transformedAlloc.amount = toBigInt(transformedAlloc.amount).toString();
+                if (transformedAlloc.amount) {
+                    const formatted = formatTokenAmountForResponse(transformedAlloc.amount, tokenSymbol);
+                    transformedAlloc.amount = formatted.amount;
+                    transformedAlloc.rawAmount = formatted.rawAmount;
                 }
                 return transformedAlloc;
             });
@@ -46,17 +54,26 @@ const transformLaunchpadData = (launchpadData: any): any => {
         const presale = { ...transformed.presale };
         const presaleNumericFields = ['goal', 'raisedAmount', 'minContribution', 'maxContribution', 'tokenPrice'];
         for (const field of presaleNumericFields) {
-            if (presale[field] && typeof presale[field] === 'string') {
-                presale[field] = toBigInt(presale[field]).toString();
+            if (presale[field]) {
+                // For presale amounts, we need to determine the appropriate token symbol
+                // This might be the funding token (e.g., STEEM) or the project token
+                const appropriateSymbol = field === 'tokenPrice' ? tokenSymbol : 'STEEM'; // Assuming STEEM as funding token
+                const formatted = formatTokenAmountForResponse(presale[field], appropriateSymbol);
+                presale[field] = formatted.amount;
+                presale[`raw${field.charAt(0).toUpperCase() + field.slice(1)}`] = formatted.rawAmount;
             }
         }
         if (presale.participants && Array.isArray(presale.participants)) {
             presale.participants = presale.participants.map((p: any) => {
                 const participant = { ...p };
-                const participantNumericFields = ['amountContributed', 'tokensAllocated', 'claimedAmount']; // added claimedAmount
+                const participantNumericFields = ['amountContributed', 'tokensAllocated', 'claimedAmount'];
                 for (const field of participantNumericFields) {
-                    if (participant[field] && typeof participant[field] === 'string') {
-                        participant[field] = toBigInt(participant[field]).toString();
+                    if (participant[field]) {
+                        // Determine appropriate token symbol for each field
+                        const appropriateSymbol = field === 'tokensAllocated' || field === 'claimedAmount' ? tokenSymbol : 'STEEM';
+                        const formatted = formatTokenAmountForResponse(participant[field], appropriateSymbol);
+                        participant[field] = formatted.amount;
+                        participant[`raw${field.charAt(0).toUpperCase() + field.slice(1)}`] = formatted.rawAmount;
                     }
                 }
                 return participant;
@@ -68,8 +85,11 @@ const transformLaunchpadData = (launchpadData: any): any => {
     // Other potential top-level numeric fields
     const topLevelNumericFields = ['targetRaise', 'totalCommitted'];
     for (const field of topLevelNumericFields) {
-        if (transformed[field] && typeof transformed[field] === 'string') {
-            transformed[field] = toBigInt(transformed[field]).toString();
+        if (transformed[field]) {
+            // These are typically in the funding token (e.g., STEEM)
+            const formatted = formatTokenAmountForResponse(transformed[field], 'STEEM');
+            transformed[field] = formatted.amount;
+            transformed[`raw${field.charAt(0).toUpperCase() + field.slice(1)}`] = formatted.rawAmount;
         }
     }
 

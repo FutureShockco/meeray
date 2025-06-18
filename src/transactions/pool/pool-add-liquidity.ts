@@ -47,7 +47,7 @@ export async function validateTx(data: PoolAddLiquidityDataDB, sender: string): 
     }
 
     // Convert pool amounts to BigInt for calculations
-    const pool = convertToBigInt<LiquidityPool>(poolDB, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens', 'feeTier']);
+    const pool = convertToBigInt<LiquidityPool>(poolDB, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens']);
 
     // Check provider's balance for both tokens
     const providerAccount = await getAccount(addLiquidityData.provider);
@@ -106,7 +106,7 @@ export async function process(data: PoolAddLiquidityDataDB, sender: string, id: 
             return false;
         }
 
-        const pool = convertToBigInt<LiquidityPool>(poolDB, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens', 'feeTier']);
+        const pool = convertToBigInt<LiquidityPool>(poolDB, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens']);
 
         // Debit tokens from the provider's account
         const debitASuccess = await adjustBalance(addLiquidityData.provider, pool.tokenA_symbol, -addLiquidityData.tokenA_amount);

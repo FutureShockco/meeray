@@ -374,7 +374,7 @@ This document provides a comprehensive list of all transaction types implemented
     tokenA_issuer: string;      // Issuer account of the first token
     tokenB_symbol: string;      // Symbol of the second token in the pair
     tokenB_issuer: string;      // Issuer account of the second token
-    feeTier?: number;           // Optional: e.g., 5 (0.05%), 30 (0.3%), 100 (1%). In basis points.
+    feeTier?: number;           // Optional: e.g., 10 (0.01%), 50 (0.05%), 300 (0.3%), 1000 (1%). In basis points.
   }
   ```
 

@@ -3,6 +3,7 @@ import cache from '../../cache.js';
 import { mongo } from '../../mongo.js';
 import logger from '../../logger.js';
 import { toBigInt } from '../../utils/bigint-utils.js';
+import { formatTokenAmountForResponse, formatTokenAmountSimple } from '../../utils/http-helpers.js';
 import { TokenForStorageDB } from '../../transactions/token/token-interfaces.js';
 
 const router: Router = express.Router();
@@ -28,13 +29,19 @@ router.get('/', (async (req: Request, res: Response) => {
             tokens = tokensFromDB.map((tokenDoc: TokenForStorageDB) => {
                 const { maxSupply, currentSupply, ...rest } = tokenDoc;
                 const transformedToken: any = { ...rest };
+                
+                // Format supply values with proper decimals
                 if (maxSupply) {
-                    transformedToken.maxSupply = toBigInt(maxSupply as string).toString();
+                    const formattedSupply = formatTokenAmountForResponse(maxSupply as string, tokenDoc.symbol);
+                    transformedToken.maxSupply = formattedSupply.amount;
+                    transformedToken.rawMaxSupply = formattedSupply.rawAmount;
                 }
                 if (currentSupply) {
-                    transformedToken.currentSupply = toBigInt(currentSupply as string).toString();
+                    const formattedSupply = formatTokenAmountForResponse(currentSupply as string, tokenDoc.symbol);
+                    transformedToken.currentSupply = formattedSupply.amount;
+                    transformedToken.rawCurrentSupply = formattedSupply.rawAmount;
                 }
-                // _id in tokens collection is the symbol (string), so no transformation needed for _id itself
+                
                 return transformedToken;
             });
         }
@@ -64,12 +71,19 @@ router.get('/new', (async (req: Request, res: Response) => {
             tokens = tokensFromDB.map((tokenDoc: TokenForStorageDB) => {
                 const { maxSupply, currentSupply, createdAt, ...rest } = tokenDoc; // Include createdAt if you want to return it, otherwise it's just for sorting
                 const transformedToken: any = { ...rest, createdAt }; // Add createdAt to the response
+                
+                // Format supply values with proper decimals
                 if (maxSupply) {
-                    transformedToken.maxSupply = toBigInt(maxSupply as string).toString();
+                    const formattedSupply = formatTokenAmountForResponse(maxSupply as string, tokenDoc.symbol);
+                    transformedToken.maxSupply = formattedSupply.amount;
+                    transformedToken.rawMaxSupply = formattedSupply.rawAmount;
                 }
                 if (currentSupply) {
-                    transformedToken.currentSupply = toBigInt(currentSupply as string).toString();
+                    const formattedSupply = formatTokenAmountForResponse(currentSupply as string, tokenDoc.symbol);
+                    transformedToken.currentSupply = formattedSupply.amount;
+                    transformedToken.rawCurrentSupply = formattedSupply.rawAmount;
                 }
+                
                 return transformedToken;
             });
         }
@@ -91,12 +105,19 @@ router.get('/:symbol', (async (req: Request, res: Response) => {
         }
         const { maxSupply, currentSupply, ...rest } = tokenFromDB;
         const token: any = { ...rest };
+        
+        // Format supply values with proper decimals
         if (maxSupply) {
-            token.maxSupply = toBigInt(maxSupply as string).toString();
+            const formattedSupply = formatTokenAmountForResponse(maxSupply as string, symbol);
+            token.maxSupply = formattedSupply.amount;
+            token.rawMaxSupply = formattedSupply.rawAmount;
         }
         if (currentSupply) {
-            token.currentSupply = toBigInt(currentSupply as string).toString();
+            const formattedSupply = formatTokenAmountForResponse(currentSupply as string, symbol);
+            token.currentSupply = formattedSupply.amount;
+            token.rawCurrentSupply = formattedSupply.rawAmount;
         }
+        
         res.json(token);
     } catch (error: any) {
         logger.error(`Error fetching token ${symbol}:`, error);
@@ -117,12 +138,19 @@ router.get('/issuer/:issuerName', (async (req: Request, res: Response) => {
             tokens = tokensFromDB.map((tokenDoc: TokenForStorageDB) => {
                 const { maxSupply, currentSupply, ...rest } = tokenDoc;
                 const transformedToken: any = { ...rest };
+                
+                // Format supply values with proper decimals
                 if (maxSupply) {
-                    transformedToken.maxSupply = toBigInt(maxSupply as string).toString();
+                    const formattedSupply = formatTokenAmountForResponse(maxSupply as string, tokenDoc.symbol);
+                    transformedToken.maxSupply = formattedSupply.amount;
+                    transformedToken.rawMaxSupply = formattedSupply.rawAmount;
                 }
                 if (currentSupply) {
-                    transformedToken.currentSupply = toBigInt(currentSupply as string).toString();
+                    const formattedSupply = formatTokenAmountForResponse(currentSupply as string, tokenDoc.symbol);
+                    transformedToken.currentSupply = formattedSupply.amount;
+                    transformedToken.rawCurrentSupply = formattedSupply.rawAmount;
                 }
+                
                 return transformedToken;
             });
         }
@@ -147,12 +175,19 @@ router.get('/name/:searchName', (async (req: Request, res: Response) => {
             tokens = tokensFromDB.map((tokenDoc: TokenForStorageDB) => {
                 const { maxSupply, currentSupply, ...rest } = tokenDoc;
                 const transformedToken: any = { ...rest };
+                
+                // Format supply values with proper decimals
                 if (maxSupply) {
-                    transformedToken.maxSupply = toBigInt(maxSupply as string).toString();
+                    const formattedSupply = formatTokenAmountForResponse(maxSupply as string, tokenDoc.symbol);
+                    transformedToken.maxSupply = formattedSupply.amount;
+                    transformedToken.rawMaxSupply = formattedSupply.rawAmount;
                 }
                 if (currentSupply) {
-                    transformedToken.currentSupply = toBigInt(currentSupply as string).toString();
+                    const formattedSupply = formatTokenAmountForResponse(currentSupply as string, tokenDoc.symbol);
+                    transformedToken.currentSupply = formattedSupply.amount;
+                    transformedToken.rawCurrentSupply = formattedSupply.rawAmount;
                 }
+                
                 return transformedToken;
             });
         }

@@ -36,7 +36,7 @@ export async function validateTx(dataDb: PoolRemoveLiquidityDataDB, sender: stri
       logger.warn(`[pool-remove-liquidity] Pool ${data.poolId} not found.`);
       return false;
     }
-    const pool = convertToBigInt<LiquidityPool>(poolFromDb, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens', 'feeTier']);
+    const pool = convertToBigInt<LiquidityPool>(poolFromDb, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens']);
     if (pool.totalLpTokens === BigInt(0)) {
         logger.warn(`[pool-remove-liquidity] Pool ${data.poolId} has no liquidity to remove.`);
         return false;
@@ -70,7 +70,7 @@ export async function process(dataDb: PoolRemoveLiquidityDataDB, sender: string,
       logger.error(`[pool-remove-liquidity] CRITICAL: Pool ${data.poolId} not found during processing.`);
       return false;
     }
-    const pool = convertToBigInt<LiquidityPool>(poolFromDb, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens', 'feeTier']);
+    const pool = convertToBigInt<LiquidityPool>(poolFromDb, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens']);
 
     const userLpPositionId = `${data.provider}-${data.poolId}`;
     const userPositionFromDb = await cache.findOnePromise('userLiquidityPositions', { _id: userLpPositionId }) as UserLiquidityPositionDB | null;

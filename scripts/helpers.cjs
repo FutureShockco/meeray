@@ -38,10 +38,10 @@ const POOL_TOKEN_SYMBOLS = [
 ];
 
 const POOL_FEE_TIERS = [
-    10,   // 0.1%
-    30,   // 0.3%
-    100,  // 1%
-    300   // 3%
+    10,   // 0.01%
+    50,   // 0.05%
+    300,  // 0.3%
+    1000  // 1%
 ];
 
 // Market order types and sides

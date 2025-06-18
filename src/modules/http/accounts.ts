@@ -4,7 +4,7 @@ import mongo from '../../mongo.js';
 import cache from '../../cache.js';
 import logger from '../../logger.js';
 import { toBigInt } from '../../utils/bigint-utils.js';
-import { transformTransactionData } from '../../utils/http-helpers.js';
+import { transformTransactionData, formatTokenBalancesForResponse } from '../../utils/http-helpers.js';
 
 const router: Router = express.Router();
 
@@ -57,11 +57,8 @@ router.get('/', (async (req: Request, res: Response) => {
                 transformedAcc.totalVoteWeight = toBigInt(totalVoteWeight as string).toString();
             }
             if (balances) {
-                const newBalances: Record<string, string> = {};
-                for (const tokenSymbol in balances) {
-                    newBalances[tokenSymbol] = toBigInt(balances[tokenSymbol] as string).toString();
-                }
-                transformedAcc.balances = newBalances;
+                // Format token balances with proper decimals
+                transformedAcc.balances = formatTokenBalancesForResponse(balances);
             }
             return transformedAcc;
         });
@@ -103,11 +100,8 @@ router.get('/:name', (async (req: Request, res: Response) => {
             account.totalVoteWeight = toBigInt(totalVoteWeight as string).toString();
         }
         if (balances) {
-            const newBalances: Record<string, string> = {};
-            for (const tokenSymbol in balances) {
-                newBalances[tokenSymbol] = toBigInt(balances[tokenSymbol] as string).toString();
-            }
-            account.balances = newBalances;
+            // Format token balances with proper decimals
+            account.balances = formatTokenBalancesForResponse(balances);
         }
 
         res.json({ success: true, account });
@@ -194,19 +188,17 @@ router.get('/:name/tokens', (async (req: Request, res: Response) => {
         
         const balances = accountFromDB.balances || {}; // Assuming balances field, not tokens
         
-        const tokenBalances = Object.entries(balances).map(([symbol, amount]) => ({
-            symbol,
-            amount: toBigInt(amount as string).toString() // Apply transformation here
-        }));
-        
-        res.json({
-            success: true,
-            account: accountName, // Keep original account identifier (name or ID string)
-            id: accountFromDB._id ? accountFromDB._id.toString() : undefined, // Add account's actual ID
-            tokens: tokenBalances
+        const tokenBalances = Object.entries(balances).map(([symbol, amount]) => {
+            const formattedBalance = formatTokenBalancesForResponse({ [symbol]: amount as string | bigint | number });
+            return {
+                symbol,
+                ...formattedBalance[symbol]
+            };
         });
+        
+        res.json({ success: true, data: tokenBalances });
     } catch (err) {
-        logger.error(`Error fetching token balances for account ${req.params.name}:`, err);
+        logger.error(`Error fetching tokens for account ${req.params.name}:`, err);
         res.status(500).json({ success: false, error: 'Internal server error' });
     }
 }) as RequestHandler);

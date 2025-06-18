@@ -3,6 +3,7 @@ import cache from '../../cache.js';
 import { mongo } from '../../mongo.js';
 import logger from '../../logger.js';
 import { toBigInt } from '../../utils/bigint-utils.js';
+import { formatTokenAmountForResponse, formatTokenAmountSimple } from '../../utils/http-helpers.js';
 
 const router: Router = express.Router();
 
@@ -24,12 +25,35 @@ const transformFarmData = (farmData: any): any => {
         // delete transformed._id; 
     }
 
-    const numericFields = ['totalStaked', 'rewardRate', 'apr', 'totalRewardsAllocated', 'rewardsRemaining', 'minStakeAmount', 'maxStakeAmount'];
-    for (const field of numericFields) {
-        if (transformed[field] && typeof transformed[field] === 'string') {
-            transformed[field] = toBigInt(transformed[field]).toString();
+    // Format farm amounts using appropriate token symbols
+    const stakingTokenSymbol = transformed.stakingTokenSymbol || 'UNKNOWN';
+    const rewardTokenSymbol = transformed.rewardTokenSymbol || 'UNKNOWN';
+    
+    // Format staking-related amounts using staking token decimals
+    const stakingFields = ['totalStaked', 'minStakeAmount', 'maxStakeAmount'];
+    for (const field of stakingFields) {
+        if (transformed[field]) {
+            const formatted = formatTokenAmountForResponse(transformed[field], stakingTokenSymbol);
+            transformed[field] = formatted.amount;
+            transformed[`raw${field.charAt(0).toUpperCase() + field.slice(1)}`] = formatted.rawAmount;
         }
     }
+    
+    // Format reward-related amounts using reward token decimals
+    const rewardFields = ['rewardRate', 'totalRewardsAllocated', 'rewardsRemaining'];
+    for (const field of rewardFields) {
+        if (transformed[field]) {
+            const formatted = formatTokenAmountForResponse(transformed[field], rewardTokenSymbol);
+            transformed[field] = formatted.amount;
+            transformed[`raw${field.charAt(0).toUpperCase() + field.slice(1)}`] = formatted.rawAmount;
+        }
+    }
+    
+    // APR is typically a percentage, so keep as raw value
+    if (transformed.apr) {
+        transformed.apr = toBigInt(transformed.apr).toString();
+    }
+    
     return transformed;
 };
 
@@ -43,12 +67,36 @@ const transformUserFarmPositionData = (positionData: any): any => {
     //     delete transformed._id;
     // }
 
-    const numericFields = ['stakedAmount', 'rewardsEarned', 'claimedRewards', 'pendingRewards'];
-    for (const field of numericFields) {
-        if (transformed[field] && typeof transformed[field] === 'string') {
-            transformed[field] = toBigInt(transformed[field]).toString();
+    // Get token symbols for formatting (this would need to be optimized in production)
+    const farmId = transformed.farmId;
+    let stakingTokenSymbol = 'UNKNOWN';
+    let rewardTokenSymbol = 'UNKNOWN';
+    
+    // In a real implementation, you might want to cache this or join with farms collection
+    // For now, we'll use placeholder symbols
+    if (farmId) {
+        // This is a simplified approach - in production you'd want to get the actual token symbols
+        stakingTokenSymbol = 'LP_TOKEN'; // or actual staking token symbol
+        rewardTokenSymbol = 'REWARD_TOKEN'; // or actual reward token symbol
+    }
+    
+    // Format staked amount using staking token decimals
+    if (transformed.stakedAmount) {
+        const formatted = formatTokenAmountForResponse(transformed.stakedAmount, stakingTokenSymbol);
+        transformed.stakedAmount = formatted.amount;
+        transformed.rawStakedAmount = formatted.rawAmount;
+    }
+    
+    // Format reward amounts using reward token decimals
+    const rewardFields = ['rewardsEarned', 'claimedRewards', 'pendingRewards'];
+    for (const field of rewardFields) {
+        if (transformed[field]) {
+            const formatted = formatTokenAmountForResponse(transformed[field], rewardTokenSymbol);
+            transformed[field] = formatted.amount;
+            transformed[`raw${field.charAt(0).toUpperCase() + field.slice(1)}`] = formatted.rawAmount;
         }
     }
+    
     return transformed;
 };
 

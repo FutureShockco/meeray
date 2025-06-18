@@ -4,6 +4,7 @@ import { mongo } from '../../mongo.js';
 import logger from '../../logger.js';
 import { toBigInt, toString as bigintToString, parseTokenAmount } from '../../utils/bigint-utils.js';
 import { getTokenDecimals } from '../../utils/bigint-utils.js';
+import { formatTokenAmountForResponse, formatTokenAmountSimple } from '../../utils/http-helpers.js';
 
 const router: Router = express.Router();
 
@@ -151,26 +152,27 @@ async function findAllTradeRoutesBigInt(
 const transformPoolData = (poolData: any): any => {
     if (!poolData) return poolData;
     const transformed = { ...poolData };
-    // _id for pools is likely string (e.g. TOKENA-TOKENB), ensure it's id or keep as _id.
-    // For this example, let's assume it is already a string and doesn't need ObjectId conversion.
-    // If it can be ObjectId: if (transformed._id && typeof transformed._id !== 'string') { transformed.id = transformed._id.toString(); delete transformed._id; }
-    transformed.id = transformed._id.toString(); // Assuming _id is present and can be stringified.
+    transformed.id = transformed._id.toString();
     if (transformed._id && transformed.id !== transformed._id) delete transformed._id;
 
-    const numericFields = ['tokenA_reserve', 'tokenB_reserve', 'totalLiquidity', 'volume24h', 'totalFeesEarned', 'feeRateBasisPoints'];
-    for (const field of numericFields) {
-        if (transformed[field]) {
-            if (typeof transformed[field] === 'bigint') {
-                 transformed[field] = bigintToString(transformed[field]); // Use padded toString for bigint
-            } else if (typeof transformed[field] === 'string') {
-                // If it's already a string from DB, assume it's correctly padded (or unpad then re-pad if needed)
-                // For API output, we just want unpadded string version from the BigInt value.
-                try { transformed[field] = toBigInt(transformed[field]).toString(); } catch (e) { /* keep as is if not valid bigint string */ }
-            } else if (typeof transformed[field] === 'number'){ // For fields like feeRate that might be numbers
-                 transformed[field] = transformed[field].toString();
-            }
-        }
+    // Format token reserves with proper decimals
+    if (transformed.tokenA_reserve) {
+        const formattedReserve = formatTokenAmountForResponse(transformed.tokenA_reserve, transformed.tokenA_symbol);
+        transformed.tokenA_reserve = formattedReserve.amount;
+        transformed.rawTokenA_reserve = formattedReserve.rawAmount;
     }
+    
+    if (transformed.tokenB_reserve) {
+        const formattedReserve = formatTokenAmountForResponse(transformed.tokenB_reserve, transformed.tokenB_symbol);
+        transformed.tokenB_reserve = formattedReserve.amount;
+        transformed.rawTokenB_reserve = formattedReserve.rawAmount;
+    }
+    
+    if (transformed.totalLpTokens) {
+        // LP tokens don't have a specific symbol, so we'll format them as raw values
+        transformed.totalLpTokens = toBigInt(transformed.totalLpTokens).toString();
+    }
+
     return transformed;
 };
 
@@ -180,24 +182,12 @@ const transformUserLiquidityPositionData = (positionData: any): any => {
     transformed.id = transformed._id.toString();
     if (transformed._id && transformed.id !== transformed._id) delete transformed._id;
 
-    // Always use toBigInt to remove padding, then .toString() for API output
-    const numericFields = [
-        'liquidityTokensOwned',
-        'tokenA_provided',
-        'tokenB_provided',
-        'feesEarnedTokenA',
-        'feesEarnedTokenB',
-        'lpTokenBalance' 
-    ];
-    for (const field of numericFields) {
-        if (transformed[field] !== undefined && transformed[field] !== null) {
-            try {
-                transformed[field] = toBigInt(transformed[field]).toString();
-            } catch (e) {
-                // keep as is if not convertible
-            }
-        }
+    // Format LP token balance
+    if (transformed.lpTokenBalance) {
+        // LP tokens don't have a specific symbol, so we'll format them as raw values
+        transformed.lpTokenBalance = toBigInt(transformed.lpTokenBalance).toString();
     }
+    
     return transformed;
 };
 

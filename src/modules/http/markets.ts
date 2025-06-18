@@ -4,6 +4,7 @@ import { mongo } from '../../mongo.js';
 import logger from '../../logger.js';
 import { toBigInt } from '../../utils/bigint-utils.js';
 import { ObjectId } from 'mongodb';
+import { formatTokenAmountForResponse, formatTokenAmountSimple } from '../../utils/http-helpers.js';
 
 const router: Router = express.Router();
 
@@ -21,12 +22,37 @@ const transformPairData = (pairData: any): any => {
         transformed.id = transformed._id.toString();
         delete transformed._id;
     }
-    const numericFields = ['lastPrice', 'volume24h', 'high24h', 'low24h', 'minTradeSize', 'maxTradeSize', 'tickSize', 'stepSize', 'baseMinSize', 'baseMaxSize', 'quoteMinPrice', 'quoteMaxPrice'];
-    for (const field of numericFields) {
-        if (transformed[field] && typeof transformed[field] === 'string') {
+    
+    // Format price and volume fields with proper decimals
+    const priceFields = ['lastPrice', 'high24h', 'low24h', 'quoteMinPrice', 'quoteMaxPrice'];
+    const volumeFields = ['volume24h', 'minTradeSize', 'maxTradeSize', 'baseMinSize', 'baseMaxSize'];
+    const precisionFields = ['tickSize', 'stepSize'];
+    
+    // Format price fields using quote token decimals
+    for (const field of priceFields) {
+        if (transformed[field] && transformed.quoteSymbol) {
+            const formatted = formatTokenAmountForResponse(transformed[field], transformed.quoteSymbol);
+            transformed[field] = formatted.amount;
+            transformed[`raw${field.charAt(0).toUpperCase() + field.slice(1)}`] = formatted.rawAmount;
+        }
+    }
+    
+    // Format volume fields using base token decimals
+    for (const field of volumeFields) {
+        if (transformed[field] && transformed.baseSymbol) {
+            const formatted = formatTokenAmountForResponse(transformed[field], transformed.baseSymbol);
+            transformed[field] = formatted.amount;
+            transformed[`raw${field.charAt(0).toUpperCase() + field.slice(1)}`] = formatted.rawAmount;
+        }
+    }
+    
+    // Format precision fields (these are typically small decimals)
+    for (const field of precisionFields) {
+        if (transformed[field]) {
             transformed[field] = toBigInt(transformed[field]).toString();
         }
     }
+    
     return transformed;
 };
 
@@ -37,12 +63,55 @@ const transformOrderData = (orderData: any): any => {
         transformed.id = transformed._id.toString();
         delete transformed._id;
     }
-    const numericFields = ['price', 'quantity', 'filledQuantity', 'remainingQuantity', 'cost', 'fee', 'total'];
-    for (const field of numericFields) {
-        if (transformed[field] && typeof transformed[field] === 'string') {
-            transformed[field] = toBigInt(transformed[field]).toString();
+    
+    // Get the trading pair to determine token symbols for formatting
+    const pairId = transformed.pairId;
+    let baseSymbol = 'UNKNOWN';
+    let quoteSymbol = 'UNKNOWN';
+    
+    // Try to get token symbols from the pair (this would need to be optimized in production)
+    if (pairId) {
+        // For now, we'll assume the pair ID contains the symbols or we can derive them
+        // In a real implementation, you might want to cache this or join with pairs collection
+        const pairParts = pairId.split('-');
+        if (pairParts.length >= 2) {
+            baseSymbol = pairParts[0];
+            quoteSymbol = pairParts[1];
         }
     }
+    
+    // Format order amounts
+    const priceFields = ['price'];
+    const quantityFields = ['quantity', 'filledQuantity', 'remainingQuantity'];
+    const costFields = ['cost', 'fee', 'total'];
+    
+    // Format price using quote token decimals
+    for (const field of priceFields) {
+        if (transformed[field]) {
+            const formatted = formatTokenAmountForResponse(transformed[field], quoteSymbol);
+            transformed[field] = formatted.amount;
+            transformed[`raw${field.charAt(0).toUpperCase() + field.slice(1)}`] = formatted.rawAmount;
+        }
+    }
+    
+    // Format quantity using base token decimals
+    for (const field of quantityFields) {
+        if (transformed[field]) {
+            const formatted = formatTokenAmountForResponse(transformed[field], baseSymbol);
+            transformed[field] = formatted.amount;
+            transformed[`raw${field.charAt(0).toUpperCase() + field.slice(1)}`] = formatted.rawAmount;
+        }
+    }
+    
+    // Format cost fields using quote token decimals
+    for (const field of costFields) {
+        if (transformed[field]) {
+            const formatted = formatTokenAmountForResponse(transformed[field], quoteSymbol);
+            transformed[field] = formatted.amount;
+            transformed[`raw${field.charAt(0).toUpperCase() + field.slice(1)}`] = formatted.rawAmount;
+        }
+    }
+    
     return transformed;
 };
 
@@ -53,12 +122,52 @@ const transformTradeData = (tradeData: any): any => {
         transformed.id = transformed._id.toString();
         delete transformed._id;
     }
-    const numericFields = ['price', 'quantity', 'buyerFee', 'sellerFee', 'cost', 'total'];
-    for (const field of numericFields) {
-        if (transformed[field] && typeof transformed[field] === 'string') {
-            transformed[field] = toBigInt(transformed[field]).toString();
+    
+    // Get the trading pair to determine token symbols for formatting
+    const pairId = transformed.pairId;
+    let baseSymbol = 'UNKNOWN';
+    let quoteSymbol = 'UNKNOWN';
+    
+    if (pairId) {
+        const pairParts = pairId.split('-');
+        if (pairParts.length >= 2) {
+            baseSymbol = pairParts[0];
+            quoteSymbol = pairParts[1];
         }
     }
+    
+    // Format trade amounts
+    const priceFields = ['price'];
+    const quantityFields = ['quantity'];
+    const costFields = ['buyerFee', 'sellerFee', 'cost', 'total'];
+    
+    // Format price using quote token decimals
+    for (const field of priceFields) {
+        if (transformed[field]) {
+            const formatted = formatTokenAmountForResponse(transformed[field], quoteSymbol);
+            transformed[field] = formatted.amount;
+            transformed[`raw${field.charAt(0).toUpperCase() + field.slice(1)}`] = formatted.rawAmount;
+        }
+    }
+    
+    // Format quantity using base token decimals
+    for (const field of quantityFields) {
+        if (transformed[field]) {
+            const formatted = formatTokenAmountForResponse(transformed[field], baseSymbol);
+            transformed[field] = formatted.amount;
+            transformed[`raw${field.charAt(0).toUpperCase() + field.slice(1)}`] = formatted.rawAmount;
+        }
+    }
+    
+    // Format cost fields using quote token decimals
+    for (const field of costFields) {
+        if (transformed[field]) {
+            const formatted = formatTokenAmountForResponse(transformed[field], quoteSymbol);
+            transformed[field] = formatted.amount;
+            transformed[`raw${field.charAt(0).toUpperCase() + field.slice(1)}`] = formatted.rawAmount;
+        }
+    }
+    
     return transformed;
 };
 
