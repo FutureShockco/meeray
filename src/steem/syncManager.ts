@@ -3,6 +3,7 @@ import logger from '../logger.js';
 import p2p from '../p2p.js';
 import chain from '../chain.js';
 import SteemApiClient from './apiClient.js';
+import config from '../config.js';
 
 interface SyncStatus {
     nodeId: string;
@@ -185,6 +186,11 @@ class SyncManager {
                 // Use the real-time value for the exit decision
                 const localCaughtUp = realTimeBehindBlocks <= steemConfig.syncExitThreshold;
 
+                // NEW: Exit sync mode immediately if Steem blocks behind is lower than config.steemBlockDelay
+                if (realTimeBehindBlocks < config.steemBlockDelay) {
+                    logger.info(`Exiting sync mode immediately: Steem blocks behind (${realTimeBehindBlocks}) is lower than steemBlockDelay (${config.steemBlockDelay}) at block ${currentBlockId}`);
+                    return true;
+                }
 
                 if (!localCaughtUp) {
                     return false;
@@ -199,6 +205,11 @@ class SyncManager {
         // Fallback to cached value if real-time check failed
         const localCaughtUp = this.behindBlocks <= steemConfig.syncExitThreshold;
 
+        // NEW: Also check cached value against steemBlockDelay
+        if (this.behindBlocks < config.steemBlockDelay) {
+            logger.info(`Exiting sync mode immediately (cached): Steem blocks behind (${this.behindBlocks}) is lower than steemBlockDelay (${config.steemBlockDelay}) at block ${currentBlockId}`);
+            return true;
+        }
 
         if (!localCaughtUp) {
             return false;

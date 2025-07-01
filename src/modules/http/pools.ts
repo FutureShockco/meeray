@@ -170,7 +170,9 @@ const transformPoolData = (poolData: any): any => {
     
     if (transformed.totalLpTokens) {
         // LP tokens don't have a specific symbol, so we'll format them as raw values
-        transformed.totalLpTokens = toBigInt(transformed.totalLpTokens).toString();
+        const lpTokensBigInt = toBigInt(transformed.totalLpTokens);
+        transformed.totalLpTokens = lpTokensBigInt.toString();
+        transformed.rawTotalLpTokens = lpTokensBigInt.toString();
     }
 
     return transformed;
@@ -185,7 +187,9 @@ const transformUserLiquidityPositionData = (positionData: any): any => {
     // Format LP token balance
     if (transformed.lpTokenBalance) {
         // LP tokens don't have a specific symbol, so we'll format them as raw values
-        transformed.lpTokenBalance = toBigInt(transformed.lpTokenBalance).toString();
+        const lpBalanceBigInt = toBigInt(transformed.lpTokenBalance);
+        transformed.lpTokenBalance = lpBalanceBigInt.toString();
+        transformed.rawLpTokenBalance = lpBalanceBigInt.toString();
     }
     
     return transformed;
@@ -349,10 +353,14 @@ router.get('/route-swap', (async (req: Request, res: Response) => {
                 ...route,
                 finalAmountIn: toBigInt(route.finalAmountIn).toString(),
                 finalAmountOut: toBigInt(route.finalAmountOut).toString(),
+                finalAmountInFormatted: formatTokenAmountSimple(toBigInt(route.finalAmountIn), fromTokenSymbol),
+                finalAmountOutFormatted: formatTokenAmountSimple(toBigInt(route.finalAmountOut), toTokenSymbol),
                 hops: route.hops.map(hop => ({
                     ...hop,
                     amountIn: toBigInt(hop.amountIn).toString(),
                     amountOut: toBigInt(hop.amountOut).toString(),
+                    amountInFormatted: formatTokenAmountSimple(toBigInt(hop.amountIn), hop.tokenIn),
+                    amountOutFormatted: formatTokenAmountSimple(toBigInt(hop.amountOut), hop.tokenOut),
                 }))
             };
         };
@@ -361,6 +369,148 @@ router.get('/route-swap', (async (req: Request, res: Response) => {
     } catch (error: any) {
         logger.error(`Error finding swap route for ${fromTokenSymbol}->${toTokenSymbol}:`, error);
         res.status(500).json({ message: 'Error finding swap route', error: error.message });
+    }
+}) as RequestHandler);
+
+// POST /pools/autoSwapRoute - Execute automatic swap using best route
+router.post('/autoSwapRoute', (async (req: Request, res: Response) => {
+    const { tokenIn, tokenOut, amountIn, slippage } = req.body;
+
+    if (!tokenIn || !tokenOut || !amountIn) {
+        return res.status(400).json({ message: 'Missing required body parameters: tokenIn, tokenOut, amountIn.' });
+    }
+    if (typeof tokenIn !== 'string' || typeof tokenOut !== 'string') {
+        return res.status(400).json({ message: 'tokenIn and tokenOut must be strings.' });
+    }
+    if (typeof amountIn !== 'number' && typeof amountIn !== 'string') {
+        return res.status(400).json({ message: 'amountIn must be a number or string.' });
+    }
+
+    // Default slippage to 0.5% if not provided
+    const slippagePercent = slippage !== undefined ? Number(slippage) : 0.5;
+    if (slippagePercent < 0 || slippagePercent > 100) {
+        return res.status(400).json({ message: 'Slippage must be between 0 and 100 percent.' });
+    }
+
+    if (tokenIn === tokenOut) {
+        return res.status(400).json({ message: 'Input and output tokens cannot be the same.' });
+    }
+
+    let amountInBigInt: bigint;
+    try {
+        // Convert input amount to smallest unit BigInt
+        const amountInStr = typeof amountIn === 'number' ? amountIn.toString() : amountIn;
+        amountInBigInt = parseTokenAmount(amountInStr, tokenIn);
+        if (amountInBigInt <= 0n) {
+            return res.status(400).json({ message: `Invalid amountIn: ${amountIn}. Must result in a positive value in smallest units.` });
+        }
+    } catch (error: any) {
+        logger.error(`Error parsing amountIn for auto swap: ${amountIn}, token: ${tokenIn}`, error);
+        return res.status(400).json({ 
+            message: `Invalid amountIn '${amountIn}' for token '${tokenIn}'. Error: ${error.message}`,
+            error: error.message 
+        });
+    }
+
+    try {
+        // Find the best route
+        const amountInSmallestUnitStr = bigintToString(amountInBigInt);
+        const routes: TradeRoute[] = await findAllTradeRoutesBigInt(
+            tokenIn,
+            tokenOut,
+            amountInSmallestUnitStr
+        );
+
+        if (!routes || routes.length === 0) {
+            return res.status(404).json({ message: 'No trade route found.' });
+        }
+
+        const bestRoute = routes[0];
+        
+        // Define the transform function for API responses
+        const transformRouteForAPI = (route: TradeRoute): any => {
+            return {
+                ...route,
+                finalAmountIn: toBigInt(route.finalAmountIn).toString(),
+                finalAmountOut: toBigInt(route.finalAmountOut).toString(),
+                finalAmountInFormatted: formatTokenAmountSimple(toBigInt(route.finalAmountIn), tokenIn),
+                finalAmountOutFormatted: formatTokenAmountSimple(toBigInt(route.finalAmountOut), tokenOut),
+                hops: route.hops.map(hop => ({
+                    ...hop,
+                    amountIn: toBigInt(hop.amountIn).toString(),
+                    amountOut: toBigInt(hop.amountOut).toString(),
+                    amountInFormatted: formatTokenAmountSimple(toBigInt(hop.amountIn), hop.tokenIn),
+                    amountOutFormatted: formatTokenAmountSimple(toBigInt(hop.amountOut), hop.tokenOut),
+                }))
+            };
+        };
+        
+        // Execute the swap using the best route
+        // For now, we'll execute the first hop (direct swap)
+        // In the future, this could be extended to handle multi-hop routes
+        if (bestRoute.hops.length === 1) {
+            const hop = bestRoute.hops[0];
+            
+            // For now, we'll use a placeholder trader since this is an HTTP API
+            // In a real implementation, this would come from authentication headers
+            const trader = 'auto_swap_user'; // TODO: Get from auth headers
+            
+            // Calculate minimum amount out based on slippage
+            // Use a more conservative approach to account for potential price changes
+            const expectedAmountOut = toBigInt(hop.amountOut);
+            const slippageMultiplier = BigInt(10000 - Math.floor(slippagePercent * 100)); // e.g., 9950 for 0.5% slippage
+            const minAmountOut = (expectedAmountOut * slippageMultiplier) / BigInt(10000);
+            
+            // Create swap transaction data
+            const swapData = {
+                poolId: hop.poolId,
+                trader: trader,
+                tokenIn_symbol: hop.tokenIn,
+                tokenOut_symbol: hop.tokenOut,
+                amountIn: hop.amountIn,
+                minAmountOut: bigintToString(minAmountOut)
+            };
+
+            // Import the swap processing function
+            const { process: processSwap } = await import('../../transactions/pool/pool-swap.js');
+            
+            // Generate a transaction ID
+            const transactionId = `auto_swap_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            
+            // Execute the swap
+            const swapSuccess = await processSwap(swapData, trader, transactionId);
+            
+            if (swapSuccess) {
+                res.json({
+                    success: true,
+                    message: 'Swap executed successfully',
+                    transactionId: transactionId,
+                    route: transformRouteForAPI(bestRoute),
+                    executedAmountIn: formatTokenAmountSimple(amountInBigInt, tokenIn),
+                    executedAmountOut: formatTokenAmountSimple(toBigInt(bestRoute.finalAmountOut), tokenOut)
+                });
+            } else {
+                res.status(500).json({ 
+                    success: false,
+                    message: 'Swap execution failed',
+                    route: transformRouteForAPI(bestRoute)
+                });
+            }
+        } else {
+            // Multi-hop routes not yet implemented
+            res.status(501).json({ 
+                success: false,
+                message: 'Multi-hop routes not yet supported in auto swap',
+                route: transformRouteForAPI(bestRoute)
+            });
+        }
+    } catch (error: any) {
+        logger.error(`Error executing auto swap for ${tokenIn}->${tokenOut}:`, error);
+        res.status(500).json({ 
+            success: false,
+            message: 'Error executing auto swap', 
+            error: error.message 
+        });
     }
 }) as RequestHandler);
 

@@ -28,6 +28,15 @@ router.get('/', (async (req: Request, res: Response) => {
             query.transactionId = req.query.transactionId;
         }
         
+        if (req.query.poolId) {
+            // Search for poolId in the event data for pool-related events
+            // Pool create events use _id, while other pool events use poolId
+            query.$or = [
+                { 'data.poolId': req.query.poolId },
+                { 'data._id': req.query.poolId }
+            ];
+        }
+        
         if (req.query.startTime) {
             query.timestamp = { $gte: req.query.startTime };
         }

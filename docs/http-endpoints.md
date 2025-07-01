@@ -437,6 +437,21 @@ Handler: `src/modules/http/pools.ts`
         *   `amountIn` (number, required): The amount of `fromTokenSymbol` to swap.
     *   Response: `{ routes: TradeRoute[] }` where `TradeRoute` details hops and amounts, or `{ message: string }` on error.
 
+*   **POST `/autoSwapRoute`**
+    *   Description: Execute an automatic swap using the best available route.
+    *   Request Body:
+        ```json
+        {
+          "tokenIn": "STEEM",
+          "tokenOut": "ECH",
+          "amountIn": 1,
+          "slippage": 0.5
+        }
+        ```
+    *   Response (Success): `{ success: true, message: string, transactionId: string, route: TradeRoute, executedAmountIn: string, executedAmountOut: string }`
+    *   Response (Error): `{ success: false, message: string, route?: TradeRoute }`
+    *   Notes: Currently supports single-hop routes only. Multi-hop routes return 501 Not Implemented.
+
 ## `/tokens`
 
 Handler: `src/modules/http/tokens.ts`
