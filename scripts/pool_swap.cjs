@@ -13,7 +13,6 @@ async function main() {
 
     // For this example, we'll use a direct swap
     const poolSwapData = {
-        trader: username,
         amountIn,
         minAmountOut,
         poolId: poolIdPlaceholder,

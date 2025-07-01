@@ -30,12 +30,24 @@ export interface PoolRemoveLiquidityData {
 }
 
 export interface PoolSwapData {
-  poolId: string;             // Identifier of the liquidity pool
-  trader: string;             // Account performing the swap
-  tokenIn_symbol: string;     // Symbol of token being swapped in
-  tokenOut_symbol: string;    // Symbol of token being swapped out
+  // For single-hop swaps (backward compatible)
+  poolId?: string;             // Identifier of the liquidity pool to swap through (for direct swap)
+  tokenIn_symbol: string;     // Symbol of the token being swapped in
+  tokenOut_symbol: string;    // Symbol of the token being swapped out
   amountIn: bigint;          // Amount of token being swapped in
   minAmountOut: bigint;      // Minimum amount of token to receive
+
+  // For multi-hop routing (new functionality)
+  fromTokenSymbol?: string;   // Overall input token symbol for a routed swap
+  toTokenSymbol?: string;     // Overall output token symbol for a routed swap
+  slippagePercent?: number;   // Slippage tolerance in percent (e.g., 1.0 for 1%)
+  hops?: Array<{
+    poolId: string;
+    tokenIn_symbol: string;
+    tokenOut_symbol: string;
+    amountIn: bigint;
+    minAmountOut: bigint;
+  }>;
 }
 
 // Represents a liquidity pool in the cache/database

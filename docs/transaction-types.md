@@ -405,31 +405,199 @@ This document provides a comprehensive list of all transaction types implemented
 
 ### Pool Swap (Type 17)
 - **File**: `src/transactions/pool/pool-swap.ts`
-- **Purpose**: Allows a user to swap one token for another through a liquidity pool, potentially routing through multiple pools.
-- **Data Structure**:
-  ```typescript
-  export interface PoolSwapData {
-    trader: string;             // Account performing the swap (sender of the transaction)
-    amountIn: string;           // Amount of initial token to swap (as a string to preserve precision)
-    minAmountOut: string;       // Minimum amount of final token expected (as a string, for slippage protection)
-    poolId?: string;            // Identifier of the liquidity pool to swap through (for direct swap)
-    tokenInSymbol?: string;     // Symbol of the token being sold (for direct swap)
-    tokenInIssuer?: string;     // Issuer of the token being sold (for direct swap)
-    tokenOutSymbol?: string;    // Symbol of the token being bought (for direct swap)
-    tokenOutIssuer?: string;    // Issuer of the token being bought (for direct swap)
-    fromTokenSymbol?: string;   // Overall input token symbol for a routed swap
-    fromTokenIssuer?: string;   // Overall input token issuer for a routed swap
-    toTokenSymbol?: string;     // Overall output token symbol for a routed swap
-    toTokenIssuer?: string;     // Overall output token issuer for a routed swap
-    hops?: Array<{
-      poolId: string;
-      hopTokenInSymbol: string;
-      hopTokenInIssuer: string;
-      hopTokenOutSymbol: string;
-      hopTokenOutIssuer: string;
-    }>;
+- **Purpose**: Allows a user to swap one token for another through liquidity pools. This transaction supports three modes:
+  1. **Single-hop swap**: Direct swap through a specific pool
+  2. **Multi-hop routed swap**: Execute a predefined route through multiple pools
+  3. **Auto-route swap**: Automatically find and execute the best route
+
+**Data Structure**:
+```typescript
+export interface PoolSwapData {
+  // For single-hop swaps (backward compatible)
+  poolId?: string;             // Identifier of the liquidity pool to swap through (for direct swap)
+  tokenIn_symbol: string;     // Symbol of the token being swapped in
+  tokenOut_symbol: string;    // Symbol of the token being swapped out
+  amountIn: string;           // Amount of input token to swap (as string to preserve precision)
+  minAmountOut: string;       // Minimum amount of output token expected (as string, for slippage protection)
+
+  // For multi-hop routing (new functionality)
+  fromTokenSymbol?: string;   // Overall input token symbol for a routed swap
+  toTokenSymbol?: string;     // Overall output token symbol for a routed swap
+  hops?: Array<{
+    poolId: string;
+    tokenIn_symbol: string;
+    tokenOut_symbol: string;
+    amountIn: string;
+    minAmountOut: string;
+  }>;
+}
+```
+
+**Example 1: Single-Hop Swap** (Backward Compatible):
+```json
+{
+  "type": 17,
+  "sender": "alice",
+  "data": {
+    "poolId": "ECH_STEEM_300",
+    "tokenIn_symbol": "ECH",
+    "tokenOut_symbol": "STEEM",
+    "amountIn": "100000000",
+    "minAmountOut": "44775000"
   }
-  ```
+}
+```
+
+**Example 2: Multi-Hop Routed Swap**:
+```json
+{
+  "type": 17,
+  "sender": "alice",
+  "data": {
+    "tokenIn_symbol": "ECH",
+    "tokenOut_symbol": "USDT",
+    "amountIn": "100000000",
+    "minAmountOut": "44000000",
+    "hops": [
+      {
+        "poolId": "ECH_STEEM_300",
+        "tokenIn_symbol": "ECH",
+        "tokenOut_symbol": "STEEM",
+        "amountIn": "100000000",
+        "minAmountOut": "44775000"
+      },
+      {
+        "poolId": "STEEM_USDT_300",
+        "tokenIn_symbol": "STEEM",
+        "tokenOut_symbol": "USDT",
+        "amountIn": "44775000",
+        "minAmountOut": "44000000"
+      }
+    ]
+  }
+}
+```
+
+**Example 3: Auto-Route Swap** (Simplest):
+```json
+{
+  "type": 17,
+  "sender": "alice",
+  "data": {
+    "fromTokenSymbol": "ECH",
+    "toTokenSymbol": "USDT",
+    "amountIn": "100000000",
+    "minAmountOut": "44000000",
+    "slippagePercent": 2.0  // Optional: 2% slippage tolerance
+  }
+}
+```
+
+**Example Using Route-Swap API Data**:
+To execute a swap using data from the `/pools/route-swap` API:
+
+1. **Get route information**:
+```bash
+POST /pools/route-swap
+{
+  "fromTokenSymbol": "ECH",
+  "toTokenSymbol": "USDT", 
+  "amountIn": 1,
+  "slippage": 0.5
+}
+```
+
+2. **API Response**:
+```json
+{
+  "bestRoute": {
+    "hops": [
+      {
+        "poolId": "ECH_STEEM_300",
+        "tokenIn": "ECH",
+        "tokenOut": "STEEM",
+        "amountIn": "100000000",
+        "amountOut": "45000000",
+        "amountInFormatted": "1.000",
+        "amountOutFormatted": "0.450",
+        "minAmountOut": "44775000",
+        "minAmountOutFormatted": "0.448",
+        "slippagePercent": 0.5,
+        "priceImpact": 0.1234,
+        "priceImpactFormatted": "0.1234%"
+      },
+      {
+        "poolId": "STEEM_USDT_300",
+        "tokenIn": "STEEM",
+        "tokenOut": "USDT",
+        "amountIn": "45000000",
+        "amountOut": "44500000",
+        "amountInFormatted": "0.450",
+        "amountOutFormatted": "44.500",
+        "minAmountOut": "44275000",
+        "minAmountOutFormatted": "44.275",
+        "slippagePercent": 0.5,
+        "priceImpact": 0.2345,
+        "priceImpactFormatted": "0.2345%"
+      }
+    ],
+    "finalAmountIn": "100000000",
+    "finalAmountOut": "44500000",
+    "finalAmountInFormatted": "1.000",
+    "finalAmountOutFormatted": "44.500",
+    "minFinalAmountOut": "44275000",
+    "minFinalAmountOutFormatted": "44.275",
+    "slippagePercent": 0.5,
+    "totalPriceImpact": 0.3579,
+    "totalPriceImpactFormatted": "0.3579%"
+  }
+}
+```
+
+3. **Execute multi-hop swap transaction**:
+```json
+{
+  "type": 17,
+  "sender": "alice",
+  "data": {
+    "tokenIn_symbol": "ECH",
+    "tokenOut_symbol": "USDT",
+    "amountIn": "100000000",
+    "minAmountOut": "44275000",
+    "hops": [
+      {
+        "poolId": "ECH_STEEM_300",
+        "tokenIn_symbol": "ECH",
+        "tokenOut_symbol": "STEEM",
+        "amountIn": "100000000",
+        "minAmountOut": "44775000"
+      },
+      {
+        "poolId": "STEEM_USDT_300",
+        "tokenIn_symbol": "STEEM",
+        "tokenOut_symbol": "USDT",
+        "amountIn": "45000000",
+        "minAmountOut": "44275000"
+      }
+    ]
+  }
+}
+```
+
+**Notes**:
+- **Single-hop swaps**: Use `poolId` for direct swaps through one pool (backward compatible)
+- **Multi-hop routed swaps**: Use `hops` array to specify the exact route and amounts for each hop
+- **Auto-route swaps**: Use `fromTokenSymbol` and `toTokenSymbol` to let the system find the best route automatically
+- All modes support slippage protection via `minAmountOut`
+- Raw amounts (without formatting) should be used in the transaction data
+- The transaction is atomic - if any hop fails, the entire swap is rolled back
+- For auto-route swaps, the system will find the route with the highest output amount
+
+**Slippage Protection**:
+- **Default slippage**: 1% for auto-route swaps if not specified
+- **Custom slippage**: Use `slippagePercent` parameter (e.g., 2.0 for 2%)
+- **Manual control**: Set `minAmountOut` explicitly for precise control
+- **Common issues**: If you see "Output amount is less than minimum required", increase slippage tolerance or lower `minAmountOut`
 
 ## 5. Token Transactions
 

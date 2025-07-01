@@ -172,13 +172,24 @@ Returns a list of all liquidity pools with formatted token reserves.
 }
 ```
 
-#### GET /pools/route-swap
+#### POST /pools/route-swap
 Returns the best swap route between two tokens.
 
-**Query Parameters:**
+**Request Body:**
+```json
+{
+  "fromTokenSymbol": "STEEM",
+  "toTokenSymbol": "ECH",
+  "amountIn": 1,
+  "slippage": 0.5
+}
+```
+
+**Parameters:**
 - `fromTokenSymbol` (required): The input token symbol
 - `toTokenSymbol` (required): The output token symbol  
-- `amountIn` (required): The amount to swap (e.g., "1.23")
+- `amountIn` (required): The amount to swap (number or string, e.g., 1 or "1.23")
+- `slippage` (optional): Maximum slippage tolerance in percent (default: 0.5)
 
 **Response:**
 ```json
@@ -192,82 +203,32 @@ Returns the best swap route between two tokens.
         "amountIn": "100000000",
         "amountOut": "45000000",
         "amountInFormatted": "1.000",
-        "amountOutFormatted": "0.450"
+        "amountOutFormatted": "0.450",
+        "minAmountOut": "44775000",
+        "minAmountOutFormatted": "0.448",
+        "slippagePercent": 0.5,
+        "priceImpact": 0.1234,
+        "priceImpactFormatted": "0.1234%"
       }
     ],
     "finalAmountIn": "100000000",
     "finalAmountOut": "45000000",
     "finalAmountInFormatted": "1.000",
-    "finalAmountOutFormatted": "0.450"
+    "finalAmountOutFormatted": "0.450",
+    "minFinalAmountOut": "44775000",
+    "minFinalAmountOutFormatted": "0.448",
+    "slippagePercent": 0.5,
+    "totalPriceImpact": 0.1234,
+    "totalPriceImpactFormatted": "0.1234%"
   },
   "allRoutes": [...]
 }
 ```
 
-#### POST /pools/autoSwapRoute
-Executes an automatic swap using the best available route.
-
-**Request Body:**
-```json
-{
-  "tokenIn": "STEEM",
-  "tokenOut": "ECH", 
-  "amountIn": 1,
-  "slippage": 0.5
-}
-```
-
-**Parameters:**
-- `tokenIn` (required): Input token symbol
-- `tokenOut` (required): Output token symbol
-- `amountIn` (required): Amount to swap (number or string)
-- `slippage` (optional): Maximum slippage tolerance in percent (default: 0.5%)
-
-**Response (Success):**
-```json
-{
-  "success": true,
-  "message": "Swap executed successfully",
-  "transactionId": "auto_swap_1705600000000_abc123def",
-  "route": {
-    "hops": [
-      {
-        "poolId": "ECH_STEEM_300",
-        "tokenIn": "STEEM",
-        "tokenOut": "ECH",
-        "amountIn": "1000000000",
-        "amountOut": "2200000000",
-        "amountInFormatted": "1.000",
-        "amountOutFormatted": "2.200"
-      }
-    ],
-    "finalAmountIn": "1000000000",
-    "finalAmountOut": "2200000000",
-    "finalAmountInFormatted": "1.000",
-    "finalAmountOutFormatted": "2.200"
-  },
-  "executedAmountIn": "1.000",
-  "executedAmountOut": "2.200"
-}
-```
-
-**Response (Error):**
-```json
-{
-  "success": false,
-  "message": "Swap execution failed",
-  "route": {
-    // Route information for debugging
-  }
-}
-```
-
 **Notes:**
-- Currently supports single-hop routes only
-- Multi-hop routes return a 501 Not Implemented error
-- The trader is determined from authentication headers (currently uses placeholder)
-- The swap is executed immediately when the request is processed
-- Slippage protection prevents trades with excessive price movement
+- This endpoint only finds the best route, it does not execute the swap
+- To execute a swap, use the blockchain transaction system with the `pool_swap` transaction type
+- The route information can be used to construct the swap transaction with appropriate `minAmountOut` values
 
 #### GET /pools/:poolId
 Returns details for a specific liquidity pool.

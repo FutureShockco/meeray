@@ -429,28 +429,20 @@ Handler: `src/modules/http/pools.ts`
 
 ### Swap Routing
 
-*   **GET `/route-swap`**
+*   **POST `/route-swap`**
     *   Description: Find potential swap routes between two tokens.
-    *   Query Parameters:
-        *   `fromTokenSymbol` (string, required): Symbol of the token to swap from.
-        *   `toTokenSymbol` (string, required): Symbol of the token to swap to.
-        *   `amountIn` (number, required): The amount of `fromTokenSymbol` to swap.
-    *   Response: `{ routes: TradeRoute[] }` where `TradeRoute` details hops and amounts, or `{ message: string }` on error.
-
-*   **POST `/autoSwapRoute`**
-    *   Description: Execute an automatic swap using the best available route.
     *   Request Body:
         ```json
         {
-          "tokenIn": "STEEM",
-          "tokenOut": "ECH",
+          "fromTokenSymbol": "STEEM",
+          "toTokenSymbol": "ECH",
           "amountIn": 1,
           "slippage": 0.5
         }
         ```
-    *   Response (Success): `{ success: true, message: string, transactionId: string, route: TradeRoute, executedAmountIn: string, executedAmountOut: string }`
-    *   Response (Error): `{ success: false, message: string, route?: TradeRoute }`
-    *   Notes: Currently supports single-hop routes only. Multi-hop routes return 501 Not Implemented.
+    *   Response: `{ bestRoute: TradeRoute, allRoutes: TradeRoute[] }` where `TradeRoute` details hops and amounts, or `{ message: string }` on error.
+
+
 
 ## `/tokens`
 

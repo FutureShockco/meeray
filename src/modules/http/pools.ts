@@ -32,6 +32,7 @@ interface TradeHop {
     tokenOut: string;
     amountIn: string; // Padded BigInt string, for this specific hop
     amountOut: string; // Padded BigInt string, for this specific hop
+    priceImpact: number; // Price impact percentage for this hop
 }
 
 interface TradeRoute {
@@ -40,9 +41,6 @@ interface TradeRoute {
     finalAmountOut: string; // Padded BigInt string (final amount out for the whole route)
 }
 
-// --- Helper Functions for Swap Routing (REWRITTEN for BigInt) ---
-
-const BASIS_POINTS_DENOMINATOR = 10000n;
 
 /**
  * Calculates the output amount for a single swap in a pool using BigInt.
@@ -58,17 +56,42 @@ function getOutputAmountBigInt(
     if (inputAmount <= 0n || inputReserve <= 0n || outputReserve <= 0n) {
         return 0n;
     }
-    // Fee calculation: fee = (inputAmount * feeRateBasisPoints) / BASIS_POINTS_DENOMINATOR
-    const fee = (inputAmount * feeRateBasisPoints) / BASIS_POINTS_DENOMINATOR;
-    const inputAmountAfterFee = inputAmount - fee;
+    
+    // Use the same calculation method as the actual swap execution
+    // Fee tiers are in basis points: 10 = 0.01%, 50 = 0.05%, 300 = 0.3%, 1000 = 1%
+    const feeMultiplier = BigInt(10000) - feeRateBasisPoints; // e.g., 10000 - 300 = 9700 for 0.3% fee
+    const feeDivisor = BigInt(10000);
 
-    if (inputAmountAfterFee <= 0n) return 0n;
+    const amountInAfterFee = (inputAmount * feeMultiplier) / feeDivisor;
 
-    const numerator = inputAmountAfterFee * outputReserve;
-    const denominator = inputReserve + inputAmountAfterFee;
+    if (amountInAfterFee <= 0n) return 0n;
+
+    const numerator = amountInAfterFee * outputReserve;
+    const denominator = inputReserve + amountInAfterFee;
     
     if (denominator === 0n) return 0n; // Avoid division by zero
     return numerator / denominator; // BigInt division naturally truncates
+}
+
+/**
+ * Calculates the price impact of a swap.
+ * Price impact = (amountIn / (reserveIn + amountIn)) * 100
+ * This represents the percentage change in the price of the input token.
+ */
+function calculatePriceImpact(
+    amountIn: bigint,
+    reserveIn: bigint
+): number {
+    if (amountIn <= 0n || reserveIn <= 0n) {
+        return 0;
+    }
+    
+    // Calculate price impact as percentage
+    // Price impact = (amountIn / (reserveIn + amountIn)) * 100
+    const totalReserveAfterSwap = reserveIn + amountIn;
+    const priceImpactBasisPoints = Number((amountIn * BigInt(10000)) / totalReserveAfterSwap);
+    
+    return priceImpactBasisPoints / 100; // Convert basis points to percentage
 }
 
 /**
@@ -93,7 +116,7 @@ async function findAllTradeRoutesBigInt(
         _id: p._id.toString(), // ensure _id is string
         tokenA_reserve: p.tokenA_reserve as string,
         tokenB_reserve: p.tokenB_reserve as string,
-        feeRateBasisPoints: BigInt(p.feeRateBasisPoints || 30),
+        feeRateBasisPoints: BigInt(p.feeTier || 300), // Use feeTier from pool data
     }));
 
     const routes: TradeRoute[] = [];
@@ -126,12 +149,16 @@ async function findAllTradeRoutesBigInt(
             const amountOutFromHopBigInt = getOutputAmountBigInt( currentAmountInBigInt, tokenInReserveBigInt, tokenOutReserveBigInt, pool.feeRateBasisPoints );
             if (amountOutFromHopBigInt <= 0n) continue;
             
+            // Calculate price impact for this hop
+            const priceImpact = calculatePriceImpact(currentAmountInBigInt, tokenInReserveBigInt);
+            
             const newHop: TradeHop = {
                 poolId: pool._id,
                 tokenIn: currentTokenSymbol,
                 tokenOut: nextTokenSymbol,
                 amountIn: bigintToString(currentAmountInBigInt),
-                amountOut: bigintToString(amountOutFromHopBigInt)
+                amountOut: bigintToString(amountOutFromHopBigInt),
+                priceImpact: priceImpact
             };
             const newPath = [...currentPath, newHop];
             
@@ -303,15 +330,24 @@ router.get('/positions/user/:userId/pool/:poolId', (async (req: Request, res: Re
     }
 }) as RequestHandler);
 
-// GET /pools/route-swap - Find the best swap route
-router.get('/route-swap', (async (req: Request, res: Response) => {
-    const { fromTokenSymbol, toTokenSymbol, amountIn } = req.query;
+// POST /pools/route-swap - Find the best swap route
+router.post('/route-swap', (async (req: Request, res: Response) => {
+    const { fromTokenSymbol, toTokenSymbol, amountIn, slippage } = req.body;
 
     if (!fromTokenSymbol || !toTokenSymbol || !amountIn) {
-        return res.status(400).json({ message: 'Missing required query parameters: fromTokenSymbol, toTokenSymbol, amountIn.' });
+        return res.status(400).json({ message: 'Missing required body parameters: fromTokenSymbol, toTokenSymbol, amountIn.' });
     }
-    if (typeof fromTokenSymbol !== 'string' || typeof toTokenSymbol !== 'string' || typeof amountIn !== 'string') {
-        return res.status(400).json({ message: 'Query parameters must be strings.' });
+    if (typeof fromTokenSymbol !== 'string' || typeof toTokenSymbol !== 'string') {
+        return res.status(400).json({ message: 'fromTokenSymbol and toTokenSymbol must be strings.' });
+    }
+    if (typeof amountIn !== 'string' && typeof amountIn !== 'number') {
+        return res.status(400).json({ message: 'amountIn must be a string or number.' });
+    }
+
+    // Parse slippage parameter (optional, default 0.5%)
+    const slippagePercent = slippage !== undefined ? Number(slippage) : 0.5;
+    if (slippagePercent < 0 || slippagePercent > 100) {
+        return res.status(400).json({ message: 'Slippage must be between 0 and 100 percent.' });
     }
 
     if (fromTokenSymbol === toTokenSymbol) {
@@ -320,8 +356,10 @@ router.get('/route-swap', (async (req: Request, res: Response) => {
 
     let amountInBigInt: bigint;
     try {
+        // Convert input amount to string if it's a number
+        const amountInStr = typeof amountIn === 'number' ? amountIn.toString() : amountIn;
         // Convert input amount (e.g., "1.23") to smallest unit BigInt (e.g., 123000000n)
-        amountInBigInt = parseTokenAmount(amountIn, fromTokenSymbol);
+        amountInBigInt = parseTokenAmount(amountInStr, fromTokenSymbol);
         if (amountInBigInt <= 0n) { // parseTokenAmount already throws for invalid format
             return res.status(400).json({ message: `Invalid amountIn: ${amountIn}. Must result in a positive value in smallest units.` });
         }
@@ -349,19 +387,46 @@ router.get('/route-swap', (async (req: Request, res: Response) => {
         const bestRoute = routes[0]; 
         
         const transformRouteForAPI = (route: TradeRoute): any => {
+            // Calculate slippage-adjusted amounts for each hop
+            const hopsWithSlippage = route.hops.map(hop => {
+                const expectedAmountOut = toBigInt(hop.amountOut);
+                const slippageMultiplier = BigInt(10000 - Math.floor(slippagePercent * 100));
+                const minAmountOut = (expectedAmountOut * slippageMultiplier) / BigInt(10000);
+                
+                return {
+                    ...hop,
+                    amountIn: toBigInt(hop.amountIn).toString(),
+                    amountOut: toBigInt(hop.amountOut).toString(),
+                    amountInFormatted: formatTokenAmountSimple(toBigInt(hop.amountIn), hop.tokenIn),
+                    amountOutFormatted: formatTokenAmountSimple(toBigInt(hop.amountOut), hop.tokenOut),
+                    minAmountOut: minAmountOut.toString(),
+                    minAmountOutFormatted: formatTokenAmountSimple(minAmountOut, hop.tokenOut),
+                    slippagePercent: slippagePercent,
+                    priceImpact: hop.priceImpact,
+                    priceImpactFormatted: `${hop.priceImpact.toFixed(4)}%`
+                };
+            });
+
+            // Calculate slippage-adjusted final amounts
+            const finalAmountOut = toBigInt(route.finalAmountOut);
+            const slippageMultiplier = BigInt(10000 - Math.floor(slippagePercent * 100));
+            const minFinalAmountOut = (finalAmountOut * slippageMultiplier) / BigInt(10000);
+
+            // Calculate total price impact for the route (sum of all hops)
+            const totalPriceImpact = route.hops.reduce((total, hop) => total + hop.priceImpact, 0);
+
             return {
                 ...route,
                 finalAmountIn: toBigInt(route.finalAmountIn).toString(),
                 finalAmountOut: toBigInt(route.finalAmountOut).toString(),
                 finalAmountInFormatted: formatTokenAmountSimple(toBigInt(route.finalAmountIn), fromTokenSymbol),
                 finalAmountOutFormatted: formatTokenAmountSimple(toBigInt(route.finalAmountOut), toTokenSymbol),
-                hops: route.hops.map(hop => ({
-                    ...hop,
-                    amountIn: toBigInt(hop.amountIn).toString(),
-                    amountOut: toBigInt(hop.amountOut).toString(),
-                    amountInFormatted: formatTokenAmountSimple(toBigInt(hop.amountIn), hop.tokenIn),
-                    amountOutFormatted: formatTokenAmountSimple(toBigInt(hop.amountOut), hop.tokenOut),
-                }))
+                minFinalAmountOut: minFinalAmountOut.toString(),
+                minFinalAmountOutFormatted: formatTokenAmountSimple(minFinalAmountOut, toTokenSymbol),
+                slippagePercent: slippagePercent,
+                totalPriceImpact: totalPriceImpact,
+                totalPriceImpactFormatted: `${totalPriceImpact.toFixed(4)}%`,
+                hops: hopsWithSlippage
             };
         };
 
@@ -372,146 +437,6 @@ router.get('/route-swap', (async (req: Request, res: Response) => {
     }
 }) as RequestHandler);
 
-// POST /pools/autoSwapRoute - Execute automatic swap using best route
-router.post('/autoSwapRoute', (async (req: Request, res: Response) => {
-    const { tokenIn, tokenOut, amountIn, slippage } = req.body;
 
-    if (!tokenIn || !tokenOut || !amountIn) {
-        return res.status(400).json({ message: 'Missing required body parameters: tokenIn, tokenOut, amountIn.' });
-    }
-    if (typeof tokenIn !== 'string' || typeof tokenOut !== 'string') {
-        return res.status(400).json({ message: 'tokenIn and tokenOut must be strings.' });
-    }
-    if (typeof amountIn !== 'number' && typeof amountIn !== 'string') {
-        return res.status(400).json({ message: 'amountIn must be a number or string.' });
-    }
-
-    // Default slippage to 0.5% if not provided
-    const slippagePercent = slippage !== undefined ? Number(slippage) : 0.5;
-    if (slippagePercent < 0 || slippagePercent > 100) {
-        return res.status(400).json({ message: 'Slippage must be between 0 and 100 percent.' });
-    }
-
-    if (tokenIn === tokenOut) {
-        return res.status(400).json({ message: 'Input and output tokens cannot be the same.' });
-    }
-
-    let amountInBigInt: bigint;
-    try {
-        // Convert input amount to smallest unit BigInt
-        const amountInStr = typeof amountIn === 'number' ? amountIn.toString() : amountIn;
-        amountInBigInt = parseTokenAmount(amountInStr, tokenIn);
-        if (amountInBigInt <= 0n) {
-            return res.status(400).json({ message: `Invalid amountIn: ${amountIn}. Must result in a positive value in smallest units.` });
-        }
-    } catch (error: any) {
-        logger.error(`Error parsing amountIn for auto swap: ${amountIn}, token: ${tokenIn}`, error);
-        return res.status(400).json({ 
-            message: `Invalid amountIn '${amountIn}' for token '${tokenIn}'. Error: ${error.message}`,
-            error: error.message 
-        });
-    }
-
-    try {
-        // Find the best route
-        const amountInSmallestUnitStr = bigintToString(amountInBigInt);
-        const routes: TradeRoute[] = await findAllTradeRoutesBigInt(
-            tokenIn,
-            tokenOut,
-            amountInSmallestUnitStr
-        );
-
-        if (!routes || routes.length === 0) {
-            return res.status(404).json({ message: 'No trade route found.' });
-        }
-
-        const bestRoute = routes[0];
-        
-        // Define the transform function for API responses
-        const transformRouteForAPI = (route: TradeRoute): any => {
-            return {
-                ...route,
-                finalAmountIn: toBigInt(route.finalAmountIn).toString(),
-                finalAmountOut: toBigInt(route.finalAmountOut).toString(),
-                finalAmountInFormatted: formatTokenAmountSimple(toBigInt(route.finalAmountIn), tokenIn),
-                finalAmountOutFormatted: formatTokenAmountSimple(toBigInt(route.finalAmountOut), tokenOut),
-                hops: route.hops.map(hop => ({
-                    ...hop,
-                    amountIn: toBigInt(hop.amountIn).toString(),
-                    amountOut: toBigInt(hop.amountOut).toString(),
-                    amountInFormatted: formatTokenAmountSimple(toBigInt(hop.amountIn), hop.tokenIn),
-                    amountOutFormatted: formatTokenAmountSimple(toBigInt(hop.amountOut), hop.tokenOut),
-                }))
-            };
-        };
-        
-        // Execute the swap using the best route
-        // For now, we'll execute the first hop (direct swap)
-        // In the future, this could be extended to handle multi-hop routes
-        if (bestRoute.hops.length === 1) {
-            const hop = bestRoute.hops[0];
-            
-            // For now, we'll use a placeholder trader since this is an HTTP API
-            // In a real implementation, this would come from authentication headers
-            const trader = 'auto_swap_user'; // TODO: Get from auth headers
-            
-            // Calculate minimum amount out based on slippage
-            // Use a more conservative approach to account for potential price changes
-            const expectedAmountOut = toBigInt(hop.amountOut);
-            const slippageMultiplier = BigInt(10000 - Math.floor(slippagePercent * 100)); // e.g., 9950 for 0.5% slippage
-            const minAmountOut = (expectedAmountOut * slippageMultiplier) / BigInt(10000);
-            
-            // Create swap transaction data
-            const swapData = {
-                poolId: hop.poolId,
-                trader: trader,
-                tokenIn_symbol: hop.tokenIn,
-                tokenOut_symbol: hop.tokenOut,
-                amountIn: hop.amountIn,
-                minAmountOut: bigintToString(minAmountOut)
-            };
-
-            // Import the swap processing function
-            const { process: processSwap } = await import('../../transactions/pool/pool-swap.js');
-            
-            // Generate a transaction ID
-            const transactionId = `auto_swap_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-            
-            // Execute the swap
-            const swapSuccess = await processSwap(swapData, trader, transactionId);
-            
-            if (swapSuccess) {
-                res.json({
-                    success: true,
-                    message: 'Swap executed successfully',
-                    transactionId: transactionId,
-                    route: transformRouteForAPI(bestRoute),
-                    executedAmountIn: formatTokenAmountSimple(amountInBigInt, tokenIn),
-                    executedAmountOut: formatTokenAmountSimple(toBigInt(bestRoute.finalAmountOut), tokenOut)
-                });
-            } else {
-                res.status(500).json({ 
-                    success: false,
-                    message: 'Swap execution failed',
-                    route: transformRouteForAPI(bestRoute)
-                });
-            }
-        } else {
-            // Multi-hop routes not yet implemented
-            res.status(501).json({ 
-                success: false,
-                message: 'Multi-hop routes not yet supported in auto swap',
-                route: transformRouteForAPI(bestRoute)
-            });
-        }
-    } catch (error: any) {
-        logger.error(`Error executing auto swap for ${tokenIn}->${tokenOut}:`, error);
-        res.status(500).json({ 
-            success: false,
-            message: 'Error executing auto swap', 
-            error: error.message 
-        });
-    }
-}) as RequestHandler);
 
 export default router;
