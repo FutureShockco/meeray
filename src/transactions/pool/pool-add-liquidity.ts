@@ -106,7 +106,14 @@ export async function process(data: PoolAddLiquidityDataDB, sender: string, id: 
             return false;
         }
 
-        const pool = convertToBigInt<LiquidityPool>(poolDB, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens']);
+        // Ensure fee accounting fields are present and initialized as bigint
+        let feeGrowthGlobalA = typeof poolDB.feeGrowthGlobalA === 'bigint' ? poolDB.feeGrowthGlobalA : BigInt(poolDB.feeGrowthGlobalA || '0');
+        let feeGrowthGlobalB = typeof poolDB.feeGrowthGlobalB === 'bigint' ? poolDB.feeGrowthGlobalB : BigInt(poolDB.feeGrowthGlobalB || '0');
+        const pool = {
+            ...convertToBigInt<LiquidityPool>(poolDB, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens']),
+            feeGrowthGlobalA,
+            feeGrowthGlobalB
+        };
 
         // Debit tokens from the provider's account
         const debitASuccess = await adjustBalance(addLiquidityData.provider, pool.tokenA_symbol, -addLiquidityData.tokenA_amount);
@@ -114,7 +121,6 @@ export async function process(data: PoolAddLiquidityDataDB, sender: string, id: 
 
         if (!debitASuccess || !debitBSuccess) {
             logger.error(`[pool-add-liquidity] Failed to debit tokens from ${addLiquidityData.provider}. Rolling back any debits.`);
-            // Rollback partial debits
             if (debitASuccess) await adjustBalance(addLiquidityData.provider, pool.tokenA_symbol, addLiquidityData.tokenA_amount);
             if (debitBSuccess) await adjustBalance(addLiquidityData.provider, pool.tokenB_symbol, addLiquidityData.tokenB_amount);
             return false;
@@ -123,7 +129,6 @@ export async function process(data: PoolAddLiquidityDataDB, sender: string, id: 
         const lpTokensToMint = calculateLpTokensToMint(addLiquidityData.tokenA_amount, addLiquidityData.tokenB_amount, pool);
         if (lpTokensToMint <= BigInt(0)) {
             logger.error('[pool-add-liquidity] CRITICAL: LP token calculation resulted in zero or negative amount. Rolling back token debits.');
-            // Rollback debits
             await adjustBalance(addLiquidityData.provider, pool.tokenA_symbol, addLiquidityData.tokenA_amount);
             await adjustBalance(addLiquidityData.provider, pool.tokenB_symbol, addLiquidityData.tokenB_amount);
             return false;
@@ -139,9 +144,11 @@ export async function process(data: PoolAddLiquidityDataDB, sender: string, id: 
                         {
                             tokenA_reserve: pool.tokenA_reserve + addLiquidityData.tokenA_amount,
                             tokenB_reserve: pool.tokenB_reserve + addLiquidityData.tokenB_amount,
-                            totalLpTokens: pool.totalLpTokens + lpTokensToMint
+                            totalLpTokens: pool.totalLpTokens + lpTokensToMint,
+                            feeGrowthGlobalA: pool.feeGrowthGlobalA,
+                            feeGrowthGlobalB: pool.feeGrowthGlobalB
                         },
-                        ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens']
+                        ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens', 'feeGrowthGlobalA', 'feeGrowthGlobalB']
                     ),
                     lastUpdatedAt: new Date().toISOString()
                 }
@@ -153,22 +160,43 @@ export async function process(data: PoolAddLiquidityDataDB, sender: string, id: 
             return false;
         }
 
-        // Update or create user liquidity position with proper padding
+        // Update or create user liquidity position with fee checkpoints
         const userPositionId = `${addLiquidityData.provider}-${addLiquidityData.poolId}`;
         const existingUserPosDB = await cache.findOnePromise('userLiquidityPositions', { _id: userPositionId }) as UserLiquidityPositionDB | null;
-        const existingUserPos = existingUserPosDB ? convertToBigInt<UserLiquidityPosition>(existingUserPosDB, ['lpTokenBalance']) : null;
+        const existingUserPos = existingUserPosDB ? {
+            ...convertToBigInt<UserLiquidityPosition>(existingUserPosDB, ['lpTokenBalance']),
+            feeGrowthEntryA: typeof existingUserPosDB.feeGrowthEntryA === 'bigint' ? existingUserPosDB.feeGrowthEntryA : BigInt(existingUserPosDB.feeGrowthEntryA || '0'),
+            feeGrowthEntryB: typeof existingUserPosDB.feeGrowthEntryB === 'bigint' ? existingUserPosDB.feeGrowthEntryB : BigInt(existingUserPosDB.feeGrowthEntryB || '0'),
+            unclaimedFeesA: typeof existingUserPosDB.unclaimedFeesA === 'bigint' ? existingUserPosDB.unclaimedFeesA : BigInt(existingUserPosDB.unclaimedFeesA || '0'),
+            unclaimedFeesB: typeof existingUserPosDB.unclaimedFeesB === 'bigint' ? existingUserPosDB.unclaimedFeesB : BigInt(existingUserPosDB.unclaimedFeesB || '0'),
+        } : null;
 
         let userPosUpdateSuccess = false;
+        let newFeeGrowthEntryA = pool.feeGrowthGlobalA || BigInt(0);
+        let newFeeGrowthEntryB = pool.feeGrowthGlobalB || BigInt(0);
+        let newUnclaimedFeesA = BigInt(0);
+        let newUnclaimedFeesB = BigInt(0);
 
         if (existingUserPos) {
+            // Calculate unclaimed fees before updating position
+            const deltaA = (pool.feeGrowthGlobalA || BigInt(0)) - (existingUserPos.feeGrowthEntryA || BigInt(0));
+            const deltaB = (pool.feeGrowthGlobalB || BigInt(0)) - (existingUserPos.feeGrowthEntryB || BigInt(0));
+            newUnclaimedFeesA = (existingUserPos.unclaimedFeesA || BigInt(0)) + (deltaA * existingUserPos.lpTokenBalance) / BigInt(1e18);
+            newUnclaimedFeesB = (existingUserPos.unclaimedFeesB || BigInt(0)) + (deltaB * existingUserPos.lpTokenBalance) / BigInt(1e18);
             userPosUpdateSuccess = await cache.updateOnePromise(
                 'userLiquidityPositions',
                 { _id: userPositionId },
                 {
                     $set: {
                         ...convertToString(
-                            { lpTokenBalance: existingUserPos.lpTokenBalance + lpTokensToMint },
-                            ['lpTokenBalance']
+                            {
+                                lpTokenBalance: existingUserPos.lpTokenBalance + lpTokensToMint,
+                                feeGrowthEntryA: pool.feeGrowthGlobalA || BigInt(0),
+                                feeGrowthEntryB: pool.feeGrowthGlobalB || BigInt(0),
+                                unclaimedFeesA: newUnclaimedFeesA,
+                                unclaimedFeesB: newUnclaimedFeesB
+                            },
+                            ['lpTokenBalance', 'feeGrowthEntryA', 'feeGrowthEntryB', 'unclaimedFeesA', 'unclaimedFeesB']
                         ),
                         lastUpdatedAt: new Date().toISOString()
                     }
@@ -180,13 +208,14 @@ export async function process(data: PoolAddLiquidityDataDB, sender: string, id: 
                 provider: addLiquidityData.provider,
                 poolId: addLiquidityData.poolId,
                 lpTokenBalance: lpTokensToMint,
+                feeGrowthEntryA: pool.feeGrowthGlobalA || BigInt(0),
+                feeGrowthEntryB: pool.feeGrowthGlobalB || BigInt(0),
+                unclaimedFeesA: BigInt(0),
+                unclaimedFeesB: BigInt(0),
                 createdAt: new Date().toISOString(),
                 lastUpdatedAt: new Date().toISOString()
             };
-
-            // Convert BigInt fields to strings for database storage with proper padding
-            const newUserPositionDB = convertToString(newUserPosition, ['lpTokenBalance']);
-
+            const newUserPositionDB = convertToString(newUserPosition, ['lpTokenBalance', 'feeGrowthEntryA', 'feeGrowthEntryB', 'unclaimedFeesA', 'unclaimedFeesB']);
             userPosUpdateSuccess = await new Promise<boolean>((resolve) => {
                 cache.insertOne('userLiquidityPositions', newUserPositionDB, (err, success) => {
                     if (err || !success) {
@@ -201,11 +230,8 @@ export async function process(data: PoolAddLiquidityDataDB, sender: string, id: 
 
         if (!userPosUpdateSuccess) {
             logger.error(`[pool-add-liquidity] CRITICAL: Failed to update user position. Rolling back pool update and token debits.`);
-            // Rollback token debits
             await adjustBalance(addLiquidityData.provider, pool.tokenA_symbol, addLiquidityData.tokenA_amount);
             await adjustBalance(addLiquidityData.provider, pool.tokenB_symbol, addLiquidityData.tokenB_amount);
-            
-            // Rollback pool update
             await cache.updateOnePromise(
                 'liquidityPools',
                 { _id: addLiquidityData.poolId },
@@ -214,9 +240,11 @@ export async function process(data: PoolAddLiquidityDataDB, sender: string, id: 
                         {
                             tokenA_reserve: pool.tokenA_reserve,
                             tokenB_reserve: pool.tokenB_reserve,
-                            totalLpTokens: pool.totalLpTokens
+                            totalLpTokens: pool.totalLpTokens,
+                            feeGrowthGlobalA: pool.feeGrowthGlobalA,
+                            feeGrowthGlobalB: pool.feeGrowthGlobalB
                         },
-                        ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens']
+                        ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens', 'feeGrowthGlobalA', 'feeGrowthGlobalB']
                     )
                 }
             );
@@ -225,7 +253,6 @@ export async function process(data: PoolAddLiquidityDataDB, sender: string, id: 
 
         logger.debug(`[pool-add-liquidity] Provider ${addLiquidityData.provider} added liquidity to pool ${addLiquidityData.poolId}. Token A: ${bigintToString(addLiquidityData.tokenA_amount)}, Token B: ${bigintToString(addLiquidityData.tokenB_amount)}, LP tokens minted: ${bigintToString(lpTokensToMint)}`);
 
-        // Log event using the new centralized logger
         const eventData = {
             poolId: addLiquidityData.poolId,
             provider: addLiquidityData.provider,
@@ -240,4 +267,4 @@ export async function process(data: PoolAddLiquidityDataDB, sender: string, id: 
         logger.error(`[pool-add-liquidity] Error processing add liquidity for pool ${data.poolId} by ${sender}: ${error}`);
         return false;
     }
-} 
+}

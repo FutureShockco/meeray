@@ -62,6 +62,10 @@ export interface LiquidityPool {
   createdAt: string;        // ISO date string
   lastTradeAt?: string;     // ISO date string of last trade
   status: string;           // Pool status (e.g., 'active', 'paused')
+
+  // Fee accounting fields
+  feeGrowthGlobalA?: bigint; // Cumulative fee per LP token for token A (scaled by 1e18)
+  feeGrowthGlobalB?: bigint; // Cumulative fee per LP token for token B (scaled by 1e18)
 }
 
 // Represents a user's share in a liquidity pool
@@ -72,8 +76,12 @@ export interface UserLiquidityPosition {
   lpTokenBalance: bigint;     // Amount of LP tokens held by this provider for this pool
   createdAt: string;          // ISO Date string
   lastUpdatedAt?: string;     // ISO Date string
-  // lastProvidedAt: string;  // This might be more specific than lastUpdatedAt if needed
-  // lastWithdrawnAt?: string; // This might be more specific than lastUpdatedAt if needed
+
+  // Fee accounting fields
+  feeGrowthEntryA?: bigint; // User's last fee growth checkpoint for token A
+  feeGrowthEntryB?: bigint; // User's last fee growth checkpoint for token B
+  unclaimedFeesA?: bigint;  // Unclaimed fees in token A
+  unclaimedFeesB?: bigint;  // Unclaimed fees in token B
 }
 
 /**
@@ -84,4 +92,4 @@ export type PoolAddLiquidityDataDB = BigIntToString<PoolAddLiquidityData>;
 export type PoolRemoveLiquidityDataDB = BigIntToString<PoolRemoveLiquidityData>;
 export type PoolSwapDataDB = BigIntToString<PoolSwapData>;
 export type LiquidityPoolDB = BigIntToString<LiquidityPool>;
-export type UserLiquidityPositionDB = BigIntToString<UserLiquidityPosition>; 
+export type UserLiquidityPositionDB = BigIntToString<UserLiquidityPosition>;

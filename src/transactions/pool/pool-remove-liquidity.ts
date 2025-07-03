@@ -92,6 +92,34 @@ export async function process(dataDb: PoolRemoveLiquidityDataDB, sender: string,
         return false;
     }
 
+    // --- FEE ACCOUNTING LOGIC ---
+    // Get pool fee growth fields (default to 0n if missing)
+    const feeGrowthGlobalA = typeof poolFromDb.feeGrowthGlobalA === 'bigint' ? poolFromDb.feeGrowthGlobalA : BigInt(poolFromDb.feeGrowthGlobalA || '0');
+    const feeGrowthGlobalB = typeof poolFromDb.feeGrowthGlobalB === 'bigint' ? poolFromDb.feeGrowthGlobalB : BigInt(poolFromDb.feeGrowthGlobalB || '0');
+    // Get user fee fields (default to 0n if missing)
+    const feeGrowthEntryA = typeof userPositionFromDb.feeGrowthEntryA === 'bigint' ? userPositionFromDb.feeGrowthEntryA : BigInt(userPositionFromDb.feeGrowthEntryA || '0');
+    const feeGrowthEntryB = typeof userPositionFromDb.feeGrowthEntryB === 'bigint' ? userPositionFromDb.feeGrowthEntryB : BigInt(userPositionFromDb.feeGrowthEntryB || '0');
+    const unclaimedFeesA = typeof userPositionFromDb.unclaimedFeesA === 'bigint' ? userPositionFromDb.unclaimedFeesA : BigInt(userPositionFromDb.unclaimedFeesA || '0');
+    const unclaimedFeesB = typeof userPositionFromDb.unclaimedFeesB === 'bigint' ? userPositionFromDb.unclaimedFeesB : BigInt(userPositionFromDb.unclaimedFeesB || '0');
+    // Calculate fees to pay out for the amount being removed
+    const payoutFeesA = (feeGrowthGlobalA - feeGrowthEntryA) * data.lpTokenAmount / BigInt(1e18) + unclaimedFeesA * data.lpTokenAmount / userPosition.lpTokenBalance;
+    const payoutFeesB = (feeGrowthGlobalB - feeGrowthEntryB) * data.lpTokenAmount / BigInt(1e18) + unclaimedFeesB * data.lpTokenAmount / userPosition.lpTokenBalance;
+    // Credit fees to user
+    if (payoutFeesA > 0n) await adjustBalance(data.provider, pool.tokenA_symbol, payoutFeesA);
+    if (payoutFeesB > 0n) await adjustBalance(data.provider, pool.tokenB_symbol, payoutFeesB);
+    // Calculate new unclaimed fees for any remaining LP tokens
+    let newUnclaimedFeesA = unclaimedFeesA - payoutFeesA;
+    let newUnclaimedFeesB = unclaimedFeesB - payoutFeesB;
+    if (userPosition.lpTokenBalance - data.lpTokenAmount > 0n) {
+        // User still has LP tokens: update feeGrowthEntry to current, keep any remaining unclaimed fees
+        newUnclaimedFeesA = (feeGrowthGlobalA - feeGrowthEntryA) * (userPosition.lpTokenBalance - data.lpTokenAmount) / BigInt(1e18) + (unclaimedFeesA * (userPosition.lpTokenBalance - data.lpTokenAmount)) / userPosition.lpTokenBalance;
+        newUnclaimedFeesB = (feeGrowthGlobalB - feeGrowthEntryB) * (userPosition.lpTokenBalance - data.lpTokenAmount) / BigInt(1e18) + (unclaimedFeesB * (userPosition.lpTokenBalance - data.lpTokenAmount)) / userPosition.lpTokenBalance;
+    } else {
+        // User is removing all liquidity: reset fee fields
+        newUnclaimedFeesA = 0n;
+        newUnclaimedFeesB = 0n;
+    }
+
     const poolUpdateSuccess = await cache.updateOnePromise(
       'liquidityPools',
       { _id: data.poolId },
@@ -122,7 +150,7 @@ export async function process(dataDb: PoolRemoveLiquidityDataDB, sender: string,
 
     const newLpBalance = userPosition.lpTokenBalance - data.lpTokenAmount;
     const userPositionUpdatePayload = {
-        ...convertToString({ lpTokenBalance: newLpBalance }, ['lpTokenBalance']),
+        ...convertToString({ lpTokenBalance: newLpBalance, feeGrowthEntryA: feeGrowthGlobalA, feeGrowthEntryB: feeGrowthGlobalB, unclaimedFeesA: newUnclaimedFeesA, unclaimedFeesB: newUnclaimedFeesB }, ['lpTokenBalance', 'feeGrowthEntryA', 'feeGrowthEntryB', 'unclaimedFeesA', 'unclaimedFeesB']),
         lastUpdatedAt: new Date().toISOString()
     };
     const userPositionUpdateSuccess = await cache.updateOnePromise(
@@ -187,4 +215,4 @@ export async function process(dataDb: PoolRemoveLiquidityDataDB, sender: string,
     logger.error(`[pool-remove-liquidity] Error processing remove liquidity for pool ${data.poolId} by ${sender}: ${error}`);
     return false;
   }
-} 
+}

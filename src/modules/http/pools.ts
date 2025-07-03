@@ -188,37 +188,61 @@ const transformPoolData = (poolData: any): any => {
         transformed.tokenA_reserve = formattedReserve.amount;
         transformed.rawTokenA_reserve = formattedReserve.rawAmount;
     }
-    
     if (transformed.tokenB_reserve) {
         const formattedReserve = formatTokenAmountForResponse(transformed.tokenB_reserve, transformed.tokenB_symbol);
         transformed.tokenB_reserve = formattedReserve.amount;
         transformed.rawTokenB_reserve = formattedReserve.rawAmount;
     }
-    
     if (transformed.totalLpTokens) {
-        // LP tokens don't have a specific symbol, so we'll format them as raw values
         const lpTokensBigInt = toBigInt(transformed.totalLpTokens);
         transformed.totalLpTokens = lpTokensBigInt.toString();
         transformed.rawTotalLpTokens = lpTokensBigInt.toString();
     }
-
+    // --- Fee accounting fields ---
+    if (poolData.feeGrowthGlobalA !== undefined) {
+        transformed.feeGrowthGlobalA = poolData.feeGrowthGlobalA.toString();
+    }
+    if (poolData.feeGrowthGlobalB !== undefined) {
+        transformed.feeGrowthGlobalB = poolData.feeGrowthGlobalB.toString();
+    }
     return transformed;
 };
 
-const transformUserLiquidityPositionData = (positionData: any): any => {
+const transformUserLiquidityPositionData = (positionData: any, poolData?: any): any => {
     if (!positionData) return positionData;
     const transformed = { ...positionData };
     transformed.id = transformed._id.toString();
     if (transformed._id && transformed.id !== transformed._id) delete transformed._id;
-
-    // Format LP token balance
     if (transformed.lpTokenBalance) {
-        // LP tokens don't have a specific symbol, so we'll format them as raw values
         const lpBalanceBigInt = toBigInt(transformed.lpTokenBalance);
         transformed.lpTokenBalance = lpBalanceBigInt.toString();
         transformed.rawLpTokenBalance = lpBalanceBigInt.toString();
     }
-    
+    // --- Fee accounting fields ---
+    if (positionData.feeGrowthEntryA !== undefined) {
+        transformed.feeGrowthEntryA = positionData.feeGrowthEntryA.toString();
+    }
+    if (positionData.feeGrowthEntryB !== undefined) {
+        transformed.feeGrowthEntryB = positionData.feeGrowthEntryB.toString();
+    }
+    if (positionData.unclaimedFeesA !== undefined) {
+        transformed.unclaimedFeesA = positionData.unclaimedFeesA.toString();
+    }
+    if (positionData.unclaimedFeesB !== undefined) {
+        transformed.unclaimedFeesB = positionData.unclaimedFeesB.toString();
+    }
+    // Optionally, compute claimable fees if poolData is provided
+    if (poolData) {
+        const lpTokenBalance = toBigInt(positionData.lpTokenBalance || '0');
+        const feeGrowthEntryA = toBigInt(positionData.feeGrowthEntryA || '0');
+        const feeGrowthEntryB = toBigInt(positionData.feeGrowthEntryB || '0');
+        const unclaimedFeesA = toBigInt(positionData.unclaimedFeesA || '0');
+        const unclaimedFeesB = toBigInt(positionData.unclaimedFeesB || '0');
+        const feeGrowthGlobalA = toBigInt(poolData.feeGrowthGlobalA || '0');
+        const feeGrowthGlobalB = toBigInt(poolData.feeGrowthGlobalB || '0');
+        transformed.claimableFeesA = (feeGrowthGlobalA - feeGrowthEntryA) * lpTokenBalance / BigInt(1e18) + unclaimedFeesA;
+        transformed.claimableFeesB = (feeGrowthGlobalB - feeGrowthEntryB) * lpTokenBalance / BigInt(1e18) + unclaimedFeesB;
+    }
     return transformed;
 };
 
@@ -228,7 +252,92 @@ router.get('/', (async (req: Request, res: Response) => {
     try {
         const poolsFromDB = await cache.findPromise('liquidityPools', {}, { limit, skip, sort: { _id: 1 } });
         const total = await mongo.getDb().collection('liquidityPools').countDocuments({});
-        const pools = (poolsFromDB || []).map(transformPoolData);
+        // For APR calculation, fetch swap events for each pool for the last 365 days
+        const now = new Date();
+        const yearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+        const poolIds = (poolsFromDB || []).map(p => (p._id ?? '').toString()).filter(id => !!id);
+        // Fetch all swap events for all pools in the page in one query
+        const eventsByPool: Record<string, any[]> = {};
+        if (poolIds.length > 0) {
+            const events = await mongo.getDb().collection('events').find({
+                'eventType': 'poolSwap',
+                'eventData.poolId': { $in: poolIds },
+                'createdAt': { $gte: yearAgo.toISOString() }
+            }).toArray();
+            for (const event of events) {
+                const poolId = event.eventData.poolId?.toString();
+                if (!poolId) continue;
+                if (!eventsByPool[poolId]) eventsByPool[poolId] = [];
+                eventsByPool[poolId].push(event);
+            }
+        }
+        // For 24h fees calculation
+        const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        let events24hByPool: Record<string, any[]> = {};
+        if (poolIds.length > 0) {
+            const events24h = await mongo.getDb().collection('events').find({
+                'eventType': 'poolSwap',
+                'eventData.poolId': { $in: poolIds },
+                'createdAt': { $gte: dayAgo.toISOString() }
+            }).toArray();
+            for (const event of events24h) {
+                const poolId = event.eventData.poolId?.toString();
+                if (!poolId) continue;
+                if (!events24hByPool[poolId]) events24hByPool[poolId] = [];
+                events24hByPool[poolId].push(event);
+            }
+        }
+        const pools = (poolsFromDB || []).map(poolData => {
+            const poolIdStr = (poolData._id ?? '').toString();
+            if (!poolIdStr) return null; // skip pools without _id
+            // Calculate yearly APR for each pool
+            let totalFeesA = 0n, totalFeesB = 0n;
+            const events = eventsByPool[poolIdStr] || [];
+            for (const event of events) {
+                const e = event.eventData;
+                const feeTier = BigInt(e.feeTier || 300);
+                const feeDivisor = BigInt(10000);
+                const amountIn = toBigInt(e.amountIn);
+                const tokenIn = e.tokenIn_symbol;
+                const feeAmount = (amountIn * feeTier) / feeDivisor;
+                if (tokenIn === e.tokenA_symbol || tokenIn === e.tokenIn_symbol) {
+                    totalFeesA += feeAmount;
+                } else {
+                    totalFeesB += feeAmount;
+                }
+            }
+            // Calculate 24h fees for each pool
+            let fees24hA = 0n, fees24hB = 0n;
+            const events24h = events24hByPool[poolIdStr] || [];
+            for (const event of events24h) {
+                const e = event.eventData;
+                const feeTier = BigInt(e.feeTier || 300);
+                const feeDivisor = BigInt(10000);
+                const amountIn = toBigInt(e.amountIn);
+                const tokenIn = e.tokenIn_symbol;
+                const feeAmount = (amountIn * feeTier) / feeDivisor;
+                if (tokenIn === e.tokenA_symbol || tokenIn === e.tokenIn_symbol) {
+                    fees24hA += feeAmount;
+                } else {
+                    fees24hB += feeAmount;
+                }
+            }
+            const tvlA = toBigInt(poolData.tokenA_reserve || '0');
+            const tvlB = toBigInt(poolData.tokenB_reserve || '0');
+            let aprA = 0, aprB = 0;
+            if (tvlA > 0n) {
+                aprA = Number(totalFeesA) / Number(tvlA);
+            }
+            if (tvlB > 0n) {
+                aprB = Number(totalFeesB) / Number(tvlB);
+            }
+            const transformed = transformPoolData(poolData);
+            transformed.aprA = aprA;
+            transformed.aprB = aprB;
+            transformed.fees24hA = fees24hA.toString();
+            transformed.fees24hB = fees24hB.toString();
+            return transformed;
+        }).filter(Boolean);
         res.json({ data: pools, total, limit, skip });
     } catch (error: any) {
         logger.error('Error fetching liquidity pools:', error);
@@ -307,7 +416,8 @@ router.get('/positions/:positionId', (async (req: Request, res: Response) => {
         if (!positionFromDB) {
             return res.status(404).json({ message: `Liquidity position ${positionId} not found.` });
         }
-        res.json(transformUserLiquidityPositionData(positionFromDB));
+        const poolFromDB = await cache.findOnePromise('liquidityPools', { _id: positionFromDB.poolId });
+        res.json(transformUserLiquidityPositionData(positionFromDB, poolFromDB));
     } catch (error: any) {
         logger.error(`Error fetching liquidity position ${positionId}:`, error);
         res.status(500).json({ message: 'Error fetching liquidity position', error: error.message });
@@ -323,7 +433,8 @@ router.get('/positions/user/:userId/pool/:poolId', (async (req: Request, res: Re
         if (!positionFromDB) {
             return res.status(404).json({ message: `Liquidity position for user ${userId} in pool ${poolId} not found.` });
         }
-        res.json(transformUserLiquidityPositionData(positionFromDB));
+        const poolFromDB = await cache.findOnePromise('liquidityPools', { _id: poolId });
+        res.json(transformUserLiquidityPositionData(positionFromDB, poolFromDB));
     } catch (error: any) {
         logger.error(`Error fetching position for user ${userId} in pool ${poolId}:`, error);
         res.status(500).json({ message: 'Error fetching user liquidity position in pool', error: error.message });
@@ -437,6 +548,89 @@ router.post('/route-swap', (async (req: Request, res: Response) => {
     }
 }) as RequestHandler);
 
+// --- Pool Analytics ---
+// GET /pools/:poolId/analytics?period=hour|day|week|month|year
+router.get('/:poolId/analytics', (async (req: Request, res: Response) => {
+    const { poolId } = req.params;
+    const period = req.query.period as string || 'day'; // default to 'day'
+    const validPeriods = ['hour', 'day', 'week', 'month', 'year'];
+    if (!validPeriods.includes(period)) {
+        return res.status(400).json({ message: `Invalid period. Must be one of: ${validPeriods.join(', ')}` });
+    }
+    // Calculate start time for the period
+    const now = new Date();
+    let startTime: Date;
+    switch (period) {
+        case 'hour': startTime = new Date(now.getTime() - 60 * 60 * 1000); break;
+        case 'day': startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000); break;
+        case 'week': startTime = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); break;
+        case 'month': startTime = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); break;
+        case 'year': startTime = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000); break;
+        default: startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    }
+    try {
+        // Get all swap events for this pool in the period
+        const events = await mongo.getDb().collection('events').find({
+            'eventType': 'poolSwap',
+            'eventData.poolId': poolId,
+            'createdAt': { $gte: startTime.toISOString() }
+        }).toArray();
+        // Calculate total volume and fees
+        let totalVolumeA = 0n, totalVolumeB = 0n, totalFeesA = 0n, totalFeesB = 0n;
+        for (const event of events) {
+            const e = event.eventData;
+            const feeTier = BigInt(e.feeTier || 300);
+            const feeDivisor = BigInt(10000);
+            const amountIn = toBigInt(e.amountIn);
+            const tokenIn = e.tokenIn_symbol;
+            // Fee is always taken from amountIn
+            const feeAmount = (amountIn * feeTier) / feeDivisor;
+            if (tokenIn === e.tokenA_symbol || tokenIn === e.tokenIn_symbol) {
+                totalVolumeA += amountIn;
+                totalFeesA += feeAmount;
+            } else {
+                totalVolumeB += amountIn;
+                totalFeesB += feeAmount;
+            }
+        }
+        // Get pool state for TVL and APR calculation
+        const poolFromDB = await cache.findOnePromise('liquidityPools', { _id: poolId });
+        if (!poolFromDB) {
+            return res.status(404).json({ message: `Liquidity pool ${poolId} not found.` });
+        }
+        const pool = poolFromDB;
+        // TVL = tokenA_reserve + tokenB_reserve (in raw units)
+        const tvlA = toBigInt(pool.tokenA_reserve || '0');
+        const tvlB = toBigInt(pool.tokenB_reserve || '0');
+        // APR = (fees in period * periods per year) / TVL
+        // For simplicity, use tokenA as base for APR
+        let aprA = 0, aprB = 0;
+        const periodsPerYear: Record<string, number> = { hour: 8760, day: 365, week: 52, month: 12, year: 1 };
+        if (tvlA > 0n) {
+            aprA = Number(totalFeesA) * periodsPerYear[period] / Number(tvlA);
+        }
+        if (tvlB > 0n) {
+            aprB = Number(totalFeesB) * periodsPerYear[period] / Number(tvlB);
+        }
+        res.json({
+            poolId,
+            period,
+            from: startTime.toISOString(),
+            to: now.toISOString(),
+            totalVolumeA: totalVolumeA.toString(),
+            totalVolumeB: totalVolumeB.toString(),
+            totalFeesA: totalFeesA.toString(),
+            totalFeesB: totalFeesB.toString(),
+            tvlA: tvlA.toString(),
+            tvlB: tvlB.toString(),
+            aprA,
+            aprB
+        });
+    } catch (error: any) {
+        logger.error(`Error fetching analytics for pool ${poolId}:`, error);
+        res.status(500).json({ message: 'Error fetching pool analytics', error: error.message });
+    }
+}) as RequestHandler);
 
 
 export default router;

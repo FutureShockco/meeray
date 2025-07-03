@@ -402,7 +402,14 @@ async function processSingleHopSwap(data: PoolSwapData, sender: string, transact
         logger.warn(`[pool-swap] Pool ${data.poolId} not found during processing.`);
         return false;
     }
-    const pool = convertToBigInt<LiquidityPool>(poolFromDb, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens']);
+    // Ensure fee accounting fields are present and initialized as bigint
+    let feeGrowthGlobalA = typeof poolFromDb.feeGrowthGlobalA === 'bigint' ? poolFromDb.feeGrowthGlobalA : BigInt(poolFromDb.feeGrowthGlobalA || '0');
+    let feeGrowthGlobalB = typeof poolFromDb.feeGrowthGlobalB === 'bigint' ? poolFromDb.feeGrowthGlobalB : BigInt(poolFromDb.feeGrowthGlobalB || '0');
+    const pool = {
+        ...convertToBigInt<LiquidityPool>(poolFromDb, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens']),
+        feeGrowthGlobalA,
+        feeGrowthGlobalB
+    };
 
     // Determine token indices
     const tokenInIsA = data.tokenIn_symbol === pool.tokenA_symbol;
@@ -414,11 +421,17 @@ async function processSingleHopSwap(data: PoolSwapData, sender: string, transact
         // Calculate output amount using constant product formula (same as HTTP API)
     const amountOut = getOutputAmountBigInt(data.amountIn, reserveIn, reserveOut, pool.feeTier);
 
-    if (BigIntMath.isZero(amountOut)) {
-        logger.warn(`[pool-swap] Calculated swap amountOut is zero for pool ${data.poolId}. amountIn: ${bigintToString(data.amountIn)}, reserveIn: ${bigintToString(reserveIn)}, reserveOut: ${bigintToString(reserveOut)}`);
-        if (data.minAmountOut && data.minAmountOut > BigInt(0)) {
-            logger.warn(`[pool-swap] Output amount is zero and minAmountOut is ${bigintToString(data.minAmountOut)}. Swap failed.`);
-            return false;
+    // Calculate fee amount and update feeGrowthGlobal
+    const feeDivisor = BigInt(10000);
+    const feeAmount = (data.amountIn * BigInt(pool.feeTier)) / feeDivisor;
+    let newFeeGrowthGlobalA = pool.feeGrowthGlobalA;
+    let newFeeGrowthGlobalB = pool.feeGrowthGlobalB;
+    if (pool.totalLpTokens > 0n && feeAmount > 0n) {
+        const feeGrowthDelta = (feeAmount * BigInt(1e18)) / pool.totalLpTokens;
+        if (tokenInIsA) {
+            newFeeGrowthGlobalA = (pool.feeGrowthGlobalA || 0n) + feeGrowthDelta;
+        } else {
+            newFeeGrowthGlobalB = (pool.feeGrowthGlobalB || 0n) + feeGrowthDelta;
         }
     }
 
@@ -447,7 +460,9 @@ async function processSingleHopSwap(data: PoolSwapData, sender: string, transact
 
     // Save updated pool state
     const poolUpdateSet: any = {
-        lastTradeAt: new Date().toISOString()
+        lastTradeAt: new Date().toISOString(),
+        feeGrowthGlobalA: newFeeGrowthGlobalA.toString(),
+        feeGrowthGlobalB: newFeeGrowthGlobalB.toString()
     };
     if (tokenInIsA) {
         poolUpdateSet.tokenA_reserve = bigintToString(newReserveIn);
@@ -502,7 +517,14 @@ async function processRoutedSwap(data: PoolSwapData, sender: string, transaction
             logger.warn(`[pool-swap] Pool ${hop.poolId} not found during processing for hop ${i + 1}.`);
             return false;
         }
-        const pool = convertToBigInt<LiquidityPool>(poolFromDb, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens']);
+        // Ensure fee accounting fields are present and initialized as bigint
+        let feeGrowthGlobalA = typeof poolFromDb.feeGrowthGlobalA === 'bigint' ? poolFromDb.feeGrowthGlobalA : BigInt(poolFromDb.feeGrowthGlobalA || '0');
+        let feeGrowthGlobalB = typeof poolFromDb.feeGrowthGlobalB === 'bigint' ? poolFromDb.feeGrowthGlobalB : BigInt(poolFromDb.feeGrowthGlobalB || '0');
+        const pool = {
+            ...convertToBigInt<LiquidityPool>(poolFromDb, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens']),
+            feeGrowthGlobalA,
+            feeGrowthGlobalB
+        };
 
         // Determine token indices for this hop
         const tokenInIsA = hop.tokenIn_symbol === pool.tokenA_symbol;
@@ -513,6 +535,20 @@ async function processRoutedSwap(data: PoolSwapData, sender: string, transaction
 
                 // Calculate output amount for this hop (same as HTTP API)
         const amountOut = getOutputAmountBigInt(currentAmountIn, reserveIn, reserveOut, pool.feeTier);
+
+        // Calculate fee amount and update feeGrowthGlobal
+        const feeDivisor = BigInt(10000);
+        const feeAmount = (currentAmountIn * BigInt(pool.feeTier)) / feeDivisor;
+        let newFeeGrowthGlobalA = pool.feeGrowthGlobalA;
+        let newFeeGrowthGlobalB = pool.feeGrowthGlobalB;
+        if (pool.totalLpTokens > 0n && feeAmount > 0n) {
+            const feeGrowthDelta = (feeAmount * BigInt(1e18)) / pool.totalLpTokens;
+            if (tokenInIsA) {
+                newFeeGrowthGlobalA = (pool.feeGrowthGlobalA || 0n) + feeGrowthDelta;
+            } else {
+                newFeeGrowthGlobalB = (pool.feeGrowthGlobalB || 0n) + feeGrowthDelta;
+            }
+        }
 
         // Check minimum output for this hop
         if (hop.minAmountOut && amountOut < hop.minAmountOut) {
@@ -539,7 +575,9 @@ async function processRoutedSwap(data: PoolSwapData, sender: string, transaction
 
         // Save updated pool state for this hop
         const poolUpdateSet: any = {
-            lastTradeAt: new Date().toISOString()
+            lastTradeAt: new Date().toISOString(),
+            feeGrowthGlobalA: newFeeGrowthGlobalA.toString(),
+            feeGrowthGlobalB: newFeeGrowthGlobalB.toString()
         };
         if (tokenInIsA) {
             poolUpdateSet.tokenA_reserve = bigintToString(newReserveIn);
@@ -646,4 +684,4 @@ async function processAutoRouteSwap(data: PoolSwapData, sender: string, transact
     logger.info(`[pool-swap] Auto-route swap: ${bigintToString(data.amountIn)} ${data.fromTokenSymbol} -> ${bigintToString(expectedFinalOutput)} ${data.toTokenSymbol} (min: ${bigintToString(finalMinAmountOut)})`);
 
     return await processRoutedSwap(routedData, sender, transactionId);
-} 
+}
