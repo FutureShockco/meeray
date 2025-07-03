@@ -549,25 +549,41 @@ router.post('/route-swap', (async (req: Request, res: Response) => {
 }) as RequestHandler);
 
 // --- Pool Analytics ---
-// GET /pools/:poolId/analytics?period=hour|day|week|month|year
+// GET /pools/:poolId/analytics?period=hour|day|week|month|year[&interval=hour|day|week]
 router.get('/:poolId/analytics', (async (req: Request, res: Response) => {
     const { poolId } = req.params;
     const period = req.query.period as string || 'day'; // default to 'day'
+    const intervalParam = req.query.interval as string | undefined;
     const validPeriods = ['hour', 'day', 'week', 'month', 'year'];
+    const validIntervals = ['hour', 'day', 'week'];
     if (!validPeriods.includes(period)) {
         return res.status(400).json({ message: `Invalid period. Must be one of: ${validPeriods.join(', ')}` });
     }
     // Calculate start time for the period
     const now = new Date();
     let startTime: Date;
+    let defaultInterval: string;
     switch (period) {
-        case 'hour': startTime = new Date(now.getTime() - 60 * 60 * 1000); break;
-        case 'day': startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000); break;
-        case 'week': startTime = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); break;
-        case 'month': startTime = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); break;
-        case 'year': startTime = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000); break;
-        default: startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        case 'hour': startTime = new Date(now.getTime() - 60 * 60 * 1000); defaultInterval = 'minute'; break;
+        case 'day': startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000); defaultInterval = 'hour'; break;
+        case 'week': startTime = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); defaultInterval = 'day'; break;
+        case 'month': startTime = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); defaultInterval = 'day'; break;
+        case 'year': startTime = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000); defaultInterval = 'month'; break;
+        default: startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000); defaultInterval = 'hour';
     }
+    // Determine interval
+    let interval = intervalParam;
+    if (!interval) {
+        // Auto-select interval for ~10 buckets
+        const ms = now.getTime() - startTime.getTime();
+        const approxBucketMs = Math.max(Math.floor(ms / 10), 1);
+        if (ms <= 2 * 60 * 60 * 1000) interval = 'minute'; // <=2h: minute
+        else if (ms <= 2 * 24 * 60 * 60 * 1000) interval = 'hour'; // <=2d: hour
+        else if (ms <= 60 * 24 * 60 * 60 * 1000) interval = 'day'; // <=2mo: day
+        else interval = 'week';
+    }
+    // If interval is not valid, fallback to defaultInterval
+    if (!['minute', 'hour', 'day', 'week', 'month'].includes(interval)) interval = defaultInterval;
     try {
         // Get all swap events for this pool in the period
         const events = await mongo.getDb().collection('events').find({
@@ -575,56 +591,124 @@ router.get('/:poolId/analytics', (async (req: Request, res: Response) => {
             'eventData.poolId': poolId,
             'createdAt': { $gte: startTime.toISOString() }
         }).toArray();
-        // Calculate total volume and fees
-        let totalVolumeA = 0n, totalVolumeB = 0n, totalFeesA = 0n, totalFeesB = 0n;
+        // If interval is not set or is 'aggregate', return aggregate as before
+        if (!interval || interval === 'aggregate') {
+            // Calculate total volume and fees
+            let totalVolumeA = 0n, totalVolumeB = 0n, totalFeesA = 0n, totalFeesB = 0n;
+            for (const event of events) {
+                const e = event.eventData;
+                const feeTier = BigInt(e.feeTier || 300);
+                const feeDivisor = BigInt(10000);
+                const amountIn = toBigInt(e.amountIn);
+                const tokenIn = e.tokenIn_symbol;
+                // Fee is always taken from amountIn
+                const feeAmount = (amountIn * feeTier) / feeDivisor;
+                if (tokenIn === e.tokenA_symbol || tokenIn === e.tokenIn_symbol) {
+                    totalVolumeA += amountIn;
+                    totalFeesA += feeAmount;
+                } else {
+                    totalVolumeB += amountIn;
+                    totalFeesB += feeAmount;
+                }
+            }
+            // Get pool state for TVL and APR calculation
+            const poolFromDB = await cache.findOnePromise('liquidityPools', { _id: poolId });
+            if (!poolFromDB) {
+                return res.status(404).json({ message: `Liquidity pool ${poolId} not found.` });
+            }
+            const pool = poolFromDB;
+            // TVL = tokenA_reserve + tokenB_reserve (in raw units)
+            const tvlA = toBigInt(pool.tokenA_reserve || '0');
+            const tvlB = toBigInt(pool.tokenB_reserve || '0');
+            // APR = (fees in period * periods per year) / TVL
+            // For simplicity, use tokenA as base for APR
+            let aprA = 0, aprB = 0;
+            const periodsPerYear: Record<string, number> = { hour: 8760, day: 365, week: 52, month: 12, year: 1 };
+            if (tvlA > 0n) {
+                aprA = Number(totalFeesA) * periodsPerYear[period] / Number(tvlA);
+            }
+            if (tvlB > 0n) {
+                aprB = Number(totalFeesB) * periodsPerYear[period] / Number(tvlB);
+            }
+            return res.json({
+                poolId,
+                period,
+                from: startTime.toISOString(),
+                to: now.toISOString(),
+                totalVolumeA: totalVolumeA.toString(),
+                totalVolumeB: totalVolumeB.toString(),
+                totalFeesA: totalFeesA.toString(),
+                totalFeesB: totalFeesB.toString(),
+                tvlA: tvlA.toString(),
+                tvlB: tvlB.toString(),
+                aprA,
+                aprB
+            });
+        }
+        // Otherwise, return time-series data
+        // Determine bucket size in ms
+        let bucketMs = 0;
+        switch (interval) {
+            case 'minute': bucketMs = 60 * 1000; break;
+            case 'hour': bucketMs = 60 * 60 * 1000; break;
+            case 'day': bucketMs = 24 * 60 * 60 * 1000; break;
+            case 'week': bucketMs = 7 * 24 * 60 * 60 * 1000; break;
+            case 'month': bucketMs = 30 * 24 * 60 * 60 * 1000; break;
+            default: bucketMs = 60 * 60 * 1000;
+        }
+        // Prepare buckets
+        const bucketCount = Math.ceil((now.getTime() - startTime.getTime()) / bucketMs);
+        const buckets: Array<{
+            timestamp: string,
+            volumeA: bigint,
+            volumeB: bigint,
+            feesA: bigint,
+            feesB: bigint
+        }> = [];
+        for (let i = 0; i < bucketCount; i++) {
+            const bucketStart = new Date(startTime.getTime() + i * bucketMs);
+            buckets.push({
+                timestamp: bucketStart.toISOString(),
+                volumeA: 0n,
+                volumeB: 0n,
+                feesA: 0n,
+                feesB: 0n
+            });
+        }
+        // Assign events to buckets
         for (const event of events) {
             const e = event.eventData;
+            const createdAt = new Date(event.createdAt).getTime();
+            const bucketIdx = Math.floor((createdAt - startTime.getTime()) / bucketMs);
+            if (bucketIdx < 0 || bucketIdx >= buckets.length) continue;
             const feeTier = BigInt(e.feeTier || 300);
             const feeDivisor = BigInt(10000);
             const amountIn = toBigInt(e.amountIn);
             const tokenIn = e.tokenIn_symbol;
-            // Fee is always taken from amountIn
             const feeAmount = (amountIn * feeTier) / feeDivisor;
             if (tokenIn === e.tokenA_symbol || tokenIn === e.tokenIn_symbol) {
-                totalVolumeA += amountIn;
-                totalFeesA += feeAmount;
+                buckets[bucketIdx].volumeA += amountIn;
+                buckets[bucketIdx].feesA += feeAmount;
             } else {
-                totalVolumeB += amountIn;
-                totalFeesB += feeAmount;
+                buckets[bucketIdx].volumeB += amountIn;
+                buckets[bucketIdx].feesB += feeAmount;
             }
         }
-        // Get pool state for TVL and APR calculation
-        const poolFromDB = await cache.findOnePromise('liquidityPools', { _id: poolId });
-        if (!poolFromDB) {
-            return res.status(404).json({ message: `Liquidity pool ${poolId} not found.` });
-        }
-        const pool = poolFromDB;
-        // TVL = tokenA_reserve + tokenB_reserve (in raw units)
-        const tvlA = toBigInt(pool.tokenA_reserve || '0');
-        const tvlB = toBigInt(pool.tokenB_reserve || '0');
-        // APR = (fees in period * periods per year) / TVL
-        // For simplicity, use tokenA as base for APR
-        let aprA = 0, aprB = 0;
-        const periodsPerYear: Record<string, number> = { hour: 8760, day: 365, week: 52, month: 12, year: 1 };
-        if (tvlA > 0n) {
-            aprA = Number(totalFeesA) * periodsPerYear[period] / Number(tvlA);
-        }
-        if (tvlB > 0n) {
-            aprB = Number(totalFeesB) * periodsPerYear[period] / Number(tvlB);
-        }
-        res.json({
+        // Format output
+        const timeSeries = buckets.map(b => ({
+            timestamp: b.timestamp,
+            volumeA: b.volumeA.toString(),
+            volumeB: b.volumeB.toString(),
+            feesA: b.feesA.toString(),
+            feesB: b.feesB.toString()
+        }));
+        return res.json({
             poolId,
             period,
+            interval,
             from: startTime.toISOString(),
             to: now.toISOString(),
-            totalVolumeA: totalVolumeA.toString(),
-            totalVolumeB: totalVolumeB.toString(),
-            totalFeesA: totalFeesA.toString(),
-            totalFeesB: totalFeesB.toString(),
-            tvlA: tvlA.toString(),
-            tvlB: tvlB.toString(),
-            aprA,
-            aprB
+            timeSeries
         });
     } catch (error: any) {
         logger.error(`Error fetching analytics for pool ${poolId}:`, error);
