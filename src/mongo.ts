@@ -232,7 +232,7 @@ export const mongo = {
             mintable: true, 
             burnable: true,
             description: 'Echelon is the native token of the Echelon Network',
-            logoUrl: 'https://echelon.network/logo.png',
+            logoUrl: '',
             websiteUrl: 'https://echelon.network'
         };
 

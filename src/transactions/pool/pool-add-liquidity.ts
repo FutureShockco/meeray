@@ -252,8 +252,38 @@ export async function process(data: PoolAddLiquidityDataDB, sender: string, id: 
             return false;
         }
 
-        // After updating userLiquidityPositions, credit LP tokens to user account
+        // After updating userLiquidityPositions, ensure LP token exists before crediting
         const lpTokenSymbol = getLpTokenSymbol(pool.tokenA_symbol, pool.tokenB_symbol);
+        const existingLpToken = await cache.findOnePromise('tokens', { _id: lpTokenSymbol });
+        if (!existingLpToken) {
+            // Create LP token entry for this pool
+            const lpToken = {
+                _id: lpTokenSymbol,
+                symbol: lpTokenSymbol,
+                name: `LP Token for ${pool.tokenA_symbol}-${pool.tokenB_symbol}`,
+                issuer: 'null',
+                precision: 8,
+                maxSupply: '1000000000000000000', // Large max supply
+                currentSupply: '0',
+                mintable: false,
+                burnable: false,
+                description: `Liquidity provider token for pool ${addLiquidityData.poolId}`,
+                createdAt: new Date().toISOString()
+            };
+            await new Promise((resolve) => {
+                cache.insertOne('tokens', lpToken, (err, result) => {
+                    if (err || !result) {
+                        logger.error(`[pool-add-liquidity] Failed to create LP token ${lpTokenSymbol}: ${err}`);
+                        resolve(false);
+                    } else {
+                        logger.info(`[pool-add-liquidity] Created LP token ${lpTokenSymbol} for pool ${addLiquidityData.poolId}`);
+                        resolve(true);
+                    }
+                });
+            });
+        }
+
+        // After updating userLiquidityPositions, credit LP tokens to user account
         const creditLPSuccess = await adjustBalance(addLiquidityData.provider, lpTokenSymbol, lpTokensToMint);
         if (!creditLPSuccess) {
             logger.error(`[pool-add-liquidity] Failed to credit LP tokens (${lpTokenSymbol}) to ${addLiquidityData.provider}. Rolling back pool and user position updates.`);

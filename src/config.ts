@@ -18,6 +18,7 @@ const config = {
   blockTime: 2940, // ms
   syncBlockTime: 1000, // ms
   witnessReward: 100000000, // 1 ECH in smallest units (1 * 10^8)
+  farmReward: 100000000, // 1 ECH in smallest units (1 * 10^8)
   steemChainId: '0000000000000000000000000000000000000000000000000000000000000000',
   steemStartBlock: process.env.NODE_ENV === 'development' ? 1534814 : 95762370, // starting Steem block for sidechain
   steemBlockDelay: 2, // blocks - delay between Steem blocks
