@@ -143,6 +143,35 @@ export async function process(data: PoolCreateDataDB, sender: string, id: string
         }
         logger.debug(`[pool-create] Liquidity Pool ${poolId} (${tokenA_symbol}-${tokenB_symbol}, Fee: ${chosenFeeTier}bps) created by ${sender}. LP Token: ${lpTokenSymbol}`);
 
+        // Create LP token for this pool if it does not exist
+        const existingLpToken = await cache.findOnePromise('tokens', { _id: lpTokenSymbol });
+        if (!existingLpToken) {
+            const lpToken = {
+                _id: lpTokenSymbol,
+                symbol: lpTokenSymbol,
+                name: `LP Token for ${tokenA_symbol}-${tokenB_symbol}`,
+                issuer: 'null',
+                precision: 8,
+                maxSupply: '1000000000000000000', // Large max supply
+                currentSupply: '0',
+                mintable: false,
+                burnable: false,
+                description: `Liquidity provider token for pool ${poolId}`,
+                createdAt: new Date().toISOString()
+            };
+            await new Promise((resolve) => {
+                cache.insertOne('tokens', lpToken, (err, result) => {
+                    if (err || !result) {
+                        logger.error(`[pool-create] Failed to create LP token ${lpTokenSymbol}: ${err}`);
+                        resolve(false);
+                    } else {
+                        logger.info(`[pool-create] Created LP token ${lpTokenSymbol} for pool ${poolId}`);
+                        resolve(true);
+                    }
+                });
+            });
+        }
+
         // Log event using the new centralized logger
         const eventData = { ...poolDocumentDB, lpTokenSymbol: lpTokenSymbol };
         await logTransactionEvent('poolCreate', sender, eventData, id);
