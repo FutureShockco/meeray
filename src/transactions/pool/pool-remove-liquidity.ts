@@ -5,6 +5,7 @@ import { PoolRemoveLiquidityData, LiquidityPool, UserLiquidityPosition, PoolRemo
 import { adjustBalance, getAccount } from '../../utils/account-utils.js';
 import { BigIntMath, toString, toBigInt, convertToBigInt, convertToString } from '../../utils/bigint-utils.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
+import { getLpTokenSymbol } from '../../utils/token-utils.js';
 
 // minTokenA_amount and minTokenB_amount are for client-side slippage, not direct processing here if only lpTokenAmount is used.
 const NUMERIC_FIELDS_REMOVE_LIQ: Array<keyof PoolRemoveLiquidityData> = ['lpTokenAmount']; 
@@ -169,6 +170,19 @@ export async function process(dataDb: PoolRemoveLiquidityDataDB, sender: string,
             },
             ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens']
         );
+        await cache.updateOnePromise('liquidityPools', { _id: data.poolId }, { $set: rollbackPoolPayload });
+        return false;
+    }
+
+    // After updating userLiquidityPositions, debit LP tokens from user account
+    const lpTokenSymbol = getLpTokenSymbol(pool.tokenA_symbol, pool.tokenB_symbol);
+    const debitLPSuccess = await adjustBalance(data.provider, lpTokenSymbol, -data.lpTokenAmount);
+    if (!debitLPSuccess) {
+        logger.error(`[pool-remove-liquidity] Failed to debit LP tokens (${lpTokenSymbol}) from ${data.provider}. Rolling back user position and pool update.`);
+        // Rollback user position and pool state
+        const rollbackUserLpPayload = { ...convertToString({ lpTokenBalance: userPosition.lpTokenBalance }, ['lpTokenBalance']) };
+        await cache.updateOnePromise('userLiquidityPositions', { _id: userLpPositionId }, { $set: rollbackUserLpPayload });
+        const rollbackPoolPayload = convertToString(pool, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens']);
         await cache.updateOnePromise('liquidityPools', { _id: data.poolId }, { $set: rollbackPoolPayload });
         return false;
     }

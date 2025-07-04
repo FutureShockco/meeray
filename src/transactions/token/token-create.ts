@@ -42,6 +42,12 @@ export async function validateTx(data: TokenCreateDataDB, sender: string): Promi
       return false;
     }
 
+    // Prevent symbols starting with 'LP_'
+    if (tokenCreationInput.symbol.startsWith('LP_')) {
+      logger.warn('[token-create] Token symbol cannot start with "LP_". This prefix is reserved for liquidity pool tokens.');
+      return false;
+    }
+
     // name: 1-50 chars
     if (!validate.string(tokenCreationInput.name, 50, 1)) {
       logger.warn('[token-create] Invalid name length (must be 1-50 characters).');

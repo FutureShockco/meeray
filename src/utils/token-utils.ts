@@ -10,7 +10,6 @@ export interface Token {
     issuer?: string;            // For non-native tokens
     maxSupply: bigint;          // Maximum token supply
     currentSupply: bigint;      // Current circulating supply
-    // other token fields
 }
 
 
@@ -42,4 +41,13 @@ export async function getTokenByIdentifier(symbol: string, issuer?: string): Pro
     }
     logger.warn(`[token-utils] Token ${symbol}${issuer ? '@' + issuer : ''} not found in 'tokens' collection.`);
     return null;
+}
+
+/**
+ * Returns the canonical LP token symbol for a pair of tokens.
+ * The order of tokens is sorted alphabetically to ensure uniqueness.
+ */
+export function getLpTokenSymbol(tokenA_symbol: string, tokenB_symbol: string): string {
+    const [token1, token2] = [tokenA_symbol, tokenB_symbol].sort();
+    return `LP_${token1}_${token2}`;
 } 

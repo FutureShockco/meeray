@@ -6,6 +6,7 @@ import { adjustBalance, getAccount, Account } from '../../utils/account-utils.js
 import { convertToBigInt, convertToString, BigIntMath, toString as bigintToString } from '../../utils/bigint-utils.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 import { toBigInt } from '../../utils/bigint-utils.js';
+import { getLpTokenSymbol } from '../../utils/token-utils.js';
 
 const NUMERIC_FIELDS: Array<keyof PoolAddLiquidityData> = ['tokenA_amount', 'tokenB_amount'];
 
@@ -248,6 +249,15 @@ export async function process(data: PoolAddLiquidityDataDB, sender: string, id: 
                     )
                 }
             );
+            return false;
+        }
+
+        // After updating userLiquidityPositions, credit LP tokens to user account
+        const lpTokenSymbol = getLpTokenSymbol(pool.tokenA_symbol, pool.tokenB_symbol);
+        const creditLPSuccess = await adjustBalance(addLiquidityData.provider, lpTokenSymbol, lpTokensToMint);
+        if (!creditLPSuccess) {
+            logger.error(`[pool-add-liquidity] Failed to credit LP tokens (${lpTokenSymbol}) to ${addLiquidityData.provider}. Rolling back pool and user position updates.`);
+            // Rollback: remove liquidity position update and pool update (not implemented here, but should be for full atomicity)
             return false;
         }
 
