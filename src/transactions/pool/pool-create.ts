@@ -6,6 +6,7 @@ import { generateDeterministicId } from '../../utils/id-utils.js';
 import config from '../../config.js';
 import { BigIntMath, convertToBigInt, convertToString, toString, toBigInt } from '../../utils/bigint-utils.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
+import { getLpTokenSymbol } from '../../utils/token-utils.js';
 
 const ALLOWED_FEE_TIERS: number[] = [10, 50, 300, 1000];
 const DEFAULT_FEE_TIER: number = 300;
@@ -142,13 +143,13 @@ export async function process(data: PoolCreateDataDB, sender: string, id: string
             return false;
         }
         logger.debug(`[pool-create] Liquidity Pool ${poolId} (${tokenA_symbol}-${tokenB_symbol}, Fee: ${chosenFeeTier}bps) created by ${sender}. LP Token: ${lpTokenSymbol}`);
-
+        const tokenSymbol = getLpTokenSymbol(tokenA_symbol, tokenB_symbol);
         // Create LP token for this pool if it does not exist
-        const existingLpToken = await cache.findOnePromise('tokens', { _id: lpTokenSymbol });
+        const existingLpToken = await cache.findOnePromise('tokens', { _id: tokenSymbol });
         if (!existingLpToken) {
             const lpToken = {
-                _id: lpTokenSymbol,
-                symbol: lpTokenSymbol,
+                _id: tokenSymbol,
+                symbol: tokenSymbol,
                 name: `LP Token for ${tokenA_symbol}-${tokenB_symbol}`,
                 issuer: 'null',
                 precision: 8,

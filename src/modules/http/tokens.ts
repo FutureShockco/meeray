@@ -21,8 +21,9 @@ const getPagination = (req: Request) => {
 router.get('/', (async (req: Request, res: Response) => {
     const { limit, skip } = getPagination(req);
     try {
-        const tokensFromDB: TokenForStorageDB[] | null = await cache.findPromise('tokens', {}, { limit, skip, sort: { _id: 1 } }) as TokenForStorageDB[] | null;
-        const total = await mongo.getDb().collection('tokens').countDocuments({});
+        const mongoQuery = { symbol: { $not: /^LP_/ } };
+        const tokensFromDB: TokenForStorageDB[] | null = await cache.findPromise('tokens', mongoQuery, { limit, skip, sort: { _id: 1 } }) as TokenForStorageDB[] | null;
+        const total = await mongo.getDb().collection('tokens').countDocuments(mongoQuery);
         
         let tokens: any[] = [];
         if (tokensFromDB && tokensFromDB.length > 0) {
@@ -57,20 +58,19 @@ router.get('/', (async (req: Request, res: Response) => {
 router.get('/new', (async (req: Request, res: Response) => {
     const { limit, skip } = getPagination(req);
     try {
-        // Ensure your TokenForStorage and TokenForStorageDB interfaces include 'createdAt'
-        // And that your token creation logic populates this field.
+        const mongoQuery = { symbol: { $not: /^LP_/ } };
         const tokensFromDB: TokenForStorageDB[] | null = await cache.findPromise(
             'tokens', 
-            {}, 
-            { limit, skip, sort: { createdAt: -1 } } // Sort by createdAt in descending order
+            mongoQuery, 
+            { limit, skip, sort: { createdAt: -1 } }
         ) as TokenForStorageDB[] | null;
-        const total = await mongo.getDb().collection('tokens').countDocuments({});
+        const total = await mongo.getDb().collection('tokens').countDocuments(mongoQuery);
         
         let tokens: any[] = [];
         if (tokensFromDB && tokensFromDB.length > 0) {
             tokens = tokensFromDB.map((tokenDoc: TokenForStorageDB) => {
-                const { maxSupply, currentSupply, createdAt, ...rest } = tokenDoc; // Include createdAt if you want to return it, otherwise it's just for sorting
-                const transformedToken: any = { ...rest, createdAt }; // Add createdAt to the response
+                const { maxSupply, currentSupply, createdAt, ...rest } = tokenDoc;
+                const transformedToken: any = { ...rest, createdAt };
                 
                 // Format supply values with proper decimals
                 if (maxSupply) {
@@ -130,8 +130,9 @@ router.get('/issuer/:issuerName', (async (req: Request, res: Response) => {
     const { issuerName } = req.params;
     const { limit, skip } = getPagination(req);
     try {
-        const tokensFromDB: TokenForStorageDB[] | null = await cache.findPromise('tokens', { issuer: issuerName }, { limit, skip, sort: { _id: 1 } }) as TokenForStorageDB[] | null;
-        const total = await mongo.getDb().collection('tokens').countDocuments({ issuer: issuerName });
+        const mongoQuery = { issuer: issuerName, symbol: { $not: /^LP_/ } };
+        const tokensFromDB: TokenForStorageDB[] | null = await cache.findPromise('tokens', mongoQuery, { limit, skip, sort: { _id: 1 } }) as TokenForStorageDB[] | null;
+        const total = await mongo.getDb().collection('tokens').countDocuments(mongoQuery);
 
         let tokens: any[] = [];
         if (tokensFromDB && tokensFromDB.length > 0) {
@@ -166,9 +167,9 @@ router.get('/name/:searchName', (async (req: Request, res: Response) => {
     const { searchName } = req.params;
     const { limit, skip } = getPagination(req);
     try {
-        const query = { name: { $regex: searchName, $options: 'i' } };
-        const tokensFromDB: TokenForStorageDB[] | null = await cache.findPromise('tokens', query, { limit, skip, sort: { _id: 1 } }) as TokenForStorageDB[] | null;
-        const total = await mongo.getDb().collection('tokens').countDocuments(query);
+        const mongoQuery = { name: { $regex: searchName, $options: 'i' }, symbol: { $not: /^LP_/ } };
+        const tokensFromDB: TokenForStorageDB[] | null = await cache.findPromise('tokens', mongoQuery, { limit, skip, sort: { _id: 1 } }) as TokenForStorageDB[] | null;
+        const total = await mongo.getDb().collection('tokens').countDocuments(mongoQuery);
 
         let tokens: any[] = [];
         if (tokensFromDB && tokensFromDB.length > 0) {
