@@ -53,6 +53,10 @@ export async function validateTx(data: NftCreateCollectionData, sender: string):
         logger.warn('[nft-create-collection] Invalid websiteUrl: incorrect format, or length (10-2048 chars).');
         return false;
     }
+    if (data.baseCoverUrl !== undefined && (!validate.string(data.baseCoverUrl, 2048, 10) || !data.baseCoverUrl.startsWith('http'))) {
+        logger.warn('[nft-create-collection] Invalid baseCoverUrl: incorrect format, or length (10-2048 chars).');
+        return false;
+    }
 
     // Validate creatorFee (royalty)
     if (data.creatorFee !== undefined) {
@@ -99,12 +103,14 @@ export async function process(data: NftCreateCollectionData, sender: string, id:
             description: data.description || '',
             creator: sender,
             currentSupply: 0,
+            nextIndex: 1,  // Start indexing from 1
             maxSupply: data.maxSupply === undefined ? Number.MAX_SAFE_INTEGER : data.maxSupply,
             mintable: data.mintable === undefined ? true : data.mintable,
             burnable: data.burnable === undefined ? true : data.burnable,
             transferable: data.transferable === undefined ? true : data.transferable,
             logoUrl: data.logoUrl || '',
             websiteUrl: data.websiteUrl || '',
+            baseCoverUrl: data.baseCoverUrl || '',
             createdAt: new Date().toISOString()
         };
 

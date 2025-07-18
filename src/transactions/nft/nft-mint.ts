@@ -4,19 +4,14 @@ import validate from '../../validation/index.js'; // Shared validation module
 import { NftMintData, NftCreateCollectionData } from './nft-interfaces.js';
 import { NftInstance } from './nft-transfer.js'; // Import NftInstance type
 // We need NftCreateCollectionData to type the fetched collection document for checks
-import crypto from 'crypto'; // For UUID generation
 import config from '../../config.js';
 import { logTransactionEvent } from '../../utils/event-logger.js'; // Import the new event logger
-
-// Helper to generate a UUID. Node.js built-in.
-function generateUUID(): string {
-    return crypto.randomUUID();
-}
 
 // Define a more specific type for what we expect from the nftCollections table
 interface CachedNftCollection extends NftCreateCollectionData {
     _id: string;
     currentSupply: number;
+    nextIndex: number;
     creator: string;
     // maxSupply is already optional in NftCreateCollectionData, will be handled as number | undefined
 }
@@ -38,12 +33,13 @@ export async function validateTx(data: NftMintData, sender: string): Promise<boo
       logger.warn(`[nft-mint] Invalid owner account name format: ${data.owner}.`);
       return false;
     }
-    if (data.instanceId !== undefined && !validate.string(data.instanceId, 128, 1)) { // Max 128 for instanceId
-        logger.warn('[nft-mint] Invalid instanceId length if provided (1-128 chars).');
-        return false;
-    }
+
     if (data.uri !== undefined && (!validate.string(data.uri, 2048, 10) || !(data.uri.startsWith('http') || data.uri.startsWith('ipfs://')))) {
         logger.warn('[nft-mint] Invalid uri: incorrect format, or length (10-2048 chars), must start with http or ipfs://.');
+        return false;
+    }
+    if (data.coverUrl !== undefined && (!validate.string(data.coverUrl, 2048, 10) || !data.coverUrl.startsWith('http'))) {
+        logger.warn('[nft-mint] Invalid coverUrl: incorrect format, or length (10-2048 chars), must start with http.');
         return false;
     }
     if (data.properties !== undefined && typeof data.properties !== 'object') {
@@ -78,15 +74,7 @@ export async function validateTx(data: NftMintData, sender: string): Promise<boo
         return false;
     }
 
-    // If instanceId is provided, check its uniqueness within the collection
-    if (data.instanceId) {
-      const fullInstanceId = `${data.collectionSymbol}-${data.instanceId}`;
-      const existingNft = await cache.findOnePromise('nfts', { _id: fullInstanceId });
-      if (existingNft) {
-        logger.warn(`[nft-mint] NFT with instanceId ${data.instanceId} (full ID: ${fullInstanceId}) already exists in collection ${data.collectionSymbol}.`);
-        return false;
-      }
-    }
+
 
     const ownerAccount = await cache.findOnePromise('accounts', { name: data.owner });
     if (!ownerAccount) {
@@ -103,17 +91,6 @@ export async function validateTx(data: NftMintData, sender: string): Promise<boo
 
 export async function process(data: NftMintData, sender: string, id: string): Promise<boolean> {
   try {
-    // Ensure instanceId is set, generate one if not provided
-    const actualInstanceId = data.instanceId || generateUUID();
-    const fullInstanceId = `${data.collectionSymbol}-${actualInstanceId}`;
-
-    // Check if NFT with this ID already exists
-    const existingNft = await cache.findOnePromise('nfts', { _id: fullInstanceId });
-    if (existingNft) {
-      logger.error(`[nft-mint] NFT with ID ${fullInstanceId} already exists during processing.`);
-      return false;
-    }
-
     const collection = await cache.findOnePromise('nftCollections', { _id: data.collectionSymbol }) as CachedNftCollection | null;
     if (!collection) {
       logger.error(`[nft-mint] Collection ${data.collectionSymbol} not found during processing.`);
@@ -125,12 +102,26 @@ export async function process(data: NftMintData, sender: string, id: string): Pr
       return false;
     }
 
+    // Use the next sequential index as instanceId
+    const actualInstanceId = collection.nextIndex.toString();
+    const nftIndex = collection.nextIndex;
+    const fullInstanceId = `${data.collectionSymbol}-${actualInstanceId}`;
+
+    // Check if NFT with this ID already exists (shouldn't happen with sequential indexing, but safety check)
+    const existingNft = await cache.findOnePromise('nfts', { _id: fullInstanceId });
+    if (existingNft) {
+      logger.error(`[nft-mint] NFT with ID ${fullInstanceId} already exists during processing.`);
+      return false;
+    }
+
     // Create the NFT instance
     const nftInstance: NftInstance = {
       _id: fullInstanceId,
       collectionSymbol: data.collectionSymbol,
       instanceId: actualInstanceId,
-      owner: data.owner
+      owner: data.owner,
+      index: nftIndex,
+      coverUrl: data.coverUrl
     };
 
     const insertSuccess = await new Promise<boolean>((resolve) => {
@@ -148,12 +139,11 @@ export async function process(data: NftMintData, sender: string, id: string): Pr
       return false;
     }
 
-    // Update collection's totalSupply
-    const newTotalSupply = collection.currentSupply + 1;
+    // Update collection's currentSupply and nextIndex
     const updateCollectionSuccess = await cache.updateOnePromise(
       'nftCollections',
       { _id: data.collectionSymbol },
-      { $set: { currentSupply: newTotalSupply } }
+      { $inc: { currentSupply: 1, nextIndex: 1 } }
     );
 
     if (!updateCollectionSuccess) {
@@ -169,16 +159,18 @@ export async function process(data: NftMintData, sender: string, id: string): Pr
     const eventData = { 
       collectionSymbol: data.collectionSymbol,
       instanceId: actualInstanceId,
+      index: nftIndex,
       owner: data.owner,
       properties: data.properties,
-      uri: data.uri
+      uri: data.uri,
+      coverUrl: data.coverUrl
     };
     await logTransactionEvent('nftMint', sender, eventData, id);
 
     return true;
 
   } catch (error) {
-    logger.error(`[nft-mint] Error processing NFT mint for ${data.collectionSymbol}-${data.instanceId || 'auto-generated'} by ${sender}: ${error}`);
+    logger.error(`[nft-mint] Error processing NFT mint for ${data.collectionSymbol} by ${sender}: ${error}`);
     return false;
   }
 } 

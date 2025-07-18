@@ -109,15 +109,16 @@ export interface NftCreateCollectionData {
   description?: string;   // Max 1000 chars
   logoUrl?: string;       // Max 2048 chars, must be valid URL
   websiteUrl?: string;    // Max 2048 chars, must be valid URL
+  baseCoverUrl?: string;  // Base cover URL for NFTs in this collection (max 2048 chars, must be valid URL)
 }
 
 export interface NftMintData {
   collectionSymbol: string; // Symbol of the collection to mint into
-  instanceId?: string;      // Optional: User-defined ID for the NFT (unique within collection). If not provided, will be auto-generated (e.g., UUID).
   owner: string;            // Account name of the new NFT owner
   properties?: Record<string, any>; // NFT instance-specific properties
   // immutableProperties?: boolean; // If true, instance properties cannot be changed. Default false.
   uri?: string;             // URI pointing to off-chain metadata or asset (max 2048 chars)
+  coverUrl?: string;        // Individual cover URL for this NFT (max 2048 chars, must be valid URL)
 }
 
 export interface NftTransferData {
