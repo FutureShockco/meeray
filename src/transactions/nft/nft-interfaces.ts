@@ -136,4 +136,18 @@ export interface NftUpdateMetadataData {
   // owner can only be changed via transfer
   properties?: Record<string, any>; // New set of mutable properties, or specific properties to update
   uri?: string;                    // New URI (max 2048 chars)
+  coverUrl?: string;               // Individual cover URL for this NFT (max 2048 chars, must be valid URL)
+}
+
+export interface NftUpdateCollectionData {
+  symbol: string;                  // Collection symbol to update
+  name?: string;                   // New collection name (max 50 chars)
+  description?: string;            // New description (max 1000 chars)
+  logoUrl?: string;                // New logo URL (max 2048 chars, must be valid URL)
+  websiteUrl?: string;             // New website URL (max 2048 chars, must be valid URL)
+  baseCoverUrl?: string;           // New base cover URL (max 2048 chars, must be valid URL)
+  mintable?: boolean;              // Update mintable status
+  burnable?: boolean;              // Update burnable status
+  transferable?: boolean;          // Update transferable status
+  creatorFee?: number;             // Update creator fee (0-25)
 } 
