@@ -23,9 +23,7 @@ export interface ValidateModule {
     string: (value: any, maxLength?: number, minLength?: number, allowedChars?: string, allowedCharsMiddle?: string) => boolean;
 }
 
-/**
- * Validation module with functions for validating different data types
- */
+
 declare const validate: ValidateModule;
 
 export default validate; 

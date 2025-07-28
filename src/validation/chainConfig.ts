@@ -52,17 +52,9 @@ const groupsInv: Record<string, string> = (() => {
  * Chain parameters with their validation functions
  */
 const parameters: Record<string, ValidationType> = {
-    ecoStartRent: types.posAmount,
-    ecoBaseRent: types.posAmount,
-    ecoDvRentFactor: types.posAmount,
-    ecoPunishPercent: types.posAmount,
     ecoRentStartTime: types.posNonZeroInt,
     ecoRentEndTime: types.posNonZeroInt,
     ecoClaimTime: types.posNonZeroInt,
-    masterFee: types.posInt,
-    chainUpdateFee: types.posNonZeroInt,
-    chainUpdateMaxParams: types.posNonZeroInt,
-    chainUpdateGracePeriodSeconds: types.posNonZeroInt,
 };
 
 export default {

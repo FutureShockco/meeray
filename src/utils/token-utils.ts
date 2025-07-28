@@ -12,11 +12,9 @@ export interface Token {
     currentSupply: bigint;      // Current circulating supply
 }
 
-
 export async function getTokenByIdentifier(symbol: string, issuer?: string): Promise<Token | null> {
     logger.debug(`[token-utils] Fetching token: ${symbol}${issuer ? '@' + issuer : ''}`);
-    
-    if (symbol === config.nativeToken) { 
+    if (symbol === config.nativeToken) {
         return {
             _id: config.nativeToken,
             symbol: config.nativeToken,
@@ -27,14 +25,10 @@ export async function getTokenByIdentifier(symbol: string, issuer?: string): Pro
             currentSupply: 0n,
         } as Token;
     }
-
-    const query: any = { _id: symbol }; // Tokens are keyed by symbol (_id)
-    // For non-native tokens, an issuer might be part of their unique identification scheme or a property.
-
+    const query: any = { _id: symbol };
     if (issuer) {
-        query.issuer = issuer; // Add this if your token documents have an 'issuer' field for disambiguation
+        query.issuer = issuer;
     }
-
     const tokenDoc = await cache.findOnePromise('tokens', query);
     if (tokenDoc) {
         return tokenDoc as Token;
@@ -43,10 +37,7 @@ export async function getTokenByIdentifier(symbol: string, issuer?: string): Pro
     return null;
 }
 
-/**
- * Returns the canonical LP token symbol for a pair of tokens.
- * The order of tokens is sorted alphabetically to ensure uniqueness.
- */
+
 export function getLpTokenSymbol(tokenA_symbol: string, tokenB_symbol: string): string {
     const [token1, token2] = [tokenA_symbol, tokenB_symbol].sort();
     return `LP_${token1}_${token2}`;
