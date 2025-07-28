@@ -175,7 +175,7 @@ export const chain = {
                             }
                         } else { // Not in sync mode
                             // Evaluate entry conditions
-                            const criticalLocalDelayThreshold = (config as any).steemBlockDelayCritical || 20;
+                            const criticalLocalDelayThreshold = (config as any).steemBlockDelayCritical || 10;
                             const networkMedianEntryThreshold = (config as any).steemBlockDelayNetworkEntry || Math.max(10, ((config as any).steemBlockDelay || 10) * 1.5);
                             const witnessLagThreshold = (config as any).steemBlockDelayWitnessLagThreshold || ((config as any).steemBlockDelay || 10);
 

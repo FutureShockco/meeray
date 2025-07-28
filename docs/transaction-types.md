@@ -1,6 +1,6 @@
-# Echelon Blockchain Transaction Types
+# Meeray Blockchain Transaction Types
 
-This document provides a comprehensive list of all transaction types implemented in the Echelon blockchain, including their data structures and purposes.
+This document provides a comprehensive list of all transaction types implemented in the Meeray blockchain, including their data structures and purposes.
 
 ## 1. NFT Transactions
 

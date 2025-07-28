@@ -20,7 +20,7 @@ const config = {
   witnessReward: 100000000, // 1 ECH in smallest units (1 * 10^8)
   farmReward: 100000000, // 1 ECH in smallest units (1 * 10^8)
   steemChainId: '0000000000000000000000000000000000000000000000000000000000000000',
-  steemStartBlock: process.env.NODE_ENV === 'development' ? 1534814 : 95762370, // starting Steem block for sidechain
+  steemStartBlock: process.env.NODE_ENV === 'development' ? 2272280 : 95762370, // starting Steem block for sidechain
   steemBlockDelay: 2, // blocks - delay between Steem blocks
   mongoUri:
     process.env.MONGO_URL && process.env.MONGO_DB

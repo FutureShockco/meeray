@@ -1,10 +1,10 @@
-# Echelon Blockchain Node
+# Meeray Blockchain Node
 
 A modular sidechain for Steem, written in TypeScript (ESM), using MongoDB for storage, Kafka for notifications, WebSocket for P2P networking, and Express for HTTP APIs.
 
 ## Sidechain Architecture
 
-Echelon operates as a sidechain for Steem with these key characteristics:
+Meeray operates as a sidechain for Steem with these key characteristics:
 - Processes only transactions that originate from Steem custom_json operations with our specific sidechain ID
 - Implements block recovery/replay mechanisms to allow nodes to synchronize with peers
 - Supports special sync mode to rapidly catch up with Steem blockchain when behind

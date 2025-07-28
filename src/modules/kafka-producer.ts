@@ -3,7 +3,7 @@ import logger from '../logger.js'; // Assuming logger is in the parent directory
 
 // Configuration for Kafka - replace with your actual broker details
 const KAFKA_BROKERS = process.env.KAFKA_BROKERS ? process.env.KAFKA_BROKERS.split(',') : ['localhost:9092'];
-const KAFKA_CLIENT_ID = process.env.KAFKA_CLIENT_ID || 'echelon-event-producer';
+const KAFKA_CLIENT_ID = process.env.KAFKA_CLIENT_ID || 'meeray-event-producer';
 
 let kafka: Kafka | null = null;
 let producer: Producer | null = null;

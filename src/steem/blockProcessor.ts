@@ -14,11 +14,11 @@ class BlockProcessor {
     private circuitBreakerOpen = false;
     private prefetchInProgress = false;
 
-    constructor(private apiClient: SteemApiClient) {}
+    constructor(private apiClient: SteemApiClient) { }
 
     async processBlock(blockNum: number): Promise<SteemBlockResult | null> {
         const lastProcessedSteemBlockBySidechain = chain.getLatestBlock()?.steemBlockNum || 0;
-        
+
         if (blockNum !== lastProcessedSteemBlockBySidechain + 1) {
             logger.warn(`Attempting to process Steem block ${blockNum} out of order. Expected: ${lastProcessedSteemBlockBySidechain + 1}. Skipping.`);
             return null;
@@ -33,7 +33,7 @@ class BlockProcessor {
 
         try {
             let steemBlock = this.blockCache.get(blockNum);
-            
+
             if (!steemBlock) {
                 const fetchedBlock = await this.fetchBlockWithRetry(blockNum);
                 if (!fetchedBlock) {
@@ -63,7 +63,7 @@ class BlockProcessor {
     }
 
     private async fetchBlockWithRetry(blockNum: number): Promise<SteemBlock | null> {
-        const maxAttempts = Math.max(1, 3); // Try multiple endpoints
+        const maxAttempts = Math.max(1, 5);
         let attempt = 0;
 
         while (attempt < maxAttempts) {
@@ -71,23 +71,34 @@ class BlockProcessor {
             try {
                 logger.debug(`Fetching Steem block ${blockNum} - attempt ${attempt}/${maxAttempts}`);
                 const rawSteemBlock = await this.apiClient.getBlock(blockNum);
-                
+
                 if (rawSteemBlock) {
+                    this.resetConsecutiveErrors();
                     return {
                         transactions: rawSteemBlock.transactions || [],
                         timestamp: rawSteemBlock.timestamp
                     };
                 }
-                
-                logger.warn(`No data returned for Steem block ${blockNum}`);
+                else {
+                    this.incrementConsecutiveErrors();
+                    logger.warn(`No data returned for Steem block ${blockNum}`);
+                    const backoffDelay = Math.min(1000 * Math.pow(2, attempt), 30000);
+                    await new Promise(resolve => setTimeout(resolve, backoffDelay));
+                }
             } catch (error) {
                 logger.warn(`Failed to fetch Steem block ${blockNum} (attempt ${attempt}):`, error);
-                
+
                 if (attempt < maxAttempts) {
                     this.apiClient.switchToNextEndpoint();
-                    await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+                    const backoffDelay = Math.min(1000 * Math.pow(2, attempt), 30000);
+                    await new Promise(resolve => setTimeout(resolve, backoffDelay));
                 }
             }
+        }
+
+        if (this.circuitBreakerOpen) {
+            logger.error(`Circuit breaker open - pausing block processing for ${this.retryDelay}ms`);
+            await new Promise(resolve => setTimeout(resolve, this.retryDelay));
         }
 
         this.incrementConsecutiveErrors();
@@ -96,9 +107,9 @@ class BlockProcessor {
 
     async prefetchBlocks(startBlockNum: number, isSyncing: boolean): Promise<void> {
         if (this.prefetchInProgress || this.circuitBreakerOpen) return;
-        
+
         this.prefetchInProgress = true;
-        
+
         try {
             const latestSteemBlock = await this.apiClient.getLatestBlockNumber();
             if (!latestSteemBlock) {
@@ -118,7 +129,7 @@ class BlockProcessor {
             let missedCount = 0;
             for (let i = 0; i < blocksToPrefetch && !this.circuitBreakerOpen; i++) {
                 const blockToFetch = startBlockNum + i;
-                
+
                 if (this.processingBlocks.includes(blockToFetch) || this.blockCache.has(blockToFetch)) {
                     continue;
                 }
@@ -171,7 +182,7 @@ class BlockProcessor {
     async validateBlockAgainstSteem(block: Block): Promise<boolean> {
         try {
             logger.debug(`Validating block ${block._id} against Steem block ${block.steemBlockNum}`);
-            
+
             let steemBlockData = this.blockCache.get(block.steemBlockNum);
             if (!steemBlockData) {
                 const fetchedBlockData = await this.fetchBlockWithRetry(block.steemBlockNum);
@@ -198,7 +209,7 @@ class BlockProcessor {
     private validateTransactions(block: Block, steemBlockData: SteemBlock): boolean {
         for (let i = 0; i < block.txs.length; i++) {
             const tx = block.txs[i];
-            
+
             if (tx.type !== 'custom_json' || tx.data?.id !== 'sidechain') {
                 continue; // Only validate sidechain transactions
             }
@@ -207,7 +218,7 @@ class BlockProcessor {
             for (const steemTx of steemBlockData.transactions) {
                 for (const op of steemTx.operations) {
                     if (!Array.isArray(op) || op[0] !== 'custom_json') continue;
-                    
+
                     const opData = op[1] as any;
                     if (opData?.id === 'sidechain') {
                         try {
@@ -238,7 +249,7 @@ class BlockProcessor {
     private incrementConsecutiveErrors(): void {
         this.consecutiveErrors++;
         this.retryDelay = Math.min(this.retryDelay * 1.5, steemConfig.maxRetryDelay);
-        
+
         if (this.consecutiveErrors >= steemConfig.circuitBreakerThreshold && !this.circuitBreakerOpen) {
             this.circuitBreakerOpen = true;
             logger.error(`Circuit breaker opened after ${this.consecutiveErrors} consecutive errors`);
@@ -251,7 +262,7 @@ class BlockProcessor {
             this.consecutiveErrors = 0;
             this.retryDelay = steemConfig.minRetryDelay;
         }
-        
+
         if (this.circuitBreakerOpen) {
             logger.info('Circuit breaker closed');
             this.circuitBreakerOpen = false;

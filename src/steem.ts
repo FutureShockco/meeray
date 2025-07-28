@@ -152,7 +152,18 @@ const processBlock = async (blockNum: number): Promise<SteemBlockResult | null> 
         logger.debug('Skipping Steem block processing - node not ready to receive transactions yet');
         return null;
     }
-    return blockProcessor.processBlock(blockNum);
+    while (true) {
+        const result = await blockProcessor.processBlock(blockNum);
+        if (result !== null) {
+            return result;
+        }
+        if (p2p.recovering) {
+            logger.debug('Node entered recovery mode during block processing, aborting.');
+            return null;
+        }
+        logger.warn(`Block ${blockNum} could not be processed, retrying in 1000ms...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    }
 };
 
 const isOnSteemBlock = async (block: Block): Promise<boolean> => {
