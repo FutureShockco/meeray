@@ -6,7 +6,7 @@ import logger from './logger.js';
 import config from './config.js';
 import { chain } from './chain.js';
 import { Block } from './block.js';
-import { TokenCreateData, TokenCreateDataDB, TokenForStorage, TokenForStorageDB } from './transactions/token/token-interfaces.js';
+import { TokenData } from './transactions/token/token-interfaces.js';
 import { convertToString, toString, toBigInt, setTokenDecimals, convertAllBigIntToStringRecursive } from './utils/bigint-utils.js';
 import { logTransactionEvent } from './utils/event-logger.js';
 
@@ -56,7 +56,7 @@ export const mongo = {
                 await mongo.db.dropDatabase();
                 await mongo.initGenesis();
                 state = await mongo.db.collection<StateDoc>('state').findOne({ _id: 0 });
-                return cb(null, state); 
+                return cb(null, state);
             }
 
             const genesis = await mongo.db.collection<Block>('blocks').findOne({ _id: 0 });
@@ -74,8 +74,8 @@ export const mongo = {
             }
         } catch (err: any) {
             logger.error('MongoDB init error:', err);
-          
-            cb(err, null); 
+
+            cb(err, null);
         }
     },
     getDb: (): Db => {
@@ -96,7 +96,7 @@ export const mongo = {
         }
         try {
             logger.info('[mongo] Loading and registering token decimals from database...');
-            const tokensCollection = dbInstance.collection<TokenForStorageDB>('tokens');
+            const tokensCollection = dbInstance.collection<TokenData>('tokens');
             const allTokens = await tokensCollection.find({}).toArray();
 
             if (allTokens.length === 0) {
@@ -148,7 +148,7 @@ export const mongo = {
 
             await mongo.restore(mongoUriForRestore, genesisFolder);
             logger.info('Finished importing genesis data');
-            await mongo.insertBlockZero(); 
+            await mongo.insertBlockZero();
 
         } catch (err) {
             logger.warn('No genesis.zip file found or error during processing. Creating minimal genesis.');
@@ -161,8 +161,8 @@ export const mongo = {
     restore: (mongoUri: string, folder: string): Promise<boolean> => {
         return new Promise((resolve) => {
             const mongorestore: ChildProcess = spawn('mongorestore', [
-                `--uri=${mongoUri}`, 
-                '-d', DB_NAME,      
+                `--uri=${mongoUri}`,
+                '-d', DB_NAME,
                 folder
             ]);
 
@@ -206,11 +206,11 @@ export const mongo = {
     },
 
     insertBlockZero: async (): Promise<void> => {
-        if (process.env.BLOCKS_DIR) return; 
+        if (process.env.BLOCKS_DIR) return;
         const currentDb = mongo.getDb();
         logger.info('Inserting Block #0 with hash ' + config.originHash);
-        const genesisBlock = chain.getGenesisBlock(); 
-        await currentDb.collection<Block>('blocks').insertOne(genesisBlock); 
+        const genesisBlock = chain.getGenesisBlock();
+        await currentDb.collection<Block>('blocks').insertOne(genesisBlock);
     },
 
     insertNativeTokens: async (): Promise<void> => {
@@ -223,73 +223,60 @@ export const mongo = {
         const VERY_LARGE_MAX_SUPPLY_BIGINT = BigInt('1000000000000000000000000000000'); // Effectively unlimited for pegged tokens
 
         // This object represents the INPUT parameters for creating the native token ECH
-        const nativeTokenCreationParamsECH: TokenCreateData = {
+        const nativeTokenCreationParamsECH: TokenData = {
             symbol: 'ECH',
             name: 'Echelon',
             precision: 8,
             maxSupply: VERY_LARGE_MAX_SUPPLY_BIGINT,
-            initialSupply: MAX_SUPPLY_ECH_BIGINT, 
-            mintable: true, 
+            initialSupply: MAX_SUPPLY_ECH_BIGINT,
+            mintable: true,
             burnable: true,
             description: 'Echelon is the native token of the Echelon Network',
             logoUrl: '',
             websiteUrl: 'https://echelon.network'
         };
 
-        const nativeTokenToStoreECH: TokenForStorage = {
+        const nativeTokenToStoreECH: TokenData = {
             _id: nativeTokenCreationParamsECH.symbol,
             symbol: nativeTokenCreationParamsECH.symbol,
             name: nativeTokenCreationParamsECH.name,
             precision: nativeTokenCreationParamsECH.precision || 8,
             maxSupply: nativeTokenCreationParamsECH.maxSupply,
-            currentSupply: nativeTokenCreationParamsECH.initialSupply || MAX_SUPPLY_ECH_BIGINT, 
-            mintable: nativeTokenCreationParamsECH.mintable === undefined ? true : nativeTokenCreationParamsECH.mintable, 
-            burnable: nativeTokenCreationParamsECH.burnable === undefined ? true : nativeTokenCreationParamsECH.burnable, 
-            issuer: config.masterName, 
+            currentSupply: nativeTokenCreationParamsECH.initialSupply || MAX_SUPPLY_ECH_BIGINT,
+            mintable: nativeTokenCreationParamsECH.mintable === undefined ? true : nativeTokenCreationParamsECH.mintable,
+            burnable: nativeTokenCreationParamsECH.burnable === undefined ? true : nativeTokenCreationParamsECH.burnable,
+            issuer: config.masterName,
             description: nativeTokenCreationParamsECH.description,
             logoUrl: nativeTokenCreationParamsECH.logoUrl,
             websiteUrl: nativeTokenCreationParamsECH.websiteUrl,
             createdAt: new Date().toISOString()
         };
-        const nativeTokenDBECH: TokenForStorageDB = convertAllBigIntToStringRecursive(nativeTokenToStoreECH);
-        await currentDb.collection<TokenForStorageDB>('tokens').insertOne(nativeTokenDBECH);
+        await currentDb.collection<TokenData>('tokens').insertOne(nativeTokenToStoreECH);
         logger.info('Native token ECH inserted.');
-
-        // Log event for ECH token creation
-        const eventDataECH = {
-            symbol: nativeTokenCreationParamsECH.symbol,
-            name: nativeTokenCreationParamsECH.name,
-            precision: nativeTokenCreationParamsECH.precision,
-            maxSupply: toString(nativeTokenCreationParamsECH.maxSupply || BigInt(0)),
-            initialSupply: toString(nativeTokenCreationParamsECH.initialSupply || BigInt(0)),
-            mintable: nativeTokenCreationParamsECH.mintable,
-            burnable: nativeTokenCreationParamsECH.burnable
-        };
-        await logTransactionEvent('tokenCreate', config.masterName, eventDataECH);
 
         // --- STEEM ---
         setTokenDecimals('STEEM', 3);
 
-        const nativeTokenCreationParamsSTEEM: TokenCreateData = {
+        const nativeTokenCreationParamsSTEEM: TokenData = {
             symbol: 'STEEM',
             name: 'Steem',
             precision: 3,
             maxSupply: VERY_LARGE_MAX_SUPPLY_BIGINT,
-            initialSupply: BigInt(0), 
-            mintable: true, 
+            initialSupply: BigInt(0),
+            mintable: true,
             burnable: true,
             description: 'Steem is the native token of the Steem blockchain, pegged on this sidechain.',
             logoUrl: 'https://steem.com/images/steem-logo.png', // Placeholder URL
             websiteUrl: 'https://steem.com'
         };
 
-        const nativeTokenToStoreSTEEM: TokenForStorage = {
+        const nativeTokenToStoreSTEEM: TokenData = {
             _id: nativeTokenCreationParamsSTEEM.symbol,
             symbol: nativeTokenCreationParamsSTEEM.symbol,
             name: nativeTokenCreationParamsSTEEM.name,
             precision: nativeTokenCreationParamsSTEEM.precision || 3,
             maxSupply: nativeTokenCreationParamsSTEEM.maxSupply,
-            currentSupply: nativeTokenCreationParamsSTEEM.initialSupply || BigInt(0), 
+            currentSupply: nativeTokenCreationParamsSTEEM.initialSupply || BigInt(0),
             mintable: nativeTokenCreationParamsSTEEM.mintable === undefined ? true : nativeTokenCreationParamsSTEEM.mintable,
             burnable: nativeTokenCreationParamsSTEEM.burnable === undefined ? true : nativeTokenCreationParamsSTEEM.burnable,
             issuer: config.masterName,
@@ -298,39 +285,27 @@ export const mongo = {
             websiteUrl: nativeTokenCreationParamsSTEEM.websiteUrl,
             createdAt: new Date().toISOString()
         };
-        const nativeTokenDBSTEEM: TokenForStorageDB = convertAllBigIntToStringRecursive(nativeTokenToStoreSTEEM);
-        await currentDb.collection<TokenForStorageDB>('tokens').insertOne(nativeTokenDBSTEEM);
+        await currentDb.collection<TokenData>('tokens').insertOne(nativeTokenToStoreSTEEM);
         logger.info('Native token STEEM inserted.');
 
-        // Log event for STEEM token creation
-        const eventDataSTEEM = {
-            symbol: nativeTokenCreationParamsSTEEM.symbol,
-            name: nativeTokenCreationParamsSTEEM.name,
-            precision: nativeTokenCreationParamsSTEEM.precision,
-            maxSupply: toString(nativeTokenCreationParamsSTEEM.maxSupply || BigInt(0)),
-            initialSupply: toString(nativeTokenCreationParamsSTEEM.initialSupply || BigInt(0)),
-            mintable: nativeTokenCreationParamsSTEEM.mintable,
-            burnable: nativeTokenCreationParamsSTEEM.burnable
-        };
-        await logTransactionEvent('tokenCreate', config.masterName, eventDataSTEEM);
 
         // --- SBD ---
         setTokenDecimals('SBD', 3);
 
-        const nativeTokenCreationParamsSBD: TokenCreateData = {
+        const nativeTokenCreationParamsSBD: TokenData = {
             symbol: 'SBD',
             name: 'Steem Dollar',
             precision: 3,
             maxSupply: VERY_LARGE_MAX_SUPPLY_BIGINT,
-            initialSupply: BigInt(0), 
-            mintable: true, 
+            initialSupply: BigInt(0),
+            mintable: true,
             burnable: true,
             description: 'SBD (Steem Dollar) is a stablecoin on the Steem blockchain, pegged on this sidechain.',
             logoUrl: 'https://steem.com/images/sbd-logo.png', // Placeholder URL
             websiteUrl: 'https://steem.com'
         };
 
-        const nativeTokenToStoreSBD: TokenForStorage = {
+        const nativeTokenToStoreSBD: TokenData = {
             _id: nativeTokenCreationParamsSBD.symbol,
             symbol: nativeTokenCreationParamsSBD.symbol,
             name: nativeTokenCreationParamsSBD.name,
@@ -345,22 +320,10 @@ export const mongo = {
             websiteUrl: nativeTokenCreationParamsSBD.websiteUrl,
             createdAt: new Date().toISOString()
         };
-        const nativeTokenDBSBD: TokenForStorageDB = convertAllBigIntToStringRecursive(nativeTokenToStoreSBD);
-        await currentDb.collection<TokenForStorageDB>('tokens').insertOne(nativeTokenDBSBD);
+        await currentDb.collection<TokenData>('tokens').insertOne(nativeTokenToStoreSBD);
         logger.info('Native token SBD inserted.');
 
-        // Log event for SBD token creation
-        const eventDataSBD = {
-            symbol: nativeTokenCreationParamsSBD.symbol,
-            name: nativeTokenCreationParamsSBD.name,
-            precision: nativeTokenCreationParamsSBD.precision,
-            maxSupply: toString(nativeTokenCreationParamsSBD.maxSupply || BigInt(0)),
-            initialSupply: toString(nativeTokenCreationParamsSBD.initialSupply || BigInt(0)),
-            mintable: nativeTokenCreationParamsSBD.mintable,
-            burnable: nativeTokenCreationParamsSBD.burnable
-        };
-        await logTransactionEvent('tokenCreate', config.masterName, eventDataSBD);
-        
+
     },
 
     addMongoIndexes: async (): Promise<void> => {
@@ -442,7 +405,7 @@ export const mongo = {
             const tradingPairsCollection = currentDb.collection('tradingPairs');
             await tradingPairsCollection.createIndex({ _id: 1 }); // pairId is _id
             await tradingPairsCollection.createIndex({ status: 1 });
-            await tradingPairsCollection.createIndex({ baseAssetSymbol: 1, baseAssetIssuer: 1, quoteAssetSymbol: 1, quoteAssetIssuer: 1 }, { name: "assets_combination_idx"});
+            await tradingPairsCollection.createIndex({ baseAssetSymbol: 1, baseAssetIssuer: 1, quoteAssetSymbol: 1, quoteAssetIssuer: 1 }, { name: "assets_combination_idx" });
             logger.debug('[DB Indexes] Finished creating indexes for tradingPairs collection.');
 
             // Launchpads Collection Indexes
@@ -464,7 +427,7 @@ export const mongo = {
             await ordersCollection.createIndex({ status: 1 });
             await ordersCollection.createIndex({ pairId: 1, status: 1 }); // For finding open/filled orders in a pair
             await ordersCollection.createIndex({ userId: 1, status: 1 }); // For finding user's open/filled orders
-            await ordersCollection.createIndex({ pairId: 1, side: 1, price: 1, status: 1}); // For order book reconstruction / matching query
+            await ordersCollection.createIndex({ pairId: 1, side: 1, price: 1, status: 1 }); // For order book reconstruction / matching query
             logger.debug('[DB Indexes] Finished creating indexes for orders collection.');
 
             // Trades
@@ -496,19 +459,19 @@ export const mongo = {
         const currentDb = mongo.getDb();
         let query: any = {};
         if (headBlock) query._id = { $lt: headBlock };
-        
+
         try {
             const blocksFromDb = await currentDb.collection<Block>('blocks').find(query, {
                 sort: { _id: -1 },
                 limit: config.ecoBlocksIncreasesSoon ? config.ecoBlocksIncreasesSoon : config.ecoBlocks || 1000
             }).toArray();
-            
+
             chain.recentBlocks = blocksFromDb.reverse();
             logger.info(`Filled ${chain.recentBlocks.length} blocks into memory.`);
             cb();
         } catch (err) {
             logger.error('Error in fillInMemoryBlocks:', err);
-            cb(); 
+            cb();
         }
     },
 
@@ -526,7 +489,7 @@ export const mongo = {
         const dump_location = dump_dir + '/blocks.zip';
         const blocks_bson = dump_dir + '/blocks.bson';
         const blocks_meta = dump_dir + '/blocks.metadata.json';
-        const mongoUriForRestore = DB_URL; 
+        const mongoUriForRestore = DB_URL;
 
         if (process.env.UNZIP_BLOCKS === '1') {
             try {

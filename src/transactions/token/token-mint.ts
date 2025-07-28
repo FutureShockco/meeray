@@ -1,17 +1,12 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
-import { TokenMintData, TokenMintDataDB } from './token-interfaces.js';
+import { TokenMintData } from './token-interfaces.js';
 import config from '../../config.js';
-import { convertToBigInt, convertToString, toString, toBigInt } from '../../utils/bigint-utils.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
+import { toBigInt } from '../../utils/bigint-utils.js';
 
-const NUMERIC_FIELDS: Array<keyof TokenMintData> = ['amount'];
-
-export async function validateTx(data: TokenMintDataDB, sender: string): Promise<boolean> {
+export async function validateTx(data: TokenMintData, sender: string): Promise<boolean> {
   try {
-    // Convert string amount to BigInt for validation
-    const mintData = convertToBigInt<TokenMintData>(data, NUMERIC_FIELDS);
 
     if (!data.symbol || !data.to) {
       logger.warn('[token-mint] Invalid data: Missing required fields (symbol, to).');
@@ -31,8 +26,8 @@ export async function validateTx(data: TokenMintDataDB, sender: string): Promise
     }
 
     // Validate amount (must be a positive bigint)
-    if (!validate.bigint(mintData.amount, false, false, undefined, BigInt(1))) {
-      logger.warn(`[token-mint] Invalid amount: ${mintData.amount}. Must be a positive integer.`);
+    if (!validate.bigint(data.amount, false, false, undefined, BigInt(1))) {
+      logger.warn(`[token-mint] Invalid amount: ${data.amount}. Must be a positive integer.`);
       return false;
     }
 
@@ -47,9 +42,7 @@ export async function validateTx(data: TokenMintDataDB, sender: string): Promise
       return false;
     }
 
-    // Convert token values to BigInt for comparison
-    const tokenData = convertToBigInt(token, ['maxSupply', 'currentSupply']);
-    if (tokenData.currentSupply + mintData.amount > tokenData.maxSupply) {
+    if (token.currentSupply + data.amount > token.maxSupply) {
       logger.warn(`[token-mint] Mint would exceed max supply for ${data.symbol}.`);
       return false;
     }
@@ -72,17 +65,16 @@ export async function validateTx(data: TokenMintDataDB, sender: string): Promise
   }
 }
 
-export async function process(data: TokenMintDataDB, sender: string, id: string): Promise<boolean> {
+export async function process(data: TokenMintData, sender: string, id: string): Promise<boolean> {
   try {
-    const mintData = convertToBigInt<TokenMintData>(data, NUMERIC_FIELDS);
 
-    const tokenFromCache = await cache.findOnePromise('tokens', { _id: mintData.symbol });
+    const tokenFromCache = await cache.findOnePromise('tokens', { _id: data.symbol });
     if (!tokenFromCache) {
-      logger.error(`[token-mint:process] Token ${mintData.symbol} not found`);
+      logger.error(`[token-mint:process] Token ${data.symbol} not found`);
       return false;
     }
     if (!tokenFromCache.mintable) {
-      logger.error(`[token-mint:process] Token ${mintData.symbol} is not mintable. This should have been caught by validateTx.`);
+      logger.error(`[token-mint:process] Token ${data.symbol} is not mintable. This should have been caught by validateTx.`);
       return false;
     }
     if (sender !== tokenFromCache.issuer) {
@@ -90,64 +82,55 @@ export async function process(data: TokenMintDataDB, sender: string, id: string)
       return false;
     }
 
-    const tokenData = convertToBigInt(tokenFromCache, ['maxSupply', 'currentSupply']);
-    const newSupply = tokenData.currentSupply + mintData.amount;
+    const newSupply = tokenFromCache.currentSupply + data.amount;
 
-    if (newSupply > tokenData.maxSupply) {
-      logger.error(`[token-mint:process] Mint would exceed max supply for ${mintData.symbol}. Current: ${tokenData.currentSupply}, Amount: ${mintData.amount}, Max: ${tokenData.maxSupply}. This should have been caught by validateTx.`);
+    if (newSupply > tokenFromCache.maxSupply) {
+      logger.error(`[token-mint:process] Mint would exceed max supply for ${data.symbol}. Current: ${tokenFromCache.currentSupply}, Amount: ${data.amount}, Max: ${tokenFromCache.maxSupply}. This should have been caught by validateTx.`);
       return false;
     }
 
     const updateTokenSuccess = await cache.updateOnePromise(
       'tokens',
-      { _id: mintData.symbol },
-      { $set: { currentSupply: toString(newSupply) } }
+      { _id: data.symbol },
+      { $set: { currentSupply: newSupply } }
     );
 
     if (!updateTokenSuccess) {
-      logger.error(`[token-mint:process] Failed to update token supply for ${mintData.symbol}`);
+      logger.error(`[token-mint:process] Failed to update token supply for ${data.symbol}`);
       return false;
     }
 
-    const recipientAccount = await cache.findOnePromise('accounts', { name: mintData.to });
+    const recipientAccount = await cache.findOnePromise('accounts', { name: data.to });
     if (!recipientAccount) {
-      logger.error(`[token-mint:process] Recipient account ${mintData.to} not found. Cannot mint to non-existent account.`);
+      logger.error(`[token-mint:process] Recipient account ${data.to} not found. Cannot mint to non-existent account.`);
       await cache.updateOnePromise(
         'tokens',
-        { _id: mintData.symbol },
-        { $set: { currentSupply: toString(tokenData.currentSupply) } }
+        { _id: data.symbol },
+        { $set: { currentSupply: tokenFromCache.currentSupply } }
       );
       return false;
     }
 
-    const currentBalanceStr = recipientAccount.balances?.[mintData.symbol] || '0';
+    const currentBalanceStr = recipientAccount.balances?.[data.symbol] || '0';
     const currentBalance = toBigInt(currentBalanceStr);
-    const newBalance = currentBalance + mintData.amount;
+    const newBalance = currentBalance + data.amount;
 
     const updateBalanceSuccess = await cache.updateOnePromise(
       'accounts',
-      { name: mintData.to },
-      { $set: { [`balances.${mintData.symbol}`]: toString(newBalance) } }
+      { name: data.to },
+      { $set: { [`balances.${data.symbol}`]: newBalance } }
     );
 
     if (!updateBalanceSuccess) {
-      logger.error(`[token-mint:process] Failed to update balance for ${mintData.to}. Rolling back token supply.`);
+      logger.error(`[token-mint:process] Failed to update balance for ${data.to}. Rolling back token supply.`);
       await cache.updateOnePromise(
         'tokens',
-        { _id: mintData.symbol },
-        { $set: { currentSupply: toString(tokenData.currentSupply) } }
+        { _id: data.symbol },
+        { $set: { currentSupply: tokenFromCache.currentSupply } }
       );
       return false;
     }
-
-    const eventData = {
-      symbol: mintData.symbol,
-      to: mintData.to,
-      amount: toString(mintData.amount),
-      newSupply: toString(newSupply)
-    };
-    await logTransactionEvent('tokenMint', sender, eventData, id);
-
+    logger.info(`[token-mint:process] Minted ${data.amount} of ${data.symbol} to ${data.to} by ${sender}. New supply: ${newSupply}.`);
     return true;
   } catch (error) {
     logger.error(`[token-mint:process] Error: ${error}`);

@@ -1,7 +1,7 @@
 import cache from '../cache.js';
 import logger from '../logger.js';
 import { ObjectId } from 'mongodb'; // Import ObjectId from mongodb
-import { initializeKafkaProducer, sendKafkaEvent } from '../modules/kafka-producer.js'; // Added Kafka producer import
+import { initializeKafkaProducer, sendKafkaEvent } from '../modules/kafka.js'; // Added Kafka producer import
 
 const KAFKA_NOTIFICATIONS_TOPIC = 'notifications';
 const KAFKA_MARKET_EVENTS_TOPIC = 'dex-market-updates';

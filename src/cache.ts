@@ -4,10 +4,9 @@ import ProcessingQueue from './processingQueue.js';
 import logger from './logger.js';
 import config from './config.js';
 import { chain } from './chain.js';
-// Removed direct import of mongo here to avoid circular dependencies or premature calls
-// import { mongo } from './mongo.js'; 
-import txHistory from './txHistory.js'; // Assumed to be a JS module with getWriteOps
-import witnessesStats from './witnessesStats.js'; // Assumed to be a JS module with getWriteOps
+
+import txHistory from './modules/txHistory.js';
+import witnessesStats from './modules/witnessesStats.js';
 
 import { Db, Filter, Document as MongoDocument, UpdateFilter, FindOptions, ObjectId } from 'mongodb';
 import mongo from './mongo.js';

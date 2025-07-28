@@ -2,9 +2,8 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { PoolCreateData, LiquidityPool, PoolCreateDataDB, LiquidityPoolDB } from './pool-interfaces.js';
-import { generateDeterministicId } from '../../utils/id-utils.js';
 import config from '../../config.js';
-import { BigIntMath, convertToBigInt, convertToString, toString, toBigInt } from '../../utils/bigint-utils.js';
+import { convertToBigInt, convertToString, toString, toBigInt } from '../../utils/bigint-utils.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 import { getLpTokenSymbol } from '../../utils/token-utils.js';
 

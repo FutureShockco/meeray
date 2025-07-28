@@ -1,5 +1,5 @@
-import logger from './logger.js';
-import mongo from './mongo.js';
+import logger from '../logger.js';
+import mongo from '../../src/mongo.js';
 
 interface IWitnessStats {
   _id?: string; // Witness name, corresponds to the account name

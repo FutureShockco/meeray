@@ -45,7 +45,7 @@ export function toBigInt(value: string | bigint | number | null | undefined): bi
 export function toString(value: bigint, padLength: number = MAX_INTEGER_LENGTH): string {
     const str = value.toString();
     // Ensure positive numbers are properly padded for lexicographical sorting
-    return str.startsWith('-') 
+    return str.startsWith('-')
         ? '-' + str.slice(1).padStart(padLength, '0')
         : str.padStart(padLength, '0');
 }
@@ -96,14 +96,14 @@ export type BigIntToString<T> = {
 };
 
 export type RecursiveBigIntToString<T> = {
-  [P in keyof T]: T[P] extends bigint
+    [P in keyof T]: T[P] extends bigint
     ? string
     : T[P] extends Array<infer U>
     ? Array<RecursiveBigIntToString<U>>
     : T[P] extends object | null | undefined
     ? T[P] extends null | undefined
-      ? T[P]
-      : RecursiveBigIntToString<T[P]>
+    ? T[P]
+    : RecursiveBigIntToString<T[P]>
     : T[P];
 };
 
@@ -153,9 +153,9 @@ export function convertAllBigIntToStringRecursive<T extends object>(obj: T): Rec
             if (typeof value === 'bigint') {
                 result[key] = toString(value);
             } else if (Array.isArray(value)) {
-                result[key] = value.map(item => 
-                    typeof item === 'object' && item !== null 
-                        ? convertAllBigIntToStringRecursive(item) 
+                result[key] = value.map(item =>
+                    typeof item === 'object' && item !== null
+                        ? convertAllBigIntToStringRecursive(item)
                         : item
                 );
             } else if (typeof value === 'object' && value !== null) {
@@ -175,7 +175,7 @@ export const BigIntMath = {
     max(...values: bigint[]): bigint {
         return values.reduce((max, val) => val > max ? val : max);
     },
-    
+
     min(...values: bigint[]): bigint {
         return values.reduce((min, val) => val < min ? val : min);
     },
@@ -216,7 +216,7 @@ export const BigIntMath = {
         if (value < BigInt(2)) {
             return value;
         }
-        
+
         let x0 = BigInt(0);
         let x1 = value;
         while (x0 !== x1) {

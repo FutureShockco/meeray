@@ -1,4 +1,5 @@
 import cloneDeep from 'clone-deep'
+import mongo from '../../src/mongo.js';
 
 interface Transaction {
   hash: string;

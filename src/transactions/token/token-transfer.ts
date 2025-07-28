@@ -3,16 +3,13 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import config from '../../config.js';
 import transaction from '../../transaction.js';
-import { TokenTransferData, TokenTransferDataDB } from './token-interfaces.js';
-import { convertToBigInt, convertToString, toString, getTokenDecimals, toBigInt } from '../../utils/bigint-utils.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
+import { TokenTransferData } from './token-interfaces.js';
+import { toString, getTokenDecimals, toBigInt } from '../../utils/bigint-utils.js';
 
 const BURN_ACCOUNT_NAME = config.burnAccountName || 'null';
-const NUMERIC_FIELDS: Array<keyof TokenTransferData> = ['amount'];
 
-export async function validateTx(data: TokenTransferDataDB, sender: string): Promise<boolean> {
+export async function validateTx(data: TokenTransferData, sender: string): Promise<boolean> {
     try {
-        const transferData = convertToBigInt<TokenTransferData>(data, NUMERIC_FIELDS);
         if (!data.symbol || !data.to) {
             logger.warn('[token-transfer] Invalid data: Missing required fields (symbol, to).');
             return false;
@@ -34,15 +31,15 @@ export async function validateTx(data: TokenTransferDataDB, sender: string): Pro
             logger.warn(`[token-transfer] Sender and recipient cannot be the same: ${data.to}.`);
             return false;
         }
-        
+
         const precision = typeof token.precision === 'number' ? token.precision : (typeof token.precision === 'string' ? parseInt(token.precision, 10) : 8);
         // Use a default of 30 for total digits if config.maxTokenAmountDigits is not set
-        const totalDigits = config.maxTokenAmountDigits || (30 - precision); 
+        const totalDigits = config.maxTokenAmountDigits || (30 - precision);
         const maxAmountString = '9'.repeat(totalDigits) + '0'.repeat(precision);
         const maxAmount = BigInt(maxAmountString);
 
-        if (!validate.bigint(transferData.amount, false, false, maxAmount, BigInt(1))) {
-            logger.warn(`[token-transfer] Invalid amount: ${toString(transferData.amount)}. Must be a positive integer not exceeding ${toString(maxAmount)}.`);
+        if (!validate.bigint(data.amount, false, false, maxAmount, BigInt(1))) {
+            logger.warn(`[token-transfer] Invalid amount: ${toString(data.amount)}. Must be a positive integer not exceeding ${toString(maxAmount)}.`);
             return false;
         }
         const senderAccount = await cache.findOnePromise('accounts', { name: sender });
@@ -52,8 +49,8 @@ export async function validateTx(data: TokenTransferDataDB, sender: string): Pro
         }
         const senderBalanceString = senderAccount.balances?.[data.symbol] || '0';
         const currentSenderBalance = toBigInt(senderBalanceString);
-        if (currentSenderBalance < transferData.amount) {
-            logger.warn(`[token-transfer] Insufficient balance for ${sender}. Has: ${toString(currentSenderBalance)}, Needs: ${toString(transferData.amount)}`);
+        if (currentSenderBalance < data.amount) {
+            logger.warn(`[token-transfer] Insufficient balance for ${sender}. Has: ${toString(currentSenderBalance)}, Needs: ${toString(data.amount)}`);
             return false;
         }
         return true;
@@ -63,35 +60,34 @@ export async function validateTx(data: TokenTransferDataDB, sender: string): Pro
     }
 }
 
-export async function process(data: TokenTransferDataDB, sender: string, id: string): Promise<boolean> {
+export async function process(data: TokenTransferData, sender: string, id: string): Promise<boolean> {
     try {
-        const transferData = convertToBigInt<TokenTransferData>(data, NUMERIC_FIELDS);
 
-        const token = await cache.findOnePromise('tokens', { _id: transferData.symbol }); 
+        const token = await cache.findOnePromise('tokens', { _id: data.symbol });
         if (!token) {
-            logger.error(`[token-transfer] Token ${transferData.symbol} not found`);
+            logger.error(`[token-transfer] Token ${data.symbol} not found`);
             return false;
         }
 
-        const senderAccount = await cache.findOnePromise('accounts', { name: sender }); 
+        const senderAccount = await cache.findOnePromise('accounts', { name: sender });
         if (!senderAccount) {
             logger.error(`[token-transfer:process] Sender account ${sender} not found`);
             return false;
         }
 
-        const senderBalanceString = senderAccount.balances?.[transferData.symbol] || '0';
+        const senderBalanceString = senderAccount.balances?.[data.symbol] || '0';
         const currentSenderBalance = toBigInt(senderBalanceString);
-        
-        if (currentSenderBalance < transferData.amount) {
-            logger.error(`[token-transfer:process] Insufficient balance for ${sender}. Has: ${toString(currentSenderBalance)}, Needs: ${toString(transferData.amount)}. Should have been caught by validateTx.`);
+
+        if (currentSenderBalance < data.amount) {
+            logger.error(`[token-transfer:process] Insufficient balance for ${sender}. Has: ${toString(currentSenderBalance)}, Needs: ${toString(data.amount)}. Should have been caught by validateTx.`);
             return false;
         }
-        const newSenderBalance = currentSenderBalance - transferData.amount;
+        const newSenderBalance = currentSenderBalance - data.amount;
 
         const deductSuccess = await cache.updateOnePromise(
             'accounts',
-            { name: sender }, 
-            { $set: { [`balances.${transferData.symbol}`]: toString(newSenderBalance) } }
+            { name: sender },
+            { $set: { [`balances.${data.symbol}`]: toString(newSenderBalance) } }
         );
 
         if (!deductSuccess) {
@@ -99,44 +95,44 @@ export async function process(data: TokenTransferDataDB, sender: string, id: str
             return false;
         }
 
-        if (transferData.to !== BURN_ACCOUNT_NAME) {
-            const recipientAccount = await cache.findOnePromise('accounts', { name: transferData.to });
+        if (data.to !== BURN_ACCOUNT_NAME) {
+            const recipientAccount = await cache.findOnePromise('accounts', { name: data.to });
             if (!recipientAccount) {
-                logger.error(`[token-transfer:process] Recipient account ${transferData.to} not found. Rolling back sender deduction.`);
-                 await cache.updateOnePromise(
+                logger.error(`[token-transfer:process] Recipient account ${data.to} not found. Rolling back sender deduction.`);
+                await cache.updateOnePromise(
                     'accounts',
-                    { name: sender }, 
-                    { $set: { [`balances.${transferData.symbol}`]: toString(currentSenderBalance) } } 
+                    { name: sender },
+                    { $set: { [`balances.${data.symbol}`]: toString(currentSenderBalance) } }
                 );
                 return false;
             }
-            const recipientBalanceString = recipientAccount.balances?.[transferData.symbol] || '0';
+            const recipientBalanceString = recipientAccount.balances?.[data.symbol] || '0';
             const currentRecipientBalance = toBigInt(recipientBalanceString);
-            const newRecipientBalance = currentRecipientBalance + transferData.amount;
+            const newRecipientBalance = currentRecipientBalance + data.amount;
 
             const addSuccess = await cache.updateOnePromise(
                 'accounts',
-                { name: transferData.to },
-                { $set: { [`balances.${transferData.symbol}`]: toString(newRecipientBalance) } }
+                { name: data.to },
+                { $set: { [`balances.${data.symbol}`]: toString(newRecipientBalance) } }
             );
 
             if (!addSuccess) {
                 await cache.updateOnePromise(
                     'accounts',
-                    { name: sender }, 
-                    { $set: { [`balances.${transferData.symbol}`]: toString(currentSenderBalance) } }
+                    { name: sender },
+                    { $set: { [`balances.${data.symbol}`]: toString(currentSenderBalance) } }
                 );
-                logger.error(`[token-transfer] Failed to add to recipient ${transferData.to}`);
+                logger.error(`[token-transfer] Failed to add to recipient ${data.to}`);
                 return false;
             }
 
-            if (transferData.symbol === config.nativeToken) {
+            if (data.symbol === config.nativeToken) {
                 try {
                     await transaction.adjustWitnessWeight(sender, Number(newSenderBalance), () => {
                         logger.debug(`[token-transfer] Witness weight adjusted for sender ${sender}`);
                     });
-                    await transaction.adjustWitnessWeight(transferData.to, Number(newRecipientBalance), () => {
-                        logger.debug(`[token-transfer] Witness weight adjusted for recipient ${transferData.to}`);
+                    await transaction.adjustWitnessWeight(data.to, Number(newRecipientBalance), () => {
+                        logger.debug(`[token-transfer] Witness weight adjusted for recipient ${data.to}`);
                     });
                 } catch (error) {
                     logger.error(`[token-transfer] Failed to adjust witness weights: ${error}`);
@@ -144,14 +140,6 @@ export async function process(data: TokenTransferDataDB, sender: string, id: str
             }
         }
 
-        const eventData = {
-            symbol: transferData.symbol,
-            from: sender, 
-            to: transferData.to,
-            amount: toString(transferData.amount),
-            memo: transferData.memo
-        };
-        await logTransactionEvent('tokenTransfer', sender, eventData, id);
 
         return true;
     } catch (error) {
