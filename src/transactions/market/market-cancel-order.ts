@@ -2,9 +2,9 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { MarketCancelOrderData, Order, OrderStatus, TradingPair, OrderSide, OrderType } from './market-interfaces.js';
-import { getAccount, adjustBalance } from '../../utils/account-utils.js';
+import { getAccount, adjustBalance } from '../../utils/account.js';
 import { matchingEngine } from './matching-engine.js'; // Assumed to handle the actual removal from book & state update
-import { toBigInt, toString, convertToBigInt, BigIntMath } from '../../utils/bigint-utils.js';
+import { toBigInt, toString, convertToBigInt, BigIntMath } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
 // Define keys for converting OrderDB to Order

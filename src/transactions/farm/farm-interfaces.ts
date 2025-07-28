@@ -1,4 +1,4 @@
-import { BigIntToString } from '../../utils/bigint-utils.js';
+import { BigIntToString } from '../../utils/bigint.js';
 
 /**
  * Farm interfaces with BigInt values for application logic

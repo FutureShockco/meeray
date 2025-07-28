@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { TokenMintData } from './token-interfaces.js';
 import config from '../../config.js';
-import { toBigInt } from '../../utils/bigint-utils.js';
+import { toBigInt } from '../../utils/bigint.js';
 
 export async function validateTx(data: TokenMintData, sender: string): Promise<boolean> {
   try {

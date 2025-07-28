@@ -2,8 +2,8 @@ import express, { Request, Response, Router, RequestHandler } from 'express';
 import cache from '../../cache.js';
 import { mongo } from '../../mongo.js';
 import logger from '../../logger.js';
-import { toBigInt } from '../../utils/bigint-utils.js';
-import { formatTokenAmountForResponse, formatTokenAmountSimple } from '../../utils/http-helpers.js';
+import { toBigInt } from '../../utils/bigint.js';
+import { formatTokenAmountForResponse, formatTokenAmountSimple } from '../../utils/http.js';
 import { TokenData } from '../../transactions/token/token-interfaces.js';
 
 const router: Router = express.Router();

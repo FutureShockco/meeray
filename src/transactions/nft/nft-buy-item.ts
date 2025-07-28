@@ -3,10 +3,10 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { NftBuyPayload, NFTListing, NftListPayload } from './nft-market-interfaces.js';
 import { NftInstance, CachedNftCollectionForTransfer } from './nft-transfer.js'; // Assuming NftInstance, CachedNftCollectionForTransfer are exported
-import { Account, adjustBalance, getAccount } from '../../utils/account-utils.js';
-import { Token, getTokenByIdentifier } from '../../utils/token-utils.js';
+import { Account, adjustBalance, getAccount } from '../../utils/account.js';
+import { Token, getTokenByIdentifier } from '../../utils/token.js';
 import config from '../../config.js';
-import { BigIntMath, toString as bigintToString } from '../../utils/bigint-utils.js';
+import { BigIntMath, toString as bigintToString } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: NftBuyPayload, sender: string): Promise<boolean> {

@@ -4,7 +4,7 @@ import cache from './cache.js';
 import logger from './logger.js';
 import mongo from './mongo.js';
 import { AccountDoc } from './mongo.js';
-import { toString } from './utils/bigint-utils.js';
+import { toString } from './utils/bigint.js';
 
 const possibleAccountFields = ['target', 'receiver', 'owner', 'delegate', 'to', 'from', 'account'];
 

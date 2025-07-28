@@ -3,7 +3,7 @@ import cache from './cache.js';
 import logger from './logger.js';
 import p2p from './p2p.js';
 import transaction from './transaction.js';
-import { toBigInt, toString } from './utils/bigint-utils.js';
+import { toBigInt, toString } from './utils/bigint.js';
 
 export const witnessesModule = {
 

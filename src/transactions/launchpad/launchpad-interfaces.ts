@@ -1,4 +1,4 @@
-import { BigIntToString, StringToBigInt, RecursiveBigIntToString } from '../../utils/bigint-utils.js';
+import { BigIntToString, StringToBigInt, RecursiveBigIntToString } from '../../utils/bigint.js';
 
 export enum TokenStandard {
   NATIVE = 'NATIVE',

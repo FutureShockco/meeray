@@ -2,8 +2,8 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { FarmClaimRewardsData, Farm, UserFarmPosition } from './farm-interfaces.js';
-import { getAccount, adjustBalance } from '../../utils/account-utils.js'; // For actual reward transfer later
-import { toString, convertToString } from '../../utils/bigint-utils.js'; // Import toString and convertToString
+import { getAccount, adjustBalance } from '../../utils/account.js'; // For actual reward transfer later
+import { toString, convertToString } from '../../utils/bigint.js'; // Import toString and convertToString
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: FarmClaimRewardsData, sender: string): Promise<boolean> {

@@ -1,8 +1,8 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
-import { getAccount, adjustBalance } from '../../utils/account-utils.js';
+import { getAccount, adjustBalance } from '../../utils/account.js';
 import { Launchpad, LaunchpadStatus, Token, TokenAllocation, TokenDistributionRecipient, LaunchpadClaimTokensData } from './launchpad-interfaces.js';
-import { toString, toBigInt } from '../../utils/bigint-utils.js';
+import { toString, toBigInt } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: LaunchpadClaimTokensData, sender: string): Promise<boolean> {

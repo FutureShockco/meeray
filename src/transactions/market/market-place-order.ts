@@ -2,8 +2,8 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { Order, OrderDB, TradingPair, TradingPairDB, OrderType, OrderSide, OrderStatus, MarketPlaceOrderData, MarketPlaceOrderDataDB } from './market-interfaces.js';
-import { getAccount, adjustBalance } from '../../utils/account-utils.js';
-import { convertToBigInt, convertToString, toString, toBigInt } from '../../utils/bigint-utils.js';
+import { getAccount, adjustBalance } from '../../utils/account.js';
+import { convertToBigInt, convertToString, toString, toBigInt } from '../../utils/bigint.js';
 import crypto from 'crypto';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 

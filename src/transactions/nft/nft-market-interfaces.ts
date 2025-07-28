@@ -1,4 +1,4 @@
-import { BigIntToString } from '../../utils/bigint-utils.js';
+import { BigIntToString } from '../../utils/bigint.js';
 import { OrderSide } from '../market/market-interfaces.js'; // Potentially for buy/sell side if making it more generic later
 
 /**

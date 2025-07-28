@@ -5,9 +5,9 @@ import { NftListPayload, NFTListing } from './nft-market-interfaces.js';
 import { NftInstance } from './nft-transfer.js'; // Assuming NftInstance is exported and suitable
 import { CachedNftCollectionForTransfer } from './nft-transfer.js'; // Assuming this is also suitable
 import config from '../../config.js';
-import { getTokenByIdentifier } from '../../utils/token-utils.js';
+import { getTokenByIdentifier } from '../../utils/token.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
-import { toBigInt, toString } from '../../utils/bigint-utils.js'; // Import toBigInt and toString
+import { toBigInt, toString } from '../../utils/bigint.js'; // Import toBigInt and toString
 
 // Helper to generate a unique listing ID
 function generateListingId(collectionSymbol: string, instanceId: string, seller: string): string {

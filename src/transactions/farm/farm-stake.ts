@@ -3,8 +3,8 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { FarmStakeData, Farm, UserFarmPosition, FarmStakeDataDB, UserFarmPositionDB } from './farm-interfaces.js';
 import { UserLiquidityPosition, UserLiquidityPositionDB } from '../pool/pool-interfaces.js';
-import { getAccount } from '../../utils/account-utils.js';
-import { convertToBigInt, convertToString, toString } from '../../utils/bigint-utils.js';
+import { getAccount } from '../../utils/account.js';
+import { convertToBigInt, convertToString, toString } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
 const NUMERIC_FIELDS: Array<keyof FarmStakeData> = ['lpTokenAmount'];

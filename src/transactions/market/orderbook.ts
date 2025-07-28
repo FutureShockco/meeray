@@ -1,6 +1,6 @@
 import { Order, OrderSide, OrderType, OrderBookLevel, Trade, OrderStatus, createOrder } from './market-interfaces.js';
 import logger from '../../logger.js';
-import { BigIntMath, toBigInt, toString } from '../../utils/bigint-utils.js';
+import { BigIntMath, toBigInt, toString } from '../../utils/bigint.js';
 import crypto from 'crypto'; // Added crypto import for randomBytes
 
 // Helper to sort bids (descending price, then ascending time) and asks (ascending price, then ascending time)

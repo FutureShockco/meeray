@@ -3,9 +3,9 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { PoolCreateData, LiquidityPool, PoolCreateDataDB, LiquidityPoolDB } from './pool-interfaces.js';
 import config from '../../config.js';
-import { convertToBigInt, convertToString, toString, toBigInt } from '../../utils/bigint-utils.js';
+import { convertToBigInt, convertToString, toString, toBigInt } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
-import { getLpTokenSymbol } from '../../utils/token-utils.js';
+import { getLpTokenSymbol } from '../../utils/token.js';
 
 const ALLOWED_FEE_TIERS: number[] = [10, 50, 300, 1000];
 const DEFAULT_FEE_TIER: number = 300;

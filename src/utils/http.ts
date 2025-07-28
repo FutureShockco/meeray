@@ -1,5 +1,5 @@
 import logger from '../logger.js';
-import { toBigInt, formatTokenAmount, getTokenDecimals } from './bigint-utils.js';
+import { toBigInt, formatTokenAmount, getTokenDecimals } from './bigint.js';
 
 // Helper to transform numeric string fields in a transaction's data object
 export const transformTransactionData = (txData: any): any => {

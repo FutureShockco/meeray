@@ -1,6 +1,6 @@
 import logger from '../logger.js';
 import cache from '../cache.js';
-import { toString, toBigInt } from './bigint-utils.js';
+import { toString, toBigInt } from './bigint.js';
 
 export interface Account {
     _id: string;

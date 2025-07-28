@@ -7,7 +7,7 @@ import config from './config.js';
 import { chain } from './chain.js';
 import { Block } from './block.js';
 import { TokenData } from './transactions/token/token-interfaces.js';
-import { convertToString, toString, toBigInt, setTokenDecimals, convertAllBigIntToStringRecursive } from './utils/bigint-utils.js';
+import { convertToString, toString, toBigInt, setTokenDecimals, convertAllBigIntToStringRecursive } from './utils/bigint.js';
 import { logTransactionEvent } from './utils/event-logger.js';
 
 const DB_NAME = process.env.MONGO_DB || 'echelon';

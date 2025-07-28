@@ -1,8 +1,8 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
-import { getAccount, adjustBalance } from '../../utils/account-utils.js';
+import { getAccount, adjustBalance } from '../../utils/account.js';
 import { Launchpad, LaunchpadStatus, PresaleDetails, LaunchpadParticipatePresaleData, LaunchpadParticipatePresaleDataDB } from './launchpad-interfaces.js';
-import { toBigInt, toString, convertToBigInt, BigIntMath } from '../../utils/bigint-utils.js';
+import { toBigInt, toString, convertToBigInt, BigIntMath } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
 const NUMERIC_FIELDS_PARTICIPATE: Array<keyof LaunchpadParticipatePresaleData> = ['contributionAmount'];

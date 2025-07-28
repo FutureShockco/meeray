@@ -2,8 +2,8 @@ import { Order, Trade, TradingPair, OrderStatus, OrderSide, OrderType, OrderDB, 
 import { OrderBook, OrderBookMatchResult } from './orderbook.js';
 import logger from '../../logger.js';
 import cache from '../../cache.js';
-import { adjustBalance } from '../../utils/account-utils.js';
-import { BigIntMath, convertToBigInt, convertToString, toString, toBigInt } from '../../utils/bigint-utils.js';
+import { adjustBalance } from '../../utils/account.js';
+import { BigIntMath, convertToBigInt, convertToString, toString, toBigInt } from '../../utils/bigint.js';
 
 /**
  * Result returned by the MatchingEngine after processing an order.

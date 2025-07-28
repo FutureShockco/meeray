@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import { mongo } from '../../mongo.js';
 import logger from '../../logger.js';
 import { AccountDoc } from '../../mongo.js'; // Assuming AccountDoc is exported from mongo.ts and includes witness fields
-import { toBigInt } from '../../utils/bigint-utils.js';
+import { toBigInt } from '../../utils/bigint.js';
 
 const router: Router = express.Router();
 

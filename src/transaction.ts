@@ -9,7 +9,7 @@ import chain from './chain.js';
 import cache from './cache.js';
 import { transactionHandlers } from './transactions/index.js';
 import cloneDeep from 'clone-deep';
-import { toBigInt, toString } from './utils/bigint-utils.js';
+import { toBigInt, toString } from './utils/bigint.js';
 const MAX_MEMPOOL_SIZE = parseInt(process.env.MEMPOOL_SIZE || '2000', 10);
 
 type ValidationCallback = (isValid: boolean, error?: string) => void;

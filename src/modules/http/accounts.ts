@@ -3,8 +3,8 @@ import { ObjectId } from 'mongodb';
 import mongo from '../../mongo.js';
 import cache from '../../cache.js';
 import logger from '../../logger.js';
-import { toBigInt } from '../../utils/bigint-utils.js';
-import { transformTransactionData, formatTokenBalancesForResponse } from '../../utils/http-helpers.js';
+import { toBigInt } from '../../utils/bigint.js';
+import { transformTransactionData, formatTokenBalancesForResponse } from '../../utils/http.js';
 
 const router: Router = express.Router();
 

@@ -4,7 +4,7 @@ import validate from '../../validation/index.js';
 import config from '../../config.js';
 import transaction from '../../transaction.js';
 import { TokenTransferData } from './token-interfaces.js';
-import { toString, getTokenDecimals, toBigInt } from '../../utils/bigint-utils.js';
+import { toString, getTokenDecimals, toBigInt } from '../../utils/bigint.js';
 
 const BURN_ACCOUNT_NAME = config.burnAccountName || 'null';
 

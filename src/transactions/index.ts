@@ -3,7 +3,6 @@ import { TransactionType } from './types.js';
 import fs from 'fs/promises';
 import path from 'path';
 import { pathToFileURL, fileURLToPath } from 'url';
-import cache from '../cache.js';
 
 // Define the base transaction interface
 export interface Transaction {

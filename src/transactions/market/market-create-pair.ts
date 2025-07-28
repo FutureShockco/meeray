@@ -3,8 +3,8 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { MarketCreatePairData, MarketCreatePairDataDB, TradingPair, TradingPairDB } from './market-interfaces.js';
 // import crypto from 'crypto'; // No longer needed for TradingPairId generation
-import { generateDeterministicId } from '../../utils/id-utils.js'; // Import the new helper
-import { convertToBigInt, convertToString } from '../../utils/bigint-utils.js';
+import { generateDeterministicId } from '../../utils/id.js'; // Import the new helper
+import { convertToBigInt, convertToString } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js'; // Import the new event logger
 
 const NUMERIC_FIELDS_CREATE_PAIR: Array<keyof MarketCreatePairData> = ['tickSize', 'lotSize', 'minNotional', 'minTradeAmount', 'maxTradeAmount'];

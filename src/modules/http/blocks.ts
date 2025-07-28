@@ -2,7 +2,7 @@ import express, { Request, Response, Router, RequestHandler } from 'express';
 import { chain } from '../../chain.js';
 import { mongo } from '../../mongo.js';
 import logger from '../../logger.js';
-import { transformTransactionData } from '../../utils/http-helpers.js';
+import { transformTransactionData } from '../../utils/http.js';
 import cache from '../../cache.js';
 
 const router = express.Router();

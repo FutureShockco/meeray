@@ -3,8 +3,8 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import config from '../../config.js';
 import { FarmCreateData, FarmCreateDataDB, Farm, FarmDB } from './farm-interfaces.js';
-import { convertToBigInt, convertToString, toString, BigIntMath } from '../../utils/bigint-utils.js';
-import { getAccount } from '../../utils/account-utils.js';
+import { convertToBigInt, convertToString, toString, BigIntMath } from '../../utils/bigint.js';
+import { getAccount } from '../../utils/account.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
 const NUMERIC_FIELDS_FARM_CREATE: Array<keyof FarmCreateData> = ['totalRewards', 'rewardsPerBlock', 'minStakeAmount', 'maxStakeAmount'];

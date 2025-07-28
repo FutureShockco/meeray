@@ -2,10 +2,10 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { PoolRemoveLiquidityData, LiquidityPool, UserLiquidityPosition, PoolRemoveLiquidityDataDB, LiquidityPoolDB, UserLiquidityPositionDB } from './pool-interfaces.js';
-import { adjustBalance, getAccount } from '../../utils/account-utils.js';
-import { BigIntMath, toString, toBigInt, convertToBigInt, convertToString } from '../../utils/bigint-utils.js';
+import { adjustBalance, getAccount } from '../../utils/account.js';
+import { BigIntMath, toString, toBigInt, convertToBigInt, convertToString } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
-import { getLpTokenSymbol } from '../../utils/token-utils.js';
+import { getLpTokenSymbol } from '../../utils/token.js';
 
 // minTokenA_amount and minTokenB_amount are for client-side slippage, not direct processing here if only lpTokenAmount is used.
 const NUMERIC_FIELDS_REMOVE_LIQ: Array<keyof PoolRemoveLiquidityData> = ['lpTokenAmount']; 

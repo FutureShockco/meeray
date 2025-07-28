@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import config from '../../config.js';
 import validate from '../../validation/index.js';
 import { TokenData } from './token-interfaces.js';
-import { setTokenDecimals } from '../../utils/bigint-utils.js';
+import { setTokenDecimals } from '../../utils/bigint.js';
 
 export async function validateTx(data: TokenData, sender: string): Promise<boolean> {
   try {

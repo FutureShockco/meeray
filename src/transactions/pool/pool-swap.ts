@@ -2,8 +2,8 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { PoolSwapData, LiquidityPool, PoolSwapDataDB, LiquidityPoolDB } from './pool-interfaces.js';
-import { adjustBalance, getAccount, Account } from '../../utils/account-utils.js';
-import { BigIntMath, convertToBigInt, toString as bigintToString } from '../../utils/bigint-utils.js';
+import { adjustBalance, getAccount, Account } from '../../utils/account.js';
+import { BigIntMath, convertToBigInt, toString as bigintToString } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 import mongo from '../../mongo.js';
 

@@ -1,6 +1,6 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
-import { toBigInt, toString } from '../../utils/bigint-utils.js';
+import { toBigInt, toString } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export interface WitnessUnvoteData {
