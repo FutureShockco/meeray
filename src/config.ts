@@ -21,7 +21,8 @@ const config = {
   farmReward: 100000000, // 1 ECH in smallest units (1 * 10^8)
   steemChainId: '0000000000000000000000000000000000000000000000000000000000000000',
   steemStartBlock: process.env.NODE_ENV === 'development' ? 2272280 : 95762370, // starting Steem block for sidechain
-  steemBlockDelay: 2, // blocks - delay between Steem blocks
+  steemBlockDelay: 1, // blocks - delay between Steem blocks
+  steemBlockMaxDelay: 6, // blocks - max delay between Steem blocks
   mongoUri:
     process.env.MONGO_URL && process.env.MONGO_DB
       ? `${process.env.MONGO_URL.replace(/\/$/, '')}/${process.env.MONGO_DB}`
@@ -48,7 +49,9 @@ const config = {
   tokenMinSupply: 1,
   tokenMaxSupply: 1000000000000000000,
   consensusRounds: 2,
-  witnesses: 5, 
+  witnesses: 5,
+  maxDrift: 30000, // 30 seconds max drift for block timestamp
+  maxTokenAmountDigits: 30, // Maximum digits for token amounts
   notifPurge: 1000, // how often to purge old notifications (blocks)
   notifPurgeAfter: 10, // how many purge intervals to keep
   notifMaxMentions: 5, // max mentions per comment

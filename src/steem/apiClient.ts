@@ -41,7 +41,6 @@ class SteemApiClient {
     switchToNextEndpoint(): boolean {
         if (this.apiUrls.length <= 1) return false;
 
-        // Try to find the best endpoint based on cached heights
         let bestEndpoint = this.apiUrls[0];
         let highestBlock = 0;
         for (const [url, data] of this.rpcHeightData.entries()) {
@@ -88,13 +87,13 @@ class SteemApiClient {
                 return highestCachedBlock;
             }
 
-            const dynGlobalProps = await this.client.database.getDynamicGlobalProperties();
-            if (dynGlobalProps?.head_block_number) {
+            const dynamicGlobalProps = await this.client.database.getDynamicGlobalProperties();
+            if (dynamicGlobalProps?.head_block_number) {
                 this.rpcHeightData.set(this.client.address, {
-                    height: dynGlobalProps.head_block_number,
+                    height: dynamicGlobalProps.head_block_number,
                     timestamp: Date.now()
                 });
-                return dynGlobalProps.head_block_number;
+                return dynamicGlobalProps.head_block_number;
             }
             
             throw new Error('Invalid response from getDynamicGlobalProperties');
@@ -109,10 +108,6 @@ class SteemApiClient {
 
     async getBlock(blockNum: number): Promise<any> {
         return this.client.database.getBlock(blockNum);
-    }
-
-    getCurrentAddress(): string {
-        return this.client.address;
     }
 
     getRpcHeightData(): Map<string, RpcHeightData> {

@@ -155,7 +155,7 @@ const getUserParticipationHandler: RequestHandler = async (req: Request, res: Re
     const { launchpadId, userId } = req.params;
     logger.debug(`[API /launchpad/:launchpadId/user/:userId] Received request for user ${userId} participation in launchpad ${launchpadId}`);
     try {
-        const launchpadFromDB = await cache.findOnePromise('launchpads', { _id: launchpadId }) as any;
+        const launchpadFromDB = await cache.findOnePromise('launchpads', { _id: launchpadId });
 
         if (!launchpadFromDB) {
             logger.debug(`[API /launchpad/:launchpadId/user/:userId] Launchpad ${launchpadId} not found.`);

@@ -3,7 +3,6 @@ import cache from './cache.js';
 import logger from './logger.js';
 import p2p from './p2p.js';
 import transaction from './transaction.js';
-import { chain } from './chain.js';
 import { toBigInt, toString } from './utils/bigint-utils.js';
 
 export const witnessesModule = {
@@ -34,8 +33,6 @@ export const witnessesModule = {
             shuffle: shuffledWitnesses
         };
     },
-
-
     witnessRewards: (name: string, ts: number, cb: (dist: string) => void) => {
         cache.findOne('accounts', { name: name }, async function (err: any, account: any) {
             if (err) {
@@ -52,7 +49,7 @@ export const witnessesModule = {
             if (reward > 0) {
                 const currentBalanceStr = account.balances?.ECH || toString(BigInt(0));
                 const currentBalanceBigInt = toBigInt(currentBalanceStr);
-                
+
                 const rewardBigInt = BigInt(reward);
                 logger.debug(`[witnessRewards] Applying reward for ${name}: ${rewardBigInt.toString()}`);
 
@@ -68,7 +65,7 @@ export const witnessesModule = {
                             logger.error('Error updating account balance for rewards:', err);
                             return cb('0');
                         }
-                        
+
                         if (result === false) {
                             logger.warn(`[witnessRewards] cache.updateOne for ${account.name} reported no document was updated.`);
                         }
@@ -79,7 +76,7 @@ export const witnessesModule = {
                             account.balances = { ECH: newBalancePaddedString };
                         }
                         if (account.tokens && account.tokens.ECH !== undefined) {
-                            delete account.tokens.ECH; 
+                            delete account.tokens.ECH;
                             if (Object.keys(account.tokens).length === 0) {
                                 delete account.tokens;
                             }
@@ -96,7 +93,6 @@ export const witnessesModule = {
             }
         });
     },
-
     generateWitnesses: (withWitnessPub: boolean, withWs: boolean, limit: number, start: number) => {
         let witnesses: any[] = [];
 
@@ -132,5 +128,4 @@ export const witnessesModule = {
         }
         return witnesses;
     },
-
 };

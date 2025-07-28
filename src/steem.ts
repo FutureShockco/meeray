@@ -21,9 +21,6 @@ const blockProcessor = new BlockProcessor(apiClient);
 const networkStatus = new NetworkStatusManager();
 
 
-const setReadyToReceiveTransactions = (ready: boolean): void => {
-    readyToReceiveTransactions = ready;
-};
 
 const initSteemSync = (blockNum: number): void => {
     if (steemBlockPollingInterval) {
@@ -53,7 +50,7 @@ const initSteemSync = (blockNum: number): void => {
 
             updateSteemBlockPolling();
 
-            if (behindBlocks > config.steemBlockDelay * 3 && !syncManager.isInSyncMode()) {
+            if (behindBlocks > config.steemBlockMaxDelay && !syncManager.isInSyncMode()) {
                 logger.info(`Already ${behindBlocks} blocks behind, entering sync mode immediately`);
                 syncManager.enterSyncMode();
             }
@@ -74,7 +71,6 @@ const init = (blockNum: number): void => {
     nextSteemBlock = blockNum;
     currentSteemBlock = blockNum - 1;
     logger.info('Initializing Steem module for block', nextSteemBlock);
-    setReadyToReceiveTransactions(false);
     syncManager.setSyncExitTarget(null);
 
     const networkCheckInterval = setInterval(checkNetworkSyncStatus, 5000);
@@ -91,7 +87,7 @@ const init = (blockNum: number): void => {
             const referenceBlock = networkSyncStatus.highestBlock;
             logger.info(`Found reference node with higher block ${referenceBlock}, prioritizing network sync first`);
             let lastRequestedBlock = chain?.getLatestBlock()?._id || 0;
-            
+
             const requestBlocks = async () => {
                 const currentBlock = chain?.getLatestBlock()?._id || 0;
                 const blocksBehindTarget = referenceBlock - currentBlock;
@@ -171,7 +167,21 @@ const isOnSteemBlock = async (block: Block): Promise<boolean> => {
 };
 
 const getLatestSteemBlockNum = async (): Promise<number | null> => {
-    return apiClient.getLatestBlockNumber();
+    const latestChainBlock = chain.getLatestBlock();
+    let lastProcessedSteemBlock = null;
+    if (latestChainBlock?.steemBlockNum) {
+        lastProcessedSteemBlock = latestChainBlock.steemBlockNum;
+    } else {
+        lastProcessedSteemBlock = config.steemStartBlock;
+    }
+    const latestSteemBlock = await apiClient.getLatestBlockNumber();
+    if( !latestSteemBlock) {
+        logger.warn('Failed to get latest Steem block number');
+        return null;
+    }
+    const behindBlocks = Math.max(0, latestSteemBlock - lastProcessedSteemBlock);
+    syncManager.updateBehindBlocks(behindBlocks);
+    return latestSteemBlock;
 };
 
 const checkNetworkSyncStatus = async (): Promise<void> => {
@@ -192,9 +202,9 @@ const checkNetworkSyncStatus = async (): Promise<void> => {
         if (networkSyncStatus.referenceExists &&
             networkSyncStatus.referenceNodeId !== 'self' &&
             networkSyncStatus.highestBlock > (chain?.getLatestBlock()?._id || 0) + 10) {
-            
+
             logger.warn(`Significantly behind network: our block ${chain?.getLatestBlock()?._id || 0} vs network ${networkSyncStatus.highestBlock}`);
-            
+
             if (!p2p.recovering && !syncManager.isInSyncMode()) {
                 logger.info('Requesting recent blocks from network to catch up with sidechain peers.');
                 if (p2p?.sockets?.length > 0) {
@@ -222,7 +232,7 @@ function updateSteemBlockPolling(): void {
 
     const isSyncing = syncManager.isInSyncMode();
     const behindBlocks = syncManager.getBehindBlocks();
-    
+
     let interval;
     if (isSyncing) {
         interval = steemConfig.syncModePollingInterval;
@@ -240,10 +250,10 @@ function updateSteemBlockPolling(): void {
             // Smart skipping for stable systems
             if (!isSyncing && behindBlocks === 0 && Math.random() > 0.7) {
                 const networkSyncStatus = networkStatus.getNetworkSyncStatus();
-                if (networkSyncStatus.totalNodes === 0 || 
-                    (networkSyncStatus.nodesInSync === networkSyncStatus.totalNodes && 
-                     networkSyncStatus.medianBlock !== undefined && 
-                     networkSyncStatus.medianBlock >= (chain.getLatestBlock()?._id || 0) - 1)) {
+                if (networkSyncStatus.totalNodes === 0 ||
+                    (networkSyncStatus.nodesInSync === networkSyncStatus.totalNodes &&
+                        networkSyncStatus.medianBlock !== undefined &&
+                        networkSyncStatus.medianBlock >= (chain.getLatestBlock()?._id || 0) - 1)) {
                     logger.debug('Skipping Steem block check - system appears stable and caught up.');
                     return;
                 }
@@ -253,10 +263,10 @@ function updateSteemBlockPolling(): void {
             if (latestBlockOnSteem) {
                 const lastSteemBlockInSidechain = chain?.getLatestBlock()?.steemBlockNum || 0;
                 const newBehindBlocks = Math.max(0, latestBlockOnSteem - lastSteemBlockInSidechain);
+                syncManager.updateBehindBlocks(newBehindBlocks);
 
                 if (newBehindBlocks !== behindBlocks) {
-                    syncManager.updateBehindBlocks(newBehindBlocks);
-                    if (Math.abs(newBehindBlocks - behindBlocks) > steemConfig.syncExitThreshold + 2) {
+                    if (Math.abs(newBehindBlocks - behindBlocks) > steemConfig.syncExitThreshold) {
                         updateSteemBlockPolling();
                         return;
                     }
@@ -280,8 +290,7 @@ function updateSteemBlockPolling(): void {
                         logger.info(`Reached syncExitTargetBlock ${exitTarget} at block ${currentChainBlockId}. Exiting sync mode.`);
                         syncManager.exitSyncMode(currentChainBlockId, lastSteemBlockInSidechain);
                     } else if (!exitTarget && await syncManager.shouldExitSyncMode(currentChainBlockId)) {
-                        const leadBlocks = 3;
-                        const newTarget = currentChainBlockId + leadBlocks;
+                        const newTarget = currentChainBlockId + steemConfig.syncExitThreshold;
                         logger.info(`Local node caught up. Setting syncExitTargetBlock to ${newTarget}.`);
                         syncManager.setSyncExitTarget(newTarget);
                     }
@@ -296,7 +305,7 @@ function updateSteemBlockPolling(): void {
             logger.error('Error in Steem block polling:', error);
         }
     }, finalInterval);
-    
+
     logger.info(`Steem block polling interval set to ${finalInterval}ms (Syncing: ${isSyncing}, Behind: ${behindBlocks})`);
 }
 
@@ -323,7 +332,6 @@ const steemModule = {
         isSyncing: syncManager.isInSyncMode(),
         behindBlocks: syncManager.getBehindBlocks()
     }),
-    setReadyToReceiveTransactions,
     isOnSteemBlock,
     isProcessingBlock: (blockNum: number) => blockProcessor.isProcessingBlock(blockNum),
     getRpcHeightData: () => apiClient.getRpcHeightData(),

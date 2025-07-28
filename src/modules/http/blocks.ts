@@ -87,7 +87,7 @@ router.get('/latest', ((_req: Request, res: Response) => {
             return res.status(404).json({ error: 'No blocks found' });
         }
         // Assuming latestBlockFromChain structure is similar to DB structure
-        const { transactions, _id, ...restOfBlock } = latestBlockFromChain as any;
+        const { transactions, _id, ...restOfBlock } = latestBlockFromChain;
         const transformedBlock: any = { ...restOfBlock };
         if (_id) { // _id might not exist if chain.getLatestBlock() returns a simplified object
             transformedBlock.id = _id.toString();

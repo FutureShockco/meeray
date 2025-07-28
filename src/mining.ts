@@ -2,16 +2,13 @@ import { chain } from './chain.js';
 import { Block, isValidNewBlock } from './block.js';
 import config from './config.js';
 import transaction from './transaction.js';
-import secp256k1 from 'secp256k1';
-import baseX from 'base-x';
 import logger from './logger.js';
-import { calculateHashForBlock } from './block.js';
 import steem from './steem.js';
 import { Transaction } from './transactions/index.js';
 import cache from './cache.js';
 import consensus from './consensus.js';
 import p2p from './p2p.js';
-const bs58 = baseX(config.b58Alphabet);
+import { hashAndSignBlock } from './crypto.js';
 
 export const mining = {
 
@@ -24,21 +21,21 @@ export const mining = {
             return;
         }
         let nextIndex = previousBlock._id + 1;
-        
+
         // Determine the correct timestamp for the new block
         const targetBlockInterval = steem.isInSyncMode() ? config.syncBlockTime : config.blockTime;
         const minTimestampForNewBlock = previousBlock.timestamp + targetBlockInterval;
         const currentSystemTime = new Date().getTime();
-        
+
         // Ensure the new block's timestamp is at least minTimestampForNewBlock for the current mode,
         // but use currentSystemTime if it's later, allowing the chain to progress naturally if there were delays.
         let nextTimestamp = Math.max(currentSystemTime, minTimestampForNewBlock);
-        
+
         // isValidNewBlock should be the ultimate arbiter of whether a timestamp is too far in the future.
 
         // Steem block numbers and timestamps in the Echelon block are related to the Steem block being processed,
         // not directly to Echelon block timing intervals in the same way Echelon timestamps are.
-        let nextSteemBlockNum = previousBlock.steemBlockNum + 1; 
+        let nextSteemBlockNum = previousBlock.steemBlockNum + 1;
         let nextSteemBlockTimestamp = previousBlock.steemBlockTimestamp + targetBlockInterval; // Approximate, actual comes from Steem block
 
         logger.debug(`[MINING:prepareBlock] Mode: ${steem.isInSyncMode() ? 'SYNC' : 'NORMAL'}, TargetInterval: ${targetBlockInterval}ms`);
@@ -127,7 +124,7 @@ export const mining = {
      */
     canMineBlock: (cb: (err: boolean | null, newBlock?: any) => void) => {
         logger.debug('[MINING:canMineBlock] Entered.');
-        if ((chain as any).shuttingDown) {
+        if (chain.shuttingDown) {
             logger.warn('[MINING:canMineBlock] Chain shutting down, aborting.');
             cb(true, null); return;
         }
@@ -148,7 +145,7 @@ export const mining = {
 
     mineBlock: (cb: (err: boolean | null, newBlock?: any) => void) => {
         logger.debug('[MINING:mineBlock] Entered.');
-        if ((chain as any).shuttingDown) {
+        if (chain.shuttingDown) {
             logger.warn('[MINING:mineBlock] Chain shutting down, aborting.');
             return;
         }
@@ -183,7 +180,7 @@ export const mining = {
                     if (distributed) newBlock.dist = distributed;
 
                     logger.debug(`[MINING:mineBlock] Before hashAndSignBlock for _id ${newBlock._id}.`);
-                    newBlock = mining.hashAndSignBlock(newBlock);
+                    newBlock = hashAndSignBlock(newBlock);
                     logger.debug(`[MINING:mineBlock] After hashAndSignBlock for _id ${newBlock._id}. Hash: ${newBlock.hash}`);
 
                     // Add this check before proposing to consensus
@@ -258,7 +255,7 @@ export const mining = {
                 mineInMs = targetTimestamp - currentTime;
                 logger.debug(`[MINING:minerWorker] Post-sync transition: Scheduled as next witness. Target: ${new Date(targetTimestamp).toISOString()}. Current: ${new Date(currentTime).toISOString()}. Calculated mineInMs: ${mineInMs}`);
             } else {
-                mineInMs = blockTime; 
+                mineInMs = blockTime;
             }
         }
         else if (mineInMs === null) {
@@ -268,7 +265,7 @@ export const mining = {
                     if (justExitedSync) {
                         const targetTimestamp = lastBlockTimestamp + (config.blockTime * (i + 1));
                         mineInMs = targetTimestamp - currentTime;
-                        logger.debug(`[MINING:minerWorker] Post-sync transition: Backup witness (slot ${i+1}). Target: ${new Date(targetTimestamp).toISOString()}. Current: ${new Date(currentTime).toISOString()}. Calculated mineInMs: ${mineInMs}`);
+                        logger.debug(`[MINING:minerWorker] Post-sync transition: Backup witness (slot ${i + 1}). Target: ${new Date(targetTimestamp).toISOString()}. Current: ${new Date(currentTime).toISOString()}. Calculated mineInMs: ${mineInMs}`);
                     } else {
                         mineInMs = blockTime * (i + 1);
                     }
@@ -282,13 +279,13 @@ export const mining = {
             mineInMs -= (new Date().getTime() - block.timestamp);
             mineInMs += 40;
             const timeSinceLastBlock = chain.lastBlockTime ? Date.now() - chain.lastBlockTime : 0;
-            (chain as any).lastBlockTime = Date.now();
+            chain.lastBlockTime = Date.now();
             logger.debug(`[MINING:minerWorker] Calculated mineInMs: ${mineInMs}. Will try to mine for block _id ${block._id + 1}. (sync: ${steem.isInSyncMode()}), timeSinceLastBlock: ${timeSinceLastBlock}ms`);
             consensus.observer = false;
 
             if (steem.isInSyncMode()) {
-                const syncSkipThreshold = Math.max(20, blockTime / 100); 
-                if (mineInMs < syncSkipThreshold) { 
+                const syncSkipThreshold = Math.max(20, blockTime / 100);
+                if (mineInMs < syncSkipThreshold) {
                     const newCalculatedDelay = Math.max(50, Math.floor(blockTime / 4));
                     logger.warn(`[MINING:minerWorker] In Sync: mineInMs (${mineInMs}ms) is below threshold (${syncSkipThreshold}ms). Calculated new delay: ${newCalculatedDelay}ms. Scheduling to mine then.`);
                     mineInMs = newCalculatedDelay;
@@ -302,21 +299,49 @@ export const mining = {
                 if (lastSyncExitTime && (currentTime - lastSyncExitTime < postSyncGracePeriod)) {
                     const lenientSkipThreshold = Math.max(100, blockTime / 10);
                     if (mineInMs < lenientSkipThreshold) {
-                        logger.warn(`[MINING:minerWorker] Post-sync Grace Period: mineInMs (${mineInMs}ms) is below lenient threshold (${lenientSkipThreshold}ms). Skipping block.`);
+                        logger.warn(`[MINING:minerWorker] Post-sync Grace Period: mineInMs (${mineInMs}ms) is below lenient threshold (${lenientSkipThreshold}ms). Waiting for chain head to advance.`);
+                        // Only retry if chain head advances
+                        const currentBlockId = block._id;
+                        const waitForAdvance = () => {
+                            const latestBlock = chain.getLatestBlock();
+                            if (latestBlock && latestBlock._id > currentBlockId) {
+                                mining.minerWorker(latestBlock);
+                            } else {
+                                setTimeout(waitForAdvance, 1000);
+                            }
+                        };
+                        setTimeout(waitForAdvance, 1000);
                         return;
                     }
                 } else {
                     const normalSkipThreshold = Math.max(150, blockTime / 3);
+                    logger.debug(`[MINING:minerWorker] Normal Mode: mineInMs (${mineInMs}ms) is above threshold (${normalSkipThreshold}ms). Proceeding to mine.`);
                     if (mineInMs < normalSkipThreshold) {
-                        logger.warn(`[MINING:minerWorker] Normal Mode: mineInMs (${mineInMs}ms) is below threshold (${normalSkipThreshold}ms). Skipping block.`);
+                        logger.warn(`[MINING:minerWorker] Normal Mode: mineInMs (${mineInMs}ms) is below threshold (${normalSkipThreshold}ms). Waiting for chain head to advance.`);
+                        const waitForAdvance = () => {
+                            const latestBlock = chain.getLatestBlock();
+                            steem.getLatestSteemBlockNum().then(latestSteemBlock => {
+                                logger.warn(`[MINING:minerWorker] Normal Mode: latestBlock (${latestSteemBlock})`);
+                                if (latestSteemBlock) {
+                                    console.log(`Waiting for steem chain head to advance: latestBlock=${latestBlock?.steemBlockNum}, latestSteemBlock=${latestSteemBlock}`);
+                                    if (latestBlock && latestBlock.steemBlockNum < latestSteemBlock) {
+                                        mining.mineBlock(function (error, finalBlock) {
+                                            if (error) {
+                                                logger.warn(`[MINING:minerWorker] mineBlock callback error for ${block._id + 1}. finalBlock._id: ${finalBlock?._id}`, error);
+                                            }
+                                        });
+                                    } else {
+                                        setTimeout(waitForAdvance, 1000);
+                                    }
+                                }
+                            });
+                        };
+                        setTimeout(waitForAdvance, 1000);
                         return;
                     }
                 }
             }
-            
-            if (steem && steem.setReadyToReceiveTransactions) {
-                steem.setReadyToReceiveTransactions(true);
-            }
+
 
             chain.worker = setTimeout(function () {
                 mining.mineBlock(function (error, finalBlock) {
@@ -326,14 +351,6 @@ export const mining = {
                 });
             }, mineInMs);
         }
-    },
-    hashAndSignBlock: (block: Block): Block => {
-        let nextHash = calculateHashForBlock(block)
-        let sigObj = secp256k1.ecdsaSign(Buffer.from(nextHash, 'hex'), bs58.decode(process.env.WITNESS_PRIVATE_KEY || ''))
-        const signature = bs58.encode(sigObj.signature)
-        block.signature = signature
-        block.hash = nextHash
-        return block
     },
 };
 

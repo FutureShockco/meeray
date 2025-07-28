@@ -5,16 +5,14 @@ import config from './config.js';
 import { p2p } from './p2p.js';
 import { chain } from './chain.js';
 import transaction from './transaction.js';
-import cache from './cache.js'; // Will be refactored in Phase 2
-import { setMongoDbInstance as setCacheMongoDbInstance } from './cache.js'; // Import the setter
+import cache from './cache.js';
+import { setMongoDbInstance as setCacheMongoDbInstance } from './cache.js';
 import { witnessesStats } from './witnessesStats.js';
-
 import { blocks } from './blockStore.js';
 import { mongo, StateDoc } from './mongo.js'; 
 import { witnessesModule } from './witnesses.js';
 import { initializeModules } from './initialize.js';
 import { Block } from './block.js';
-import steem from './steem.js';
 
 process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
     logger.error('CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);

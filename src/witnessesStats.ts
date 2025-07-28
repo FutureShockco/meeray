@@ -54,25 +54,20 @@ const indexer: IWitnessIndexer = {
         last: 0,
       };
 
-    // Increment produced/missed
     indexer.witnesses[block.witness]!.produced! += 1;
     indexer.witnesses[block.witness]!.last = block._id;
     if (block.missedBy) indexer.witnesses[block.missedBy]!.missed! += 1;
 
-    // Record first time producers whenever applicable
     if (!indexer.witnesses[block.witness]!.sinceTs) indexer.witnesses[block.witness]!.sinceTs = block.timestamp;
     if (!indexer.witnesses[block.witness]!.sinceBlock) indexer.witnesses[block.witness]!.sinceBlock = block._id;
 
-    // Witness updates
     if (!indexer.updates.witnesses.includes(block.witness))
       indexer.updates.witnesses.push(block.witness);
     if (block.missedBy && !indexer.updates.witnesses.includes(block.missedBy))
       indexer.updates.witnesses.push(block.missedBy);
 
-    // Look for approves/disapproves in tx
     for (let i = 0; i < block.txs.length; i++) {
       if (block.txs[i].type === 1) {
-        // APPROVE_STEEM_ACCOUNT
         if (!indexer.witnesses[block.txs[i].data.target])
           indexer.witnesses[block.txs[i].data.target] = {
             produced: 0,
@@ -84,7 +79,6 @@ const indexer: IWitnessIndexer = {
         if (!indexer.updates.witnesses.includes(block.txs[i].data.target))
           indexer.updates.witnesses.push(block.txs[i].data.target);
       } else if (block.txs[i].type === 2) {
-        // DISAPPROVE_STEEM_ACCOUNT
         if (!indexer.witnesses[block.txs[i].data.target])
           indexer.witnesses[block.txs[i].data.target] = {
             produced: 0,
@@ -96,7 +90,6 @@ const indexer: IWitnessIndexer = {
         if (!indexer.updates.witnesses.includes(block.txs[i].data.target))
           indexer.updates.witnesses.push(block.txs[i].data.target);
       } else if (block.txs[i].type === 18 && !indexer.witnesses[block.txs[i].sender]) {
-        // ENABLE_NODE
         indexer.witnesses[block.txs[i].sender] = {
           produced: 0,
           missed: 0,

@@ -34,7 +34,6 @@ const txHistory = {
         const newTxItm = cloneDeep(t);
         newTxItm._id = newTxItm.hash;
         newTxItm.includedInBlock = block._id;
-        // In a witness system, this can be extended to include witness info if needed
         txHistory.indexQueue.push(newTxItm);
       }
     }

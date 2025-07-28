@@ -175,12 +175,12 @@ export const chain = {
                             }
                         } else { // Not in sync mode
                             // Evaluate entry conditions
-                            const criticalLocalDelayThreshold = (config as any).steemBlockDelayCritical || 10;
-                            const networkMedianEntryThreshold = (config as any).steemBlockDelayNetworkEntry || Math.max(10, ((config as any).steemBlockDelay || 10) * 1.5);
-                            const witnessLagThreshold = (config as any).steemBlockDelayWitnessLagThreshold || ((config as any).steemBlockDelay || 10);
+                            const criticalLocalDelayThreshold = config.steemBlockMaxDelay || 10;
+                            const networkMedianEntryThreshold = config.steemBlockMaxDelay || Math.max(10, (config.steemBlockDelay || 10) * 1.5);
+                            const witnessLagThreshold = config.steemBlockMaxDelay || (config.steemBlockDelay || 10);
 
-                            const activeWitnessAccounts = chain.schedule?.active_witnesses || (config as any).activeWitnesses || [];
-                            const minWitnessesLaggingForEntryFactor = activeWitnessAccounts.length > 0 ? Math.max(1, Math.ceil(activeWitnessAccounts.length * ((config as any).syncEntryWitnessQuorumMinPercentForFactor || 0.3))) : 0;
+                            const activeWitnessAccounts = chain.schedule?.active_witnesses || config.witnesses || [];
+                            const minWitnessesLaggingForEntryFactor = activeWitnessAccounts.length > 0 ? Math.max(1, Math.ceil(activeWitnessAccounts.length *  0.3)) : 0;
 
                             const isLocallyCritical = localSteemDelayCorrected > criticalLocalDelayThreshold;
                             const isNetworkMedianLagHigh = networkOverall.medianBehind > networkMedianEntryThreshold;

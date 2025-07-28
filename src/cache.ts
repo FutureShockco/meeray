@@ -358,7 +358,7 @@ const cache: CacheType = {
             }
 
             for (const op in changes) {
-                const opArgs = (changes as any)[op];
+                const opArgs = changes[op];
                 if (!opArgs) continue;
 
                 switch (op) {

@@ -37,7 +37,7 @@ export async function validateTx(data: TokenTransferDataDB, sender: string): Pro
         
         const precision = typeof token.precision === 'number' ? token.precision : (typeof token.precision === 'string' ? parseInt(token.precision, 10) : 8);
         // Use a default of 30 for total digits if config.maxTokenAmountDigits is not set
-        const totalDigits = (config as any).maxTokenAmountDigits || (30 - precision); 
+        const totalDigits = config.maxTokenAmountDigits || (30 - precision); 
         const maxAmountString = '9'.repeat(totalDigits) + '0'.repeat(precision);
         const maxAmount = BigInt(maxAmountString);
 

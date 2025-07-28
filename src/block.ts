@@ -160,7 +160,7 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
     }
 
     // Check block timestamp is not too far in the future
-    const maxDrift = (config as any).maxDrift || 30000;
+    const maxDrift = config.maxDrift || 30000;
     if (newBlock.timestamp > Date.now() + maxDrift) {
         logger.error('block timestamp too far in the future');
         return cb(false);

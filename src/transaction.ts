@@ -12,9 +12,7 @@ import cloneDeep from 'clone-deep';
 import { toBigInt, toString } from './utils/bigint-utils.js';
 const MAX_MEMPOOL_SIZE = parseInt(process.env.MEMPOOL_SIZE || '2000', 10);
 
-
 type ValidationCallback = (isValid: boolean, error?: string) => void;
-
 
 type ExecutionCallback = (executed: boolean, distributed?: number) => void;
 
@@ -37,7 +35,7 @@ interface TransactionModule {
 }
 
 const transaction: TransactionModule = {
-    pool: [], // The pool holds temporary txs that haven't been published on chain yet
+    pool: [], 
     eventConfirmation: new EventEmitter(),
     createHash: (tx: TransactionInterface): string => {
         return CryptoJS.SHA256(JSON.stringify({
@@ -45,11 +43,9 @@ const transaction: TransactionModule = {
             data: tx.data,
             sender: tx.sender,
             ts: tx.ts,
-            ref: (tx as any).ref // Handle optional ref field
+            ref: (tx as any).ref 
         })).toString();
     },
-
-
     addToPool: async (txs: TransactionInterface[]): Promise<void> => {
         if (transaction.isPoolFull()) {
             logr.warn('Transaction pool is full, not adding transactions');
@@ -130,8 +126,8 @@ const transaction: TransactionModule = {
             cb(false, 'no transaction');
             return;
         }
-        // Generic validations (already present)
-        if (!validation.integer(tx.type, true, false) || !(tx.type in TransactionType)) { // Added check if type is in enum
+
+        if (!validation.integer(tx.type, true, false) || !(tx.type in TransactionType)) { 
             cb(false, 'invalid tx type');
             return;
         }

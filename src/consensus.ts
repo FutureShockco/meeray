@@ -5,7 +5,6 @@ import p2p, { MessageType } from './p2p.js';
 import { isValidNewBlock } from './block.js';
 import { signMessage } from './crypto.js';
 import steem from './steem.js';
-import mining from './mining.js';
 
 const consensus_need = 2;
 const consensus_total = 3;

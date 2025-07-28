@@ -210,7 +210,7 @@ export const mongo = {
         const currentDb = mongo.getDb();
         logger.info('Inserting Block #0 with hash ' + config.originHash);
         const genesisBlock = chain.getGenesisBlock(); 
-        await currentDb.collection<Block>('blocks').insertOne(genesisBlock as any); 
+        await currentDb.collection<Block>('blocks').insertOne(genesisBlock); 
     },
 
     insertNativeTokens: async (): Promise<void> => {
@@ -500,7 +500,7 @@ export const mongo = {
         try {
             const blocksFromDb = await currentDb.collection<Block>('blocks').find(query, {
                 sort: { _id: -1 },
-                limit: (config as any).ecoBlocksIncreasesSoon ? (config as any).ecoBlocksIncreasesSoon : (config as any).ecoBlocks || 1000
+                limit: config.ecoBlocksIncreasesSoon ? config.ecoBlocksIncreasesSoon : config.ecoBlocks || 1000
             }).toArray();
             
             chain.recentBlocks = blocksFromDb.reverse();

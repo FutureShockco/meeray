@@ -7,6 +7,7 @@ import logger from './logger.js';
 import { chain } from './chain.js';
 import consensus from './consensus.js';
 import { randomBytes } from 'crypto';
+import { Block, calculateHashForBlock } from './block.js';
 
 /**
  * Signs a message using the STEEM_ACCOUNT_PRIV environment variable.
@@ -115,4 +116,13 @@ export function getNewKeyPair() {
         pub: bs58.encode(pubKey),
         priv: bs58.encode(privKey)
     };
+}
+
+export const hashAndSignBlock = (block: Block): Block => {
+    let nextHash = calculateHashForBlock(block)
+    let sigObj = secp256k1.ecdsaSign(Buffer.from(nextHash, 'hex'), bs58.decode(process.env.WITNESS_PRIVATE_KEY || ''))
+    const signature = bs58.encode(sigObj.signature)
+    block.signature = signature
+    block.hash = nextHash
+    return block
 }
