@@ -18,7 +18,7 @@ import {
   Launchpad,
   LaunchpadDB
 } from './launchpad-interfaces.js';
-import { BigIntMath, toString, convertAllBigIntToStringRecursive } from '../../utils/bigint.js'; // Removed convertToString as we'll do it manually for deep objects
+import { BigIntMath, amountToString, convertAllBigIntToStringRecursive } from '../../utils/bigint.js'; // Removed convertToString as we'll do it manually for deep objects
 import validate from '../../validation/index.js'; // Assuming validate exists
 import config from '../../config.js'; // Import config
 import { logTransactionEvent } from '../../utils/event-logger.js'; // Import the new event logger
@@ -169,7 +169,7 @@ export async function process(launchData: LaunchpadLaunchTokenData, sender: stri
         launchpadId: launchpadId,
         tokenName: launchData.tokenName,
         tokenSymbol: launchData.tokenSymbol,
-        totalSupply: toString(totalSupplyBigInt), 
+        totalSupply: amountToString(totalSupplyBigInt), 
         status: launchpadProjectData.status,
     };
     await logTransactionEvent('launchpadLaunchTokenInitiated', sender, eventData, transactionId);

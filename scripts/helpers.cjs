@@ -82,8 +82,8 @@ function generateRandomTokenData() {
         name,
         symbol: symbol.toUpperCase(),
         precision: Math.floor(Math.random() * 8) + 1, // 1-8 decimals
-        maxSupply: (BigInt(Math.floor(Math.random() * 900000000) + 100000000)).toString(), // 100M-1B
-        initialSupply: (BigInt(Math.floor(Math.random() * 10000000) + 1000000)).toString(), // 1M-11M
+        maxSupply: BigInt(100000000000).toString(), // 100M-1B
+        initialSupply: BigInt(0).toString(), // 1M-11M
         description: `${name} - A revolutionary digital asset`,
         logoUrl: `https://example.com/tokens/${symbol.toLowerCase()}.png`,
         websiteUrl: `https://example.com/tokens/${symbol.toLowerCase()}`

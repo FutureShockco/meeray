@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import config from '../../config.js';
 import { FarmCreateData, FarmCreateDataDB, Farm, FarmDB } from './farm-interfaces.js';
-import { convertToBigInt, convertToString, toString, BigIntMath } from '../../utils/bigint.js';
+import { convertToBigInt, convertToString, amountToString, BigIntMath } from '../../utils/bigint.js';
 import { getAccount } from '../../utils/account.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
@@ -138,7 +138,7 @@ export async function process(data: FarmCreateDataDB, sender: string, id: string
         const updateSenderBalanceSuccess = await cache.updateOnePromise(
             'accounts',
             { name: sender },
-            { $set: { [senderBalanceKey]: toString(newSenderRewardBalance) } }
+            { $set: { [senderBalanceKey]: amountToString(newSenderRewardBalance) } }
         );
 
         if (!updateSenderBalanceSuccess) {
@@ -179,7 +179,7 @@ export async function process(data: FarmCreateDataDB, sender: string, id: string
             await cache.updateOnePromise(
                 'accounts',
                 { name: sender },
-                { $set: { [senderBalanceKey]: toString(currentSenderRewardBalance) } }
+                { $set: { [senderBalanceKey]: amountToString(currentSenderRewardBalance) } }
             );
             return false;
         }
@@ -194,8 +194,8 @@ export async function process(data: FarmCreateDataDB, sender: string, id: string
             stakingTokenIssuer: farmData.stakingToken.issuer,
             rewardTokenSymbol: farmData.rewardToken.symbol,
             rewardTokenIssuer: farmData.rewardToken.issuer,
-            totalRewards: toString(farmData.totalRewards),
-            rewardsPerBlock: toString(farmData.rewardsPerBlock),
+            totalRewards: amountToString(farmData.totalRewards),
+            rewardsPerBlock: amountToString(farmData.rewardsPerBlock),
             startTime: farmData.startTime,
             endTime: farmData.endTime
         };

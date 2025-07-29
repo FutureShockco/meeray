@@ -4,9 +4,9 @@ export interface TokenData {
   symbol: string;
   name: string;
   precision?: number;
-  maxSupply: bigint;
-  initialSupply?: bigint;
-  currentSupply?: bigint;
+  maxSupply: string | bigint; // Use string for large values
+  initialSupply?: string | bigint; // Use string for large values
+  currentSupply?: string | bigint; // Use string for large values
   mintable?: boolean;
   burnable?: boolean;
   description?: string;

@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { PoolAddLiquidityData, LiquidityPool, UserLiquidityPosition, PoolAddLiquidityDataDB, LiquidityPoolDB, UserLiquidityPositionDB } from './pool-interfaces.js';
 import { adjustBalance, getAccount, Account } from '../../utils/account.js';
-import { convertToBigInt, convertToString, BigIntMath, toString as bigintToString } from '../../utils/bigint.js';
+import { convertToBigInt, convertToString, BigIntMath, amountToString as bigintToString } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 import { toBigInt } from '../../utils/bigint.js';
 import { getLpTokenSymbol } from '../../utils/token.js';

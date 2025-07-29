@@ -30,7 +30,7 @@ router.get('/', (async (req: Request, res: Response) => {
             tokens = tokensFromDB.map((tokenDoc: TokenData) => {
                 const { maxSupply, currentSupply, ...rest } = tokenDoc;
                 const transformedToken: any = { ...rest };
-                
+                console.log('Transformed Token:', tokenDoc);
                 // Format supply values with proper decimals
                 if (maxSupply) {
                     const formattedSupply = formatTokenAmountForResponse(maxSupply, tokenDoc.symbol);

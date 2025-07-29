@@ -2,7 +2,7 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import { getAccount, adjustBalance } from '../../utils/account.js';
 import { Launchpad, LaunchpadStatus, Token, TokenAllocation, TokenDistributionRecipient, LaunchpadClaimTokensData } from './launchpad-interfaces.js';
-import { toString, toBigInt } from '../../utils/bigint.js';
+import { amountToString, toBigInt } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: LaunchpadClaimTokensData, sender: string): Promise<boolean> {
@@ -174,8 +174,8 @@ export async function process(data: LaunchpadClaimTokensData, sender: string): P
         participantDbList = launchpad.presale.participants.map((p, index) => {
             const pDb = {
                 ...p,
-                quoteAmountContributed: toString(p.quoteAmountContributed),
-                tokensAllocated: p.tokensAllocated ? toString(p.tokensAllocated) : undefined,
+                quoteAmountContributed: amountToString(p.quoteAmountContributed),
+                tokensAllocated: p.tokensAllocated ? amountToString(p.tokensAllocated) : undefined,
                 claimed: index === participantIndex ? true : p.claimed // Set claimed to true for the current claimer
             };
             return pDb;
@@ -195,7 +195,7 @@ export async function process(data: LaunchpadClaimTokensData, sender: string): P
     const issueSuccess = await adjustBalance(data.userId, launchpad.mainTokenId!, tokensToClaim); // tokensToClaim is BigInt
     
     if (!issueSuccess) {
-        logger.error(`[launchpad-claim-tokens] Failed to issue ${toString(tokensToClaim)} of ${launchpad.mainTokenId} to ${data.userId}.`);
+        logger.error(`[launchpad-claim-tokens] Failed to issue ${amountToString(tokensToClaim)} of ${launchpad.mainTokenId} to ${data.userId}.`);
         return false; // No rollback of claimed flag here as token transfer is the primary action
     }
 
@@ -216,12 +216,12 @@ export async function process(data: LaunchpadClaimTokensData, sender: string): P
         launchpadId: data.launchpadId,
         userId: data.userId,
         tokenId: launchpad.mainTokenId,
-        amountClaimed: toString(tokensToClaim), // Log as string
+        amountClaimed: amountToString(tokensToClaim), // Log as string
         allocationType: data.allocationType
     };
     await logTransactionEvent('launchpadTokensClaimed', sender, eventData);
 
-    logger.debug(`[launchpad-claim-tokens] Claim by ${sender} for ${toString(tokensToClaim)} of ${launchpad.mainTokenId} from ${data.launchpadId} processed.`);
+    logger.debug(`[launchpad-claim-tokens] Claim by ${sender} for ${amountToString(tokensToClaim)} of ${launchpad.mainTokenId} from ${data.launchpadId} processed.`);
     return true;
 
   } catch (error) {

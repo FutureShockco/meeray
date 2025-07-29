@@ -6,7 +6,7 @@ import { NftInstance, CachedNftCollectionForTransfer } from './nft-transfer.js';
 import { Account, adjustBalance, getAccount } from '../../utils/account.js';
 import { Token, getTokenByIdentifier } from '../../utils/token.js';
 import config from '../../config.js';
-import { BigIntMath, toString as bigintToString } from '../../utils/bigint.js';
+import { BigIntMath, amountToString as bigintToString } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: NftBuyPayload, sender: string): Promise<boolean> {

@@ -1,6 +1,6 @@
 import logger from '../logger.js';
 import cache from '../cache.js';
-import { toString, toBigInt } from './bigint.js';
+import { amountToString, toBigInt } from './bigint.js';
 
 export interface Account {
     _id: string;
@@ -35,7 +35,7 @@ export async function adjustBalance(
             logger.error(`[account-utils] Insufficient balance for ${accountId}: ${currentBalance} + ${amount} = ${newBalance}`);
             return false;
         }
-        const formattedBalance = toString(newBalance, precision);
+        const formattedBalance = amountToString(newBalance, precision);
         const updateResult = await cache.updateOnePromise(
             'accounts',
             { name: accountId },

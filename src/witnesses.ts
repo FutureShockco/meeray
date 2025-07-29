@@ -3,7 +3,7 @@ import cache from './cache.js';
 import logger from './logger.js';
 import p2p from './p2p.js';
 import transaction from './transaction.js';
-import { toBigInt, toString } from './utils/bigint.js';
+import { toBigInt, amountToString } from './utils/bigint.js';
 
 export const witnessesModule = {
 
@@ -45,16 +45,16 @@ export const witnessesModule = {
                 return cb('0');
             }
 
-            const reward = config.witnessReward;
-            if (reward > 0) {
-                const currentBalanceStr = account.balances?.ECH || toString(BigInt(0));
+            const reward = BigInt(config.witnessReward || 0);
+            if (reward > BigInt(0)) {
+                const currentBalanceStr = account.balances?.ECH || amountToString(BigInt(0));
                 const currentBalanceBigInt = toBigInt(currentBalanceStr);
 
                 const rewardBigInt = BigInt(reward);
                 logger.debug(`[witnessRewards] Applying reward for ${name}: ${rewardBigInt.toString()}`);
 
                 const newBalanceBigInt = currentBalanceBigInt + rewardBigInt;
-                const newBalancePaddedString = toString(newBalanceBigInt);
+                const newBalancePaddedString = amountToString(newBalanceBigInt);
 
                 cache.updateOne(
                     'accounts',
@@ -84,7 +84,7 @@ export const witnessesModule = {
 
                         transaction.adjustWitnessWeight(account, reward, function () {
                             logger.debug(`Distributed reward (${rewardBigInt.toString()} smallest units) to witness ${name}`);
-                            cb(toString(rewardBigInt));
+                            cb(amountToString(rewardBigInt));
                         });
                     }
                 );
@@ -117,7 +117,7 @@ export const witnessesModule = {
                 name: account.name,
                 pub: account.witnessPublicKey,
                 witnessPublicKey: account.witnessPublicKey,
-                balance: account.balances?.ECH || toString(BigInt(0)),
+                balance: account.balances?.ECH || amountToString(BigInt(0)),
                 votedWitnesses: account.votedWitnesses,
                 totalVoteWeight: account.totalVoteWeight,
             };

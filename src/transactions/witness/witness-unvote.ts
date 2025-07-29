@@ -1,6 +1,6 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
-import { toBigInt, toString } from '../../utils/bigint.js';
+import { toBigInt, amountToString } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export interface WitnessUnvoteData {
@@ -49,7 +49,7 @@ export async function process(data: WitnessUnvoteData, sender: string, transacti
     const newVotedWitnesses = votedWitnesses.filter((w: string) => w !== data.target);
     
     // Calculate vote weight changes
-    const balanceStr = senderAccount.tokens?.ECH || toString(BigInt(0));
+    const balanceStr = senderAccount.tokens?.ECH || amountToString(BigInt(0));
     const balanceBigInt = toBigInt(balanceStr);
 
     const newVoteWeightBigIntCalculated = newVotedWitnesses.length > 0 ? 
@@ -72,10 +72,10 @@ export async function process(data: WitnessUnvoteData, sender: string, transacti
         for (const witnessName of newVotedWitnesses) {
             const witnessAccount = await cache.findOnePromise('accounts', { name: witnessName });
             if (witnessAccount) {
-                const currentVoteWeightStr = witnessAccount.totalVoteWeight || toString(BigInt(0));
+                const currentVoteWeightStr = witnessAccount.totalVoteWeight || amountToString(BigInt(0));
                 const currentVoteWeightBigInt = toBigInt(currentVoteWeightStr);
                 const newVoteWeightBigInt = currentVoteWeightBigInt + adjustmentForRemainingBigInt;
-                await cache.updateOnePromise('accounts', { name: witnessName }, { $set: { totalVoteWeight: toString(newVoteWeightBigInt) } });
+                await cache.updateOnePromise('accounts', { name: witnessName }, { $set: { totalVoteWeight: amountToString(newVoteWeightBigInt) } });
             } else {
                 logger.error(`[witness-unvote] Witness account ${witnessName} not found when trying to adjust totalVoteWeight during share increase.`);
                 // If a remaining witness isn't found, this could lead to inconsistent vote weights.
@@ -89,14 +89,14 @@ export async function process(data: WitnessUnvoteData, sender: string, transacti
       const targetAccount = await cache.findOnePromise('accounts', { name: data.target });
       if (targetAccount) {
         // Use the correctly calculated oldVoteWeightBigIntCalculated
-        const currentTotalVoteWeightStr = targetAccount.totalVoteWeight || toString(BigInt(0));
+        const currentTotalVoteWeightStr = targetAccount.totalVoteWeight || amountToString(BigInt(0));
         const currentTotalVoteWeightBigInt = toBigInt(currentTotalVoteWeightStr);
         
         let newTotalVoteWeightBigInt = currentTotalVoteWeightBigInt - oldVoteWeightBigIntCalculated;
         if (newTotalVoteWeightBigInt < BigInt(0)) {
             newTotalVoteWeightBigInt = BigInt(0); // Clamp at 0
         }
-        await cache.updateOnePromise('accounts', { name: data.target }, { $set: { totalVoteWeight: toString(newTotalVoteWeightBigInt) } });
+        await cache.updateOnePromise('accounts', { name: data.target }, { $set: { totalVoteWeight: amountToString(newTotalVoteWeightBigInt) } });
       } else {
         logger.error(`[witness-unvote] Target account ${data.target} not found when trying to decrement totalVoteWeight.`);
         // Decide if this should throw or be part of a larger transaction rollback
@@ -111,7 +111,7 @@ export async function process(data: WitnessUnvoteData, sender: string, transacti
         unvoter: sender,
         targetWitness: data.target,
         remainingVotedWitnesses: newVotedWitnesses,
-        newSharePerWitnessForUnvoter: toString(newVoteWeightBigIntCalculated) // Share for remaining votes by unvoter
+        newSharePerWitnessForUnvoter: amountToString(newVoteWeightBigIntCalculated) // Share for remaining votes by unvoter
       };
       await logTransactionEvent('witnessUnvote', sender, eventData, transactionId);
       

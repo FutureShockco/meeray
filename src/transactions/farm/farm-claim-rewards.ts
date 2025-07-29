@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { FarmClaimRewardsData, Farm, UserFarmPosition } from './farm-interfaces.js';
 import { getAccount, adjustBalance } from '../../utils/account.js'; // For actual reward transfer later
-import { toString, convertToString } from '../../utils/bigint.js'; // Import toString and convertToString
+import { amountToString, convertToString } from '../../utils/bigint.js'; // Import amountToString and convertToString
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: FarmClaimRewardsData, sender: string): Promise<boolean> {
@@ -87,7 +87,7 @@ export async function process(data: FarmClaimRewardsData, sender: string, id: st
     const balanceUpdateSuccess = await cache.updateOnePromise(
       'accounts',
       { name: data.staker },
-      { $inc: { [`balances.${rewardTokenId}`]: toString(pendingRewards) } }
+      { $inc: { [`balances.${rewardTokenId}`]: amountToString(pendingRewards) } }
     );
 
     if (!balanceUpdateSuccess) {
@@ -120,7 +120,7 @@ export async function process(data: FarmClaimRewardsData, sender: string, id: st
       staker: data.staker,
       rewardTokenSymbol: farm.rewardToken.symbol,
       rewardTokenIssuer: farm.rewardToken.issuer,
-      rewardAmount: toString(pendingRewards)
+      rewardAmount: amountToString(pendingRewards)
     };
     await logTransactionEvent('farmClaimRewards', sender, eventData, id);
 

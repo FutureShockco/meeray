@@ -3,7 +3,7 @@ import { OrderBook, OrderBookMatchResult } from './orderbook.js';
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import { adjustBalance } from '../../utils/account.js';
-import { BigIntMath, convertToBigInt, convertToString, toString, toBigInt } from '../../utils/bigint.js';
+import { BigIntMath, convertToBigInt, convertToString, amountToString, toBigInt } from '../../utils/bigint.js';
 
 /**
  * Result returned by the MatchingEngine after processing an order.
@@ -169,7 +169,7 @@ class MatchingEngine {
 
   public async addOrder(takerOrderInput: Order): Promise<EngineMatchResult> {
     const takerOrder = takerOrderInput;
-    logger.debug(`[MatchingEngine] Received order ${takerOrder._id} for pair ${takerOrder.pairId}: ${takerOrder.side} ${toString(takerOrder.quantity)} ${takerOrder.baseAssetSymbol} @ ${takerOrder.price ? toString(takerOrder.price) : takerOrder.type}`);
+    logger.debug(`[MatchingEngine] Received order ${takerOrder._id} for pair ${takerOrder.pairId}: ${takerOrder.side} ${amountToString(takerOrder.quantity)} ${takerOrder.baseAssetSymbol} @ ${takerOrder.price ? amountToString(takerOrder.price) : takerOrder.type}`);
     
     const orderBook = await this._getOrderBook(takerOrder.pairId);
     if (!orderBook) {
@@ -276,10 +276,10 @@ class MatchingEngine {
     if (matchOutput.updatedMakerOrder) {
       const { _id, filledQuantity, status, averageFillPrice, cumulativeQuoteValue } = matchOutput.updatedMakerOrder;
       const updateSet = {
-        filledQuantity: toString(filledQuantity), 
+        filledQuantity: amountToString(filledQuantity), 
         status,
-        averageFillPrice: averageFillPrice ? toString(averageFillPrice) : undefined,
-        cumulativeQuoteValue: cumulativeQuoteValue ? toString(cumulativeQuoteValue) : undefined,
+        averageFillPrice: averageFillPrice ? amountToString(averageFillPrice) : undefined,
+        cumulativeQuoteValue: cumulativeQuoteValue ? amountToString(cumulativeQuoteValue) : undefined,
         updatedAt: new Date().toISOString()
       };
       await cache.updateOnePromise('orders', { _id }, { $set: updateSet });
@@ -313,7 +313,7 @@ class MatchingEngine {
         return { order: takerOrder, trades: tradesAppFormat, accepted: true, rejectReason: "Processed with some errors, check logs." };
     }
     
-    logger.debug(`[MatchingEngine] Finished processing order ${takerOrder._id}. Final status: ${takerOrder.status}, Filled: ${toString(takerOrder.filledQuantity)}`);
+    logger.debug(`[MatchingEngine] Finished processing order ${takerOrder._id}. Final status: ${takerOrder.status}, Filled: ${amountToString(takerOrder.filledQuantity)}`);
     return { order: takerOrder, trades: tradesAppFormat, accepted: true };
   }
 

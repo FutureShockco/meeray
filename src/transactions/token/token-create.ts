@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import config from '../../config.js';
 import validate from '../../validation/index.js';
 import { TokenData } from './token-interfaces.js';
-import { setTokenDecimals } from '../../utils/bigint.js';
+import { setTokenDecimals, amountToString } from '../../utils/bigint.js';
 
 export async function validateTx(data: TokenData, sender: string): Promise<boolean> {
   try {
@@ -44,12 +44,12 @@ export async function validateTx(data: TokenData, sender: string): Promise<boole
     }
 
     // Ensure initialSupply is non-negative if provided
-    if (data.initialSupply !== undefined && data.initialSupply < BigInt(0)) {
+    if (data.initialSupply !== undefined && BigInt(data.initialSupply) < BigInt(0)) {
       logger.warn('[token-create] Invalid initialSupply. Must be non-negative.');
       return false;
     }
     // Ensure initialSupply <= maxSupply
-    if (data.initialSupply !== undefined && data.maxSupply !== undefined && data.initialSupply > data.maxSupply) {
+    if (data.initialSupply !== undefined && data.maxSupply !== undefined && BigInt(data.initialSupply) > BigInt(data.maxSupply)) {
       logger.warn('[token-create] Invalid initialSupply. Cannot be greater than maxSupply.');
       return false;
     }
@@ -109,8 +109,8 @@ export async function process(data: TokenData, sender: string, id: string): Prom
 
     setTokenDecimals(data.symbol, effectivePrecision);
 
-    const initialSupplyForLogic = data.initialSupply || BigInt(0);
-    const maxSupplyForLogic = data.maxSupply || BigInt(0);
+    const initialSupplyForLogic = BigInt(data.initialSupply || 0);
+    const maxSupplyForLogic = BigInt(data.maxSupply || 0);
 
     if (initialSupplyForLogic < BigInt(0) || maxSupplyForLogic < BigInt(0)) {
       logger.error('[token-create] Initial supply and max supply cannot be negative.');
@@ -128,8 +128,8 @@ export async function process(data: TokenData, sender: string, id: string): Prom
       name: data.name,
       issuer: sender,
       precision: effectivePrecision,
-      maxSupply: maxSupplyForLogic,
-      currentSupply: initialSupplyForLogic,
+      maxSupply: amountToString(maxSupplyForLogic),
+      currentSupply: amountToString(initialSupplyForLogic),
       mintable: data.mintable === undefined ? true : data.mintable,
       burnable: data.burnable === undefined ? true : data.burnable,
       description: data.description || '',

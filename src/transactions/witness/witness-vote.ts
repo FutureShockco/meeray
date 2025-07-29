@@ -1,6 +1,6 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
-import { toBigInt, toString } from '../../utils/bigint.js';
+import { toBigInt, amountToString } from '../../utils/bigint.js';
 import config from '../../config.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
@@ -57,7 +57,7 @@ export async function process(data: WitnessVoteData, sender: string, transaction
     }
     const originalVotedWitnesses = [...senderAccount.votedWitnesses];
     
-    const balanceStr = senderAccount.balances?.ECH || toString(BigInt(0));
+    const balanceStr = senderAccount.balances?.ECH || amountToString(BigInt(0));
     logger.trace(`[witness-vote process] Sender ${sender} ECH balance string: ${balanceStr}`);
     const balanceBigInt = toBigInt(balanceStr);
     logger.trace(`[witness-vote process] Sender ${sender} ECH balance BigInt: ${balanceBigInt.toString()}`);
@@ -91,13 +91,13 @@ export async function process(data: WitnessVoteData, sender: string, transaction
         const witnessAccount = await cache.findOnePromise('accounts', { name: witnessName });
         if (witnessAccount) {
           logger.trace(`[witness-vote process] Adjusting original voter ${witnessName}: BEFORE ${JSON.stringify(witnessAccount)}`);
-          const currentTotalVoteWeightStr = witnessAccount.totalVoteWeight || toString(BigInt(0));
+          const currentTotalVoteWeightStr = witnessAccount.totalVoteWeight || amountToString(BigInt(0));
           const currentTotalVoteWeightBigInt = toBigInt(currentTotalVoteWeightStr);
           let newTotalVoteWeightBigInt = currentTotalVoteWeightBigInt + adjustmentBigInt;
           if (newTotalVoteWeightBigInt < BigInt(0)) {
             newTotalVoteWeightBigInt = BigInt(0);
           }
-          await cache.updateOnePromise('accounts', { name: witnessName }, { $set: { totalVoteWeight: toString(newTotalVoteWeightBigInt) } });
+          await cache.updateOnePromise('accounts', { name: witnessName }, { $set: { totalVoteWeight: amountToString(newTotalVoteWeightBigInt) } });
           const witnessAccountAfter = await cache.findOnePromise('accounts', { name: witnessName });
           logger.trace(`[witness-vote process] Adjusting original voter ${witnessName}: AFTER ${JSON.stringify(witnessAccountAfter)}`);
         } else {
@@ -109,7 +109,7 @@ export async function process(data: WitnessVoteData, sender: string, transaction
       const targetAccount = await cache.findOnePromise('accounts', { name: data.target });
       if (targetAccount) {
         logger.trace(`[witness-vote process] Updating target ${data.target}: BEFORE ${JSON.stringify(targetAccount)}`);
-        const currentTargetVoteWeightStr = targetAccount.totalVoteWeight || toString(BigInt(0));
+        const currentTargetVoteWeightStr = targetAccount.totalVoteWeight || amountToString(BigInt(0));
         logger.trace(`[witness-vote process] Target ${data.target} currentTotalVoteWeightStr: ${currentTargetVoteWeightStr}`);
         const currentTargetVoteWeightBigInt = toBigInt(currentTargetVoteWeightStr);
         logger.trace(`[witness-vote process] Target ${data.target} currentTotalVoteWeightBigInt: ${currentTargetVoteWeightBigInt.toString()}`);
@@ -117,7 +117,7 @@ export async function process(data: WitnessVoteData, sender: string, transaction
         const finalTargetVoteWeightBigInt = currentTargetVoteWeightBigInt + newSharePerWitnessBigIntCalculated;
         logger.trace(`[witness-vote process] Target ${data.target} finalTargetVoteWeightBigInt (adding ${newSharePerWitnessBigIntCalculated.toString()}): ${finalTargetVoteWeightBigInt.toString()}`);
         
-        await cache.updateOnePromise('accounts', { name: data.target }, { $set: { totalVoteWeight: toString(finalTargetVoteWeightBigInt) } });
+        await cache.updateOnePromise('accounts', { name: data.target }, { $set: { totalVoteWeight: amountToString(finalTargetVoteWeightBigInt) } });
         const targetAccountAfter = await cache.findOnePromise('accounts', { name: data.target });
         logger.trace(`[witness-vote process] Updating target ${data.target}: AFTER ${JSON.stringify(targetAccountAfter)}`);
       } else {
@@ -130,7 +130,7 @@ export async function process(data: WitnessVoteData, sender: string, transaction
         voter: sender,
         targetWitness: data.target,
         newVotedWitnesses: newVotedWitnessesList,
-        newSharePerWitness: toString(newSharePerWitnessBigIntCalculated)
+        newSharePerWitness: amountToString(newSharePerWitnessBigIntCalculated)
       };
       // TODO: The original code was missing the transactionId for logTransactionEvent.
       // Assuming it should be passed, but it's not available in this scope. 

@@ -6,8 +6,8 @@ import logger from './logger.js';
 import config from './config.js';
 import { chain } from './chain.js';
 import { Block } from './block.js';
-import { TokenData } from './transactions/token/token-interfaces.js';
-import { convertToString, toString, toBigInt, setTokenDecimals, convertAllBigIntToStringRecursive } from './utils/bigint.js';
+import { TokenData} from './transactions/token/token-interfaces.js';
+import { convertToString, amountToString, toBigInt, setTokenDecimals, convertAllBigIntToStringRecursive } from './utils/bigint.js';
 import { logTransactionEvent } from './utils/event-logger.js';
 
 const DB_NAME = process.env.MONGO_DB || 'echelon';
@@ -196,9 +196,9 @@ export const mongo = {
         const masterAccount: AccountDoc = {
             name: config.masterName,
             created: new Date(),
-            balances: { ECH: toString(BigInt(config.masterBalance)) },
+            balances: { ECH: amountToString(BigInt(config.masterBalance)) },
             nfts: {},
-            totalVoteWeight: toString(BigInt(config.masterBalance)),
+            totalVoteWeight: amountToString(BigInt(config.masterBalance)),
             votedWitnesses: [config.masterName],
             witnessPublicKey: config.masterPublicKey
         };
@@ -227,8 +227,8 @@ export const mongo = {
             symbol: 'ECH',
             name: 'Echelon',
             precision: 8,
-            maxSupply: VERY_LARGE_MAX_SUPPLY_BIGINT,
-            initialSupply: MAX_SUPPLY_ECH_BIGINT,
+            maxSupply: amountToString(VERY_LARGE_MAX_SUPPLY_BIGINT),
+            initialSupply: amountToString(MAX_SUPPLY_ECH_BIGINT),
             mintable: true,
             burnable: true,
             description: 'Echelon is the native token of the Echelon Network',
@@ -261,8 +261,8 @@ export const mongo = {
             symbol: 'STEEM',
             name: 'Steem',
             precision: 3,
-            maxSupply: VERY_LARGE_MAX_SUPPLY_BIGINT,
-            initialSupply: BigInt(0),
+            maxSupply: amountToString(VERY_LARGE_MAX_SUPPLY_BIGINT),
+            initialSupply: amountToString(BigInt(0)),
             mintable: true,
             burnable: true,
             description: 'Steem is the native token of the Steem blockchain, pegged on this sidechain.',
@@ -296,8 +296,8 @@ export const mongo = {
             symbol: 'SBD',
             name: 'Steem Dollar',
             precision: 3,
-            maxSupply: VERY_LARGE_MAX_SUPPLY_BIGINT,
-            initialSupply: BigInt(0),
+            maxSupply: amountToString(VERY_LARGE_MAX_SUPPLY_BIGINT),
+            initialSupply: amountToString(BigInt(0)),
             mintable: true,
             burnable: true,
             description: 'SBD (Steem Dollar) is a stablecoin on the Steem blockchain, pegged on this sidechain.',

@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { Order, OrderDB, TradingPair, TradingPairDB, OrderType, OrderSide, OrderStatus, MarketPlaceOrderData, MarketPlaceOrderDataDB } from './market-interfaces.js';
 import { getAccount, adjustBalance } from '../../utils/account.js';
-import { convertToBigInt, convertToString, toString, toBigInt } from '../../utils/bigint.js';
+import { convertToBigInt, convertToString, amountToString, toBigInt } from '../../utils/bigint.js';
 import crypto from 'crypto';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
@@ -225,10 +225,10 @@ export async function process(dataDb: MarketPlaceOrderDataDB, sender: string, tr
         orderType: newOrderObject.type,
         side: newOrderObject.side,
         status: newOrderObject.status,
-        price: newOrderObject.price ? toString(newOrderObject.price) : undefined,
-        quantity: toString(newOrderObject.quantity),
-        filledQuantity: toString(newOrderObject.filledQuantity),
-        quoteOrderQty: newOrderObject.quoteOrderQty ? toString(newOrderObject.quoteOrderQty) : undefined,
+        price: newOrderObject.price ? amountToString(newOrderObject.price) : undefined,
+        quantity: amountToString(newOrderObject.quantity),
+        filledQuantity: amountToString(newOrderObject.filledQuantity),
+        quoteOrderQty: newOrderObject.quoteOrderQty ? amountToString(newOrderObject.quoteOrderQty) : undefined,
         timeInForce: newOrderObject.timeInForce,
         createdAt: newOrderObject.createdAt,
     };

@@ -2,7 +2,7 @@ import express, { Request, Response, Router, RequestHandler } from 'express';
 import cache from '../../cache.js';
 import { mongo } from '../../mongo.js';
 import logger from '../../logger.js';
-import { toBigInt, toString as bigintToString, parseTokenAmount } from '../../utils/bigint.js';
+import { toBigInt, amountToString as bigintToString, parseTokenAmount } from '../../utils/bigint.js';
 import { getTokenDecimals } from '../../utils/bigint.js';
 import { formatTokenAmountForResponse, formatTokenAmountSimple } from '../../utils/http.js';
 

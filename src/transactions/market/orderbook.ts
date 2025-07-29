@@ -1,6 +1,6 @@
 import { Order, OrderSide, OrderType, OrderBookLevel, Trade, OrderStatus, createOrder } from './market-interfaces.js';
 import logger from '../../logger.js';
-import { BigIntMath, toBigInt, toString } from '../../utils/bigint.js';
+import { BigIntMath, toBigInt, amountToString } from '../../utils/bigint.js';
 import crypto from 'crypto'; // Added crypto import for randomBytes
 
 // Helper to sort bids (descending price, then ascending time) and asks (ascending price, then ascending time)
@@ -43,7 +43,7 @@ export class OrderBook {
         this.asks = [];
         this.tickSize = tickSize;
         this.lotSize = lotSize;
-        logger.debug(`[OrderBook-${pairId}] Initialized with tickSize: ${toString(tickSize)}, lotSize: ${toString(lotSize)}`);
+        logger.debug(`[OrderBook-${pairId}] Initialized with tickSize: ${amountToString(tickSize)}, lotSize: ${amountToString(lotSize)}`);
     }
 
     // Add a new LIMIT order to the book
@@ -66,7 +66,7 @@ export class OrderBook {
             this.asks.push(order);
             this.asks.sort((a, b) => compareOrders(a, b, OrderSide.SELL));
         }
-        logger.debug(`[OrderBook-${this.pairId}] Added order ${order._id}: ${order.side} ${toString(order.quantity)} @ ${toString(order.price)}`);
+        logger.debug(`[OrderBook-${this.pairId}] Added order ${order._id}: ${order.side} ${amountToString(order.quantity)} @ ${amountToString(order.price)}`);
     }
 
     // Remove an order from the book (e.g., cancellation)
@@ -92,7 +92,7 @@ export class OrderBook {
         const removedMakerOrders: string[] = [];
         let updatedMakerOrder: Order | undefined = undefined;
 
-        logger.debug(`[OrderBook-${this.pairId}] Matching order ${takerOrder._id}: ${takerOrder.side} ${toString(takerOrder.quantity)} @ ${takerOrder.price ? toString(takerOrder.price) : 'MARKET'}`);
+        logger.debug(`[OrderBook-${this.pairId}] Matching order ${takerOrder._id}: ${takerOrder.side} ${amountToString(takerOrder.quantity)} @ ${takerOrder.price ? amountToString(takerOrder.price) : 'MARKET'}`);
 
         const bookToMatchAgainst = takerOrder.side === OrderSide.BUY ? this.asks : this.bids;
         
@@ -174,7 +174,7 @@ export class OrderBook {
                 updatedAt: new Date().toISOString()
             });
             // this.addOrder(remainingTakerOrder); // Logic for adding back to book handled by matching engine
-            logger.debug(`[OrderBook-${this.pairId}] Taker LIMIT order ${takerOrder._id} partially filled. Remainder ${toString(remainingTakerOrder.quantity)} could be added to book.`);
+            logger.debug(`[OrderBook-${this.pairId}] Taker LIMIT order ${takerOrder._id} partially filled. Remainder ${amountToString(remainingTakerOrder.quantity)} could be added to book.`);
         }
         
         logger.debug(`[OrderBook-${this.pairId}] Match attempt for ${takerOrder._id} resulted in ${trades.length} trades. Taker fully filled: ${takerOrderFullyFilled}.`);

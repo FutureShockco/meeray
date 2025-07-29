@@ -4,8 +4,7 @@ import validate from '../../validation/index.js';
 import { MarketCancelOrderData, Order, OrderStatus, TradingPair, OrderSide, OrderType } from './market-interfaces.js';
 import { getAccount, adjustBalance } from '../../utils/account.js';
 import { matchingEngine } from './matching-engine.js'; // Assumed to handle the actual removal from book & state update
-import { toBigInt, toString, convertToBigInt, BigIntMath } from '../../utils/bigint.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
+import { amountToString, convertToBigInt, BigIntMath } from '../../utils/bigint.js';
 
 // Define keys for converting OrderDB to Order
 const ORDER_NUMERIC_FIELDS: Array<keyof Order> = ['price', 'quantity', 'filledQuantity', 'averageFillPrice', 'cumulativeQuoteValue', 'quoteOrderQty'];
@@ -126,29 +125,19 @@ export async function process(data: MarketCancelOrderData, sender: string, id: s
       const tokenIdentifier = `${refundAssetSymbol}${refundAssetIssuer ? '@' + refundAssetIssuer : ''}`;
       const refundProcessed = await adjustBalance(sender, tokenIdentifier, amountToRefund); // amountToRefund is BigInt
       if (!refundProcessed) {
-        logger.error(`[market-cancel-order] CRITICAL: Failed to refund ${toString(amountToRefund)} ${tokenIdentifier} to ${sender}.`);
+        logger.error(`[market-cancel-order] CRITICAL: Failed to refund ${amountToString(amountToRefund)} ${tokenIdentifier} to ${sender}.`);
         // This is a critical error. The order is cancelled in the engine, but funds not returned.
         // Manual intervention might be needed.
         return false; // Or throw to indicate a severe problem
       }
-      logger.debug(`[market-cancel-order] Refunded ${toString(amountToRefund)} ${tokenIdentifier} to ${sender}.`);
+      logger.debug(`[market-cancel-order] Refunded ${amountToString(amountToRefund)} ${tokenIdentifier} to ${sender}.`);
     } else {
         logger.debug(`[market-cancel-order] No amount to refund for order ${data.orderId}.`);
     }
 
     logger.debug(`[market-cancel-order] Order ${data.orderId} cancelled successfully by ${sender}.`);
 
-    // Event logging
-    const eventData = { 
-        orderId: data.orderId,
-        pairId: data.pairId,
-        userId: data.userId,
-        status: OrderStatus.CANCELLED // Status should be confirmed by matching engine result ideally
-    };
-    // TODO: The original code was missing the transactionId for logTransactionEvent.
-    // Assuming it should be passed, but it's not available in this scope. 
-    // For now, logging without it. This might need to be addressed.
-    await logTransactionEvent('marketCancelOrder', sender, eventData, id);
+
 
     return true;
   } catch (error) {

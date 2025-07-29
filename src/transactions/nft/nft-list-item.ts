@@ -7,7 +7,7 @@ import { CachedNftCollectionForTransfer } from './nft-transfer.js'; // Assuming 
 import config from '../../config.js';
 import { getTokenByIdentifier } from '../../utils/token.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
-import { toBigInt, toString } from '../../utils/bigint.js'; // Import toBigInt and toString
+import { toBigInt, amountToString } from '../../utils/bigint.js'; // Import toBigInt and toString
 
 // Helper to generate a unique listing ID
 function generateListingId(collectionSymbol: string, instanceId: string, seller: string): string {
@@ -131,7 +131,7 @@ export async function process(data: NftListPayload, sender: string, id: string):
     // Log event
     const eventData = { 
       ...listingDocument,
-      price: toString(listingDocument.price)
+      price: amountToString(listingDocument.price)
     };
     await logTransactionEvent('nftListItem', sender, eventData, id);
 

@@ -4,7 +4,7 @@ import validate from '../../validation/index.js';
 import { FarmStakeData, Farm, UserFarmPosition, FarmStakeDataDB, UserFarmPositionDB } from './farm-interfaces.js';
 import { UserLiquidityPosition, UserLiquidityPositionDB } from '../pool/pool-interfaces.js';
 import { getAccount } from '../../utils/account.js';
-import { convertToBigInt, convertToString, toString } from '../../utils/bigint.js';
+import { convertToBigInt, convertToString, amountToString } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
 const NUMERIC_FIELDS: Array<keyof FarmStakeData> = ['lpTokenAmount'];
@@ -199,7 +199,7 @@ export async function process(data: FarmStakeDataDB, sender: string, id: string)
       staker: stakeData.staker,
       lpTokenSymbol: farm.stakingToken.symbol,
       lpTokenIssuer: farm.stakingToken.issuer,
-      lpTokenAmount: toString(stakeData.lpTokenAmount) // Convert BigInt to string for logging
+      lpTokenAmount: amountToString(stakeData.lpTokenAmount) // Convert BigInt to string for logging
     };
     await logTransactionEvent('farmStake', sender, eventData, id);
 

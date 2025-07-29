@@ -1,9 +1,5 @@
 import { BigIntToString } from '../../utils/bigint.js';
-import { OrderSide } from '../market/market-interfaces.js'; // Potentially for buy/sell side if making it more generic later
 
-/**
- * NFT Market interfaces with BigInt values for application logic
- */
 
 export interface NFTListingCreateData {
     collectionId: string;   // Collection ID

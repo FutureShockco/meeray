@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { PoolRemoveLiquidityData, LiquidityPool, UserLiquidityPosition, PoolRemoveLiquidityDataDB, LiquidityPoolDB, UserLiquidityPositionDB } from './pool-interfaces.js';
 import { adjustBalance, getAccount } from '../../utils/account.js';
-import { BigIntMath, toString, toBigInt, convertToBigInt, convertToString } from '../../utils/bigint.js';
+import { BigIntMath, amountToString, toBigInt, convertToBigInt, convertToString } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 import { getLpTokenSymbol } from '../../utils/token.js';
 
@@ -50,7 +50,7 @@ export async function validateTx(dataDb: PoolRemoveLiquidityDataDB, sender: stri
     }
     const userPosition = convertToBigInt<UserLiquidityPosition>(userPositionFromDb, ['lpTokenBalance']);
     if (userPosition.lpTokenBalance < data.lpTokenAmount) {
-      logger.warn(`[pool-remove-liquidity] Provider ${data.provider} has insufficient LP token balance for pool ${data.poolId}. Has ${toString(userPosition.lpTokenBalance)}, needs ${toString(data.lpTokenAmount)}`);
+      logger.warn(`[pool-remove-liquidity] Provider ${data.provider} has insufficient LP token balance for pool ${data.poolId}. Has ${amountToString(userPosition.lpTokenBalance)}, needs ${amountToString(data.lpTokenAmount)}`);
       return false;
     }
     // TODO: Optional server-side validation for minTokenA_amount and minTokenB_amount from dataDb if needed
@@ -190,7 +190,7 @@ export async function process(dataDb: PoolRemoveLiquidityDataDB, sender: string,
     // Credit the provider's account with the withdrawn tokens
     const creditASuccess = await adjustBalance(data.provider, pool.tokenA_symbol, tokenAAmountToReturn);
     if (!creditASuccess) {
-        logger.error(`[pool-remove-liquidity] CRITICAL: Failed to credit ${toString(tokenAAmountToReturn)} ${pool.tokenA_symbol} to ${data.provider}. Rolling back.`);
+        logger.error(`[pool-remove-liquidity] CRITICAL: Failed to credit ${amountToString(tokenAAmountToReturn)} ${pool.tokenA_symbol} to ${data.provider}. Rolling back.`);
         // Attempt to roll back user position and pool state
         const rollbackUserLpPayload = { ...convertToString({ lpTokenBalance: userPosition.lpTokenBalance }, ['lpTokenBalance']) };
         await cache.updateOnePromise('userLiquidityPositions', { _id: userLpPositionId }, { $set: rollbackUserLpPayload });
@@ -201,7 +201,7 @@ export async function process(dataDb: PoolRemoveLiquidityDataDB, sender: string,
 
     const creditBSuccess = await adjustBalance(data.provider, pool.tokenB_symbol, tokenBAmountToReturn);
     if (!creditBSuccess) {
-        logger.error(`[pool-remove-liquidity] CRITICAL: Failed to credit ${toString(tokenBAmountToReturn)} ${pool.tokenB_symbol} to ${data.provider}. Rolling back.`);
+        logger.error(`[pool-remove-liquidity] CRITICAL: Failed to credit ${amountToString(tokenBAmountToReturn)} ${pool.tokenB_symbol} to ${data.provider}. Rolling back.`);
         // Rollback token A credit, user position, and pool state
         await adjustBalance(data.provider, pool.tokenA_symbol, -tokenAAmountToReturn); // Debit back token A
         const rollbackUserLpPayload = { ...convertToString({ lpTokenBalance: userPosition.lpTokenBalance }, ['lpTokenBalance']) };
@@ -211,16 +211,16 @@ export async function process(dataDb: PoolRemoveLiquidityDataDB, sender: string,
         return false;
     }
 
-    logger.debug(`[pool-remove-liquidity] ${data.provider} removed liquidity from pool ${data.poolId} by burning ${toString(data.lpTokenAmount)} LP tokens. Received ${toString(tokenAAmountToReturn)} ${pool.tokenA_symbol} and ${toString(tokenBAmountToReturn)} ${pool.tokenB_symbol}.`);
+    logger.debug(`[pool-remove-liquidity] ${data.provider} removed liquidity from pool ${data.poolId} by burning ${amountToString(data.lpTokenAmount)} LP tokens. Received ${amountToString(tokenAAmountToReturn)} ${pool.tokenA_symbol} and ${amountToString(tokenBAmountToReturn)} ${pool.tokenB_symbol}.`);
 
     const eventData = {
         poolId: data.poolId,
         provider: data.provider,
-        lpTokensBurned: toString(data.lpTokenAmount),
+        lpTokensBurned: amountToString(data.lpTokenAmount),
         tokenA_symbol: pool.tokenA_symbol,
-        tokenA_amount_returned: toString(tokenAAmountToReturn),
+        tokenA_amount_returned: amountToString(tokenAAmountToReturn),
         tokenB_symbol: pool.tokenB_symbol,
-        tokenB_amount_returned: toString(tokenBAmountToReturn)
+        tokenB_amount_returned: amountToString(tokenBAmountToReturn)
     };
     await logTransactionEvent('poolRemoveLiquidity', sender, eventData, transactionId);
 

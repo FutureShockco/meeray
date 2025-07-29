@@ -42,7 +42,7 @@ export function toBigInt(value: string | bigint | number | null | undefined): bi
  * @param padLength Optional custom pad length
  * @returns A zero-padded string representation
  */
-export function toString(value: bigint, padLength: number = MAX_INTEGER_LENGTH): string {
+export function amountToString(value: bigint, padLength: number = MAX_INTEGER_LENGTH): string {
     const str = value.toString();
     // Ensure positive numbers are properly padded for lexicographical sorting
     return str.startsWith('-')
@@ -85,7 +85,7 @@ export function parseTokenAmount(value: string, symbol: string): bigint {
  * @returns An object with the properly padded query operator
  */
 export function createMongoQuery(operator: '$gt' | '$gte' | '$lt' | '$lte' | '$eq', value: bigint, padLength: number = MAX_INTEGER_LENGTH) {
-    return { [operator]: toString(value, padLength) };
+    return { [operator]: amountToString(value, padLength) };
 }
 
 /**
@@ -131,7 +131,7 @@ export function convertToString<T>(obj: T, numericFields: (keyof T)[]): BigIntTo
     const result = { ...obj };
     for (const field of numericFields) {
         if (obj[field] !== undefined && obj[field] !== null && typeof obj[field] === 'bigint') {
-            (result[field] as any) = toString(obj[field] as bigint);
+            (result[field] as any) = amountToString(obj[field] as bigint);
         }
     }
     return result as BigIntToString<T>;
@@ -151,7 +151,7 @@ export function convertAllBigIntToStringRecursive<T extends object>(obj: T): Rec
         if (Object.prototype.hasOwnProperty.call(obj, key)) {
             const value = obj[key];
             if (typeof value === 'bigint') {
-                result[key] = toString(value);
+                result[key] = amountToString(value);
             } else if (Array.isArray(value)) {
                 result[key] = value.map(item =>
                     typeof item === 'object' && item !== null
@@ -288,8 +288,8 @@ export const BigIntMath = {
      */
     createRangeQuery(min: bigint, max: bigint, padLength: number = MAX_INTEGER_LENGTH) {
         return {
-            $gte: toString(min, padLength),
-            $lte: toString(max, padLength)
+            $gte: amountToString(min, padLength),
+            $lte: amountToString(max, padLength)
         };
     },
 
