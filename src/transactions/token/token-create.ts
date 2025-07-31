@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import config from '../../config.js';
 import validate from '../../validation/index.js';
 import { TokenData } from './token-interfaces.js';
-import { setTokenDecimals, amountToString } from '../../utils/bigint.js';
+import { setTokenDecimals, amountToString, toBigInt } from '../../utils/bigint.js';
 
 export async function validateTx(data: TokenData, sender: string): Promise<boolean> {
   try {
@@ -64,11 +64,6 @@ export async function validateTx(data: TokenData, sender: string): Promise<boole
       return false;
     }
 
-    if (data.symbol === config.nativeToken) {
-      logger.warn(`[token-create] Symbol ${data.symbol} is reserved.`);
-      return false;
-    }
-
     const existingToken = await cache.findOnePromise('tokens', { _id: data.symbol });
     if (existingToken) {
       logger.warn(`[token-create] Token with symbol ${data.symbol} already exists.`);
@@ -89,38 +84,17 @@ export async function validateTx(data: TokenData, sender: string): Promise<boole
 }
 
 export async function process(data: TokenData, sender: string, id: string): Promise<boolean> {
-
   console.log(data, sender);
   logger.debug(`[token-create] Processing token creation for ${data.symbol} by ${sender}`);
 
   try {
-    const existingToken = await cache.findOnePromise('tokens', { _id: data.symbol });
-    if (existingToken) {
-      logger.error(`[token-create] Token with symbol ${data.symbol} already exists.`);
-      return false;
-    }
-
     // Use 8 as the default precision if not provided
     const effectivePrecision = data.precision === undefined ? 8 : data.precision;
-    if (effectivePrecision < 0 || effectivePrecision > 18) {
-      logger.error(`[token-create] Invalid precision ${effectivePrecision} for token ${data.symbol}. Must be between 0 and 18.`);
-      return false;
-    }
-
+    
     setTokenDecimals(data.symbol, effectivePrecision);
 
-    const initialSupplyForLogic = BigInt(data.initialSupply || 0);
-    const maxSupplyForLogic = BigInt(data.maxSupply || 0);
-
-    if (initialSupplyForLogic < BigInt(0) || maxSupplyForLogic < BigInt(0)) {
-      logger.error('[token-create] Initial supply and max supply cannot be negative.');
-      return false;
-    }
-
-    if (maxSupplyForLogic !== BigInt(0) && initialSupplyForLogic > maxSupplyForLogic) {
-      logger.error('[token-create] Initial supply cannot exceed max supply.');
-      return false;
-    }
+    const initialSupply = toBigInt(data.initialSupply || 0);
+    const maxSupply = toBigInt(data.maxSupply || 0);
 
     const tokenToStore: TokenData = {
       _id: data.symbol,
@@ -128,8 +102,8 @@ export async function process(data: TokenData, sender: string, id: string): Prom
       name: data.name,
       issuer: sender,
       precision: effectivePrecision,
-      maxSupply: amountToString(maxSupplyForLogic),
-      currentSupply: amountToString(initialSupplyForLogic),
+      maxSupply: amountToString(maxSupply),
+      currentSupply: amountToString(initialSupply),
       mintable: data.mintable === undefined ? true : data.mintable,
       burnable: data.burnable === undefined ? true : data.burnable,
       description: data.description || '',
@@ -151,11 +125,11 @@ export async function process(data: TokenData, sender: string, id: string): Prom
 
     if (!insertSuccess) return false;
 
-    if (initialSupplyForLogic > BigInt(0)) {
+    if (initialSupply > BigInt(0)) {
       const updateSuccess = await cache.updateOnePromise(
         'accounts',
         { name: sender },
-        { $set: { [`balances.${tokenToStore._id}`]: initialSupplyForLogic } }
+        { $set: { [`balances.${tokenToStore._id}`]: initialSupply } }
       );
       if (!updateSuccess) {
         logger.error(`[token-create] Failed to set initial balance for ${sender} for token ${tokenToStore._id}.`);

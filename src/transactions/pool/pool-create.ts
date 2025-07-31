@@ -1,7 +1,7 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
-import { PoolCreateData, LiquidityPool, PoolCreateDataDB, LiquidityPoolDB } from './pool-interfaces.js';
+import { PoolCreateData, LiquidityPoolData } from './pool-interfaces.js';
 import config from '../../config.js';
 import { convertToBigInt, convertToString, toBigInt } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
@@ -10,7 +10,7 @@ import { getLpTokenSymbol } from '../../utils/token.js';
 const ALLOWED_FEE_TIERS: number[] = [10, 50, 300, 1000];
 const DEFAULT_FEE_TIER: number = 300;
 const NUMERIC_FIELDS_POOL_CREATE: Array<keyof PoolCreateData> = [];
-const LIQUIDITY_POOL_NUMERIC_FIELDS: Array<keyof LiquidityPool> = ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens'];
+const LIQUIDITY_POOL_NUMERIC_FIELDS: Array<keyof LiquidityPoolData> = ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens'];
 
 function generatePoolId(tokenA_symbol: string, tokenB_symbol: string, feeTier: number): string {
   // Ensure canonical order to prevent duplicate pools (e.g., A-B vs B-A)
@@ -24,9 +24,8 @@ function generateLpTokenSymbol(tokenA_symbol: string, tokenB_symbol: string, fee
   return `LP_${token1}_${token2}_${feeTier}`; 
 }
 
-export async function validateTx(dataDb: PoolCreateDataDB, sender: string): Promise<boolean> {
+export async function validateTx(data: PoolCreateData, sender: string): Promise<boolean> {
   try {
-    const data = convertToBigInt<PoolCreateData>(dataDb, NUMERIC_FIELDS_POOL_CREATE);
     if (!data.tokenA_symbol || !data.tokenB_symbol) {
       logger.warn('[pool-create] Invalid data: Missing required token symbols.');
       return false;
@@ -94,7 +93,7 @@ export async function validateTx(dataDb: PoolCreateDataDB, sender: string): Prom
   }
 }
 
-export async function process(data: PoolCreateDataDB, sender: string, id: string): Promise<boolean> {
+export async function process(data: PoolCreateData, sender: string, id: string): Promise<boolean> {
     try {
         const createData = convertToBigInt<PoolCreateData>(data, NUMERIC_FIELDS_POOL_CREATE);
         let chosenFeeTier = createData.feeTier;
@@ -113,7 +112,7 @@ export async function process(data: PoolCreateDataDB, sender: string, id: string
             [tokenA_symbol, tokenB_symbol] = [tokenB_symbol, tokenA_symbol];
         }
 
-        const poolDocumentApp: LiquidityPool = {
+        const poolDocumentApp: LiquidityPoolData = {
             _id: poolId,
             tokenA_symbol: tokenA_symbol,
             tokenA_reserve: BigInt(0),
@@ -125,7 +124,7 @@ export async function process(data: PoolCreateDataDB, sender: string, id: string
             status: 'ACTIVE'
         };
 
-        const poolDocumentDB = convertToString<LiquidityPool>(poolDocumentApp, LIQUIDITY_POOL_NUMERIC_FIELDS);
+        const poolDocumentDB = convertToString<LiquidityPoolData>(poolDocumentApp, LIQUIDITY_POOL_NUMERIC_FIELDS);
 
         const createSuccess = await new Promise<boolean>((resolve) => {
             cache.insertOne('liquidityPools', poolDocumentDB, (err, result) => {

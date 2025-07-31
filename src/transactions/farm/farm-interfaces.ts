@@ -1,8 +1,4 @@
-import { BigIntToString } from '../../utils/bigint.js';
-
-/**
- * Farm interfaces with BigInt values for application logic
- */
+// Farm interfaces with string | bigint for all numeric fields
 
 export interface FarmCreateData {
   farmId: string;
@@ -17,22 +13,22 @@ export interface FarmCreateData {
   };
   startTime: string;          // ISO date string
   endTime: string;           // ISO date string
-  totalRewards: bigint;      // Total rewards to be distributed
-  rewardsPerBlock: bigint;   // Rewards distributed per block
-  minStakeAmount?: bigint;   // Minimum amount that can be staked
-  maxStakeAmount?: bigint;   // Maximum amount that can be staked per user
+  totalRewards: string | bigint;      // Total rewards to be distributed
+  rewardsPerBlock: string | bigint;   // Rewards distributed per block
+  minStakeAmount?: string | bigint;   // Minimum amount that can be staked
+  maxStakeAmount?: string | bigint;   // Maximum amount that can be staked per user
 }
 
 export interface FarmStakeData {
   farmId: string;
   staker: string;
-  lpTokenAmount: bigint;     // Amount of LP tokens to stake
+  lpTokenAmount: string | bigint;     // Amount of LP tokens to stake
 }
 
 export interface FarmUnstakeData {
   farmId: string;
   staker: string;
-  lpTokenAmount: bigint;     // Amount of LP tokens to unstake
+  lpTokenAmount: string | bigint;     // Amount of LP tokens to unstake
 }
 
 export interface FarmClaimRewardsData {
@@ -40,7 +36,7 @@ export interface FarmClaimRewardsData {
   staker: string;
 }
 
-export interface Farm {
+export interface FarmData {
   _id: string;               // Unique farm ID
   name: string;
   stakingToken: {
@@ -53,32 +49,23 @@ export interface Farm {
   };
   startTime: string;         // ISO date string
   endTime: string;          // ISO date string
-  totalRewards: bigint;     // Total rewards to be distributed
-  rewardsPerBlock: bigint;  // Rewards distributed per block
-  totalStaked: bigint;      // Total amount of staking tokens deposited
-  minStakeAmount: bigint;   // Minimum amount that can be staked
-  maxStakeAmount: bigint;   // Maximum amount that can be staked per user
+  totalRewards: string | bigint;     // Total rewards to be distributed
+  rewardsPerBlock: string | bigint;  // Rewards distributed per block
+  totalStaked: string | bigint;      // Total amount of staking tokens deposited
+  minStakeAmount: string | bigint;   // Minimum amount that can be staked
+  maxStakeAmount: string | bigint;   // Maximum amount that can be staked per user
   status: 'active' | 'ended' | 'cancelled';
   createdAt: string;
   lastUpdatedAt?: string;
 }
 
-export interface UserFarmPosition {
+export interface UserFarmPositionData {
   _id: string;              // userId-farmId
   userId: string;
   farmId: string;
-  stakedAmount: bigint;     // Current staked amount
-  pendingRewards: bigint;   // Unclaimed rewards
+  stakedAmount: string | bigint;     // Current staked amount
+  pendingRewards: string | bigint;   // Unclaimed rewards
   lastHarvestTime: string;  // ISO date string of last reward claim
   createdAt: string;
   lastUpdatedAt?: string;
 }
-
-/**
- * Database types (automatically converted from base types)
- */
-export type FarmCreateDataDB = BigIntToString<FarmCreateData>;
-export type FarmStakeDataDB = BigIntToString<FarmStakeData>;
-export type FarmUnstakeDataDB = BigIntToString<FarmUnstakeData>;
-export type FarmDB = BigIntToString<Farm>;
-export type UserFarmPositionDB = BigIntToString<UserFarmPosition>; 

@@ -1,11 +1,11 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
-import { NftUpdateMetadataData } from './nft-interfaces.js';
+import { NFTUpdateMetadataData } from './nft-interfaces.js';
 import { NftInstance } from './nft-transfer.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
-export async function validateTx(data: NftUpdateMetadataData, sender: string): Promise<boolean> {
+export async function validateTx(data: NFTUpdateMetadataData, sender: string): Promise<boolean> {
   try {
     if (!data.collectionSymbol || !data.instanceId) {
       logger.warn('[nft-update] Invalid data: Missing required fields (collectionSymbol, instanceId).');
@@ -70,7 +70,7 @@ export async function validateTx(data: NftUpdateMetadataData, sender: string): P
   }
 }
 
-export async function process(data: NftUpdateMetadataData, sender: string, id: string): Promise<boolean> {
+export async function process(data: NFTUpdateMetadataData, sender: string, id: string): Promise<boolean> {
   try {
     const fullInstanceId = `${data.collectionSymbol}-${data.instanceId}`;
     

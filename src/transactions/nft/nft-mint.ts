@@ -1,22 +1,22 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js'; // Shared validation module
-import { NftMintData, NftCreateCollectionData } from './nft-interfaces.js';
+import { NFTMintData, NFTCollectionCreateData } from './nft-interfaces.js';
 import { NftInstance } from './nft-transfer.js'; // Import NftInstance type
-// We need NftCreateCollectionData to type the fetched collection document for checks
+// We need NFTCollectionCreateData to type the fetched collection document for checks
 import config from '../../config.js';
 import { logTransactionEvent } from '../../utils/event-logger.js'; // Import the new event logger
 
 // Define a more specific type for what we expect from the nftCollections table
-interface CachedNftCollection extends NftCreateCollectionData {
+interface CachedNftCollection extends NFTCollectionCreateData {
     _id: string;
     currentSupply: number;
     nextIndex: number;
     creator: string;
-    // maxSupply is already optional in NftCreateCollectionData, will be handled as number | undefined
+    // maxSupply is already optional in NFTCollectionCreateData, will be handled as number | undefined
 }
 
-export async function validateTx(data: NftMintData, sender: string): Promise<boolean> {
+export async function validateTx(data: NFTMintData, sender: string): Promise<boolean> {
   try {
     if (!data.collectionSymbol || !data.owner) {
       logger.warn('[nft-mint] Invalid data: Missing required fields (collectionSymbol, owner).');
@@ -61,8 +61,20 @@ export async function validateTx(data: NftMintData, sender: string): Promise<boo
       return false;
     }
     
-    // Handle maxSupply: if undefined or 0 in interface, it was stored as Number.MAX_SAFE_INTEGER or actual value
-    const effectiveMaxSupply = collection.maxSupply === undefined || collection.maxSupply === Number.MAX_SAFE_INTEGER ? Number.MAX_SAFE_INTEGER : collection.maxSupply;
+    // Handle maxSupply: convert to number for comparison
+    let effectiveMaxSupply: number;
+    if (collection.maxSupply === undefined) {
+      effectiveMaxSupply = Number.MAX_SAFE_INTEGER;
+    } else if (typeof collection.maxSupply === 'string') {
+      effectiveMaxSupply = Number(collection.maxSupply);
+    } else if (typeof collection.maxSupply === 'bigint') {
+      effectiveMaxSupply = Number(collection.maxSupply);
+    } else if (typeof collection.maxSupply === 'number') {
+      effectiveMaxSupply = collection.maxSupply === Number.MAX_SAFE_INTEGER ? Number.MAX_SAFE_INTEGER : collection.maxSupply;
+    } else {
+      effectiveMaxSupply = Number.MAX_SAFE_INTEGER;
+    }
+    
     if (collection.currentSupply >= effectiveMaxSupply && effectiveMaxSupply !== Number.MAX_SAFE_INTEGER) {
       logger.warn(`[nft-mint] Collection ${data.collectionSymbol} has reached its max supply of ${effectiveMaxSupply}.`);
       return false;
@@ -89,7 +101,7 @@ export async function validateTx(data: NftMintData, sender: string): Promise<boo
   }
 }
 
-export async function process(data: NftMintData, sender: string, id: string): Promise<boolean> {
+export async function process(data: NFTMintData, sender: string, id: string): Promise<boolean> {
   try {
     const collection = await cache.findOnePromise('nftCollections', { _id: data.collectionSymbol }) as CachedNftCollection | null;
     if (!collection) {
@@ -105,6 +117,12 @@ export async function process(data: NftMintData, sender: string, id: string): Pr
     // Use the next sequential index as instanceId
     const actualInstanceId = collection.nextIndex.toString();
     const nftIndex = collection.nextIndex;
+    // Ensure required fields are present
+    if (!data.collectionSymbol || !data.owner) {
+      logger.error(`[nft-mint] Missing required fields for processing: collectionSymbol=${data.collectionSymbol}, owner=${data.owner}`);
+      return false;
+    }
+
     const fullInstanceId = `${data.collectionSymbol}-${actualInstanceId}`;
 
     // Check if NFT with this ID already exists (shouldn't happen with sequential indexing, but safety check)

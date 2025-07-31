@@ -1,5 +1,3 @@
-import { BigIntToString, StringToBigInt, RecursiveBigIntToString } from '../../utils/bigint.js';
-
 export enum TokenStandard {
   NATIVE = 'NATIVE',
   WRAPPED_NATIVE_LIKE = 'WRAPPED_NATIVE_LIKE',
@@ -42,22 +40,22 @@ export interface TokenAllocation {
 }
 
 export interface Tokenomics {
-  totalSupply: bigint;        // Total token supply
-  tokenDecimals: bigint;      // Number of decimal places (0-18)
+  totalSupply: string | bigint;        // Total token supply
+  tokenDecimals: string | bigint;      // Number of decimal places (0-18)
   allocations: TokenAllocation[];
 }
 
 export interface PresaleDetails {
   presaleTokenAllocationPercentage: number;
-  pricePerToken: bigint;
+  pricePerToken: string | bigint;
   quoteAssetForPresaleSymbol: string;
   quoteAssetForPresaleIssuer?: string;
-  minContributionPerUser: bigint;
-  maxContributionPerUser: bigint;
+  minContributionPerUser: string | bigint;
+  maxContributionPerUser: string | bigint;
   startTime: string;
   endTime: string;
-  hardCap: bigint;
-  softCap?: bigint;
+  hardCap: string | bigint;
+  softCap?: string | bigint;
   whitelistRequired?: boolean;
   fcfsAfterReservedAllocation?: boolean;
 }
@@ -105,7 +103,7 @@ export enum LaunchpadStatus {
   CANCELLED = 'CANCELLED',
 }
 
-export interface Token {
+export interface TokenData {
   _id: string;
   name: string;
   symbol: string;
@@ -122,7 +120,7 @@ export interface Token {
   launchpadId: string;
 }
 
-export interface Launchpad {
+export interface LaunchpadData {
   _id: string;
   projectId: string;
   status: LaunchpadStatus;
@@ -131,7 +129,7 @@ export interface Launchpad {
     symbol: string;
     standard: TokenStandard;
     decimals: number;
-    totalSupply: bigint;
+    totalSupply: string | bigint;
   };
   tokenomicsSnapshot: Tokenomics;
   presaleDetailsSnapshot?: PresaleDetails;
@@ -142,11 +140,11 @@ export interface Launchpad {
   presale?: {
     startTimeActual?: string;
     endTimeActual?: string;
-    totalQuoteRaised: bigint;
+    totalQuoteRaised: string | bigint;
     participants: Array<{
       userId: string;
-      quoteAmountContributed: bigint;
-      tokensAllocated?: bigint;
+      quoteAmountContributed: string | bigint;
+      tokensAllocated?: string | bigint;
       claimed: boolean;
     }>;
     status: 'NOT_STARTED' | 'ACTIVE' | 'ENDED_PENDING_CLAIMS' | 'ENDED_CLAIMS_PROCESSED' | 'FAILED';
@@ -157,7 +155,7 @@ export interface Launchpad {
   feeDetails?: {
     tokenSymbol: string;
     tokenIssuer?: string;
-    amount: bigint;
+    amount: string | bigint;
   };
   relatedTxIds?: string[];
 }
@@ -165,7 +163,7 @@ export interface Launchpad {
 export interface LaunchpadParticipatePresaleData {
   userId: string;
   launchpadId: string;
-  contributionAmount: bigint;
+  contributionAmount: string | bigint;
 }
 
 export interface LaunchpadClaimTokensData {
@@ -173,66 +171,3 @@ export interface LaunchpadClaimTokensData {
   launchpadId: string;
   allocationType: TokenDistributionRecipient;
 }
-
-/**
- * Launchpad interfaces with BigInt values for application logic
- */
-
-export interface LaunchpadCreateData {
-    name: string;
-    description?: string;
-    tokenSymbol: string;       // Token being launched
-    tokenIssuer: string;      // Token issuer address
-    paymentToken: {           // Token accepted for payment
-        symbol: string;
-        issuer: string;
-    };
-    totalTokens: bigint;      // Total tokens being sold
-    tokenPrice: bigint;       // Price per token in payment token
-    minPurchase?: bigint;     // Minimum purchase amount per user
-    maxPurchase?: bigint;     // Maximum purchase amount per user
-    startTime: string;        // ISO date string
-    endTime: string;         // ISO date string
-    metadata?: {
-        websiteUrl?: string;
-        whitepaperUrl?: string;
-        logoUrl?: string;
-        [key: string]: any;
-    };
-}
-
-export interface LaunchpadPurchaseData {
-    launchpadId: string;     // Launchpad ID
-    amount: bigint;          // Amount of tokens to purchase
-    buyer: string;           // Buyer's address
-}
-
-export interface LaunchpadClaimData {
-    launchpadId: string;     // Launchpad ID
-    buyer: string;           // Buyer's address
-}
-
-export interface LaunchpadPurchase {
-    _id: string;            // Purchase ID: hash(launchpadId, buyer, timestamp)
-    launchpadId: string;    // Launchpad ID
-    buyer: string;          // Buyer's address
-    amount: bigint;         // Amount of tokens purchased
-    totalPaid: bigint;      // Total amount paid in payment token
-    claimed: boolean;       // Whether tokens have been claimed
-    timestamp: string;      // ISO date string
-}
-
-/**
- * Database types (automatically converted from base types)
- */
-export type LaunchpadCreateDataDB = RecursiveBigIntToString<LaunchpadCreateData>;
-export type LaunchpadPurchaseDataDB = RecursiveBigIntToString<LaunchpadPurchaseData>;
-export type LaunchpadDB = RecursiveBigIntToString<Launchpad>;
-export type LaunchpadPurchaseDB = RecursiveBigIntToString<LaunchpadPurchase>;
-export type PresaleDetailsDB = RecursiveBigIntToString<PresaleDetails>;
-export type LaunchpadParticipatePresaleDataDB = RecursiveBigIntToString<LaunchpadParticipatePresaleData>;
-export type TokenomicsDB = RecursiveBigIntToString<Tokenomics>;
-export type TokenDB = RecursiveBigIntToString<Token>;
-export type VestingScheduleDB = RecursiveBigIntToString<VestingSchedule>;
-export type TokenAllocationDB = RecursiveBigIntToString<TokenAllocation>;
-export type LiquidityProvisionDetailsDB = RecursiveBigIntToString<LiquidityProvisionDetails>; 

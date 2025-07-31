@@ -2,13 +2,12 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import config from '../../config.js';
-import { FarmCreateData, FarmCreateDataDB, Farm, FarmDB } from './farm-interfaces.js';
+import { FarmCreateData, FarmData } from './farm-interfaces.js';
 import { convertToBigInt, convertToString, amountToString, BigIntMath } from '../../utils/bigint.js';
 import { getAccount } from '../../utils/account.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
 
 const NUMERIC_FIELDS_FARM_CREATE: Array<keyof FarmCreateData> = ['totalRewards', 'rewardsPerBlock', 'minStakeAmount', 'maxStakeAmount'];
-const NUMERIC_FIELDS_FARM: Array<keyof Farm> = ['totalRewards', 'rewardsPerBlock', 'minStakeAmount', 'maxStakeAmount', 'totalStaked'];
+const NUMERIC_FIELDS_FARM: Array<keyof FarmData> = ['totalRewards', 'rewardsPerBlock', 'minStakeAmount', 'maxStakeAmount', 'totalStaked'];
 
 // Helper function to generate a unique and deterministic farm ID
 function generateFarmId(stakingTokenSymbol: string, rewardTokenSymbol: string, rewardTokenIssuer: string): string {
@@ -16,51 +15,49 @@ function generateFarmId(stakingTokenSymbol: string, rewardTokenSymbol: string, r
     return `FARM_${stakingTokenSymbol}_${rewardTokenSymbol}_${rewardTokenIssuer}`.toUpperCase();
 }
 
-export async function validateTx(data: FarmCreateDataDB, sender: string): Promise<boolean> {
+export async function validateTx(data: FarmCreateData, sender: string): Promise<boolean> {
     try {
-        const farmData = convertToBigInt<FarmCreateData>(data, NUMERIC_FIELDS_FARM_CREATE);
-
-        if (!farmData.name || !farmData.stakingToken?.symbol || !farmData.rewardToken?.symbol || !farmData.rewardToken?.issuer || !farmData.startTime || !farmData.endTime) {
+        if (!data.name || !data.stakingToken?.symbol || !data.rewardToken?.symbol || !data.rewardToken?.issuer || !data.startTime || !data.endTime) {
             logger.warn('[farm-create] Invalid data: Missing required fields.');
             return false;
         }
 
-        if (!validate.string(farmData.name, 100, 3)) {
-            logger.warn(`[farm-create] Invalid farm name: ${farmData.name}.`);
+        if (!validate.string(data.name, 100, 3)) {
+            logger.warn(`[farm-create] Invalid farm name: ${data.name}.`);
             return false;
         }
 
-        if (!validate.string(farmData.stakingToken.symbol, 60, 3)) {
-            logger.warn(`[farm-create] Invalid stakingToken.symbol: ${farmData.stakingToken.symbol}.`);
+        if (!validate.string(data.stakingToken.symbol, 60, 3)) {
+            logger.warn(`[farm-create] Invalid stakingToken.symbol: ${data.stakingToken.symbol}.`);
             return false;
         }
         // stakingToken.issuer can be optional (e.g. for native pool LP tokens)
-        if (farmData.stakingToken.issuer && !validate.string(farmData.stakingToken.issuer, 100, 3)) {
-            logger.warn(`[farm-create] Invalid stakingToken.issuer: ${farmData.stakingToken.issuer}.`);
+        if (data.stakingToken.issuer && !validate.string(data.stakingToken.issuer, 100, 3)) {
+            logger.warn(`[farm-create] Invalid stakingToken.issuer: ${data.stakingToken.issuer}.`);
             return false;
         }
 
-        if (!validate.string(farmData.rewardToken.symbol, 10, 3, config.tokenSymbolAllowedChars)) {
-            logger.warn(`[farm-create] Invalid rewardToken.symbol: ${farmData.rewardToken.symbol}.`);
+        if (!validate.string(data.rewardToken.symbol, 10, 3, config.tokenSymbolAllowedChars)) {
+            logger.warn(`[farm-create] Invalid rewardToken.symbol: ${data.rewardToken.symbol}.`);
             return false;
         }
-        if (!validate.string(farmData.rewardToken.issuer, 16, 3)) { // Assuming issuer is an account name
-            logger.warn(`[farm-create] Invalid rewardToken.issuer: ${farmData.rewardToken.issuer}.`);
+        if (!validate.string(data.rewardToken.issuer, 16, 3)) { // Assuming issuer is an account name
+            logger.warn(`[farm-create] Invalid rewardToken.issuer: ${data.rewardToken.issuer}.`);
             return false;
         }
 
-        if (farmData.stakingToken.symbol === farmData.rewardToken.symbol && farmData.stakingToken.issuer === farmData.rewardToken.issuer) {
+        if (data.stakingToken.symbol === data.rewardToken.symbol && data.stakingToken.issuer === data.rewardToken.issuer) {
             logger.warn('[farm-create] Staking token and reward token cannot be the same.');
             return false;
         }
 
-        const rewardTokenDoc = await cache.findOnePromise('tokens', { symbol: farmData.rewardToken.symbol /*, issuer: farmData.rewardToken.issuer */ });
+        const rewardTokenDoc = await cache.findOnePromise('tokens', { symbol: data.rewardToken.symbol /*, issuer: data.rewardToken.issuer */ });
         if (!rewardTokenDoc) {
-            logger.warn(`[farm-create] Reward Token (${farmData.rewardToken.symbol}) not found.`);
+            logger.warn(`[farm-create] Reward Token (${data.rewardToken.symbol}) not found.`);
             return false;
         }
 
-        const farmId = generateFarmId(farmData.stakingToken.symbol, farmData.rewardToken.symbol, farmData.rewardToken.issuer);
+        const farmId = generateFarmId(data.stakingToken.symbol, data.rewardToken.symbol, data.rewardToken.issuer);
         const existingFarm = await cache.findOnePromise('farms', { _id: farmId });
         if (existingFarm) {
             logger.warn(`[farm-create] Farm with ID ${farmId} already exists.`);
@@ -68,12 +65,12 @@ export async function validateTx(data: FarmCreateDataDB, sender: string): Promis
         }
         
         // Assuming startTime and endTime are ISO strings, validate their format and logical order
-        if (!validate.string(farmData.startTime, 50, 10) || !validate.string(farmData.endTime, 50, 10)) { // Basic string check
+        if (!validate.string(data.startTime, 50, 10) || !validate.string(data.endTime, 50, 10)) { // Basic string check
             logger.warn('[farm-create] Invalid startTime or endTime format.');
             return false;
         }
         try {
-            if (new Date(farmData.startTime) >= new Date(farmData.endTime)) {
+            if (new Date(data.startTime) >= new Date(data.endTime)) {
                 logger.warn('[farm-create] startTime must be before endTime.');
                 return false;
             }
@@ -82,30 +79,30 @@ export async function validateTx(data: FarmCreateDataDB, sender: string): Promis
             return false;
         }
 
-        if (!validate.bigint(farmData.totalRewards, false, false, undefined, BigInt(1))) {
+        if (!validate.bigint(data.totalRewards, false, false, undefined, BigInt(1))) {
             logger.warn('[farm-create] totalRewards must be a positive integer.');
             return false;
         }
-        if (!validate.bigint(farmData.rewardsPerBlock, false, false, undefined, BigInt(1))) {
+        if (!validate.bigint(data.rewardsPerBlock, false, false, undefined, BigInt(1))) {
             logger.warn('[farm-create] rewardsPerBlock must be a positive integer.');
             return false;
         }
-        if (farmData.minStakeAmount !== undefined && !validate.bigint(farmData.minStakeAmount, true, false, undefined, BigInt(0))) {
+        if (data.minStakeAmount !== undefined && !validate.bigint(data.minStakeAmount, true, false, undefined, BigInt(0))) {
             logger.warn('[farm-create] minStakeAmount must be a non-negative integer if provided.');
             return false;
         }
-        if (farmData.maxStakeAmount !== undefined && !validate.bigint(farmData.maxStakeAmount, false, false, undefined, BigInt(1))) {
+        if (data.maxStakeAmount !== undefined && !validate.bigint(data.maxStakeAmount, false, false, undefined, BigInt(1))) {
             logger.warn('[farm-create] maxStakeAmount must be a positive integer if provided.');
             return false;
         }
-        if (farmData.maxStakeAmount && farmData.minStakeAmount && farmData.maxStakeAmount < farmData.minStakeAmount) {
+        if (data.maxStakeAmount && data.minStakeAmount && data.maxStakeAmount < data.minStakeAmount) {
             logger.warn('[farm-create] maxStakeAmount cannot be less than minStakeAmount.');
             return false;
         }
 
         const senderAccount = await getAccount(sender);
-        if (!senderAccount || !senderAccount.balances || BigIntMath.toBigInt(senderAccount.balances[farmData.rewardToken.symbol] || '0') < farmData.totalRewards) {
-            logger.warn(`[farm-create] Sender ${sender} does not have enough ${farmData.rewardToken.symbol} to fund the farm. Needs ${farmData.totalRewards}, has ${senderAccount?.balances?.[farmData.rewardToken.symbol] || '0'}`);
+        if (!senderAccount || !senderAccount.balances || BigIntMath.toBigInt(senderAccount.balances[data.rewardToken.symbol] || '0') < BigInt(data.totalRewards)) {
+            logger.warn(`[farm-create] Sender ${sender} does not have enough ${data.rewardToken.symbol} to fund the farm. Needs ${data.totalRewards}, has ${senderAccount?.balances?.[data.rewardToken.symbol] || '0'}`);
             return false;
         }
 
@@ -116,7 +113,7 @@ export async function validateTx(data: FarmCreateDataDB, sender: string): Promis
     }
 }
 
-export async function process(data: FarmCreateDataDB, sender: string, id: string): Promise<boolean> {
+export async function process(data: FarmCreateData, sender: string, id: string): Promise<boolean> {
     try {
         const farmData = convertToBigInt<FarmCreateData>(data, NUMERIC_FIELDS_FARM_CREATE);
         const farmId = generateFarmId(farmData.stakingToken.symbol, farmData.rewardToken.symbol, farmData.rewardToken.issuer);
@@ -128,7 +125,7 @@ export async function process(data: FarmCreateDataDB, sender: string, id: string
             return false; 
         }
         const currentSenderRewardBalance = BigIntMath.toBigInt(senderAccount.balances[farmData.rewardToken.symbol] || '0');
-        const newSenderRewardBalance = currentSenderRewardBalance - farmData.totalRewards;
+        const newSenderRewardBalance = currentSenderRewardBalance - BigInt(farmData.totalRewards);
 
         if (newSenderRewardBalance < BigInt(0)) {
             logger.error(`[farm-create] Critical: Sender ${sender} insufficient balance for ${farmData.rewardToken.symbol} during processing.`);
@@ -146,7 +143,7 @@ export async function process(data: FarmCreateDataDB, sender: string, id: string
             return false;
         }
 
-        const farmDocument: Farm = {
+        const farmDocument: FarmData = {
             _id: farmId,
             name: farmData.name,
             stakingToken: farmData.stakingToken,
@@ -162,7 +159,7 @@ export async function process(data: FarmCreateDataDB, sender: string, id: string
             createdAt: new Date().toISOString(),
         };
 
-        const farmDocumentDB = convertToString<Farm>(farmDocument, NUMERIC_FIELDS_FARM);
+        const farmDocumentDB = convertToString<FarmData>(farmDocument, NUMERIC_FIELDS_FARM);
         const insertSuccess = await new Promise<boolean>((resolve) => {
             cache.insertOne('farms', farmDocumentDB, (err, result) => { 
                 if (err || !result) {
@@ -185,21 +182,6 @@ export async function process(data: FarmCreateDataDB, sender: string, id: string
         }
 
         logger.debug(`[farm-create] Farm ${farmId} for staking token ${farmData.stakingToken.symbol} rewarding ${farmData.rewardToken.symbol} created by ${sender}.`);
-
-        // Log event using the new centralized logger
-        const eventData = {
-            farmId: farmId,
-            name: farmData.name,
-            stakingTokenSymbol: farmData.stakingToken.symbol,
-            stakingTokenIssuer: farmData.stakingToken.issuer,
-            rewardTokenSymbol: farmData.rewardToken.symbol,
-            rewardTokenIssuer: farmData.rewardToken.issuer,
-            totalRewards: amountToString(farmData.totalRewards),
-            rewardsPerBlock: amountToString(farmData.rewardsPerBlock),
-            startTime: farmData.startTime,
-            endTime: farmData.endTime
-        };
-        await logTransactionEvent('farmCreate', sender, eventData, id);
 
         return true;
     } catch (error) {

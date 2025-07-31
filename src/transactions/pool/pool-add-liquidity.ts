@@ -1,7 +1,7 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
-import { PoolAddLiquidityData, LiquidityPool, UserLiquidityPosition, PoolAddLiquidityDataDB, LiquidityPoolDB, UserLiquidityPositionDB } from './pool-interfaces.js';
+import { PoolAddLiquidityData, LiquidityPoolData, UserLiquidityPositionData } from './pool-interfaces.js';
 import { adjustBalance, getAccount, Account } from '../../utils/account.js';
 import { convertToBigInt, convertToString, BigIntMath, amountToString as bigintToString } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
@@ -11,25 +11,29 @@ import { getLpTokenSymbol } from '../../utils/token.js';
 const NUMERIC_FIELDS: Array<keyof PoolAddLiquidityData> = ['tokenA_amount', 'tokenB_amount'];
 
 // Calculate LP tokens to mint based on provided liquidity
-function calculateLpTokensToMint(tokenA_amount: bigint, tokenB_amount: bigint, pool: LiquidityPool): bigint {
+function calculateLpTokensToMint(tokenA_amount: bigint, tokenB_amount: bigint, pool: LiquidityPoolData): bigint {
   // Initial liquidity provision
-  if (pool.totalLpTokens === BigInt(0)) {
+  if (toBigInt(pool.totalLpTokens) === BigInt(0)) {
     // For first liquidity provision, mint LP tokens equal to geometric mean of provided amounts
     return BigIntMath.sqrt(tokenA_amount * tokenB_amount);
   }
 
   // For subsequent liquidity provisions, mint proportional to existing reserves
-  const ratioA = (tokenA_amount * pool.totalLpTokens) / pool.tokenA_reserve;
-  const ratioB = (tokenB_amount * pool.totalLpTokens) / pool.tokenB_reserve;
+  const poolTotalLpTokens = toBigInt(pool.totalLpTokens);
+  const poolTokenAReserve = toBigInt(pool.tokenA_reserve);
+  const poolTokenBReserve = toBigInt(pool.tokenB_reserve);
+  
+  const ratioA = (tokenA_amount * poolTotalLpTokens) / poolTokenAReserve;
+  const ratioB = (tokenB_amount * poolTotalLpTokens) / poolTokenBReserve;
   
   // Use the minimum ratio to ensure proportional liquidity provision
   return BigIntMath.min(ratioA, ratioB);
 }
 
-export async function validateTx(data: PoolAddLiquidityDataDB, sender: string): Promise<boolean> {
+export async function validateTx(data: PoolAddLiquidityData, sender: string): Promise<boolean> {
   try {
     // Convert string amounts to BigInt for validation
-    const addLiquidityData = convertToBigInt<PoolAddLiquidityData>(data, NUMERIC_FIELDS);
+    const addLiquidityData = data;
 
     if (!addLiquidityData.poolId || !addLiquidityData.provider || !addLiquidityData.tokenA_amount || !addLiquidityData.tokenB_amount) {
       logger.warn('[pool-add-liquidity] Invalid data: Missing required fields.');
@@ -41,14 +45,14 @@ export async function validateTx(data: PoolAddLiquidityDataDB, sender: string): 
       return false;
     }
 
-    const poolDB = await cache.findOnePromise('liquidityPools', { _id: addLiquidityData.poolId }) as LiquidityPoolDB | null;
+    const poolDB = await cache.findOnePromise('liquidityPools', { _id: addLiquidityData.poolId }) as LiquidityPoolData | null;
     if (!poolDB) {
       logger.warn(`[pool-add-liquidity] Pool ${addLiquidityData.poolId} not found.`);
       return false;
     }
 
     // Convert pool amounts to BigInt for calculations
-    const pool = convertToBigInt<LiquidityPool>(poolDB, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens']);
+    const pool = poolDB;
 
     // Check provider's balance for both tokens
     const providerAccount = await getAccount(addLiquidityData.provider);
@@ -61,27 +65,27 @@ export async function validateTx(data: PoolAddLiquidityDataDB, sender: string): 
     const tokenABalance = toBigInt(providerAccount.balances[pool.tokenA_symbol] || '0');
     const tokenBBalance = toBigInt(providerAccount.balances[pool.tokenB_symbol] || '0');
 
-    if (tokenABalance < addLiquidityData.tokenA_amount) {
+    if (tokenABalance < toBigInt(addLiquidityData.tokenA_amount)) {
       logger.warn(`[pool-add-liquidity] Insufficient balance for ${pool.tokenA_symbol}. Required: ${addLiquidityData.tokenA_amount}, Available: ${tokenABalance}`);
       return false;
     }
 
-    if (tokenBBalance < addLiquidityData.tokenB_amount) {
+    if (tokenBBalance < toBigInt(addLiquidityData.tokenB_amount)) {
       logger.warn(`[pool-add-liquidity] Insufficient balance for ${pool.tokenB_symbol}. Required: ${addLiquidityData.tokenB_amount}, Available: ${tokenBBalance}`);
       return false;
     }
 
     // For initial liquidity provision, both token amounts must be positive
-    if (pool.totalLpTokens === BigInt(0)) {
-      if (addLiquidityData.tokenA_amount <= BigInt(0) || addLiquidityData.tokenB_amount <= BigInt(0)) {
+    if (toBigInt(pool.totalLpTokens) === BigInt(0)) {
+      if (toBigInt(addLiquidityData.tokenA_amount) <= BigInt(0) || toBigInt(addLiquidityData.tokenB_amount) <= BigInt(0)) {
         logger.warn('[pool-add-liquidity] Initial liquidity provision requires positive amounts for both tokens.');
         return false;
       }
     } else {
       // For subsequent provisions, check if amounts maintain the pool ratio within tolerance
-      const expectedTokenBAmount = (addLiquidityData.tokenA_amount * pool.tokenB_reserve) / pool.tokenA_reserve;
+      const expectedTokenBAmount = (toBigInt(addLiquidityData.tokenA_amount) * toBigInt(pool.tokenB_reserve)) / toBigInt(pool.tokenA_reserve);
       const tolerance = BigInt(100); // 1% tolerance as basis points (100 = 1%)
-      const difference = BigIntMath.abs(addLiquidityData.tokenB_amount - expectedTokenBAmount);
+      const difference = BigIntMath.abs(toBigInt(addLiquidityData.tokenB_amount) - expectedTokenBAmount);
       const maxDifference = (expectedTokenBAmount * tolerance) / BigInt(10000);
 
       if (difference > maxDifference) {
@@ -97,41 +101,41 @@ export async function validateTx(data: PoolAddLiquidityDataDB, sender: string): 
   }
 }
 
-export async function process(data: PoolAddLiquidityDataDB, sender: string, id: string): Promise<boolean> {
+export async function process(data: PoolAddLiquidityData, sender: string, id: string): Promise<boolean> {
     try {
-        const addLiquidityData = convertToBigInt<PoolAddLiquidityData>(data, NUMERIC_FIELDS);
+        const addLiquidityData = data;
 
-        const poolDB = await cache.findOnePromise('liquidityPools', { _id: addLiquidityData.poolId }) as LiquidityPoolDB | null;
+        const poolDB = await cache.findOnePromise('liquidityPools', { _id: addLiquidityData.poolId }) as LiquidityPoolData | null;
         if (!poolDB) {
             logger.error(`[pool-add-liquidity] CRITICAL: Pool ${addLiquidityData.poolId} not found during processing.`);
             return false;
         }
 
         // Ensure fee accounting fields are present and initialized as bigint
-        let feeGrowthGlobalA = typeof poolDB.feeGrowthGlobalA === 'bigint' ? poolDB.feeGrowthGlobalA : BigInt(poolDB.feeGrowthGlobalA || '0');
-        let feeGrowthGlobalB = typeof poolDB.feeGrowthGlobalB === 'bigint' ? poolDB.feeGrowthGlobalB : BigInt(poolDB.feeGrowthGlobalB || '0');
+        let feeGrowthGlobalA = toBigInt(poolDB.feeGrowthGlobalA || '0');
+        let feeGrowthGlobalB = toBigInt(poolDB.feeGrowthGlobalB || '0');
         const pool = {
-            ...convertToBigInt<LiquidityPool>(poolDB, ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens']),
+            ...poolDB,
             feeGrowthGlobalA,
             feeGrowthGlobalB
         };
 
         // Debit tokens from the provider's account
-        const debitASuccess = await adjustBalance(addLiquidityData.provider, pool.tokenA_symbol, -addLiquidityData.tokenA_amount);
-        const debitBSuccess = await adjustBalance(addLiquidityData.provider, pool.tokenB_symbol, -addLiquidityData.tokenB_amount);
+        const debitASuccess = await adjustBalance(addLiquidityData.provider, pool.tokenA_symbol, -toBigInt(addLiquidityData.tokenA_amount));
+        const debitBSuccess = await adjustBalance(addLiquidityData.provider, pool.tokenB_symbol, -toBigInt(addLiquidityData.tokenB_amount));
 
         if (!debitASuccess || !debitBSuccess) {
             logger.error(`[pool-add-liquidity] Failed to debit tokens from ${addLiquidityData.provider}. Rolling back any debits.`);
-            if (debitASuccess) await adjustBalance(addLiquidityData.provider, pool.tokenA_symbol, addLiquidityData.tokenA_amount);
-            if (debitBSuccess) await adjustBalance(addLiquidityData.provider, pool.tokenB_symbol, addLiquidityData.tokenB_amount);
+            if (debitASuccess) await adjustBalance(addLiquidityData.provider, pool.tokenA_symbol, toBigInt(addLiquidityData.tokenA_amount));
+            if (debitBSuccess) await adjustBalance(addLiquidityData.provider, pool.tokenB_symbol, toBigInt(addLiquidityData.tokenB_amount));
             return false;
         }
 
-        const lpTokensToMint = calculateLpTokensToMint(addLiquidityData.tokenA_amount, addLiquidityData.tokenB_amount, pool);
+        const lpTokensToMint = calculateLpTokensToMint(toBigInt(addLiquidityData.tokenA_amount), toBigInt(addLiquidityData.tokenB_amount), pool);
         if (lpTokensToMint <= BigInt(0)) {
             logger.error('[pool-add-liquidity] CRITICAL: LP token calculation resulted in zero or negative amount. Rolling back token debits.');
-            await adjustBalance(addLiquidityData.provider, pool.tokenA_symbol, addLiquidityData.tokenA_amount);
-            await adjustBalance(addLiquidityData.provider, pool.tokenB_symbol, addLiquidityData.tokenB_amount);
+            await adjustBalance(addLiquidityData.provider, pool.tokenA_symbol, toBigInt(addLiquidityData.tokenA_amount));
+            await adjustBalance(addLiquidityData.provider, pool.tokenB_symbol, toBigInt(addLiquidityData.tokenB_amount));
             return false;
         }
 
@@ -143,9 +147,9 @@ export async function process(data: PoolAddLiquidityDataDB, sender: string, id: 
                 $set: {
                     ...convertToString(
                         {
-                            tokenA_reserve: pool.tokenA_reserve + addLiquidityData.tokenA_amount,
-                            tokenB_reserve: pool.tokenB_reserve + addLiquidityData.tokenB_amount,
-                            totalLpTokens: pool.totalLpTokens + lpTokensToMint,
+                            tokenA_reserve: toBigInt(pool.tokenA_reserve) + toBigInt(addLiquidityData.tokenA_amount),
+                            tokenB_reserve: toBigInt(pool.tokenB_reserve) + toBigInt(addLiquidityData.tokenB_amount),
+                            totalLpTokens: toBigInt(pool.totalLpTokens) + lpTokensToMint,
                             feeGrowthGlobalA: pool.feeGrowthGlobalA,
                             feeGrowthGlobalB: pool.feeGrowthGlobalB
                         },
@@ -163,13 +167,14 @@ export async function process(data: PoolAddLiquidityDataDB, sender: string, id: 
 
         // Update or create user liquidity position with fee checkpoints
         const userPositionId = `${addLiquidityData.provider}-${addLiquidityData.poolId}`;
-        const existingUserPosDB = await cache.findOnePromise('userLiquidityPositions', { _id: userPositionId }) as UserLiquidityPositionDB | null;
+        const existingUserPosDB = await cache.findOnePromise('userLiquidityPositions', { _id: userPositionId }) as UserLiquidityPositionData | null;
         const existingUserPos = existingUserPosDB ? {
-            ...convertToBigInt<UserLiquidityPosition>(existingUserPosDB, ['lpTokenBalance']),
-            feeGrowthEntryA: typeof existingUserPosDB.feeGrowthEntryA === 'bigint' ? existingUserPosDB.feeGrowthEntryA : BigInt(existingUserPosDB.feeGrowthEntryA || '0'),
-            feeGrowthEntryB: typeof existingUserPosDB.feeGrowthEntryB === 'bigint' ? existingUserPosDB.feeGrowthEntryB : BigInt(existingUserPosDB.feeGrowthEntryB || '0'),
-            unclaimedFeesA: typeof existingUserPosDB.unclaimedFeesA === 'bigint' ? existingUserPosDB.unclaimedFeesA : BigInt(existingUserPosDB.unclaimedFeesA || '0'),
-            unclaimedFeesB: typeof existingUserPosDB.unclaimedFeesB === 'bigint' ? existingUserPosDB.unclaimedFeesB : BigInt(existingUserPosDB.unclaimedFeesB || '0'),
+            ...existingUserPosDB,
+            lpTokenBalance: toBigInt(existingUserPosDB.lpTokenBalance),
+            feeGrowthEntryA: toBigInt(existingUserPosDB.feeGrowthEntryA || '0'),
+            feeGrowthEntryB: toBigInt(existingUserPosDB.feeGrowthEntryB || '0'),
+            unclaimedFeesA: toBigInt(existingUserPosDB.unclaimedFeesA || '0'),
+            unclaimedFeesB: toBigInt(existingUserPosDB.unclaimedFeesB || '0'),
         } : null;
 
         let userPosUpdateSuccess = false;
@@ -204,7 +209,7 @@ export async function process(data: PoolAddLiquidityDataDB, sender: string, id: 
                 }
             );
         } else {
-            const newUserPosition: UserLiquidityPosition = {
+            const newUserPosition: UserLiquidityPositionData = {
                 _id: userPositionId,
                 provider: addLiquidityData.provider,
                 poolId: addLiquidityData.poolId,
@@ -231,17 +236,17 @@ export async function process(data: PoolAddLiquidityDataDB, sender: string, id: 
 
         if (!userPosUpdateSuccess) {
             logger.error(`[pool-add-liquidity] CRITICAL: Failed to update user position. Rolling back pool update and token debits.`);
-            await adjustBalance(addLiquidityData.provider, pool.tokenA_symbol, addLiquidityData.tokenA_amount);
-            await adjustBalance(addLiquidityData.provider, pool.tokenB_symbol, addLiquidityData.tokenB_amount);
+            await adjustBalance(addLiquidityData.provider, pool.tokenA_symbol, toBigInt(addLiquidityData.tokenA_amount));
+            await adjustBalance(addLiquidityData.provider, pool.tokenB_symbol, toBigInt(addLiquidityData.tokenB_amount));
             await cache.updateOnePromise(
                 'liquidityPools',
                 { _id: addLiquidityData.poolId },
                 {
                     $set: convertToString(
                         {
-                            tokenA_reserve: pool.tokenA_reserve,
-                            tokenB_reserve: pool.tokenB_reserve,
-                            totalLpTokens: pool.totalLpTokens,
+                            tokenA_reserve: toBigInt(pool.tokenA_reserve),
+                            tokenB_reserve: toBigInt(pool.tokenB_reserve),
+                            totalLpTokens: toBigInt(pool.totalLpTokens),
                             feeGrowthGlobalA: pool.feeGrowthGlobalA,
                             feeGrowthGlobalB: pool.feeGrowthGlobalB
                         },
@@ -268,16 +273,7 @@ export async function process(data: PoolAddLiquidityDataDB, sender: string, id: 
             return false;
         }
 
-        logger.debug(`[pool-add-liquidity] Provider ${addLiquidityData.provider} added liquidity to pool ${addLiquidityData.poolId}. Token A: ${bigintToString(addLiquidityData.tokenA_amount)}, Token B: ${bigintToString(addLiquidityData.tokenB_amount)}, LP tokens minted: ${bigintToString(lpTokensToMint)}`);
-
-        const eventData = {
-            poolId: addLiquidityData.poolId,
-            provider: addLiquidityData.provider,
-            tokenA_amount: bigintToString(addLiquidityData.tokenA_amount),
-            tokenB_amount: bigintToString(addLiquidityData.tokenB_amount),
-            lpTokensMinted: bigintToString(lpTokensToMint)
-        };
-        await logTransactionEvent('poolAddLiquidity', sender, eventData, id);
+        logger.debug(`[pool-add-liquidity] Provider ${addLiquidityData.provider} added liquidity to pool ${addLiquidityData.poolId}. Token A: ${bigintToString(toBigInt(addLiquidityData.tokenA_amount))}, Token B: ${bigintToString(toBigInt(addLiquidityData.tokenB_amount))}, LP tokens minted: ${bigintToString(lpTokensToMint)}`);
 
         return true;
     } catch (error) {

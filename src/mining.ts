@@ -331,12 +331,12 @@ export const mining = {
                                             }
                                         });
                                     } else {
-                                        setTimeout(waitForAdvance, 1000);
+                                        setTimeout(waitForAdvance, 3000);
                                     }
                                 }
                             });
                         };
-                        setTimeout(waitForAdvance, 1000);
+                        setTimeout(waitForAdvance, 3000);
                         return;
                     }
                 }

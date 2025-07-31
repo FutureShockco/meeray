@@ -42,7 +42,11 @@ export async function validateTx(data: TokenMintData, sender: string): Promise<b
       return false;
     }
 
-    if (token.currentSupply + data.amount > token.maxSupply) {
+    const currentSupplyBigInt = toBigInt(token.currentSupply || 0);
+    const maxSupplyBigInt = toBigInt(token.maxSupply);
+    const amountBigInt = toBigInt(data.amount);
+    
+    if (currentSupplyBigInt + amountBigInt > maxSupplyBigInt) {
       logger.warn(`[token-mint] Mint would exceed max supply for ${data.symbol}.`);
       return false;
     }
@@ -67,25 +71,12 @@ export async function validateTx(data: TokenMintData, sender: string): Promise<b
 
 export async function process(data: TokenMintData, sender: string, id: string): Promise<boolean> {
   try {
-
     const tokenFromCache = await cache.findOnePromise('tokens', { _id: data.symbol });
-    if (!tokenFromCache) {
-      logger.error(`[token-mint:process] Token ${data.symbol} not found`);
-      return false;
-    }
-    if (!tokenFromCache.mintable) {
-      logger.error(`[token-mint:process] Token ${data.symbol} is not mintable. This should have been caught by validateTx.`);
-      return false;
-    }
-    if (sender !== tokenFromCache.issuer) {
-      logger.error(`[token-mint:process] Only token issuer can mint. Sender: ${sender}, Issuer: ${tokenFromCache.issuer}. This should have been caught by validateTx.`);
-      return false;
-    }
+    
+    const newSupply = toBigInt(tokenFromCache!.currentSupply || 0) + toBigInt(data.amount);
 
-    const newSupply = tokenFromCache.currentSupply + data.amount;
-
-    if (newSupply > tokenFromCache.maxSupply) {
-      logger.error(`[token-mint:process] Mint would exceed max supply for ${data.symbol}. Current: ${tokenFromCache.currentSupply}, Amount: ${data.amount}, Max: ${tokenFromCache.maxSupply}. This should have been caught by validateTx.`);
+    if (newSupply > toBigInt(tokenFromCache!.maxSupply)) {
+      logger.error(`[token-mint:process] Mint would exceed max supply for ${data.symbol}. Current: ${tokenFromCache!.currentSupply}, Amount: ${data.amount}, Max: ${tokenFromCache!.maxSupply}. This should have been caught by validateTx.`);
       return false;
     }
 
@@ -106,14 +97,13 @@ export async function process(data: TokenMintData, sender: string, id: string): 
       await cache.updateOnePromise(
         'tokens',
         { _id: data.symbol },
-        { $set: { currentSupply: tokenFromCache.currentSupply } }
+        { $set: { currentSupply: tokenFromCache!.currentSupply } }
       );
       return false;
     }
 
     const currentBalanceStr = recipientAccount.balances?.[data.symbol] || '0';
-    const currentBalance = toBigInt(currentBalanceStr);
-    const newBalance = currentBalance + data.amount;
+    const newBalance = toBigInt(currentBalanceStr) + toBigInt(data.amount);
 
     const updateBalanceSuccess = await cache.updateOnePromise(
       'accounts',
@@ -126,7 +116,7 @@ export async function process(data: TokenMintData, sender: string, id: string): 
       await cache.updateOnePromise(
         'tokens',
         { _id: data.symbol },
-        { $set: { currentSupply: tokenFromCache.currentSupply } }
+        { $set: { currentSupply: tokenFromCache!.currentSupply } }
       );
       return false;
     }

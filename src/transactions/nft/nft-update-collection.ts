@@ -1,10 +1,10 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
-import { NftUpdateCollectionData } from './nft-interfaces.js';
+import { NFTUpdateCollectionData } from './nft-interfaces.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
-export async function validateTx(data: NftUpdateCollectionData, sender: string): Promise<boolean> {
+export async function validateTx(data: NFTUpdateCollectionData, sender: string): Promise<boolean> {
   try {
     if (!data.symbol) {
       logger.warn('[nft-update-collection] Invalid data: Missing required field (symbol).');
@@ -74,7 +74,7 @@ export async function validateTx(data: NftUpdateCollectionData, sender: string):
   }
 }
 
-export async function process(data: NftUpdateCollectionData, sender: string, id: string): Promise<boolean> {
+export async function process(data: NFTUpdateCollectionData, sender: string, id: string): Promise<boolean> {
   try {
     // Fetch collection to confirm current creator again before proceeding
     const collection = await cache.findOnePromise('nftCollections', { _id: data.symbol });

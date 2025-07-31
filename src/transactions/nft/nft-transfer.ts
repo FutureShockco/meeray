@@ -2,12 +2,12 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import config from '../../config.js'; // For BURN_ACCOUNT_NAME eventually
-import { NftTransferData, NftCreateCollectionData } from './nft-interfaces.js';
+import { NFTTransferData, NFTCollectionCreateData } from './nft-interfaces.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
 const BURN_ACCOUNT_NAME = 'null';
 
-export interface CachedNftCollectionForTransfer extends NftCreateCollectionData {
+export interface CachedNftCollectionForTransfer extends NFTCollectionCreateData {
     _id: string;
 }
 
@@ -20,7 +20,7 @@ export interface NftInstance {
     coverUrl?: string;     // Individual cover URL for this NFT (max 2048 chars, must be valid URL)
 }
 
-export async function validateTx(data: NftTransferData, sender: string): Promise<boolean> {
+export async function validateTx(data: NFTTransferData, sender: string): Promise<boolean> {
   try {
     if (!data.collectionSymbol || !data.instanceId || !data.to) {
       logger.warn('[nft-transfer/burn] Invalid data: Missing required fields (collectionSymbol, instanceId, to).');
@@ -97,8 +97,15 @@ export async function validateTx(data: NftTransferData, sender: string): Promise
   }
 }
 
-export async function process(data: NftTransferData, sender: string, id: string): Promise<boolean> {
+export async function process(data: NFTTransferData, sender: string, id: string): Promise<boolean> {
   const isBurning = data.to === BURN_ACCOUNT_NAME;
+  
+  // Ensure required fields are present
+  if (!data.collectionSymbol || !data.instanceId) {
+    logger.error(`[nft-transfer] Missing required fields: collectionSymbol=${data.collectionSymbol}, instanceId=${data.instanceId}`);
+    return false;
+  }
+  
   const fullInstanceId = `${data.collectionSymbol}-${data.instanceId}`;
   let originalNftOwner: string | null = null; // For potential rollback if transfer fails
 

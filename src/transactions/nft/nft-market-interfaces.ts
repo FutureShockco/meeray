@@ -1,10 +1,7 @@
-import { BigIntToString } from '../../utils/bigint.js';
-
-
 export interface NFTListingCreateData {
     collectionId: string;   // Collection ID
     tokenId: string;       // Token ID within the collection
-    price: bigint;         // Listing price in payment token
+    price: string | bigint;         // Listing price in payment token
     paymentToken: {        // Token accepted as payment
         symbol: string;
         issuer: string;
@@ -21,12 +18,13 @@ export interface NFTListingPurchaseData {
     buyer: string;         // Buyer's address
 }
 
-export interface NFTListing {
+
+export interface NFTListingData {
     _id: string;           // Listing ID: hash(collectionId, tokenId, seller, timestamp)
     collectionId: string;  // Collection ID
     tokenId: string;      // Token ID within the collection
     seller: string;       // Seller's address
-    price: bigint;        // Listing price in payment token
+    price: string | bigint;        // Listing price in payment token
     paymentToken: {       // Token accepted as payment
         symbol: string;
         issuer?: string;    // Made issuer optional
@@ -37,28 +35,22 @@ export interface NFTListing {
     lastUpdatedAt?: string;
 }
 
-export interface NFTSale {
+
+export interface NFTSaleData {
     _id: string;          // Sale ID: hash(listingId, buyer, timestamp)
     listingId: string;    // Original listing ID
     collectionId: string; // Collection ID
     tokenId: string;     // Token ID within the collection
     seller: string;      // Seller's address
     buyer: string;       // Buyer's address
-    price: bigint;       // Sale price in payment token
+    price: string | bigint;       // Sale price in payment token
     paymentToken: {      // Token used for payment
         symbol: string;
         issuer: string;
     };
-    royaltyAmount?: bigint;  // Amount paid as royalty
+    royaltyAmount?: string | bigint;  // Amount paid as royalty
     timestamp: string;    // ISO date string
 }
-
-/**
- * Database types (automatically converted from base types)
- */
-export type NFTListingCreateDataDB = BigIntToString<NFTListingCreateData>;
-export type NFTListingDB = BigIntToString<NFTListing>;
-export type NFTSaleDB = BigIntToString<NFTSale>;
 
 export interface NftListPayload {
   collectionSymbol: string;

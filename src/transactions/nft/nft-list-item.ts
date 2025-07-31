@@ -1,7 +1,7 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
-import { NftListPayload, NFTListing } from './nft-market-interfaces.js';
+import { NftListPayload, NFTListingData } from './nft-market-interfaces.js';
 import { NftInstance } from './nft-transfer.js'; // Assuming NftInstance is exported and suitable
 import { CachedNftCollectionForTransfer } from './nft-transfer.js'; // Assuming this is also suitable
 import config from '../../config.js';
@@ -79,7 +79,7 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
 
     // Check if this NFT is already actively listed by this sender
     const listingId = generateListingId(data.collectionSymbol, data.instanceId, sender);
-    const existingListing = await cache.findOnePromise('nftListings', { _id: listingId, status: 'ACTIVE' }) as NFTListing | null;
+    const existingListing = await cache.findOnePromise('nftListings', { _id: listingId, status: 'ACTIVE' }) as NFTListingData | null;
     if (existingListing) {
         logger.warn(`[nft-list-item] NFT ${fullInstanceId} is already actively listed by ${sender} under listing ID ${listingId}.`);
         return false;
@@ -97,7 +97,7 @@ export async function process(data: NftListPayload, sender: string, id: string):
     const listingId = generateListingId(data.collectionSymbol, data.instanceId, sender);
     const priceAsBigInt = toBigInt(data.price);
 
-    const listingDocument: NFTListing = {
+    const listingDocument: NFTListingData = {
       _id: listingId,
       collectionId: data.collectionSymbol,
       tokenId: data.instanceId,
@@ -127,13 +127,6 @@ export async function process(data: NftListPayload, sender: string, id: string):
     }
 
     logger.debug(`[nft-list-item] NFT ${data.collectionSymbol}-${data.instanceId} listed by ${sender} for ${data.price} ${data.paymentTokenSymbol}. Listing ID: ${listingId}`);
-
-    // Log event
-    const eventData = { 
-      ...listingDocument,
-      price: amountToString(listingDocument.price)
-    };
-    await logTransactionEvent('nftListItem', sender, eventData, id);
 
     return listingId; // Return the ID of the created listing
 

@@ -1,10 +1,9 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
-import { FarmClaimRewardsData, Farm, UserFarmPosition } from './farm-interfaces.js';
+import { FarmClaimRewardsData, FarmData, UserFarmPositionData } from './farm-interfaces.js';
 import { getAccount, adjustBalance } from '../../utils/account.js'; // For actual reward transfer later
 import { amountToString, convertToString } from '../../utils/bigint.js'; // Import amountToString and convertToString
-import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: FarmClaimRewardsData, sender: string): Promise<boolean> {
   try {
@@ -21,14 +20,14 @@ export async function validateTx(data: FarmClaimRewardsData, sender: string): Pr
         return false;
     }
 
-    const farm = await cache.findOnePromise('farms', { _id: data.farmId }) as Farm | null;
+    const farm = await cache.findOnePromise('farms', { _id: data.farmId }) as FarmData | null;
     if (!farm) {
       logger.warn(`[farm-claim-rewards] Farm ${data.farmId} not found.`);
       return false;
     }
 
     const userFarmPositionId = `${data.staker}-${data.farmId}`;
-    const userFarmPos = await cache.findOnePromise('userFarmPositions', { _id: userFarmPositionId }) as UserFarmPosition | null;
+    const userFarmPos = await cache.findOnePromise('userFarmPositions', { _id: userFarmPositionId }) as UserFarmPositionData | null;
     if (!userFarmPos) { // User must have a position to claim rewards
       logger.warn(`[farm-claim-rewards] Staker ${data.staker} has no staking position in farm ${data.farmId}.`);
       return false;
@@ -50,18 +49,9 @@ export async function validateTx(data: FarmClaimRewardsData, sender: string): Pr
 
 export async function process(data: FarmClaimRewardsData, sender: string, id: string): Promise<boolean> {
   try {
-    const farm = await cache.findOnePromise('farms', { _id: data.farmId }) as Farm | null;
-    if (!farm) {
-      logger.error(`[farm-claim-rewards] CRITICAL: Farm ${data.farmId} not found during processing.`);
-      return false;
-    }
-
+    const farm = (await cache.findOnePromise('farms', { _id: data.farmId }) as FarmData)!;
     const userFarmPositionId = `${data.staker}-${data.farmId}`;
-    const userFarmPos = await cache.findOnePromise('userFarmPositions', { _id: userFarmPositionId }) as UserFarmPosition | null;
-    if (!userFarmPos) {
-      logger.error(`[farm-claim-rewards] CRITICAL: User staking position ${userFarmPositionId} not found during processing.`);
-      return false;
-    }
+    const userFarmPos = (await cache.findOnePromise('userFarmPositions', { _id: userFarmPositionId }) as UserFarmPositionData)!;
 
     // This is where we'd calculate pending rewards based on:
     // - farm.rewardRate, farm.rewardState (e.g., accumulatedRewardsPerShare, lastDistributionTime)
@@ -115,14 +105,6 @@ export async function process(data: FarmClaimRewardsData, sender: string, id: st
 
     logger.debug(`[farm-claim-rewards] ${data.staker} claimed ${pendingRewards} rewards from farm ${data.farmId}.`);
 
-    const eventData = {
-      farmId: data.farmId,
-      staker: data.staker,
-      rewardTokenSymbol: farm.rewardToken.symbol,
-      rewardTokenIssuer: farm.rewardToken.issuer,
-      rewardAmount: amountToString(pendingRewards)
-    };
-    await logTransactionEvent('farmClaimRewards', sender, eventData, id);
 
     return true;
   } catch (error) {

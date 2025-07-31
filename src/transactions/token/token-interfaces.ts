@@ -4,9 +4,9 @@ export interface TokenData {
   symbol: string;
   name: string;
   precision?: number;
-  maxSupply: string | bigint; // Use string for large values
-  initialSupply?: string | bigint; // Use string for large values
-  currentSupply?: string | bigint; // Use string for large values
+  maxSupply: string | bigint;
+  initialSupply?: string | bigint;
+  currentSupply?: string | bigint;
   mintable?: boolean;
   burnable?: boolean;
   description?: string;
@@ -19,13 +19,13 @@ export interface TokenData {
 export interface TokenMintData {
   symbol: string;
   to: string;
-  amount: bigint;
+  amount: string | bigint;
 }
 
 export interface TokenTransferData {
   symbol: string;
   to: string;
-  amount: bigint;
+  amount: string | bigint;
   from?: string;
   memo?: string;
 }

@@ -39,7 +39,7 @@ export async function validateTx(data: TokenTransferData, sender: string): Promi
         const maxAmount = BigInt(maxAmountString);
 
         if (!validate.bigint(data.amount, false, false, maxAmount, BigInt(1))) {
-            logger.warn(`[token-transfer] Invalid amount: ${amountToString(data.amount)}. Must be a positive integer not exceeding ${amountToString(maxAmount)}.`);
+            logger.warn(`[token-transfer] Invalid amount: ${amountToString(toBigInt(data.amount))}. Must be a positive integer not exceeding ${amountToString(maxAmount)}.`);
             return false;
         }
         const senderAccount = await cache.findOnePromise('accounts', { name: sender });
@@ -49,8 +49,8 @@ export async function validateTx(data: TokenTransferData, sender: string): Promi
         }
         const senderBalanceString = senderAccount.balances?.[data.symbol] || '0';
         const currentSenderBalance = toBigInt(senderBalanceString);
-        if (currentSenderBalance < data.amount) {
-            logger.warn(`[token-transfer] Insufficient balance for ${sender}. Has: ${amountToString(currentSenderBalance)}, Needs: ${amountToString(data.amount)}`);
+        if (currentSenderBalance < toBigInt(data.amount)) {
+            logger.warn(`[token-transfer] Insufficient balance for ${sender}. Has: ${amountToString(currentSenderBalance)}, Needs: ${amountToString(toBigInt(data.amount))}`);
             return false;
         }
         return true;
@@ -62,25 +62,8 @@ export async function validateTx(data: TokenTransferData, sender: string): Promi
 
 export async function process(data: TokenTransferData, sender: string, id: string): Promise<boolean> {
     try {
-
-        const token = await cache.findOnePromise('tokens', { _id: data.symbol });
-        if (!token) {
-            logger.error(`[token-transfer] Token ${data.symbol} not found`);
-            return false;
-        }
-
         const senderAccount = await cache.findOnePromise('accounts', { name: sender });
-        if (!senderAccount) {
-            logger.error(`[token-transfer:process] Sender account ${sender} not found`);
-            return false;
-        }
-
-        const senderBalance = toBigInt(senderAccount.balances?.[data.symbol] || '0');
-
-        if (senderBalance < data.amount) {
-            logger.error(`[token-transfer:process] Insufficient balance for ${sender}. Has: ${amountToString(senderBalance)}, Needs: ${amountToString(data.amount)}. Should have been caught by validateTx.`);
-            return false;
-        }
+        const senderBalance = toBigInt(senderAccount!.balances?.[data.symbol] || '0');
         const newSenderBalance = senderBalance - toBigInt(data.amount);
 
         const deductSuccess = await cache.updateOnePromise(
@@ -96,17 +79,8 @@ export async function process(data: TokenTransferData, sender: string, id: strin
 
         if (data.to !== BURN_ACCOUNT_NAME) {
             const recipientAccount = await cache.findOnePromise('accounts', { name: data.to });
-            if (!recipientAccount) {
-                logger.error(`[token-transfer:process] Recipient account ${data.to} not found. Rolling back sender deduction.`);
-                await cache.updateOnePromise(
-                    'accounts',
-                    { name: sender },
-                    { $set: { [`balances.${data.symbol}`]: amountToString(senderBalance) } }
-                );
-                return false;
-            }
-            const recipientBalance = toBigInt(recipientAccount.balances?.[data.symbol] || '0');
-            const newRecipientBalance = recipientBalance + toBigInt(data.amount) || BigInt(0);
+            const recipientBalance = toBigInt(recipientAccount!.balances?.[data.symbol] || '0');
+            const newRecipientBalance = recipientBalance + toBigInt(data.amount);
 
             const addSuccess = await cache.updateOnePromise(
                 'accounts',
@@ -137,7 +111,6 @@ export async function process(data: TokenTransferData, sender: string, id: strin
                 }
             }
         }
-
 
         return true;
     } catch (error) {
