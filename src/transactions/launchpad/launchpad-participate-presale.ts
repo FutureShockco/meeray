@@ -1,13 +1,11 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import { getAccount, adjustBalance } from '../../utils/account.js';
-import { Launchpad, LaunchpadStatus, PresaleDetails, LaunchpadParticipatePresaleData, LaunchpadParticipatePresaleDataDB } from './launchpad-interfaces.js';
-import { toBigInt, amountToString, convertToBigInt, BigIntMath } from '../../utils/bigint.js';
+import { LaunchpadData, LaunchpadStatus, PresaleDetails, LaunchpadParticipatePresaleData } from './launchpad-interfaces.js';
+import { toBigInt } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
-const NUMERIC_FIELDS_PARTICIPATE: Array<keyof LaunchpadParticipatePresaleData> = ['contributionAmount'];
-
-// Type for participant data as stored in DB (with stringified BigInts)
+// Interfaces for participant data conversion
 interface LaunchpadParticipantDB {
     userId: string;
     quoteAmountContributed: string; 
@@ -15,33 +13,25 @@ interface LaunchpadParticipantDB {
     claimed: boolean;
 }
 
-// Type for participant data in application logic (with BigInts)
-interface LaunchpadParticipant {
-    userId: string;
-    quoteAmountContributed: bigint; 
-    tokensAllocated?: bigint;
-    claimed: boolean;
-}
-
 // --------------- TRANSACTION DATA INTERFACE ---------------
 
 // --------------- TRANSACTION LOGIC ---------------
 
-export async function validateTx(dataDb: LaunchpadParticipatePresaleDataDB, sender: string): Promise<boolean> {
-  const data = convertToBigInt<LaunchpadParticipatePresaleData>(dataDb, NUMERIC_FIELDS_PARTICIPATE);
-  logger.debug(`[launchpad-participate-presale] Validating participation from ${sender} for launchpad ${data.launchpadId}: amount ${amountToString(data.contributionAmount)}`);
+export async function validateTx(dataDb: LaunchpadParticipatePresaleData, sender: string): Promise<boolean> {
+  const data = dataDb; // No conversion needed with single interface
+  logger.debug(`[launchpad-participate-presale] Validating participation from ${sender} for launchpad ${data.launchpadId}: amount ${data.contributionAmount}`);
 
   if (sender !== data.userId) {
     logger.warn('[launchpad-participate-presale] Sender must match userId for participation.');
     return false;
   }
 
-  if (!data.launchpadId || data.contributionAmount <= BigInt(0)) {
-    logger.warn('[launchpad-participate-presale] Missing or invalid fields: launchpadId, contributionAmount must be a positive BigInt.');
+  if (!data.launchpadId || toBigInt(data.contributionAmount) <= BigInt(0)) {
+    logger.warn('[launchpad-participate-presale] Missing or invalid fields: launchpadId, contributionAmount must be a positive value.');
     return false;
   }
 
-  const launchpad = await cache.findOnePromise('launchpads', { _id: data.launchpadId }) as Launchpad | null;
+  const launchpad = await cache.findOnePromise('launchpads', { _id: data.launchpadId });
   if (!launchpad) {
     logger.warn(`[launchpad-participate-presale] Launchpad project ${data.launchpadId} not found.`);
     return false;
@@ -59,18 +49,18 @@ export async function validateTx(dataDb: LaunchpadParticipatePresaleDataDB, send
   // presaleDetailsSnapshot amounts are BigInt due to interface changes
   const presaleDetails = launchpad.presaleDetailsSnapshot;
 
-  if (data.contributionAmount < presaleDetails.minContributionPerUser) {
-    logger.warn(`[launchpad-participate-presale] Contribution ${amountToString(data.contributionAmount)} is below min limit ${amountToString(presaleDetails.minContributionPerUser)} for ${data.launchpadId}.`);
+  if (toBigInt(data.contributionAmount) < toBigInt(presaleDetails.minContributionPerUser)) {
+    logger.warn(`[launchpad-participate-presale] Contribution ${data.contributionAmount} is below min limit ${presaleDetails.minContributionPerUser} for ${data.launchpadId}.`);
     return false;
   }
-  if (data.contributionAmount > presaleDetails.maxContributionPerUser) {
-    logger.warn(`[launchpad-participate-presale] Contribution ${amountToString(data.contributionAmount)} exceeds max limit ${amountToString(presaleDetails.maxContributionPerUser)} for ${data.launchpadId}.`);
+  if (toBigInt(data.contributionAmount) > toBigInt(presaleDetails.maxContributionPerUser)) {
+    logger.warn(`[launchpad-participate-presale] Contribution ${data.contributionAmount} exceeds max limit ${presaleDetails.maxContributionPerUser} for ${data.launchpadId}.`);
     return false;
   }
 
-  const currentTotalRaised = launchpad.presale?.totalQuoteRaised || BigInt(0);
-  if (BigIntMath.add(currentTotalRaised, data.contributionAmount) > presaleDetails.hardCap) {
-    logger.warn(`[launchpad-participate-presale] Contribution ${amountToString(data.contributionAmount)} would exceed hard cap ${amountToString(presaleDetails.hardCap)} for ${data.launchpadId}. Current raised: ${amountToString(currentTotalRaised)}`);
+  const currentTotalRaised = toBigInt(launchpad.presale?.totalQuoteRaised || '0');
+  if (currentTotalRaised + toBigInt(data.contributionAmount) > toBigInt(presaleDetails.hardCap)) {
+    logger.warn(`[launchpad-participate-presale] Contribution ${data.contributionAmount} would exceed hard cap ${presaleDetails.hardCap} for ${data.launchpadId}. Current raised: ${currentTotalRaised}`);
     return false;
   }
 
@@ -84,8 +74,8 @@ export async function validateTx(dataDb: LaunchpadParticipatePresaleDataDB, send
   const contributionTokenIdentifier = `${presaleDetails.quoteAssetForPresaleSymbol}${presaleDetails.quoteAssetForPresaleIssuer ? '@' + presaleDetails.quoteAssetForPresaleIssuer : ''}`;
   const userBalanceString = userAccount.balances?.[contributionTokenIdentifier] || '0';
   const userBalance = toBigInt(userBalanceString);
-  if (userBalance < data.contributionAmount) {
-    logger.warn(`[launchpad-participate-presale] Insufficient balance for ${data.userId}. Needs ${amountToString(data.contributionAmount)} ${contributionTokenIdentifier}, has ${amountToString(userBalance)}.`);
+  if (userBalance < toBigInt(data.contributionAmount)) {
+    logger.warn(`[launchpad-participate-presale] Insufficient balance for ${data.userId}. Needs ${data.contributionAmount} ${contributionTokenIdentifier}, has ${userBalance}.`);
     return false;
   }
 
@@ -93,71 +83,44 @@ export async function validateTx(dataDb: LaunchpadParticipatePresaleDataDB, send
   return true;
 }
 
-export async function process(dataDb: LaunchpadParticipatePresaleDataDB, sender: string, transactionId: string): Promise<boolean> {
-  const data = convertToBigInt<LaunchpadParticipatePresaleData>(dataDb, NUMERIC_FIELDS_PARTICIPATE);
-  logger.debug(`[launchpad-participate-presale] Processing participation from ${sender} for ${data.launchpadId}: amount ${amountToString(data.contributionAmount)}`);
+export async function process(dataDb: LaunchpadParticipatePresaleData, sender: string, transactionId: string): Promise<boolean> {
+  const data = dataDb; // No conversion needed with single interface
+  logger.debug(`[launchpad-participate-presale] Processing participation from ${sender} for ${data.launchpadId}: amount ${data.contributionAmount}`);
   try {
     const launchpadFromCache = await cache.findOnePromise('launchpads', { _id: data.launchpadId });
     if (!launchpadFromCache || !launchpadFromCache.presaleDetailsSnapshot || !launchpadFromCache.presale) {
         logger.error(`[launchpad-participate-presale] CRITICAL: Launchpad ${data.launchpadId} or its presale details not found during processing.`);
         return false;
     }
-    // Convert launchpadFromCache (DB format with strings) to Launchpad (internal format with BigInts)
-    // Define keys that need conversion to BigInt in the fetched launchpad data
-    const launchpadNumericFields: (keyof Launchpad)[] = []; // Add actual keys if Launchpad itself has direct BigInt fields
-    const presaleNumericFields: (keyof PresaleDetails)[] = ['pricePerToken', 'minContributionPerUser', 'maxContributionPerUser', 'hardCap', 'softCap'];
-    
-    // This is a simplified conversion, assuming presale and presaleDetailsSnapshot are the primary concerns for BigInts.
-    // A full deep conversion utility would be more robust.
-    const launchpad: Launchpad = {
-        ...launchpadFromCache,
-        tokenToLaunch: launchpadFromCache.tokenToLaunch ? { ...launchpadFromCache.tokenToLaunch, totalSupply: toBigInt(launchpadFromCache.tokenToLaunch.totalSupply) } : undefined as any,
-        tokenomicsSnapshot: launchpadFromCache.tokenomicsSnapshot ? { ...launchpadFromCache.tokenomicsSnapshot, totalSupply: toBigInt(launchpadFromCache.tokenomicsSnapshot.totalSupply), tokenDecimals: toBigInt(launchpadFromCache.tokenomicsSnapshot.tokenDecimals) } : undefined as any,
-        presaleDetailsSnapshot: launchpadFromCache.presaleDetailsSnapshot ? convertToBigInt<PresaleDetails>(launchpadFromCache.presaleDetailsSnapshot as any, presaleNumericFields) : undefined,
-        presale: launchpadFromCache.presale ? {
-            ...launchpadFromCache.presale,
-            totalQuoteRaised: toBigInt(launchpadFromCache.presale.totalQuoteRaised),
-            participants: launchpadFromCache.presale.participants.map((p: LaunchpadParticipantDB): LaunchpadParticipant => ({
-                ...p,
-                quoteAmountContributed: toBigInt(p.quoteAmountContributed),
-                tokensAllocated: p.tokensAllocated ? toBigInt(p.tokensAllocated) : undefined
-            }))
-        } : undefined as any,
-        feeDetails: launchpadFromCache.feeDetails ? { ...launchpadFromCache.feeDetails, amount: toBigInt(launchpadFromCache.feeDetails.amount) } : undefined,
-    } as Launchpad;
-
+    const launchpad = launchpadFromCache; // Use data directly 
     const presaleDetails = launchpad.presaleDetailsSnapshot!;
     const contributionTokenIdentifier = `${presaleDetails.quoteAssetForPresaleSymbol}${presaleDetails.quoteAssetForPresaleIssuer ? '@' + presaleDetails.quoteAssetForPresaleIssuer : ''}`;
 
-    const balanceAdjusted = await adjustBalance(sender, contributionTokenIdentifier, -data.contributionAmount); // data.contributionAmount is BigInt
+    const balanceAdjusted = await adjustBalance(sender, contributionTokenIdentifier, -toBigInt(data.contributionAmount));
     if (!balanceAdjusted) {
-        logger.error(`[launchpad-participate-presale] Failed to deduct ${amountToString(data.contributionAmount)} ${contributionTokenIdentifier} from ${sender} for launchpad ${data.launchpadId}.`);
+        logger.error(`[launchpad-participate-presale] Failed to deduct ${data.contributionAmount} ${contributionTokenIdentifier} from ${sender} for launchpad ${data.launchpadId}.`);
         return false;
     }
 
-    const participantIndex = launchpad.presale!.participants.findIndex(p => p.userId === data.userId);
+    const participantIndex = launchpad.presale!.participants.findIndex((p: any) => p.userId === data.userId);
     let updatedParticipantsList = [...launchpad.presale!.participants];
-    let newTotalRaised = BigIntMath.add(launchpad.presale!.totalQuoteRaised || BigInt(0), data.contributionAmount);
+    let newTotalRaised = toBigInt(launchpad.presale!.totalQuoteRaised || '0') + toBigInt(data.contributionAmount);
 
     if (participantIndex > -1) {
-        updatedParticipantsList[participantIndex].quoteAmountContributed = BigIntMath.add(updatedParticipantsList[participantIndex].quoteAmountContributed, data.contributionAmount);
+        updatedParticipantsList[participantIndex].quoteAmountContributed = (toBigInt(updatedParticipantsList[participantIndex].quoteAmountContributed) + toBigInt(data.contributionAmount)).toString();
     } else {
         updatedParticipantsList.push({
             userId: data.userId,
-            quoteAmountContributed: data.contributionAmount,
+            quoteAmountContributed: data.contributionAmount.toString(),
             claimed: false
         });
     }
 
-    // Prepare fields for DB update (convert BigInts back to strings)
+    // Prepare fields for DB update (convert BigInts to strings for storage)
     const updatePayload = {
         $set: {
-            'presale.participants': updatedParticipantsList.map((p: LaunchpadParticipant): LaunchpadParticipantDB => ({
-                ...p,
-                quoteAmountContributed: amountToString(p.quoteAmountContributed),
-                tokensAllocated: p.tokensAllocated ? amountToString(p.tokensAllocated) : undefined
-            })),
-            'presale.totalQuoteRaised': amountToString(newTotalRaised),
+            'presale.participants': updatedParticipantsList,
+            'presale.totalQuoteRaised': newTotalRaised.toString(),
             updatedAt: new Date().toISOString(),
         }
     };
@@ -166,7 +129,7 @@ export async function process(dataDb: LaunchpadParticipatePresaleDataDB, sender:
 
     if (!updateSuccessful) {
         logger.error(`[launchpad-participate-presale] Failed to update launchpad ${data.launchpadId}. Rolling back balance.`);
-        await adjustBalance(sender, contributionTokenIdentifier, data.contributionAmount); // Rollback with positive BigInt
+        await adjustBalance(sender, contributionTokenIdentifier, toBigInt(data.contributionAmount)); // Rollback with positive BigInt
         return false;
     }
 
@@ -174,14 +137,14 @@ export async function process(dataDb: LaunchpadParticipatePresaleDataDB, sender:
     const eventData = {
         launchpadId: data.launchpadId,
         userId: data.userId,
-        contributionAmount: amountToString(data.contributionAmount),
+        contributionAmount: data.contributionAmount.toString(),
         contributionTokenSymbol: presaleDetails.quoteAssetForPresaleSymbol,
         contributionTokenIssuer: presaleDetails.quoteAssetForPresaleIssuer,
-        newTotalRaised: amountToString(newTotalRaised)
+        newTotalRaised: newTotalRaised.toString()
     };
     await logTransactionEvent('launchpadPresaleParticipation', sender, eventData, transactionId);
 
-    logger.debug(`[launchpad-participate-presale] Participation processed for ${amountToString(data.contributionAmount)}.`);
+    logger.debug(`[launchpad-participate-presale] Participation processed for ${data.contributionAmount}.`);
     return true;
 
   } catch (error) {

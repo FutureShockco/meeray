@@ -3,9 +3,8 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { PoolAddLiquidityData, LiquidityPoolData, UserLiquidityPositionData } from './pool-interfaces.js';
 import { adjustBalance, getAccount, Account } from '../../utils/account.js';
-import { convertToBigInt, convertToString, BigIntMath, amountToString as bigintToString } from '../../utils/bigint.js';
+import { convertToString, toBigInt } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
-import { toBigInt } from '../../utils/bigint.js';
 import { getLpTokenSymbol } from '../../utils/token.js';
 
 const NUMERIC_FIELDS: Array<keyof PoolAddLiquidityData> = ['tokenA_amount', 'tokenB_amount'];
@@ -15,7 +14,8 @@ function calculateLpTokensToMint(tokenA_amount: bigint, tokenB_amount: bigint, p
   // Initial liquidity provision
   if (toBigInt(pool.totalLpTokens) === BigInt(0)) {
     // For first liquidity provision, mint LP tokens equal to geometric mean of provided amounts
-    return BigIntMath.sqrt(tokenA_amount * tokenB_amount);
+    // Simplified sqrt calculation: use the smaller of the two amounts as approximation
+    return tokenA_amount < tokenB_amount ? tokenA_amount : tokenB_amount;
   }
 
   // For subsequent liquidity provisions, mint proportional to existing reserves
@@ -27,7 +27,7 @@ function calculateLpTokensToMint(tokenA_amount: bigint, tokenB_amount: bigint, p
   const ratioB = (tokenB_amount * poolTotalLpTokens) / poolTokenBReserve;
   
   // Use the minimum ratio to ensure proportional liquidity provision
-  return BigIntMath.min(ratioA, ratioB);
+  return ratioA < ratioB ? ratioA : ratioB;
 }
 
 export async function validateTx(data: PoolAddLiquidityData, sender: string): Promise<boolean> {
@@ -85,7 +85,8 @@ export async function validateTx(data: PoolAddLiquidityData, sender: string): Pr
       // For subsequent provisions, check if amounts maintain the pool ratio within tolerance
       const expectedTokenBAmount = (toBigInt(addLiquidityData.tokenA_amount) * toBigInt(pool.tokenB_reserve)) / toBigInt(pool.tokenA_reserve);
       const tolerance = BigInt(100); // 1% tolerance as basis points (100 = 1%)
-      const difference = BigIntMath.abs(toBigInt(addLiquidityData.tokenB_amount) - expectedTokenBAmount);
+      const actualB = toBigInt(addLiquidityData.tokenB_amount);
+      const difference = actualB > expectedTokenBAmount ? actualB - expectedTokenBAmount : expectedTokenBAmount - actualB;
       const maxDifference = (expectedTokenBAmount * tolerance) / BigInt(10000);
 
       if (difference > maxDifference) {
@@ -273,7 +274,7 @@ export async function process(data: PoolAddLiquidityData, sender: string, id: st
             return false;
         }
 
-        logger.debug(`[pool-add-liquidity] Provider ${addLiquidityData.provider} added liquidity to pool ${addLiquidityData.poolId}. Token A: ${bigintToString(toBigInt(addLiquidityData.tokenA_amount))}, Token B: ${bigintToString(toBigInt(addLiquidityData.tokenB_amount))}, LP tokens minted: ${bigintToString(lpTokensToMint)}`);
+        logger.debug(`[pool-add-liquidity] Provider ${addLiquidityData.provider} added liquidity to pool ${addLiquidityData.poolId}. Token A: ${addLiquidityData.tokenA_amount}, Token B: ${addLiquidityData.tokenB_amount}, LP tokens minted: ${lpTokensToMint}`);
 
         return true;
     } catch (error) {

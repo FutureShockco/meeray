@@ -14,11 +14,10 @@ import {
   LiquidityProvisionDetails,
   LaunchpadLaunchTokenData,
   LaunchpadStatus,
-  Token,
-  Launchpad,
-  LaunchpadDB
+  TokenData,
+  LaunchpadData
 } from './launchpad-interfaces.js';
-import { BigIntMath, amountToString, convertAllBigIntToStringRecursive } from '../../utils/bigint.js'; // Removed convertToString as we'll do it manually for deep objects
+import { toBigInt } from '../../utils/bigint.js';
 import validate from '../../validation/index.js'; // Assuming validate exists
 import config from '../../config.js'; // Import config
 import { logTransactionEvent } from '../../utils/event-logger.js'; // Import the new event logger
@@ -104,16 +103,16 @@ export async function process(launchData: LaunchpadLaunchTokenData, sender: stri
     // Ensure data.tokenomics fields are BigInt before use
     // This is important if data comes from an API as JSON (numbers/strings)
     // ValidateTx might have already done this, but good to be defensive
-    const tokenDecimalsBigInt = BigInt(launchData.tokenomics.tokenDecimals);
-    const totalSupplyBigInt = BigInt(launchData.tokenomics.totalSupply);
+    const tokenDecimalsBigInt = toBigInt(launchData.tokenomics.tokenDecimals);
+    const totalSupplyBigInt = toBigInt(launchData.tokenomics.totalSupply);
 
-    const tokenDecimalsNumber = BigIntMath.toNumber(tokenDecimalsBigInt);
+    const tokenDecimalsNumber = Number(tokenDecimalsBigInt);
     if (tokenDecimalsNumber < 0 || tokenDecimalsNumber > 18) {
         logger.error('[launchpad-launch-token] CRITICAL: Invalid token decimals during processing.');
         return false; 
     }
 
-    const launchpadProjectData: Launchpad = {
+    const launchpadProjectData: LaunchpadData = {
       _id: launchpadId,
       projectId: `${launchData.tokenSymbol}-launch-${launchpadId.substring(0,8)}`,
       status: LaunchpadStatus.UPCOMING, // Assuming validation passed if we reach here
@@ -132,11 +131,11 @@ export async function process(launchData: LaunchpadLaunchTokenData, sender: stri
       presaleDetailsSnapshot: launchData.presaleDetails ? {
         ...launchData.presaleDetails,
         // Ensure all BigInt fields are indeed BigInt
-        pricePerToken: BigInt(launchData.presaleDetails.pricePerToken),
-        minContributionPerUser: BigInt(launchData.presaleDetails.minContributionPerUser),
-        maxContributionPerUser: BigInt(launchData.presaleDetails.maxContributionPerUser),
-        hardCap: BigInt(launchData.presaleDetails.hardCap),
-        softCap: launchData.presaleDetails.softCap ? BigInt(launchData.presaleDetails.softCap) : undefined,
+        pricePerToken: toBigInt(launchData.presaleDetails.pricePerToken),
+        minContributionPerUser: toBigInt(launchData.presaleDetails.minContributionPerUser),
+        maxContributionPerUser: toBigInt(launchData.presaleDetails.maxContributionPerUser),
+        hardCap: toBigInt(launchData.presaleDetails.hardCap),
+        softCap: launchData.presaleDetails.softCap ? toBigInt(launchData.presaleDetails.softCap) : undefined,
       } : undefined,
       liquidityProvisionDetailsSnapshot: launchData.liquidityProvisionDetails,
       launchedByUserId: sender,
@@ -144,14 +143,21 @@ export async function process(launchData: LaunchpadLaunchTokenData, sender: stri
       updatedAt: now,
       feePaid: false, 
       presale: launchData.presaleDetails ? {
-          totalQuoteRaised: BigInt(0), // Initialize with BigInt(0)
+          totalQuoteRaised: 0n, // Initialize with BigInt(0)
           participants: [],
           status: 'NOT_STARTED'
       } : undefined,
     };
     
-    // Use the recursive converter
-    const dbDoc: LaunchpadDB = convertAllBigIntToStringRecursive(launchpadProjectData);
+    // Save to database with string conversion for storage
+    const dbDoc: LaunchpadData = {
+      ...launchpadProjectData,
+      tokenomicsSnapshot: {
+        ...launchpadProjectData.tokenomicsSnapshot,
+        totalSupply: launchpadProjectData.tokenomicsSnapshot.totalSupply.toString(),
+        tokenDecimals: launchpadProjectData.tokenomicsSnapshot.tokenDecimals.toString()
+      }
+    };
 
     await new Promise<void>((resolve, reject) => {
         cache.insertOne('launchpads', dbDoc, (err, result) => { // No more 'as any'
@@ -169,7 +175,7 @@ export async function process(launchData: LaunchpadLaunchTokenData, sender: stri
         launchpadId: launchpadId,
         tokenName: launchData.tokenName,
         tokenSymbol: launchData.tokenSymbol,
-        totalSupply: amountToString(totalSupplyBigInt), 
+        totalSupply: totalSupplyBigInt.toString(), 
         status: launchpadProjectData.status,
     };
     await logTransactionEvent('launchpadLaunchTokenInitiated', sender, eventData, transactionId);

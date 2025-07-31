@@ -1,13 +1,11 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
-import { MarketCreatePairData, MarketCreatePairDataDB, TradingPair, TradingPairDB } from './market-interfaces.js';
+import { MarketCreatePairData } from './market-interfaces.js';
 // import crypto from 'crypto'; // No longer needed for TradingPairId generation
 import { generateDeterministicId } from '../../utils/id.js'; // Import the new helper
-import { convertToBigInt, convertToString } from '../../utils/bigint.js';
+import { toBigInt } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js'; // Import the new event logger
-
-const NUMERIC_FIELDS_CREATE_PAIR: Array<keyof MarketCreatePairData> = ['tickSize', 'lotSize', 'minNotional', 'minTradeAmount', 'maxTradeAmount'];
 
 // Function to generate a unique ID for the trading pair
 function generateTradingPairId(baseAssetSymbol: string, baseAssetIssuer: string, quoteAssetSymbol: string, quoteAssetIssuer: string): string {
@@ -17,8 +15,8 @@ function generateTradingPairId(baseAssetSymbol: string, baseAssetIssuer: string,
   return generateDeterministicId(component1, component2);
 }
 
-export async function validateTx(dataDb: MarketCreatePairDataDB, sender: string): Promise<boolean> {
-  const data = convertToBigInt<MarketCreatePairData>(dataDb, NUMERIC_FIELDS_CREATE_PAIR);
+export async function validateTx(dataDb: MarketCreatePairData, sender: string): Promise<boolean> {
+  const data = dataDb; // No conversion needed with single interface
   logger.debug(`[market-create-pair] Validating data for sender: ${sender}, data: ${JSON.stringify(data)}`);
   // Basic validation
   if (!data.baseAssetSymbol || !data.baseAssetIssuer || !data.quoteAssetSymbol || !data.quoteAssetIssuer) {
@@ -26,27 +24,27 @@ export async function validateTx(dataDb: MarketCreatePairDataDB, sender: string)
     return false;
   }
   // Validate BigInt fields
-  if (data.tickSize <= BigInt(0)) {
+  if (toBigInt(data.tickSize) <= BigInt(0)) {
     logger.warn('[market-create-pair] Invalid tickSize.');
     return false;
   }
-  if (data.lotSize <= BigInt(0)) {
+  if (toBigInt(data.lotSize) <= BigInt(0)) {
     logger.warn('[market-create-pair] Invalid lotSize.');
     return false;
   }
-  if (data.minNotional < BigInt(0)) {
+  if (toBigInt(data.minNotional) < BigInt(0)) {
     logger.warn('[market-create-pair] Invalid minNotional.');
     return false;
   }
-  if (data.minTradeAmount && data.minTradeAmount < BigInt(0)) {
+  if (data.minTradeAmount && toBigInt(data.minTradeAmount) < BigInt(0)) {
     logger.warn('[market-create-pair] Invalid minTradeAmount.');
     return false;
   }
-  if (data.maxTradeAmount && data.maxTradeAmount < BigInt(0)) {
+  if (data.maxTradeAmount && toBigInt(data.maxTradeAmount) < BigInt(0)) {
     logger.warn('[market-create-pair] Invalid maxTradeAmount.');
     return false;
   }
-  if (data.minTradeAmount && data.maxTradeAmount && data.minTradeAmount > data.maxTradeAmount) {
+  if (data.minTradeAmount && data.maxTradeAmount && toBigInt(data.minTradeAmount) > toBigInt(data.maxTradeAmount)) {
     logger.warn('[market-create-pair] minTradeAmount cannot exceed maxTradeAmount.');
     return false;
   }
@@ -108,32 +106,30 @@ export async function validateTx(dataDb: MarketCreatePairDataDB, sender: string)
   return true;
 }
 
-export async function process(dataDb: MarketCreatePairDataDB, sender: string, transactionId: string): Promise<boolean> {
-  const data = convertToBigInt<MarketCreatePairData>(dataDb, NUMERIC_FIELDS_CREATE_PAIR);
+export async function process(dataDb: MarketCreatePairData, sender: string, transactionId: string): Promise<boolean> {
+  const data = dataDb; // No conversion needed with single interface
   logger.debug(`[market-create-pair] Processing request from ${sender} to create pair: ${JSON.stringify(data)}`);
   try {
     const pairId = generateTradingPairId(data.baseAssetSymbol, data.baseAssetIssuer, data.quoteAssetSymbol, data.quoteAssetIssuer);
 
-    const tradingPairDocument: TradingPair = {
+    const tradingPairDocument = {
       _id: pairId,
       baseAssetSymbol: data.baseAssetSymbol,
       baseAssetIssuer: data.baseAssetIssuer,
       quoteAssetSymbol: data.quoteAssetSymbol,
       quoteAssetIssuer: data.quoteAssetIssuer,
-      tickSize: data.tickSize,
-      lotSize: data.lotSize,
-      minNotional: data.minNotional,
-      minTradeAmount: data.minTradeAmount || BigInt(0),
-      maxTradeAmount: data.maxTradeAmount || BigInt('1000000000000000000000'), // Default to a large number if not provided
+      tickSize: data.tickSize.toString(),
+      lotSize: data.lotSize.toString(),
+      minNotional: data.minNotional.toString(),
+      minTradeAmount: (data.minTradeAmount || BigInt(0)).toString(),
+      maxTradeAmount: (data.maxTradeAmount || BigInt('1000000000000000000000')).toString(), // Default to a large number if not provided
       status: data.initialStatus || 'TRADING', // Default to TRADING if not provided
       createdAt: new Date().toISOString(),
     };
 
-    // Convert TradingPair with BigInts to TradingPairDB with strings for storage
-    const tradingPairDocumentDB = convertToString<TradingPair>(tradingPairDocument, NUMERIC_FIELDS_CREATE_PAIR as (keyof TradingPair)[]);
-
+    // Store directly with string values for MongoDB
     const createSuccess = await new Promise<boolean>((resolve) => {
-      cache.insertOne('tradingPairs', tradingPairDocumentDB, (err, result) => {
+      cache.insertOne('tradingPairs', tradingPairDocument, (err, result) => {
         if (err || !result) {
           logger.error(`[market-create-pair] Failed to insert trading pair ${pairId}: ${err || 'no result'}`);
           resolve(false);
@@ -150,7 +146,7 @@ export async function process(dataDb: MarketCreatePairDataDB, sender: string, tr
     logger.debug(`[market-create-pair] Trading Pair ${pairId} (${data.baseAssetSymbol}/${data.quoteAssetSymbol}) created by ${sender}.`);
 
     // Log event using the new centralized logger
-    await logTransactionEvent('marketCreatePair', sender, { ...tradingPairDocumentDB }, transactionId);
+    await logTransactionEvent('marketCreatePair', sender, { ...tradingPairDocument }, transactionId);
 
     return true;
   } catch (error) {

@@ -1,7 +1,7 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
-import { NftDelistPayload, NFTListing } from './nft-market-interfaces.js';
+import { NftDelistPayload, NFTListingData } from './nft-market-interfaces.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: NftDelistPayload, sender: string): Promise<boolean> {
@@ -15,7 +15,7 @@ export async function validateTx(data: NftDelistPayload, sender: string): Promis
         return false;
     }
 
-    const listing = await cache.findOnePromise('nftListings', { _id: data.listingId }) as NFTListing | null;
+    const listing = await cache.findOnePromise('nftListings', { _id: data.listingId }) as    NFTListingData | null;
 
     if (!listing) {
       logger.warn(`[nft-delist-item] Listing with ID ${data.listingId} not found.`);
@@ -41,7 +41,7 @@ export async function validateTx(data: NftDelistPayload, sender: string): Promis
 
 export async function process(data: NftDelistPayload, sender: string, id: string): Promise<boolean> {
   try {
-    const listing = await cache.findOnePromise('nftListings', { _id: data.listingId }) as NFTListing | null;
+    const listing = await cache.findOnePromise('nftListings', { _id: data.listingId }) as NFTListingData | null;
 
     if (!listing) {
       logger.error(`[nft-delist-item] Listing with ID ${data.listingId} not found during processing.`);

@@ -59,11 +59,10 @@ export async function process(data: WitnessVoteData, sender: string, transaction
     
     const balanceStr = senderAccount.balances?.ECH || amountToString(BigInt(0));
     logger.trace(`[witness-vote process] Sender ${sender} ECH balance string: ${balanceStr}`);
-    const balanceBigInt = toBigInt(balanceStr);
-    logger.trace(`[witness-vote process] Sender ${sender} ECH balance BigInt: ${balanceBigInt.toString()}`);
+    logger.trace(`[witness-vote process] Sender ${sender} ECH balance BigInt: ${toBigInt(balanceStr).toString()}`);
 
     const oldSharePerWitnessBigInt = originalVotedWitnesses.length > 0 ? 
-      balanceBigInt / BigInt(originalVotedWitnesses.length) : BigInt(0);
+      toBigInt(balanceStr) / BigInt(originalVotedWitnesses.length) : BigInt(0);
     logger.trace(`[witness-vote process] Sender ${sender} oldSharePerWitnessBigInt: ${oldSharePerWitnessBigInt.toString()}`);
 
     const uniqueVotedWitnesses = new Set([...originalVotedWitnesses, data.target]);
@@ -75,7 +74,7 @@ export async function process(data: WitnessVoteData, sender: string, transaction
     }
 
     const newSharePerWitnessBigIntCalculated = newVotedWitnessesList.length > 0 ?
-      balanceBigInt / BigInt(newVotedWitnessesList.length) : BigInt(0);
+      toBigInt(balanceStr) / BigInt(newVotedWitnessesList.length) : BigInt(0);
     logger.trace(`[witness-vote process] Sender ${sender} newSharePerWitnessBigIntCalculated for target ${data.target}: ${newSharePerWitnessBigIntCalculated.toString()}`);
 
     try {
@@ -91,9 +90,8 @@ export async function process(data: WitnessVoteData, sender: string, transaction
         const witnessAccount = await cache.findOnePromise('accounts', { name: witnessName });
         if (witnessAccount) {
           logger.trace(`[witness-vote process] Adjusting original voter ${witnessName}: BEFORE ${JSON.stringify(witnessAccount)}`);
-          const currentTotalVoteWeightStr = witnessAccount.totalVoteWeight || amountToString(BigInt(0));
-          const currentTotalVoteWeightBigInt = toBigInt(currentTotalVoteWeightStr);
-          let newTotalVoteWeightBigInt = currentTotalVoteWeightBigInt + adjustmentBigInt;
+          const currentVoteWeight = witnessAccount.totalVoteWeight || amountToString(BigInt(0));
+          let newTotalVoteWeightBigInt = toBigInt(currentVoteWeight) + adjustmentBigInt;
           if (newTotalVoteWeightBigInt < BigInt(0)) {
             newTotalVoteWeightBigInt = BigInt(0);
           }
@@ -111,10 +109,9 @@ export async function process(data: WitnessVoteData, sender: string, transaction
         logger.trace(`[witness-vote process] Updating target ${data.target}: BEFORE ${JSON.stringify(targetAccount)}`);
         const currentTargetVoteWeightStr = targetAccount.totalVoteWeight || amountToString(BigInt(0));
         logger.trace(`[witness-vote process] Target ${data.target} currentTotalVoteWeightStr: ${currentTargetVoteWeightStr}`);
-        const currentTargetVoteWeightBigInt = toBigInt(currentTargetVoteWeightStr);
-        logger.trace(`[witness-vote process] Target ${data.target} currentTotalVoteWeightBigInt: ${currentTargetVoteWeightBigInt.toString()}`);
+        logger.trace(`[witness-vote process] Target ${data.target} currentTotalVoteWeightBigInt: ${toBigInt(currentTargetVoteWeightStr).toString()}`);
         
-        const finalTargetVoteWeightBigInt = currentTargetVoteWeightBigInt + newSharePerWitnessBigIntCalculated;
+        const finalTargetVoteWeightBigInt = toBigInt(currentTargetVoteWeightStr) + newSharePerWitnessBigIntCalculated;
         logger.trace(`[witness-vote process] Target ${data.target} finalTargetVoteWeightBigInt (adding ${newSharePerWitnessBigIntCalculated.toString()}): ${finalTargetVoteWeightBigInt.toString()}`);
         
         await cache.updateOnePromise('accounts', { name: data.target }, { $set: { totalVoteWeight: amountToString(finalTargetVoteWeightBigInt) } });

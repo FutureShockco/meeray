@@ -1,12 +1,12 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
-import { NftBuyPayload, NFTListing, NftListPayload } from './nft-market-interfaces.js';
+import { NftBuyPayload, NFTListingData, NftListPayload } from './nft-market-interfaces.js';
 import { NftInstance, CachedNftCollectionForTransfer } from './nft-transfer.js'; // Assuming NftInstance, CachedNftCollectionForTransfer are exported
 import { Account, adjustBalance, getAccount } from '../../utils/account.js';
 import { Token, getTokenByIdentifier } from '../../utils/token.js';
 import config from '../../config.js';
-import { BigIntMath, amountToString as bigintToString } from '../../utils/bigint.js';
+import { toBigInt } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: NftBuyPayload, sender: string): Promise<boolean> {
@@ -20,7 +20,7 @@ export async function validateTx(data: NftBuyPayload, sender: string): Promise<b
         return false;
     }
 
-    const listing = await cache.findOnePromise('nftListings', { _id: data.listingId }) as NFTListing | null;
+    const listing = await cache.findOnePromise('nftListings', { _id: data.listingId }) as NFTListingData | null;
     if (!listing) {
       logger.warn(`[nft-buy-item] Listing ${data.listingId} not found.`);
       return false;
@@ -47,8 +47,8 @@ export async function validateTx(data: NftBuyPayload, sender: string): Promise<b
     }
     
     const paymentTokenIdentifier = `${listing.paymentToken.symbol}${listing.paymentToken.issuer ? '@' + listing.paymentToken.issuer : ''}`;
-    const buyerBalance = BigIntMath.toBigInt(buyerAccount.balances?.[paymentTokenIdentifier] || 0);
-    const listingPrice = BigIntMath.toBigInt(listing.price);
+    const buyerBalance = toBigInt(buyerAccount.balances?.[paymentTokenIdentifier] || 0);
+    const listingPrice = toBigInt(listing.price);
     
     if (buyerBalance < listingPrice) {
       logger.warn(`[nft-buy-item] Buyer ${sender} has insufficient balance of ${listing.paymentToken.symbol}. Has ${buyerBalance}, needs ${listingPrice}.`);
@@ -85,7 +85,7 @@ export async function validateTx(data: NftBuyPayload, sender: string): Promise<b
 
 export async function process(data: NftBuyPayload, sender: string, id: string): Promise<boolean> {
   const buyer = sender;
-  let listing: NFTListing | null = null;
+  let listing: NFTListingData | null = null;
   let collection: (CachedNftCollectionForTransfer & { creatorFee?: number }) | null = null; // Ensure creatorFee is accessible
   let paymentToken: Token | null = null;
   const originalBuyerBalances: { [tokenIdentifier: string]: bigint } = {};
@@ -94,7 +94,7 @@ export async function process(data: NftBuyPayload, sender: string, id: string): 
   let nftOriginalOwner: string | null = null;
 
   try {
-    listing = await cache.findOnePromise('nftListings', { _id: data.listingId, status: 'ACTIVE' }) as NFTListing | null;
+    listing = await cache.findOnePromise('nftListings', { _id: data.listingId, status: 'ACTIVE' }) as NFTListingData | null;
     if (!listing) {
       logger.error(`[nft-buy-item] CRITICAL: Listing ${data.listingId} not found or not active during processing.`);
       return false;
@@ -110,7 +110,7 @@ export async function process(data: NftBuyPayload, sender: string, id: string): 
       logger.error(`[nft-buy-item] CRITICAL: Collection ${listing.collectionId} not found or not transferable during processing.`);
       return false;
     }
-    const creatorFeePercent = BigIntMath.toBigInt(collection.creatorFee || 0);
+    const creatorFeePercent = toBigInt(collection.creatorFee || 0);
 
     paymentToken = await getTokenByIdentifier(listing.paymentToken.symbol, listing.paymentToken.issuer);
     if (!paymentToken) {
@@ -130,10 +130,10 @@ export async function process(data: NftBuyPayload, sender: string, id: string): 
     }
     // --- End Snapshot ---
 
-    // Calculate fees (ensure precision with BigIntMath)
-    const price = BigIntMath.toBigInt(listing.price);
-    const royaltyAmount = BigIntMath.div(BigIntMath.mul(price, creatorFeePercent), BigInt(100));
-    const sellerProceeds = BigIntMath.sub(price, royaltyAmount);
+    // Calculate fees (ensure precision with direct bigint arithmetic)
+    const price = toBigInt(listing.price);
+    const royaltyAmount = (price * creatorFeePercent) / BigInt(100);
+    const sellerProceeds = price - royaltyAmount;
 
     logger.debug(`[nft-buy-item] Processing sale of listing ${data.listingId}: Price=${price}, Royalty=${royaltyAmount} (${creatorFeePercent}%), SellerGets=${sellerProceeds} ${paymentToken.symbol}`);
 
@@ -199,8 +199,8 @@ export async function process(data: NftBuyPayload, sender: string, id: string): 
           status: 'SOLD', 
           buyer: buyer, 
           soldAt: new Date().toISOString(), 
-          finalPrice: bigintToString(price),
-          royaltyPaid: bigintToString(royaltyAmount)
+          finalPrice: price.toString(),
+          royaltyPaid: royaltyAmount.toString()
         } 
       }
     );
@@ -218,10 +218,10 @@ export async function process(data: NftBuyPayload, sender: string, id: string): 
         instanceId: listing.tokenId,
         seller: listing.seller,
         buyer: buyer,
-        price: bigintToString(price),
+        price: price.toString(),
         paymentTokenSymbol: paymentToken.symbol,
         paymentTokenIssuer: paymentToken.issuer,
-        royaltyAmount: bigintToString(royaltyAmount),
+        royaltyAmount: royaltyAmount.toString(),
         collectionCreator: collection.creator, 
     };
     await logTransactionEvent('nftBuyItem', buyer, eventData, id);
@@ -235,9 +235,9 @@ export async function process(data: NftBuyPayload, sender: string, id: string): 
     logger.error('[nft-buy-item] Attempting catastrophic error rollback...');
     if (listing && paymentToken) {
         const paymentTokenIdentifier = `${paymentToken.symbol}${paymentToken.issuer ? '@' + paymentToken.issuer : ''}`;
-        const price = BigIntMath.toBigInt(listing.price);
-        const royaltyAmount = BigIntMath.div(BigIntMath.mul(price, BigIntMath.toBigInt(collection?.creatorFee || 0)), BigInt(100));
-        const sellerProceeds = BigIntMath.sub(price, royaltyAmount);
+        const price = toBigInt(listing.price);
+        const royaltyAmount = (price * toBigInt(collection?.creatorFee || 0)) / BigInt(100);
+        const sellerProceeds = price - royaltyAmount;
 
         // Try to revert NFT ownership if it was changed
         if (nftOriginalOwner && listing.collectionId && listing.tokenId) {

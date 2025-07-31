@@ -50,13 +50,12 @@ export async function process(data: WitnessUnvoteData, sender: string, transacti
     
     // Calculate vote weight changes
     const balanceStr = senderAccount.tokens?.ECH || amountToString(BigInt(0));
-    const balanceBigInt = toBigInt(balanceStr);
 
     const newVoteWeightBigIntCalculated = newVotedWitnesses.length > 0 ? 
-      balanceBigInt / BigInt(newVotedWitnesses.length) : BigInt(0);
+      toBigInt(balanceStr) / BigInt(newVotedWitnesses.length) : BigInt(0);
     // oldVoteWeight should be based on the state BEFORE unvoting
     const oldVoteWeightBigIntCalculated = votedWitnesses.length > 0 ? 
-      balanceBigInt / BigInt(votedWitnesses.length) : BigInt(0);
+      toBigInt(balanceStr) / BigInt(votedWitnesses.length) : BigInt(0);
 
     try {
       // Update in sequence instead of using transactions
@@ -73,8 +72,7 @@ export async function process(data: WitnessUnvoteData, sender: string, transacti
             const witnessAccount = await cache.findOnePromise('accounts', { name: witnessName });
             if (witnessAccount) {
                 const currentVoteWeightStr = witnessAccount.totalVoteWeight || amountToString(BigInt(0));
-                const currentVoteWeightBigInt = toBigInt(currentVoteWeightStr);
-                const newVoteWeightBigInt = currentVoteWeightBigInt + adjustmentForRemainingBigInt;
+                const newVoteWeightBigInt = toBigInt(currentVoteWeightStr) + adjustmentForRemainingBigInt;
                 await cache.updateOnePromise('accounts', { name: witnessName }, { $set: { totalVoteWeight: amountToString(newVoteWeightBigInt) } });
             } else {
                 logger.error(`[witness-unvote] Witness account ${witnessName} not found when trying to adjust totalVoteWeight during share increase.`);
@@ -90,9 +88,8 @@ export async function process(data: WitnessUnvoteData, sender: string, transacti
       if (targetAccount) {
         // Use the correctly calculated oldVoteWeightBigIntCalculated
         const currentTotalVoteWeightStr = targetAccount.totalVoteWeight || amountToString(BigInt(0));
-        const currentTotalVoteWeightBigInt = toBigInt(currentTotalVoteWeightStr);
         
-        let newTotalVoteWeightBigInt = currentTotalVoteWeightBigInt - oldVoteWeightBigIntCalculated;
+        let newTotalVoteWeightBigInt = toBigInt(currentTotalVoteWeightStr) - oldVoteWeightBigIntCalculated;
         if (newTotalVoteWeightBigInt < BigInt(0)) {
             newTotalVoteWeightBigInt = BigInt(0); // Clamp at 0
         }

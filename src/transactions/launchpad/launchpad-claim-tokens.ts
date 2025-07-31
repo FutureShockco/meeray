@@ -1,8 +1,8 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import { getAccount, adjustBalance } from '../../utils/account.js';
-import { Launchpad, LaunchpadStatus, Token, TokenAllocation, TokenDistributionRecipient, LaunchpadClaimTokensData } from './launchpad-interfaces.js';
-import { amountToString, toBigInt } from '../../utils/bigint.js';
+import { LaunchpadStatus, TokenDistributionRecipient, LaunchpadClaimTokensData } from './launchpad-interfaces.js';
+import { toBigInt } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: LaunchpadClaimTokensData, sender: string): Promise<boolean> {
@@ -24,35 +24,8 @@ export async function validateTx(data: LaunchpadClaimTokensData, sender: string)
     return false;
   }
 
-  // Convert launchpadFromCache to Launchpad with BigInts for internal logic
-  // This is a simplified deep conversion. A utility function would be better.
-  const launchpad: Launchpad = {
-      ...launchpadFromCache,
-      tokenToLaunch: launchpadFromCache.tokenToLaunch ? { ...launchpadFromCache.tokenToLaunch, totalSupply: toBigInt(launchpadFromCache.tokenToLaunch.totalSupply) } : undefined as any,
-      tokenomicsSnapshot: launchpadFromCache.tokenomicsSnapshot ? { 
-          ...launchpadFromCache.tokenomicsSnapshot, 
-          totalSupply: toBigInt(launchpadFromCache.tokenomicsSnapshot.totalSupply), 
-          tokenDecimals: toBigInt(launchpadFromCache.tokenomicsSnapshot.tokenDecimals) 
-      } : undefined as any,
-      presaleDetailsSnapshot: launchpadFromCache.presaleDetailsSnapshot ? { 
-          ...launchpadFromCache.presaleDetailsSnapshot,
-          pricePerToken: toBigInt(launchpadFromCache.presaleDetailsSnapshot.pricePerToken),
-          minContributionPerUser: toBigInt(launchpadFromCache.presaleDetailsSnapshot.minContributionPerUser),
-          maxContributionPerUser: toBigInt(launchpadFromCache.presaleDetailsSnapshot.maxContributionPerUser),
-          hardCap: toBigInt(launchpadFromCache.presaleDetailsSnapshot.hardCap),
-          softCap: launchpadFromCache.presaleDetailsSnapshot.softCap ? toBigInt(launchpadFromCache.presaleDetailsSnapshot.softCap) : undefined,
-      } : undefined,
-      presale: launchpadFromCache.presale ? {
-          ...launchpadFromCache.presale,
-          totalQuoteRaised: toBigInt(launchpadFromCache.presale.totalQuoteRaised),
-          participants: launchpadFromCache.presale.participants.map((p: any) => ({ // p is from DB (string amounts)
-              ...p,
-              quoteAmountContributed: toBigInt(p.quoteAmountContributed),
-              tokensAllocated: p.tokensAllocated ? toBigInt(p.tokensAllocated) : undefined
-          }))
-      } : undefined as any,
-      feeDetails: launchpadFromCache.feeDetails ? { ...launchpadFromCache.feeDetails, amount: toBigInt(launchpadFromCache.feeDetails.amount) } : undefined,
-  } as Launchpad;
+  // Use data directly without complex conversions
+  const launchpad = launchpadFromCache;
 
   const claimableStatuses = [
     LaunchpadStatus.PRESALE_SUCCEEDED_HARDCAP_MET, 
@@ -75,7 +48,7 @@ export async function validateTx(data: LaunchpadClaimTokensData, sender: string)
       logger.warn(`[launchpad-claim-tokens] No presale participant data found for ${data.launchpadId}.`);
       return false;
     }
-    const participant = launchpad.presale.participants.find(p => p.userId === data.userId);
+    const participant = launchpad.presale.participants.find((p: any) => p.userId === data.userId);
     if (!participant) {
       logger.warn(`[launchpad-claim-tokens] User ${data.userId} not found in presale participants for ${data.launchpadId}.`);
       return false;
@@ -84,8 +57,9 @@ export async function validateTx(data: LaunchpadClaimTokensData, sender: string)
       logger.warn(`[launchpad-claim-tokens] User ${data.userId} has already claimed presale tokens for ${data.launchpadId}.`);
       return false;
     }
-    // participant.tokensAllocated is already BigInt here due to conversion above
-    if (!participant.tokensAllocated || participant.tokensAllocated <= BigInt(0)) {
+    // Convert tokensAllocated to BigInt for comparison
+    const tokensAllocated = toBigInt(participant.tokensAllocated || '0');
+    if (tokensAllocated <= BigInt(0)) {
         logger.warn(`[launchpad-claim-tokens] User ${data.userId} has no tokens allocated or allocation is zero for ${data.launchpadId}.`);
         return false;
     }
@@ -93,7 +67,7 @@ export async function validateTx(data: LaunchpadClaimTokensData, sender: string)
     logger.warn(`[launchpad-claim-tokens] Claiming for allocation type ${data.allocationType} is not fully implemented yet.`);
   }
   
-  const tokenInfo = await cache.findOnePromise('tokens', { _id: launchpad.mainTokenId }) as Token | null;
+  const tokenInfo = await cache.findOnePromise('tokens', { _id: launchpad.mainTokenId });
   if (!tokenInfo) {
       logger.warn(`[launchpad-claim-tokens] Token information for ${launchpad.mainTokenId} not found.`);
       return false;
@@ -111,56 +85,35 @@ export async function process(data: LaunchpadClaimTokensData, sender: string): P
         return false;
     }
     
-    // Convert launchpadFromCache to Launchpad with BigInts for internal logic
-    // This is a simplified deep conversion. A utility function would be better.
-    const launchpad: Launchpad = {
-        ...launchpadFromCache,
-        tokenToLaunch: launchpadFromCache.tokenToLaunch ? { ...launchpadFromCache.tokenToLaunch, totalSupply: toBigInt(launchpadFromCache.tokenToLaunch.totalSupply) } : undefined as any,
-        tokenomicsSnapshot: launchpadFromCache.tokenomicsSnapshot ? { 
-            ...launchpadFromCache.tokenomicsSnapshot, 
-            totalSupply: toBigInt(launchpadFromCache.tokenomicsSnapshot.totalSupply), 
-            tokenDecimals: toBigInt(launchpadFromCache.tokenomicsSnapshot.tokenDecimals) 
-        } : undefined as any,
-        presaleDetailsSnapshot: launchpadFromCache.presaleDetailsSnapshot ? { 
-            ...launchpadFromCache.presaleDetailsSnapshot,
-            pricePerToken: toBigInt(launchpadFromCache.presaleDetailsSnapshot.pricePerToken),
-            minContributionPerUser: toBigInt(launchpadFromCache.presaleDetailsSnapshot.minContributionPerUser),
-            maxContributionPerUser: toBigInt(launchpadFromCache.presaleDetailsSnapshot.maxContributionPerUser),
-            hardCap: toBigInt(launchpadFromCache.presaleDetailsSnapshot.hardCap),
-            softCap: launchpadFromCache.presaleDetailsSnapshot.softCap ? toBigInt(launchpadFromCache.presaleDetailsSnapshot.softCap) : undefined,
-        } : undefined,
-        presale: launchpadFromCache.presale ? {
-            ...launchpadFromCache.presale,
-            totalQuoteRaised: toBigInt(launchpadFromCache.presale.totalQuoteRaised),
-            participants: launchpadFromCache.presale.participants.map((p: any) => ({ // p is from DB (string amounts)
-                ...p,
-                quoteAmountContributed: toBigInt(p.quoteAmountContributed),
-                tokensAllocated: p.tokensAllocated ? toBigInt(p.tokensAllocated) : undefined
-            }))
-        } : undefined as any,
-        feeDetails: launchpadFromCache.feeDetails ? { ...launchpadFromCache.feeDetails, amount: toBigInt(launchpadFromCache.feeDetails.amount) } : undefined,
-    } as Launchpad;
+    // Use data directly without complex conversions
+    const launchpad = launchpadFromCache;
 
-    const tokenInfo = await cache.findOnePromise('tokens', { _id: launchpad.mainTokenId }) as Token | null;
+    const tokenInfo = await cache.findOnePromise('tokens', { _id: launchpad.mainTokenId });
     if (!tokenInfo) {
         logger.error(`[launchpad-claim-tokens] CRITICAL: Token info for ${launchpad.mainTokenId} not found during processing.`);
         return false;
     }
 
-    let tokensToClaim: bigint = BigInt(0); // Initialize as BigInt
+    let tokensToClaim: bigint = BigInt(0);
     let participantListUpdateRequired = false;
-    let participantDbList: any[] = []; // To store participants in DB format for update
+    let participantDbList: any[] = [];
 
     if (data.allocationType === TokenDistributionRecipient.PRESALE_PARTICIPANTS) {
         if (!launchpad.presale || !launchpad.presale.participants) {
             logger.error(`[launchpad-claim-tokens] CRITICAL: Presale data missing for ${data.launchpadId} during claim.`);
             return false;
         }
-        const participantIndex = launchpad.presale.participants.findIndex(p => p.userId === data.userId);
+        const participantIndex = launchpad.presale.participants.findIndex((p: any) => p.userId === data.userId);
         const participant = participantIndex > -1 ? launchpad.presale.participants[participantIndex] : null;
 
-        if (!participant || !participant.tokensAllocated || participant.tokensAllocated <= BigInt(0)) {
-            logger.warn(`[launchpad-claim-tokens] User ${data.userId} has no allocated presale tokens or not found for ${data.launchpadId}.`);
+        if (!participant) {
+            logger.warn(`[launchpad-claim-tokens] User ${data.userId} not found for ${data.launchpadId}.`);
+            return false; 
+        }
+        
+        const tokensAllocated = toBigInt(participant.tokensAllocated || '0');
+        if (tokensAllocated <= BigInt(0)) {
+            logger.warn(`[launchpad-claim-tokens] User ${data.userId} has no allocated presale tokens for ${data.launchpadId}.`);
             return false; 
         }
         if (participant.claimed) {
@@ -168,17 +121,14 @@ export async function process(data: LaunchpadClaimTokensData, sender: string): P
             return false;
         }
 
-        tokensToClaim = participant.tokensAllocated; // This is already BigInt
+        tokensToClaim = tokensAllocated;
         
         // Update the specific participant in the list for DB update
-        participantDbList = launchpad.presale.participants.map((p, index) => {
-            const pDb = {
+        participantDbList = launchpad.presale.participants.map((p: any, index: number) => {
+            return {
                 ...p,
-                quoteAmountContributed: amountToString(p.quoteAmountContributed),
-                tokensAllocated: p.tokensAllocated ? amountToString(p.tokensAllocated) : undefined,
                 claimed: index === participantIndex ? true : p.claimed // Set claimed to true for the current claimer
             };
-            return pDb;
         });
         participantListUpdateRequired = true;
 
@@ -187,22 +137,22 @@ export async function process(data: LaunchpadClaimTokensData, sender: string): P
         return false; 
     }
 
-    if (tokensToClaim <= BigInt(0)) { // Compare with BigInt(0)
+    if (tokensToClaim <= BigInt(0)) {
         logger.warn(`[launchpad-claim-tokens] No tokens to claim for ${data.userId} on ${data.launchpadId} for type ${data.allocationType}.`);
         return false;
     }
 
-    const issueSuccess = await adjustBalance(data.userId, launchpad.mainTokenId!, tokensToClaim); // tokensToClaim is BigInt
+    const issueSuccess = await adjustBalance(data.userId, launchpad.mainTokenId!, tokensToClaim);
     
     if (!issueSuccess) {
-        logger.error(`[launchpad-claim-tokens] Failed to issue ${amountToString(tokensToClaim)} of ${launchpad.mainTokenId} to ${data.userId}.`);
-        return false; // No rollback of claimed flag here as token transfer is the primary action
+        logger.error(`[launchpad-claim-tokens] Failed to issue ${tokensToClaim} of ${launchpad.mainTokenId} to ${data.userId}.`);
+        return false;
     }
 
     if (participantListUpdateRequired && data.allocationType === TokenDistributionRecipient.PRESALE_PARTICIPANTS) {
         const updatePayload = {
             $set: {
-                'presale.participants': participantDbList, // Use the stringified list
+                'presale.participants': participantDbList,
                 updatedAt: new Date().toISOString(),
             }
         };
@@ -216,12 +166,12 @@ export async function process(data: LaunchpadClaimTokensData, sender: string): P
         launchpadId: data.launchpadId,
         userId: data.userId,
         tokenId: launchpad.mainTokenId,
-        amountClaimed: amountToString(tokensToClaim), // Log as string
+        amountClaimed: tokensToClaim.toString(),
         allocationType: data.allocationType
     };
     await logTransactionEvent('launchpadTokensClaimed', sender, eventData);
 
-    logger.debug(`[launchpad-claim-tokens] Claim by ${sender} for ${amountToString(tokensToClaim)} of ${launchpad.mainTokenId} from ${data.launchpadId} processed.`);
+    logger.debug(`[launchpad-claim-tokens] Claim by ${sender} for ${tokensToClaim} of ${launchpad.mainTokenId} from ${data.launchpadId} processed.`);
     return true;
 
   } catch (error) {

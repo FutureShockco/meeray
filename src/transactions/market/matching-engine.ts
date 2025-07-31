@@ -1,38 +1,19 @@
-import { Order, Trade, TradingPair, OrderStatus, OrderSide, OrderType, OrderDB, TradingPairDB } from './market-interfaces.js';
+import { OrderData, TradeData, TradingPairData, OrderStatus, OrderSide, OrderType } from './market-interfaces.js';
 import { OrderBook, OrderBookMatchResult } from './orderbook.js';
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import { adjustBalance } from '../../utils/account.js';
-import { BigIntMath, convertToBigInt, convertToString, amountToString, toBigInt } from '../../utils/bigint.js';
+import { toBigInt } from '../../utils/bigint.js';
 
 /**
  * Result returned by the MatchingEngine after processing an order.
  */
 export interface EngineMatchResult {
-  order: Order; // The final state of the taker order
-  trades: Trade[]; // Trades generated for this order
+  order: OrderData; // The final state of the taker order
+  trades: TradeData[]; // Trades generated for this order
   accepted: boolean; // Was the order accepted and processed by the engine?
   rejectReason?: string; // Reason if not accepted or if an issue occurred
 }
-
-// This will be a complex module responsible for:
-// 1. Maintaining in-memory order books for each trading pair.
-// 2. Accepting new orders and matching them against the book.
-// 3. Generating trades.
-// 4. Persisting orders and trades.
-// 5. Emitting events (e.g., order updates, new trades).
-
-interface MatchResult {
-  accepted: boolean;
-  rejectReason?: string;
-  finalOrderStatus?: string; // e.g. FILLED, PARTIALLY_FILLED, OPEN
-  trades?: any[]; // Array of Trade objects
-  // ... other details
-}
-
-const ORDER_NUMERIC_FIELDS: Array<keyof Order> = ['price', 'quantity', 'filledQuantity', 'averageFillPrice', 'cumulativeQuoteValue', 'quoteOrderQty'];
-const TRADING_PAIR_NUMERIC_FIELDS: Array<keyof TradingPair> = ['tickSize', 'lotSize', 'minNotional', 'minTradeAmount', 'maxTradeAmount'];
-const TRADE_NUMERIC_FIELDS: Array<keyof Trade> = ['price', 'quantity', 'feeAmount', 'makerFee', 'takerFee', 'total'];
 
 class MatchingEngine {
   private orderBooks: Map<string, OrderBook>; // Key: pairId
@@ -42,21 +23,27 @@ class MatchingEngine {
     this.orderBooks = new Map<string, OrderBook>();
     this._initializeBooks().catch(err => {
       logger.error('[MatchingEngine] CRITICAL: Failed to initialize order books during construction:', err);
-      // In a real system, this might prevent the engine from starting or put it in a degraded state.
     });
   }
 
   private async _initializeBooks(): Promise<void> {
     logger.debug('[MatchingEngine] Loading trading pairs and initializing order books...');
-    const activePairsDB = await cache.findPromise('tradingPairs', { status: 'TRADING' }) as TradingPairDB[] | null;
+    const activePairsDB = await cache.findPromise('tradingPairs', { status: 'TRADING' }) as TradingPairData[] | null;
 
     if (!activePairsDB || activePairsDB.length === 0) {
       logger.warn('[MatchingEngine] No active trading pairs found to initialize.');
-      // Ensure the final log reflects this outcome
       logger.debug('[MatchingEngine] Order books initialization skipped: No active pairs loaded.');
       return;
     }
-    const activePairs = activePairsDB.map(pairDB => convertToBigInt<TradingPair>(pairDB, TRADING_PAIR_NUMERIC_FIELDS));
+
+    const activePairs = activePairsDB.map(pairDB => ({
+      ...pairDB,
+      tickSize: toBigInt(pairDB.tickSize),
+      lotSize: toBigInt(pairDB.lotSize),
+      minNotional: toBigInt(pairDB.minNotional),
+      minTradeAmount: toBigInt(pairDB.minTradeAmount),
+      maxTradeAmount: toBigInt(pairDB.maxTradeAmount)
+    }));
 
     for (const pair of activePairs) {
       const orderBook = new OrderBook(pair._id, pair.tickSize, pair.lotSize);
@@ -66,10 +53,19 @@ class MatchingEngine {
       const openOrdersDB = await cache.findPromise('orders', {
         pairId: pair._id,
         status: { $in: [OrderStatus.OPEN, OrderStatus.PARTIALLY_FILLED] }
-      }) as OrderDB[] | null;
+      }) as OrderData[] | null;
 
       if (openOrdersDB && openOrdersDB.length > 0) {
-        const openOrders = openOrdersDB.map(orderDB => convertToBigInt<Order>(orderDB, ORDER_NUMERIC_FIELDS));
+        const openOrders = openOrdersDB.map(orderDB => ({
+          ...orderDB,
+          price: toBigInt(orderDB.price!),
+          quantity: toBigInt(orderDB.quantity),
+          filledQuantity: toBigInt(orderDB.filledQuantity),
+          averageFillPrice: orderDB.averageFillPrice ? toBigInt(orderDB.averageFillPrice) : undefined,
+          cumulativeQuoteValue: orderDB.cumulativeQuoteValue ? toBigInt(orderDB.cumulativeQuoteValue) : undefined,
+          quoteOrderQty: orderDB.quoteOrderQty ? toBigInt(orderDB.quoteOrderQty) : undefined
+        }));
+        
         logger.debug(`[MatchingEngine] Loading ${openOrders.length} open orders for pair ${pair._id}...`);
         for (const order of openOrders) {
           if (order.type === OrderType.LIMIT) {
@@ -78,34 +74,44 @@ class MatchingEngine {
         }
       }
     }
-    logger.debug('[MatchingEngine] Order books initialization attempted (pair/order loading may be skipped due to missing cache.find).');
+    logger.debug('[MatchingEngine] Order books initialization completed.');
   }
 
   private async _getOrderBook(pairId: string): Promise<OrderBook | null> {
     if (this.orderBooks.has(pairId)) {
       return this.orderBooks.get(pairId)!;
     }
+    
     logger.warn(`[MatchingEngine] Order book for pair ${pairId} not found. Attempting to load...`);
-    const pairDB = await cache.findOnePromise('tradingPairs', { _id: pairId, status: 'TRADING'}) as TradingPairDB | null;
+    const pairDB = await cache.findOnePromise('tradingPairs', { _id: pairId, status: 'TRADING'}) as TradingPairData | null;
+    
     if (pairDB) {
-        const pair = convertToBigInt<TradingPair>(pairDB, TRADING_PAIR_NUMERIC_FIELDS);
-        const orderBook = new OrderBook(pair._id, pair.tickSize, pair.lotSize);
-        this.orderBooks.set(pair._id, orderBook);
-        logger.debug(`[MatchingEngine] Lazily initialized order book for pair ${pair._id}.`);
-        // TODO: Potentially load open orders for this newly lazy-loaded book.
-        return orderBook;
+      const pair = {
+        ...pairDB,
+        tickSize: toBigInt(pairDB.tickSize),
+        lotSize: toBigInt(pairDB.lotSize),
+        minNotional: toBigInt(pairDB.minNotional),
+        minTradeAmount: toBigInt(pairDB.minTradeAmount),
+        maxTradeAmount: toBigInt(pairDB.maxTradeAmount)
+      };
+      
+      const orderBook = new OrderBook(pair._id, pair.tickSize, pair.lotSize);
+      this.orderBooks.set(pair._id, orderBook);
+      logger.debug(`[MatchingEngine] Lazily initialized order book for pair ${pair._id}.`);
+      return orderBook;
     }
+    
     logger.error(`[MatchingEngine] Could not find or load trading pair ${pairId} to get order book.`);
     return null;
   }
 
   public async warmupMarketData(): Promise<void> {
     logger.debug('[MatchingEngine] Starting market data warmup...');
-    let activePairs: TradingPair[] | null = null;
+    let activePairs: TradingPairData[] | null = null;
+    
     try {
-      // Ensure cache.findPromise exists and is correctly typed in cache.ts
       const pairsResult = await cache.findPromise('tradingPairs', { status: 'TRADING' });
-      activePairs = pairsResult as TradingPair[]; 
+      activePairs = pairsResult as TradingPairData[]; 
     } catch (err) {
       logger.error('[MatchingEngine:warmupMarketData] Error fetching active trading pairs:', err);
       logger.error('[MatchingEngine:warmupMarketData] Aborting warmup due to error loading trading pairs.');
@@ -122,22 +128,23 @@ class MatchingEngine {
 
     for (const pair of activePairs) {
       if (!pair._id || !pair.tickSize || !pair.lotSize) {
-          // Using pair._id for logging as pair.symbol might not exist
-          logger.warn(`[MatchingEngine:warmupMarketData] Trading pair ID: ${pair._id} has invalid/missing details (tickSize, lotSize). Skipping.`);
-          continue;
+        logger.warn(`[MatchingEngine:warmupMarketData] Trading pair ID: ${pair._id} has invalid/missing details (tickSize, lotSize). Skipping.`);
+        continue;
       }
-      const orderBook = new OrderBook(pair._id, pair.tickSize, pair.lotSize);
+      
+      const tickSize = toBigInt(pair.tickSize);
+      const lotSize = toBigInt(pair.lotSize);
+      const orderBook = new OrderBook(pair._id, tickSize, lotSize);
       this.orderBooks.set(pair._id, orderBook); 
-      // Using pair._id for logging
       logger.debug(`[MatchingEngine:warmupMarketData] Initialized order book for pair ${pair._id}.`);
 
-      let openOrders: Order[] | null = null;
+      let openOrders: OrderData[] | null = null;
       try {
         const ordersResult = await cache.findPromise('orders', {
           pairId: pair._id,
           status: { $in: [OrderStatus.OPEN, OrderStatus.PARTIALLY_FILLED] }
         });
-        openOrders = ordersResult as Order[];
+        openOrders = ordersResult as OrderData[];
       } catch (err) {
         logger.error(`[MatchingEngine:warmupMarketData] Error fetching open orders for pair ${pair._id}:`, err);
         continue;
@@ -149,13 +156,19 @@ class MatchingEngine {
         for (const order of openOrders) {
           if (order.type === OrderType.LIMIT) {
             try {
-              orderBook.addOrder(order); // Assuming this returns void and throws on error
+              const orderWithBigInt = {
+                ...order,
+                price: toBigInt(order.price!),
+                quantity: toBigInt(order.quantity),
+                filledQuantity: toBigInt(order.filledQuantity)
+              };
+              orderBook.addOrder(orderWithBigInt);
               ordersLoaded++;
             } catch (addOrderError) {
-                logger.error(`[MatchingEngine:warmupMarketData] Error adding order ${order._id} to book for pair ${pair._id}:`, addOrderError);
+              logger.error(`[MatchingEngine:warmupMarketData] Error adding order ${order._id} to book for pair ${pair._id}:`, addOrderError);
             }
           } else {
-              logger.warn(`[MatchingEngine:warmupMarketData] Skipping order ${order._id} for pair ${pair._id} due to non-LIMIT type: ${order.type}`);
+            logger.warn(`[MatchingEngine:warmupMarketData] Skipping order ${order._id} for pair ${pair._id} due to non-LIMIT type: ${order.type}`);
           }
         }
         logger.debug(`[MatchingEngine:warmupMarketData] Successfully loaded ${ordersLoaded} order(s) into book for pair ${pair._id}.`);
@@ -167,14 +180,23 @@ class MatchingEngine {
     logger.debug(`[MatchingEngine:warmupMarketData] Market data warmup completed. Initialized ${successfulBookInitializations} order book(s) out of ${activePairs.length} active pair(s).`);
   }
 
-  public async addOrder(takerOrderInput: Order): Promise<EngineMatchResult> {
+  public async addOrder(takerOrderInput: OrderData): Promise<EngineMatchResult> {
     const takerOrder = takerOrderInput;
-    logger.debug(`[MatchingEngine] Received order ${takerOrder._id} for pair ${takerOrder.pairId}: ${takerOrder.side} ${amountToString(takerOrder.quantity)} ${takerOrder.baseAssetSymbol} @ ${takerOrder.price ? amountToString(takerOrder.price) : takerOrder.type}`);
+    logger.debug(`[MatchingEngine] Received order ${takerOrder._id} for pair ${takerOrder.pairId}: ${takerOrder.side} ${takerOrder.quantity.toString()} ${takerOrder.baseAssetSymbol} @ ${takerOrder.price ? takerOrder.price.toString() : takerOrder.type}`);
     
     const orderBook = await this._getOrderBook(takerOrder.pairId);
     if (!orderBook) {
       const finalOrderState = { ...takerOrder, status: OrderStatus.REJECTED, updatedAt: new Date().toISOString() };
-      const orderForDB = convertToString<Order>(finalOrderState, ORDER_NUMERIC_FIELDS);
+      const orderForDB = {
+        ...finalOrderState,
+        price: finalOrderState.price?.toString(),
+        quantity: finalOrderState.quantity.toString(),
+        filledQuantity: finalOrderState.filledQuantity.toString(),
+        averageFillPrice: finalOrderState.averageFillPrice?.toString(),
+        cumulativeQuoteValue: finalOrderState.cumulativeQuoteValue?.toString(),
+        quoteOrderQty: finalOrderState.quoteOrderQty?.toString()
+      };
+      
       const existingOrderCheck = await cache.findOnePromise('orders', { _id: takerOrder._id });
       if (!existingOrderCheck) {
         await new Promise<void>((resolve, reject) => {
@@ -192,61 +214,98 @@ class MatchingEngine {
       return { order: finalOrderState, trades: [], accepted: false, rejectReason: `Trading pair ${takerOrder.pairId} not supported or inactive.` };
     }
 
-    const pairDetailsDB = await cache.findOnePromise('tradingPairs', {_id: takerOrder.pairId}) as TradingPairDB | null;
+    const pairDetailsDB = await cache.findOnePromise('tradingPairs', {_id: takerOrder.pairId}) as TradingPairData | null;
     if(!pairDetailsDB) {
-        logger.error(`[MatchingEngine] CRITICAL: Could not find pair details for order ${takerOrder._id}. Rejecting order.`);
-        const finalOrderState = { ...takerOrder, status: OrderStatus.REJECTED, updatedAt: new Date().toISOString() };
-        const orderForDB = convertToString<Order>(finalOrderState, ORDER_NUMERIC_FIELDS);
-        const existingOrderCheck = await cache.findOnePromise('orders', { _id: takerOrder._id });
-        if (!existingOrderCheck) {
-            await new Promise<void>((resolve, reject) => {
-              cache.insertOne('orders', orderForDB, (errInsert) => {
-                if (errInsert) {
-                  logger.error(`[MatchingEngine] Failed to insert order ${finalOrderState._id} (status: ${finalOrderState.status}) after pair details check:`, errInsert);
-                  return reject(errInsert);
-                }
-                resolve();
-              });
-            });
-        } else {
-            await cache.updateOnePromise('orders', {_id: takerOrder._id }, { $set: { status: OrderStatus.REJECTED, updatedAt: finalOrderState.updatedAt }});
-        }
-        return { order: finalOrderState, trades: [], accepted: false, rejectReason: `Internal error: trading pair ${takerOrder.pairId} details not found.` };
-    }
-    const pairDetails = convertToBigInt<TradingPair>(pairDetailsDB, TRADING_PAIR_NUMERIC_FIELDS);
-
-    const existingOrderDB = await cache.findOnePromise('orders', { _id: takerOrder._id }) as OrderDB | null;
-    if (!existingOrderDB) {
-        const orderToInsertDB = convertToString<Order>(takerOrder, ORDER_NUMERIC_FIELDS);
+      logger.error(`[MatchingEngine] CRITICAL: Could not find pair details for order ${takerOrder._id}. Rejecting order.`);
+      const finalOrderState = { ...takerOrder, status: OrderStatus.REJECTED, updatedAt: new Date().toISOString() };
+      const orderForDB = {
+        ...finalOrderState,
+        price: finalOrderState.price?.toString(),
+        quantity: finalOrderState.quantity.toString(),
+        filledQuantity: finalOrderState.filledQuantity.toString()
+      };
+      
+      const existingOrderCheck = await cache.findOnePromise('orders', { _id: takerOrder._id });
+      if (!existingOrderCheck) {
         await new Promise<void>((resolve, reject) => {
-            cache.insertOne('orders', orderToInsertDB, (err, result) => {
-                if (err || !result) {
-                    logger.error(`[MatchingEngine] Failed to insert initial state of order ${takerOrder._id}:`, err || 'no result');
-                    return reject(err || new Error('Insert failed'));
-                }
-                resolve();
-            });
+          cache.insertOne('orders', orderForDB, (errInsert) => {
+            if (errInsert) {
+              logger.error(`[MatchingEngine] Failed to insert order ${finalOrderState._id} (status: ${finalOrderState.status}) after pair details check:`, errInsert);
+              return reject(errInsert);
+            }
+            resolve();
+          });
         });
+      } else {
+        await cache.updateOnePromise('orders', {_id: takerOrder._id }, { $set: { status: OrderStatus.REJECTED, updatedAt: finalOrderState.updatedAt }});
+      }
+      return { order: finalOrderState, trades: [], accepted: false, rejectReason: `Internal error: trading pair ${takerOrder.pairId} details not found.` };
+    }
+    
+    const pairDetails = {
+      ...pairDetailsDB,
+      tickSize: toBigInt(pairDetailsDB.tickSize),
+      lotSize: toBigInt(pairDetailsDB.lotSize),
+      minNotional: toBigInt(pairDetailsDB.minNotional),
+      minTradeAmount: toBigInt(pairDetailsDB.minTradeAmount),
+      maxTradeAmount: toBigInt(pairDetailsDB.maxTradeAmount)
+    };
+
+    const existingOrderDB = await cache.findOnePromise('orders', { _id: takerOrder._id }) as OrderData | null;
+    if (!existingOrderDB) {
+      const orderToInsertDB = {
+        ...takerOrder,
+        price: takerOrder.price?.toString(),
+        quantity: takerOrder.quantity.toString(),
+        filledQuantity: takerOrder.filledQuantity.toString(),
+        averageFillPrice: takerOrder.averageFillPrice?.toString(),
+        cumulativeQuoteValue: takerOrder.cumulativeQuoteValue?.toString(),
+        quoteOrderQty: takerOrder.quoteOrderQty?.toString()
+      };
+      
+      await new Promise<void>((resolve, reject) => {
+        cache.insertOne('orders', orderToInsertDB, (err, result) => {
+          if (err || !result) {
+            logger.error(`[MatchingEngine] Failed to insert initial state of order ${takerOrder._id}:`, err || 'no result');
+            return reject(err || new Error('Insert failed'));
+          }
+          resolve();
+        });
+      });
     }
 
     const matchOutput = orderBook.matchOrder(takerOrder);
-    const tradesAppFormat: Trade[] = matchOutput.trades.map(t => ({...t, price: toBigInt(t.price), quantity: toBigInt(t.quantity)}));
+    const tradesAppFormat: TradeData[] = matchOutput.trades.map(t => ({
+      ...t, 
+      price: toBigInt(t.price), 
+      quantity: toBigInt(t.quantity)
+    }));
     let allUpdatesSuccessful = true;
 
     if (tradesAppFormat.length > 0) {
       logger.debug(`[MatchingEngine] Order ${takerOrder._id} generated ${tradesAppFormat.length} trades.`);
       for (const trade of tradesAppFormat) {
-        const tradeForDB = convertToString<Trade>(trade, TRADE_NUMERIC_FIELDS);
+        const tradeForDB = {
+          ...trade,
+          price: trade.price.toString(),
+          quantity: trade.quantity.toString(),
+          feeAmount: trade.feeAmount?.toString(),
+          makerFee: trade.makerFee?.toString(),
+          takerFee: trade.takerFee?.toString(),
+          total: trade.total.toString()
+        };
+        
         const tradePersisted = await new Promise<boolean>((resolve) => {
-            cache.insertOne('trades', tradeForDB, (err, result) => {
-                if (err || !result) {
-                    logger.error(`[MatchingEngine] CRITICAL: Failed to persist trade ${trade._id} for order ${takerOrder._id}.`);
-                    resolve(false);
-                } else {
-                    resolve(true);
-                }
-            });
+          cache.insertOne('trades', tradeForDB, (err, result) => {
+            if (err || !result) {
+              logger.error(`[MatchingEngine] CRITICAL: Failed to persist trade ${trade._id} for order ${takerOrder._id}.`);
+              resolve(false);
+            } else {
+              resolve(true);
+            }
+          });
         });
+        
         if (!tradePersisted) {
           allUpdatesSuccessful = false;
           continue;
@@ -254,11 +313,12 @@ class MatchingEngine {
         
         const baseTokenIdentifier = `${pairDetails.baseAssetSymbol}@${pairDetails.baseAssetIssuer}`;
         const quoteTokenIdentifier = `${pairDetails.quoteAssetSymbol}@${pairDetails.quoteAssetIssuer}`;
-        const tradeValue = BigIntMath.mul(trade.price, trade.quantity); // price and quantity are BigInt
+        const tradePriceBigInt = toBigInt(trade.price);
+        const tradeQuantityBigInt = toBigInt(trade.quantity);
+        const tradeValue = tradePriceBigInt * tradeQuantityBigInt;
 
-        // Amounts for adjustBalance must be BigInt
-        const adjSellerBase = await adjustBalance(trade.sellerUserId, baseTokenIdentifier, -trade.quantity);
-        const adjBuyerBase = await adjustBalance(trade.buyerUserId, baseTokenIdentifier, trade.quantity);
+        const adjSellerBase = await adjustBalance(trade.sellerUserId, baseTokenIdentifier, -tradeQuantityBigInt);
+        const adjBuyerBase = await adjustBalance(trade.buyerUserId, baseTokenIdentifier, tradeQuantityBigInt);
         const adjSellerQuote = await adjustBalance(trade.sellerUserId, quoteTokenIdentifier, tradeValue);
         const adjBuyerQuote = await adjustBalance(trade.buyerUserId, quoteTokenIdentifier, -tradeValue);
 
@@ -270,50 +330,60 @@ class MatchingEngine {
     }
 
     for (const makerOrderId of matchOutput.removedMakerOrders) {
-      // Update with stringified BigInts potentially if status update also includes numeric fields
       await cache.updateOnePromise('orders', { _id: makerOrderId }, { $set: { status: OrderStatus.FILLED, updatedAt: new Date().toISOString() } });
     }
+    
     if (matchOutput.updatedMakerOrder) {
       const { _id, filledQuantity, status, averageFillPrice, cumulativeQuoteValue } = matchOutput.updatedMakerOrder;
       const updateSet = {
-        filledQuantity: amountToString(filledQuantity), 
+        filledQuantity: filledQuantity.toString(), 
         status,
-        averageFillPrice: averageFillPrice ? amountToString(averageFillPrice) : undefined,
-        cumulativeQuoteValue: cumulativeQuoteValue ? amountToString(cumulativeQuoteValue) : undefined,
+        averageFillPrice: averageFillPrice ? averageFillPrice.toString() : undefined,
+        cumulativeQuoteValue: cumulativeQuoteValue ? cumulativeQuoteValue.toString() : undefined,
         updatedAt: new Date().toISOString()
       };
       await cache.updateOnePromise('orders', { _id }, { $set: updateSet });
     }
 
     let finalTakerStatus = takerOrder.status;
-    if (takerOrder.filledQuantity >= takerOrder.quantity) { // Both are BigInt
+    if (takerOrder.filledQuantity >= takerOrder.quantity) {
       finalTakerStatus = OrderStatus.FILLED;
     }
-    // Note: PARTIALLY_FILLED status is set by orderBook.matchOrder directly on takerOrder if applicable
 
     takerOrder.status = finalTakerStatus;
     takerOrder.updatedAt = new Date().toISOString();
-    if (tradesAppFormat.length > 0 && takerOrder.filledQuantity > BigInt(0)) {
-        let cumulativeValue = BigInt(0);
-        let totalQuantityFilled = BigInt(0);
-        tradesAppFormat.forEach(t => {
-            cumulativeValue = BigIntMath.add(cumulativeValue, BigIntMath.mul(t.price, t.quantity));
-            totalQuantityFilled = BigIntMath.add(totalQuantityFilled, t.quantity);
-        });
-        if (totalQuantityFilled > BigInt(0)) {
-            takerOrder.averageFillPrice = BigIntMath.div(cumulativeValue, totalQuantityFilled);
-        }
-        takerOrder.cumulativeQuoteValue = cumulativeValue; // This is already BigInt
+    
+    if (tradesAppFormat.length > 0 && toBigInt(takerOrder.filledQuantity) > 0n) {
+      let cumulativeValue = 0n;
+      let totalQuantityFilled = 0n;
+      tradesAppFormat.forEach(t => {
+        const tPriceBigInt = toBigInt(t.price);
+        const tQuantityBigInt = toBigInt(t.quantity);
+        cumulativeValue = cumulativeValue + (tPriceBigInt * tQuantityBigInt);
+        totalQuantityFilled = totalQuantityFilled + tQuantityBigInt;
+      });
+      if (totalQuantityFilled > 0n) {
+        takerOrder.averageFillPrice = cumulativeValue / totalQuantityFilled;
+      }
+      takerOrder.cumulativeQuoteValue = cumulativeValue;
     }
 
-    const finalTakerOrderForDB = convertToString<Order>(takerOrder, ORDER_NUMERIC_FIELDS);
+    const finalTakerOrderForDB = {
+      ...takerOrder,
+      price: takerOrder.price?.toString(),
+      quantity: takerOrder.quantity.toString(),
+      filledQuantity: takerOrder.filledQuantity.toString(),
+      averageFillPrice: takerOrder.averageFillPrice?.toString(),
+      cumulativeQuoteValue: takerOrder.cumulativeQuoteValue?.toString(),
+      quoteOrderQty: takerOrder.quoteOrderQty?.toString()
+    };
     await cache.updateOnePromise('orders', { _id: takerOrder._id }, { $set: finalTakerOrderForDB });
 
     if (!allUpdatesSuccessful) {
-        return { order: takerOrder, trades: tradesAppFormat, accepted: true, rejectReason: "Processed with some errors, check logs." };
+      return { order: takerOrder, trades: tradesAppFormat, accepted: true, rejectReason: "Processed with some errors, check logs." };
     }
     
-    logger.debug(`[MatchingEngine] Finished processing order ${takerOrder._id}. Final status: ${takerOrder.status}, Filled: ${amountToString(takerOrder.filledQuantity)}`);
+    logger.debug(`[MatchingEngine] Finished processing order ${takerOrder._id}. Final status: ${takerOrder.status}, Filled: ${takerOrder.filledQuantity.toString()}`);
     return { order: takerOrder, trades: tradesAppFormat, accepted: true };
   }
 
@@ -325,30 +395,35 @@ class MatchingEngine {
       return false;
     }
 
-    const orderToCancelDB = await cache.findOnePromise('orders', { _id: orderId, userId: userId }) as OrderDB | null;
+    const orderToCancelDB = await cache.findOnePromise('orders', { _id: orderId, userId: userId }) as OrderData | null;
     if (!orderToCancelDB) {
-        logger.warn(`[MatchingEngine] Order ${orderId} not found for cancellation by user ${userId}.`);
-        return false;
+      logger.warn(`[MatchingEngine] Order ${orderId} not found for cancellation by user ${userId}.`);
+      return false;
     }
-    const orderToCancel = convertToBigInt<Order>(orderToCancelDB, ORDER_NUMERIC_FIELDS);
+    
+    const orderToCancel = {
+      ...orderToCancelDB,
+      price: orderToCancelDB.price ? toBigInt(orderToCancelDB.price) : undefined,
+      quantity: toBigInt(orderToCancelDB.quantity),
+      filledQuantity: toBigInt(orderToCancelDB.filledQuantity)
+    };
 
     if (orderToCancel.status !== OrderStatus.OPEN && orderToCancel.status !== OrderStatus.PARTIALLY_FILLED) {
-        logger.warn(`[MatchingEngine] Order ${orderId} is not in a cancellable state (${orderToCancel.status}).`);
-        return false;
+      logger.warn(`[MatchingEngine] Order ${orderId} is not in a cancellable state (${orderToCancel.status}).`);
+      return false;
     }
 
     const removed = orderBook.removeOrder(orderId);
     if (removed) {
-      // Assuming updateOnePromise returns a boolean indicating success
       const updatedInDb = await cache.updateOnePromise('orders', { _id: orderId }, { $set: { status: OrderStatus.CANCELLED, updatedAt: new Date().toISOString() } });
       if (!updatedInDb) {
-          logger.error(`[MatchingEngine] CRITICAL: Order ${orderId} removed from book but FAILED to mark CANCELLED in DB.`);
-          return false; // Or throw, this is a critical state
+        logger.error(`[MatchingEngine] CRITICAL: Order ${orderId} removed from book but FAILED to mark CANCELLED in DB.`);
+        return false;
       }
       logger.debug(`[MatchingEngine] Order ${orderId} removed from book and marked CANCELLED.`);
       return true;
     } else {
-      const currentOrderState = await cache.findOnePromise('orders', { _id: orderId }) as Order | null;
+      const currentOrderState = await cache.findOnePromise('orders', { _id: orderId }) as OrderData | null;
       if (currentOrderState && (currentOrderState.status === OrderStatus.FILLED || currentOrderState.status === OrderStatus.CANCELLED)) {
         logger.debug(`[MatchingEngine] Order ${orderId} already filled or cancelled in DB. Considered success for cancellation attempt.`);
         return true;
@@ -357,8 +432,6 @@ class MatchingEngine {
       return false;
     }
   }
-
-  // ... other methods like getOrderBookSnapshot(pairId), getOrderStatus(orderId), etc.
 }
 
-export const matchingEngine = new MatchingEngine(); 
+export const matchingEngine = new MatchingEngine();

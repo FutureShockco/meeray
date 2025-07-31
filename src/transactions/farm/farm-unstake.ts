@@ -60,34 +60,20 @@ export async function validateTx(data: FarmUnstakeData, sender: string): Promise
   }
 }
 
-export async function process(data: FarmUnstakeDataDB, sender: string, id: string): Promise<boolean> {
+export async function process(data: FarmUnstakeData, sender: string, id: string): Promise<boolean> {
   try {
-    // Convert string amounts to BigInt for processing
-    const unstakeData = convertToBigInt<FarmUnstakeData>(data, NUMERIC_FIELDS);
-
-    const farm = await cache.findOnePromise('farms', { _id: unstakeData.farmId }) as Farm | null;
-    if (!farm) {
-      logger.error(`[farm-unstake] Farm ${unstakeData.farmId} not found during processing.`);
-      return false;
-    }
-
-    const userFarmPositionId = `${unstakeData.staker}-${unstakeData.farmId}`;
-    const userFarmPosDB = await cache.findOnePromise('userFarmPositions', { _id: userFarmPositionId }) as UserFarmPositionDB | null;
-    const userFarmPos = userFarmPosDB ? convertToBigInt<UserFarmPosition>(userFarmPosDB, ['stakedAmount', 'pendingRewards']) : null;
-
-    if (!userFarmPos || userFarmPos.stakedAmount < unstakeData.lpTokenAmount) {
-      logger.error(`[farm-unstake] CRITICAL: Staker ${unstakeData.staker} has insufficient staked LP for farm ${unstakeData.farmId} during processing.`);
-      return false;
-    }
+    const farm = (await cache.findOnePromise('farms', { _id: data.farmId }) as FarmData)!;
+    const userFarmPositionId = `${data.staker}-${data.farmId}`;
+    const userFarmPos = (await cache.findOnePromise('userFarmPositions', { _id: userFarmPositionId }) as UserFarmPositionData)!;
 
     // 1. Decrease staked amount in UserFarmPosition
-    const newStakedAmount = userFarmPos.stakedAmount - unstakeData.lpTokenAmount;
+    const newStakedAmount = toBigInt(userFarmPos.stakedAmount) - toBigInt(data.lpTokenAmount);
     const userFarmPosUpdateSuccess = await cache.updateOnePromise(
       'userFarmPositions',
       { _id: userFarmPositionId },
       { 
         $set: {
-          ...convertToString({ stakedAmount: newStakedAmount }, ['stakedAmount']),
+          stakedAmount: newStakedAmount.toString(),
           lastUpdatedAt: new Date().toISOString()
         }
       }
@@ -101,9 +87,9 @@ export async function process(data: FarmUnstakeDataDB, sender: string, id: strin
     // 2. Decrease totalStaked in Farm document
     const farmUpdateSuccess = await cache.updateOnePromise(
       'farms',
-      { _id: unstakeData.farmId },
+      { _id: data.farmId },
       { 
-        $inc: convertToString({ totalStaked: -unstakeData.lpTokenAmount }, ['totalStaked']),
+        $inc: { totalStaked: (-toBigInt(data.lpTokenAmount)).toString() },
         $set: { lastUpdatedAt: new Date().toISOString() }
       }
     );
@@ -114,7 +100,7 @@ export async function process(data: FarmUnstakeDataDB, sender: string, id: strin
         'userFarmPositions',
         { _id: userFarmPositionId },
         { 
-          $set: convertToString({ stakedAmount: userFarmPos.stakedAmount }, ['stakedAmount'])
+          $set: { stakedAmount: userFarmPos.stakedAmount }
         }
       );
       return false;
@@ -122,11 +108,10 @@ export async function process(data: FarmUnstakeDataDB, sender: string, id: strin
 
     // 3. Return LP tokens to user's liquidity position
     const poolIdForLp = farm.stakingToken.issuer;
-    const userLpDestinationPositionId = `${unstakeData.staker}-${poolIdForLp}`;
+    const userLpDestinationPositionId = `${data.staker}-${poolIdForLp}`;
     let finalLpReturnSuccess = false;
 
-    const existingUserLiquidityPosDB = await cache.findOnePromise('userLiquidityPositions', { _id: userLpDestinationPositionId }) as UserLiquidityPositionDB | null;
-    const existingUserLiquidityPos = existingUserLiquidityPosDB ? convertToBigInt<UserLiquidityPosition>(existingUserLiquidityPosDB, ['lpTokenBalance']) : null;
+    const existingUserLiquidityPos = await cache.findOnePromise('userLiquidityPositions', { _id: userLpDestinationPositionId }) as UserLiquidityPositionData | null;
 
     if (existingUserLiquidityPos) {
       finalLpReturnSuccess = await cache.updateOnePromise(
@@ -134,21 +119,18 @@ export async function process(data: FarmUnstakeDataDB, sender: string, id: strin
         { _id: userLpDestinationPositionId },
         {
           $set: {
-            ...convertToString(
-              { lpTokenBalance: existingUserLiquidityPos.lpTokenBalance + unstakeData.lpTokenAmount },
-              ['lpTokenBalance']
-            ),
+            lpTokenBalance: (toBigInt(existingUserLiquidityPos.lpTokenBalance) + toBigInt(data.lpTokenAmount)).toString(),
             lastUpdatedAt: new Date().toISOString()
           }
         }
       );
     } else {
       // Create new position for returning LP tokens
-      const newUserLiquidityPos: UserLiquidityPosition = {
+      const newUserLiquidityPos: UserLiquidityPositionData = {
         _id: userLpDestinationPositionId,
-        provider: unstakeData.staker,
+        provider: data.staker,
         poolId: poolIdForLp,
-        lpTokenBalance: unstakeData.lpTokenAmount,
+        lpTokenBalance: data.lpTokenAmount,
         createdAt: new Date().toISOString(),
         lastUpdatedAt: new Date().toISOString()
       };
@@ -173,19 +155,19 @@ export async function process(data: FarmUnstakeDataDB, sender: string, id: strin
       // Rollback farm total
       await cache.updateOnePromise(
         'farms',
-        { _id: unstakeData.farmId },
-        { $inc: convertToString({ totalStaked: unstakeData.lpTokenAmount }, ['totalStaked']) }
+        { _id: data.farmId },
+        { $inc: { totalStaked: toBigInt(data.lpTokenAmount).toString() } }
       );
       // Rollback user farm position
       await cache.updateOnePromise(
         'userFarmPositions',
         { _id: userFarmPositionId },
-        { $set: convertToString({ stakedAmount: userFarmPos.stakedAmount }, ['stakedAmount']) }
+        { $set: { stakedAmount: userFarmPos.stakedAmount } }
       );
       return false;
     }
 
-    logger.debug(`[farm-unstake] Staker ${unstakeData.staker} unstaked ${unstakeData.lpTokenAmount} LP tokens from farm ${unstakeData.farmId} to pool ${poolIdForLp}.`);
+    logger.debug(`[farm-unstake] Staker ${data.staker} unstaked ${data.lpTokenAmount} LP tokens from farm ${data.farmId} to pool ${poolIdForLp}.`);
 
 
     return true;
