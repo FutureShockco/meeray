@@ -9,6 +9,7 @@ import { logTransactionEvent } from '../../utils/event-logger.js';
 
 // Import transaction processors for different route types
 import * as poolSwap from '../pool/pool-swap.js';
+import { PoolSwapResult } from '../pool/pool-interfaces.js';
 import { matchingEngine } from '../market/matching-engine.js';
 import { OrderData, OrderType, OrderSide, OrderStatus, createOrder } from '../market/market-interfaces.js';
 
@@ -259,22 +260,21 @@ async function executeAMMRoute(
       hops: ammDetails.hops
     };
 
-    // Validate and execute the swap
+    // Validate and execute the swap using the new function that returns output amount
     const isValid = await poolSwap.validateTx(swapData, sender);
     if (!isValid) {
       return { success: false, amountOut: BigInt(0), error: 'AMM swap validation failed' };
     }
 
-    const success = await poolSwap.process(swapData, sender, transactionId);
-    if (!success) {
-      return { success: false, amountOut: BigInt(0), error: 'AMM swap execution failed' };
+    // Use the new processWithResult function to get the actual output amount
+    const swapResult: PoolSwapResult = await poolSwap.processWithResult(swapData, sender, transactionId);
+    
+    if (!swapResult.success) {
+      return { success: false, amountOut: BigInt(0), error: swapResult.error || 'AMM swap execution failed' };
     }
 
-    // Calculate output (simplified - in real implementation, get from swap execution)
-    // This would need to be returned from the pool swap process function
-    const estimatedOutput = amountIn; // Placeholder - implement proper calculation
-    
-    return { success: true, amountOut: estimatedOutput };
+    // Return the actual output amount from the swap
+    return { success: true, amountOut: swapResult.amountOut };
   } catch (error) {
     return { success: false, amountOut: BigInt(0), error: `AMM route error: ${error}` };
   }

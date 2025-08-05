@@ -1,7 +1,7 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
-import { PoolSwapData, LiquidityPoolData } from './pool-interfaces.js';
+import { PoolSwapData, LiquidityPoolData, PoolSwapResult } from './pool-interfaces.js';
 import { adjustBalance, getAccount, Account } from '../../utils/account.js';
 import { toBigInt } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
@@ -388,6 +388,23 @@ export async function process(data: PoolSwapData, sender: string, transactionId:
     }
 }
 
+/**
+ * Process swap and return detailed result including output amount
+ * This is used by the hybrid trading system
+ */
+export async function processWithResult(data: PoolSwapData, sender: string, transactionId: string): Promise<PoolSwapResult> {
+    try {
+        // For now, only support single-hop swaps in hybrid trading
+        if (data.poolId) {
+            return await processSingleHopSwapWithResult(data, sender, transactionId);
+        } else {
+            return { success: false, amountOut: BigInt(0), error: 'Only single-hop swaps supported in hybrid trading' };
+        }
+    } catch (error) {
+        return { success: false, amountOut: BigInt(0), error: `Swap error: ${error}` };
+    }
+}
+
 async function processSingleHopSwap(data: PoolSwapData, sender: string, transactionId: string): Promise<boolean> {
     // Get pool data
     const poolFromDb = await cache.findOnePromise('liquidityPools', { _id: data.poolId });
@@ -487,6 +504,111 @@ async function processSingleHopSwap(data: PoolSwapData, sender: string, transact
     await logTransactionEvent('poolSwap', sender, eventData, transactionId);
 
     return true;
+}
+
+/**
+ * Single-hop swap that returns detailed result including output amount
+ * This is a copy of processSingleHopSwap but returns PoolSwapResult instead of boolean
+ */
+async function processSingleHopSwapWithResult(data: PoolSwapData, sender: string, transactionId: string): Promise<PoolSwapResult> {
+    try {
+        // Get pool data
+        const poolFromDb = await cache.findOnePromise('liquidityPools', { _id: data.poolId });
+        if (!poolFromDb) {
+            return { success: false, amountOut: BigInt(0), error: `Pool ${data.poolId} not found` };
+        }
+
+        // Determine token indices
+        const tokenInIsA = data.tokenIn_symbol === poolFromDb.tokenA_symbol;
+        const tokenIn_symbol = tokenInIsA ? poolFromDb.tokenA_symbol : poolFromDb.tokenB_symbol;
+        const tokenOut_symbol = tokenInIsA ? poolFromDb.tokenB_symbol : poolFromDb.tokenA_symbol;
+        const reserveIn = tokenInIsA ? toBigInt(poolFromDb.tokenA_reserve) : toBigInt(poolFromDb.tokenB_reserve);
+        const reserveOut = tokenInIsA ? toBigInt(poolFromDb.tokenB_reserve) : toBigInt(poolFromDb.tokenA_reserve);
+
+        // Calculate output amount using constant product formula (same as HTTP API)
+        const amountOut = getOutputAmountBigInt(toBigInt(data.amountIn), reserveIn, reserveOut, poolFromDb.feeTier);
+
+        // Calculate fee amount and update feeGrowthGlobal
+        const feeDivisor = BigInt(10000);
+        const feeAmount = (toBigInt(data.amountIn) * BigInt(poolFromDb.feeTier)) / feeDivisor;
+        const totalLpTokens = toBigInt(poolFromDb.totalLpTokens);
+        let newFeeGrowthGlobalA = toBigInt(poolFromDb.feeGrowthGlobalA || '0');
+        let newFeeGrowthGlobalB = toBigInt(poolFromDb.feeGrowthGlobalB || '0');
+        
+        if (totalLpTokens > 0n && feeAmount > 0n) {
+            const feeGrowthDelta = (feeAmount * BigInt(1e18)) / totalLpTokens;
+            if (tokenInIsA) {
+                newFeeGrowthGlobalA = newFeeGrowthGlobalA + feeGrowthDelta;
+            } else {
+                newFeeGrowthGlobalB = newFeeGrowthGlobalB + feeGrowthDelta;
+            }
+        }
+
+        // Ensure minimum output amount is met
+        if (data.minAmountOut && amountOut < toBigInt(data.minAmountOut)) {
+            return { success: false, amountOut: BigInt(0), error: `Output amount ${amountOut} is less than minimum required ${data.minAmountOut}` };
+        }
+
+        // Update pool reserves
+        const newReserveIn = reserveIn + toBigInt(data.amountIn);
+        const newReserveOut = reserveOut - amountOut;
+
+        // Update user balances
+        const deductSuccess = await adjustBalance(sender, tokenIn_symbol, -toBigInt(data.amountIn));
+        if (!deductSuccess) {
+            return { success: false, amountOut: BigInt(0), error: `Failed to deduct ${data.amountIn} ${tokenIn_symbol} from ${sender}` };
+        }
+        const creditSuccess = await adjustBalance(sender, tokenOut_symbol, amountOut);
+        if (!creditSuccess) {
+            // Rollback deduction
+            await adjustBalance(sender, tokenIn_symbol, toBigInt(data.amountIn));
+            return { success: false, amountOut: BigInt(0), error: `Failed to credit ${amountOut} ${tokenOut_symbol} to ${sender}` };
+        }
+
+        // Save updated pool state
+        const poolUpdateSet: any = {
+            lastTradeAt: new Date().toISOString(),
+            feeGrowthGlobalA: newFeeGrowthGlobalA.toString(),
+            feeGrowthGlobalB: newFeeGrowthGlobalB.toString()
+        };
+        if (tokenInIsA) {
+            poolUpdateSet.tokenA_reserve = newReserveIn.toString();
+            poolUpdateSet.tokenB_reserve = newReserveOut.toString();
+        } else {
+            poolUpdateSet.tokenB_reserve = newReserveIn.toString();
+            poolUpdateSet.tokenA_reserve = newReserveOut.toString();
+        }
+
+        const updateSuccess = await cache.updateOnePromise('liquidityPools', { _id: data.poolId }, {
+            $set: poolUpdateSet
+        });
+
+        if (!updateSuccess) {
+            // Rollback balance changes
+            await adjustBalance(sender, tokenOut_symbol, -amountOut);
+            await adjustBalance(sender, tokenIn_symbol, toBigInt(data.amountIn));
+            return { success: false, amountOut: BigInt(0), error: `Failed to update pool ${data.poolId} reserves` };
+        }
+
+        logger.info(`[pool-swap] Successful single-hop swap by ${sender} in pool ${data.poolId}: ${data.amountIn} ${tokenIn_symbol} -> ${amountOut} ${tokenOut_symbol}`);
+
+        // Log event
+        const eventData = {
+            poolId: data.poolId,
+            sender: sender,
+            tokenIn_symbol: tokenIn_symbol,
+            amountIn: data.amountIn.toString(),
+            tokenOut_symbol: tokenOut_symbol,
+            amountOut: amountOut.toString(),
+            feeTier: poolFromDb.feeTier,
+            swapType: 'single-hop'
+        };
+        await logTransactionEvent('poolSwap', sender, eventData, transactionId);
+
+        return { success: true, amountOut };
+    } catch (error) {
+        return { success: false, amountOut: BigInt(0), error: `Swap error: ${error}` };
+    }
 }
 
 async function processRoutedSwap(data: PoolSwapData, sender: string, transactionId: string): Promise<boolean> {

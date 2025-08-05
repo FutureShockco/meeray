@@ -1,5 +1,12 @@
 // Pool interfaces with string | bigint for all numeric fields
 
+// Swap result interface
+export interface PoolSwapResult {
+  success: boolean;
+  amountOut: bigint;
+  error?: string;
+}
+
 export interface PoolCreateData {
   tokenA_symbol: string;      // Symbol of the first token in the pair
   tokenB_symbol: string;      // Symbol of the second token in the pair
