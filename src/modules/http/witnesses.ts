@@ -4,6 +4,8 @@ import { mongo } from '../../mongo.js';
 import logger from '../../logger.js';
 import { AccountDoc } from '../../mongo.js'; // Assuming AccountDoc is exported from mongo.ts and includes witness fields
 import { toBigInt } from '../../utils/bigint.js';
+import { formatTokenAmountForResponse, formatTokenBalancesForResponse } from '../../utils/http.js';
+import config from '../../config.js';
 
 const router: Router = express.Router();
 
@@ -35,14 +37,11 @@ router.get('/', (async (req: Request, res: Response) => {
                 transformedWit.id = _id.toString();
             }
             if (totalVoteWeight) {
-                transformedWit.totalVoteWeight = toBigInt(totalVoteWeight as string).toString();
+                transformedWit.totalVoteWeight = formatTokenAmountForResponse(totalVoteWeight, config.nativeToken);
             }
             if (balances) {
-                const newBalances: Record<string, string> = {};
-                for (const tokenSymbol in balances) {
-                    newBalances[tokenSymbol] = toBigInt(balances[tokenSymbol] as string).toString();
-                }
-                transformedWit.balances = newBalances;
+                // Format token balances with proper decimals
+                transformedWit.balances = formatTokenBalancesForResponse(balances);
             }
             return transformedWit;
         });

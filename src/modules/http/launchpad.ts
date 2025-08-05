@@ -183,11 +183,23 @@ const getUserParticipationHandler: RequestHandler = async (req: Request, res: Re
         
         // Transform only the participant object for this specific route
         const participant = { ...participantRaw };
-        const participantNumericFields = ['amountContributed', 'tokensAllocated', 'claimedAmount'];
-        for (const field of participantNumericFields) {
-            if (participant[field] && typeof participant[field] === 'string') {
-                participant[field] = toBigInt(participant[field]).toString();
-            }
+        const tokenSymbol = launchpadFromDB.tokenSymbol || 'UNKNOWN';
+        
+        // Format contribution amounts (in STEEM) and token amounts (in project token)
+        if (participant.amountContributed) {
+            const formatted = formatTokenAmountForResponse(participant.amountContributed, 'STEEM');
+            participant.amountContributed = formatted.amount;
+            participant.rawAmountContributed = formatted.rawAmount;
+        }
+        if (participant.tokensAllocated) {
+            const formatted = formatTokenAmountForResponse(participant.tokensAllocated, tokenSymbol);
+            participant.tokensAllocated = formatted.amount;
+            participant.rawTokensAllocated = formatted.rawAmount;
+        }
+        if (participant.claimedAmount) {
+            const formatted = formatTokenAmountForResponse(participant.claimedAmount, tokenSymbol);
+            participant.claimedAmount = formatted.amount;
+            participant.rawClaimedAmount = formatted.rawAmount;
         }
 
         res.status(200).json(participant);
@@ -267,13 +279,25 @@ const getClaimableTokensHandler: RequestHandler = async (req: Request, res: Resp
         }
 
         const claimableAmountBI = totalAllocatedToUserBI - claimedByUserBI;
+        const tokenSymbol = launchpadFromDB.tokenSymbol || 'UNKNOWN';
+
+        // Format all amounts with proper decimals
+        const totalAllocatedFormatted = formatTokenAmountForResponse(totalAllocatedToUserBI.toString(), tokenSymbol);
+        const claimedFormatted = formatTokenAmountForResponse(claimedByUserBI.toString(), tokenSymbol);
+        const claimableFormatted = formatTokenAmountForResponse(
+            (claimableAmountBI < BigInt(0) ? BigInt(0) : claimableAmountBI).toString(), 
+            tokenSymbol
+        );
 
         res.status(200).json({
             launchpadId,
             userId,
-            totalAllocated: totalAllocatedToUserBI.toString(),
-            claimed: claimedByUserBI.toString(),
-            claimable: (claimableAmountBI < BigInt(0) ? BigInt(0) : claimableAmountBI).toString()
+            totalAllocated: totalAllocatedFormatted.amount,
+            rawTotalAllocated: totalAllocatedFormatted.rawAmount,
+            claimed: claimedFormatted.amount,
+            rawClaimed: claimedFormatted.rawAmount,
+            claimable: claimableFormatted.amount,
+            rawClaimable: claimableFormatted.rawAmount
         });
 
     } catch (error) {
