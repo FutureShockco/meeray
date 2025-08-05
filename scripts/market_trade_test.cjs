@@ -28,9 +28,9 @@ async function main() {
             trader: username,
             tokenIn: 'ECH',
             tokenOut: 'STEEM',
-            amountIn: '10.000',
-            minAmountOut: '8.500',      // 15% slippage tolerance
-            maxSlippagePercent: 15.0    // Maximum 15% slippage
+            amountIn: '1000000000',        // 10.000 ECH tokens (10 * 10^8 = 1000000000)
+            minAmountOut: '8500',          // 8.500 STEEM tokens (8.5 * 10^3 = 8500)
+            maxSlippagePercent: 15.0       // Maximum 15% slippage
             // routes: undefined - let the system auto-route for best price
         };
 
@@ -55,8 +55,8 @@ async function main() {
             trader: username,
             tokenIn: 'ECH',
             tokenOut: 'STEEM',
-            amountIn: '5.000',
-            minAmountOut: '4.000',
+            amountIn: '500000000',         // 5.000 ECH tokens (5 * 10^8 = 500000000)
+            minAmountOut: '4000',          // 4.000 STEEM tokens (4 * 10^3 = 4000)
             routes: [
                 {
                     type: 'AMM',

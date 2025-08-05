@@ -205,7 +205,7 @@ async function executeAMMRoute(
       tokenIn_symbol: tokenIn,
       tokenOut_symbol: tokenOut,
       amountIn: amountIn.toString(),
-      minAmountOut: '0', // No slippage check at route level
+      minAmountOut: '1', // Minimum 1 unit (route-level, overall slippage checked later)
       poolId: ammDetails.poolId,
       hops: ammDetails.hops
     };
