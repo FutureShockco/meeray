@@ -164,20 +164,30 @@ This document provides a comprehensive list of all transaction types implemented
 
 ## 2. Market Transactions
 
+**Important Security Note**: All market transactions use a secure token identifier system where tokens are referenced as `symbol@issuer` (e.g., `ECH@echelon-node1`). For market pair creation, the issuer is automatically set to the transaction sender to prevent security vulnerabilities where users could specify arbitrary issuers.
+
+**Token Identifier System**:
+- Native tokens (ECH, STEEM, SBD): issued by `config.masterName` (typically `echelon-node1`)
+- Custom tokens: issued by their creator account
+- Format: `symbol@issuer` ensures unique token identification across the ecosystem
+
 ### Market Create Pair (Type 7)
 - **File**: `src/transactions/market/market-create-pair.ts`
-- **Purpose**: Establishes a new trading pair for assets on the decentralized exchange.
+- **Purpose**: Establishes a new trading pair for assets on the decentralized exchange with automatic issuer security.
+- **Security Enhancement**: The `baseAssetIssuer` and `quoteAssetIssuer` are automatically set to the transaction sender for security, preventing users from specifying arbitrary issuers.
 - **Data Structure**:
   ```typescript
   export interface MarketCreatePairData {
     baseAssetSymbol: string;
-    baseAssetIssuer: string;
+    // baseAssetIssuer: automatically set to transaction sender for security
     quoteAssetSymbol: string;
-    quoteAssetIssuer: string;
-    tickSize: number;
-    lotSize: number;
-    minNotional: number;
-    initialStatus?: string; // Default to 'TRADING' or 'PRE_TRADE'
+    // quoteAssetIssuer: automatically set to transaction sender for security
+    tickSize: string | bigint;             // Minimum price movement
+    lotSize: string | bigint;              // Minimum quantity movement  
+    minNotional: string | bigint;          // Minimum order value in quote asset
+    initialStatus?: string;                // Default to 'TRADING' or 'PRE_TRADE'
+    minTradeAmount?: string | bigint;      // Minimum trade amount in quote asset
+    maxTradeAmount?: string | bigint;      // Maximum trade amount in quote asset
   }
   ```
 
@@ -187,15 +197,16 @@ This document provides a comprehensive list of all transaction types implemented
 - **Data Structure**:
   ```typescript
   export interface MarketPlaceOrderData {
-    userId: string; // Will be sender
+    userId: string;                        // Will be sender
     pairId: string;
     type: OrderType;
     side: OrderSide;
-    price?: number; // Required for LIMIT
-    quantity: number;
-    quoteOrderQty?: number; // For MARKET BUY by quote amount
+    price?: string | bigint;              // Required for LIMIT orders
+    quantity: string | bigint;
+    quoteOrderQty?: string | bigint;      // For MARKET BUY by quote amount
     timeInForce?: 'GTC' | 'IOC' | 'FOK';
-    // clientOrderId?: string;
+    expiresAt?: string;                   // ISO string expiry
+    expirationTimestamp?: number;         // Unix timestamp in seconds
   }
   ```
 
@@ -205,28 +216,49 @@ This document provides a comprehensive list of all transaction types implemented
 - **Data Structure**:
   ```typescript
   export interface MarketCancelOrderData {
-    userId: string; // Will be sender
+    userId: string;                       // Will be sender
     orderId: string;
-    pairId: string; // Useful for routing/sharding if books are managed per pair
+    pairId: string;                       // Useful for routing/sharding
   }
   ```
+
+### Hybrid Market Trade (Type 10)
+- **File**: `src/transactions/market/market-trade.ts`
+- **Purpose**: Executes trades across both AMM pools and orderbook liquidity for optimal price discovery and execution.
+- **Data Structure**:
+  ```typescript
+  export interface HybridTradeData {
+    trader: string;                       // Account making the trade
+    tokenIn: string;                      // Token being sold (symbol@issuer)
+    tokenOut: string;                     // Token being bought (symbol@issuer)
+    amountIn: string | bigint;           // Amount of tokenIn to trade
+    minAmountOut?: string | bigint;      // Minimum amount expected (slippage protection)
+    maxSlippagePercent?: number;         // Maximum allowed slippage (e.g., 2.0 for 2%)
+    routes?: HybridRoute[];              // Specific routes (optional, auto-route if not provided)
+  }
+  ```
+
+### Supporting Market Interfaces
 
 ### TradingPair
 - **File**: `src/transactions/market/market-interfaces.ts`
 - **Purpose**: Represents a tradable asset pair on the market, including its symbols, issuers, and trading parameters.
 - **Data Structure**:
   ```typescript
-  export interface TradingPair {
-    _id: string;
-    baseAssetSymbol: string;
-    baseAssetIssuer: string;
-    quoteAssetSymbol: string;
-    quoteAssetIssuer: string;
-    tickSize: number;
-    lotSize: number;
-    minNotional: number;
-    status: string;
-    createdAt: string;
+  export interface TradingPairData {
+    _id: string;                          // Unique pair identifier (e.g., ECH@echelon-node1-STEEM@echelon-node1)
+    baseAssetSymbol: string;              // Base asset symbol (e.g., ECH)
+    baseAssetIssuer: string;              // Base asset issuer (automatically set to creator)
+    quoteAssetSymbol: string;             // Quote asset symbol (e.g., STEEM)
+    quoteAssetIssuer: string;             // Quote asset issuer (automatically set to creator)
+    tickSize: string | bigint;            // Minimum price movement
+    lotSize: string | bigint;             // Minimum quantity movement
+    minNotional: string | bigint;         // Minimum order value in quote asset
+    minTradeAmount: string | bigint;      // Minimum trade amount
+    maxTradeAmount: string | bigint;      // Maximum trade amount
+    status: string;                       // Pair status (TRADING, PRE_TRADE, HALTED)
+    createdAt: string;                    // ISO date string
+    lastUpdatedAt?: string;               // ISO date string
   }
   ```
 
@@ -235,11 +267,57 @@ This document provides a comprehensive list of all transaction types implemented
 - **Purpose**: Represents a buy or sell order placed on the exchange, detailing its parameters, status, and fill information.
 - **Data Structure**:
   ```typescript
-  export interface Order {
-    _id: string;
-    userId: string;
-    pairId: string;
-    baseAssetSymbol: string;
+  export interface OrderData {
+    _id: string;                          // Unique order ID
+    userId: string;                       // Account ID of the user
+    pairId: string;                       // Reference to TradingPair._id
+    baseAssetSymbol: string;              // Base asset symbol
+    baseAssetIssuer: string;              // Base asset issuer
+    quoteAssetSymbol: string;             // Quote asset symbol
+    quoteAssetIssuer: string;             // Quote asset issuer
+    type: OrderType;                      // LIMIT or MARKET
+    side: OrderSide;                      // BUY or SELL
+    status: OrderStatus;                  // OPEN, FILLED, CANCELLED, etc.
+    price?: string | bigint;              // Price for LIMIT orders
+    quantity: string | bigint;            // Desired amount of base asset
+    filledQuantity: string | bigint;      // Amount filled
+    averageFillPrice?: string | bigint;   // Average fill price
+    cumulativeQuoteValue?: string | bigint; // Total value in quote asset
+    quoteOrderQty?: string | bigint;      // For MARKET orders
+    createdAt: string;                    // ISO Date string
+    updatedAt: string;                    // ISO Date string
+    timeInForce?: 'GTC' | 'IOC' | 'FOK';  // Time in force
+    expiresAt?: string;                   // ISO Date string
+  }
+  ```
+
+### HybridRoute
+- **File**: `src/transactions/market/market-interfaces.ts`
+- **Purpose**: Defines routing information for hybrid trades across AMM and orderbook liquidity.
+- **Data Structure**:
+  ```typescript
+  export interface HybridRoute {
+    type: 'AMM' | 'ORDERBOOK';           // Liquidity source type
+    allocation: number;                   // Percentage of trade (0-100)
+    details: AMMRouteDetails | OrderbookRouteDetails;
+  }
+
+  export interface AMMRouteDetails {
+    poolId?: string;                     // For single pool swap
+    hops?: Array<{                       // For multi-hop AMM swaps
+      poolId: string;
+      tokenIn: string;
+      tokenOut: string;
+    }>;
+  }
+
+  export interface OrderbookRouteDetails {
+    pairId: string;                      // Trading pair ID
+    side: OrderSide;                     // BUY or SELL
+    orderType?: OrderType;               // LIMIT or MARKET
+    price?: string | bigint;             // For LIMIT orders
+  }
+  ```
     quoteAssetSymbol: string;
     type: OrderType;
     side: OrderSide;

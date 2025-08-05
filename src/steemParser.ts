@@ -170,6 +170,17 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                         txType = TransactionType.LAUNCHPAD_CLAIM_TOKENS;
                         break;
                     
+                    // Market Transactions
+                    case 'market_create_pair':
+                        txType = TransactionType.MARKET_CREATE_PAIR;
+                        break;
+                    case 'market_place_order':
+                        txType = TransactionType.MARKET_PLACE_ORDER;
+                        break;
+                    case 'market_cancel_order':
+                        txType = TransactionType.MARKET_CANCEL_ORDER;
+                        break;
+                    
                     // Market Trading (Unified AMM + Orderbook)
                     case 'market_trade':
                         txType = TransactionType.MARKET_TRADE;

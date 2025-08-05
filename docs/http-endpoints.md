@@ -157,18 +157,25 @@ Handler: `src/modules/http/launchpad.ts`
 
 Handler: `src/modules/http/markets.ts`
 
+### Trading Pairs
+
 *   **GET `/pairs`**
     *   Description: List all trading pairs with pagination and filtering.
     *   Query Parameters:
         *   `limit`, `offset` (see Common Query Parameters)
-        *   `status` (string, optional): Filter pairs by status.
+        *   `status` (string, optional): Filter pairs by status (e.g., `TRADING`, `PRE_TRADE`, `HALTED`).
+        *   `baseAssetSymbol` (string, optional): Filter pairs by base asset symbol.
+        *   `quoteAssetSymbol` (string, optional): Filter pairs by quote asset symbol.
+        *   `createdBy` (string, optional): Filter pairs by creator account.
     *   Response: `{ data: TradingPair[], total: number, limit: number, skip: number }`
 
 *   **GET `/pairs/:pairId`**
     *   Description: Get details of a specific trading pair.
     *   Path Parameters:
-        *   `pairId` (string): The ID of the trading pair (e.g., `ECH-STM`).
+        *   `pairId` (string): The ID of the trading pair (e.g., `ECH@echelon-node1-STEEM@echelon-node1`).
     *   Response: `TradingPair` object or `{ message: string }` if not found.
+
+### Orders
 
 *   **GET `/orders/pair/:pairId`**
     *   Description: List orders for a specific trading pair.
@@ -222,6 +229,28 @@ Handler: `src/modules/http/markets.ts`
     *   Path Parameters:
         *   `tradeId` (string): The ID of the trade.
     *   Response: `Trade` object or `{ message: string }` if not found.
+
+### Hybrid Trading
+
+*   **POST `/quote`**
+    *   Description: Get a quote for a hybrid trade across AMM and orderbook liquidity.
+    *   Request Body:
+        ```json
+        {
+          "tokenIn": "ECH@echelon-node1",
+          "tokenOut": "STEEM@echelon-node1", 
+          "amountIn": "1000000000",
+          "maxSlippagePercent": 2.0
+        }
+        ```
+    *   Response: `HybridQuote` object with routes and pricing, or `{ message: string }` on error.
+
+*   **GET `/liquidity-sources`**
+    *   Description: List available liquidity sources for hybrid trading.
+    *   Query Parameters:
+        *   `tokenA` (string, optional): Filter by token A symbol@issuer.
+        *   `tokenB` (string, optional): Filter by token B symbol@issuer.
+    *   Response: `{ amm: LiquiditySource[], orderbook: LiquiditySource[] }`
 
 ## `/mine`
 
