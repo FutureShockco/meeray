@@ -6,11 +6,16 @@ export enum TransactionType {
   NFT_LIST_ITEM = 4,
   NFT_DELIST_ITEM = 5,
   NFT_BUY_ITEM = 6,
-  NFT_UPDATE = 7,
-  NFT_UPDATE_COLLECTION = 8,
+  NFT_UPDATE = 30,
+  NFT_UPDATE_COLLECTION = 31,
 
+  // Market Transactions
+  MARKET_CREATE_PAIR = 7,
+  MARKET_PLACE_ORDER = 8,
+  MARKET_CANCEL_ORDER = 9,
+  
   // Market Trading (Hybrid AMM + Orderbook)
-  MARKET_TRADE = 9,
+  MARKET_TRADE = 10,
 
   // Farm Transactions
   FARM_CREATE = 12,
@@ -52,6 +57,11 @@ export const transactions: { [key: number]: string } = {
   [TransactionType.NFT_UPDATE]: 'nft_update',
   [TransactionType.NFT_UPDATE_COLLECTION]: 'nft_update_collection',
   
+  // Market Transactions
+  [TransactionType.MARKET_CREATE_PAIR]: 'market_create_pair',
+  [TransactionType.MARKET_PLACE_ORDER]: 'market_place_order',
+  [TransactionType.MARKET_CANCEL_ORDER]: 'market_cancel_order',
+
   // Market Trading (Unified AMM + Orderbook)
   [TransactionType.MARKET_TRADE]: 'market_trade',
   

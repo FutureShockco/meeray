@@ -164,9 +164,9 @@ export interface OrderBookSnapshotData {
 // For operations that create/update orders/pairs
 export interface MarketCreatePairData {
     baseAssetSymbol: string;
-    baseAssetIssuer: string;
+    // baseAssetIssuer: removed for security - now automatically set to transaction sender
     quoteAssetSymbol: string;
-    quoteAssetIssuer: string;
+    // quoteAssetIssuer: removed for security - now automatically set to transaction sender
     tickSize: string | bigint;             // Changed from number to bigint
     lotSize: string | bigint;              // Changed from number to bigint
     minNotional: string | bigint;          // Changed from number to bigint
