@@ -193,3 +193,89 @@ export interface MarketCancelOrderData {
     orderId: string;
     pairId: string; // Useful for routing/sharding if books are managed per pair
 }
+
+// ===== HYBRID TRADING INTERFACES =====
+// Modern unified trading system combining AMM and Orderbook liquidity
+
+// Hybrid trading transaction data
+export interface HybridTradeData {
+  trader: string;                    // Account making the trade
+  tokenIn: string;                   // Token being sold
+  tokenOut: string;                  // Token being bought
+  amountIn: string | bigint;         // Amount of tokenIn to trade
+  minAmountOut?: string | bigint;    // Minimum amount of tokenOut expected (slippage protection)
+  maxSlippagePercent?: number;       // Maximum allowed slippage percentage (e.g., 2.0 for 2%)
+  routes?: HybridRoute[];            // Specific routes to use (optional, auto-route if not provided)
+}
+
+// Route information for hybrid trades
+export interface HybridRoute {
+  type: 'AMM' | 'ORDERBOOK';
+  allocation: number;                // Percentage of trade (0-100)
+  details: AMMRouteDetails | OrderbookRouteDetails;
+}
+
+export interface AMMRouteDetails {
+  poolId?: string;                   // For single pool swap
+  hops?: Array<{                     // For multi-hop AMM swaps
+    poolId: string;
+    tokenIn: string;
+    tokenOut: string;
+  }>;
+}
+
+export interface OrderbookRouteDetails {
+  pairId: string;                    // Trading pair ID
+  side: OrderSide;                   // BUY or SELL
+  orderType?: OrderType;             // LIMIT or MARKET (default MARKET for hybrid)
+  price?: string | bigint;           // For LIMIT orders
+}
+
+// Liquidity source information
+export interface LiquiditySource {
+  type: 'AMM' | 'ORDERBOOK';
+  id: string;                        // Pool ID or Pair ID
+  tokenA: string;
+  tokenB: string;
+  reserveA?: string | bigint;        // For AMM pools
+  reserveB?: string | bigint;        // For AMM pools
+  bestBid?: string | bigint;         // For orderbooks
+  bestAsk?: string | bigint;         // For orderbooks
+  bidDepth?: string | bigint;        // Available liquidity on bid side
+  askDepth?: string | bigint;        // Available liquidity on ask side
+  feeTier?: number;                  // Fee in basis points
+}
+
+// Quote response for hybrid trades
+export interface HybridQuote {
+  amountIn: string;
+  amountOut: string;
+  amountOutFormatted: string;
+  priceImpact: number;
+  priceImpactFormatted: string;
+  routes: Array<{
+    type: 'AMM' | 'ORDERBOOK';
+    allocation: number;
+    amountIn: string;
+    amountOut: string;
+    priceImpact: number;
+    details: any;
+  }>;
+  totalGas?: string;                 // Estimated gas cost
+  warning?: string;                  // Any warnings about the quote
+}
+
+// Result of hybrid trade execution
+export interface HybridTradeResult {
+  success: boolean;
+  actualAmountOut: string;
+  actualPriceImpact: number;
+  executedRoutes: Array<{
+    type: 'AMM' | 'ORDERBOOK';
+    amountIn: string;
+    amountOut: string;
+    transactionId?: string;
+  }>;
+  totalGasUsed?: string;
+  error?: string;
+}

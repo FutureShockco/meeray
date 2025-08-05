@@ -1,9 +1,9 @@
 const fs = require('fs');
 const path = require('path');
+const { default: dsteem, PrivateKey } = await import('dsteem');
 
 async function main() {
     // Dynamic import for dsteem
-    const { default: dsteem, PrivateKey } = await import('dsteem');
 
     const client = new dsteem.Client('https://api.justyy.com');
     let privateKeys;

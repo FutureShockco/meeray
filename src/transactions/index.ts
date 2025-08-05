@@ -38,9 +38,9 @@ async function searchForHandlers(dirPath: string) {
       logger.debug(`Entering subdirectory: ${filePath}`);
       await searchForHandlers(filePath);
     } else if ((file.endsWith('.ts') || file.endsWith('.js')) && !file.endsWith('.d.ts')) {
-      // Skip the index file itself
-      if (file === 'index.ts' || file === 'index.js' || file.includes('interfaces') || file === 'orderbook.ts' || file === 'orderbook.js' || file === 'matching-engine.ts' || file === 'matching-engine.js' || file === 'types.ts' || file === 'types.js') {
-        logger.debug(`Skipping index, interface, or specific files: ${filePath}`);
+      // Skip the index file itself and utility files
+      if (file === 'index.ts' || file === 'index.js' || file.includes('interfaces') || file === 'orderbook.ts' || file === 'orderbook.js' || file === 'matching-engine.ts' || file === 'matching-engine.js' || file === 'market-aggregator.ts' || file === 'market-aggregator.js' || file === 'types.ts' || file === 'types.js') {
+        logger.debug(`Skipping index, interface, or utility files: ${filePath}`);
         continue;
       }
 
