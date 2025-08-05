@@ -16,102 +16,75 @@ async function main() {
             process.exit(1);
         }
 
-        console.log('Adding liquidity orders to ECH-STEEM orderbook...');
+        console.log('Creating market liquidity using hybrid trading system...');
 
         // Get client and random account
         const { client, sscId } = await getClient();
         const username = "echelon-node1"; 
         const privateKey = PrivateKey.fromString(privateKeys[0]);
 
-        // Place some limit orders to create market depth
-        const orders = [
-            // BUY orders (bids) - buying ECH with STEEM
+        // Note: The old orderbook-only system has been replaced with hybrid trading
+        // Instead of placing individual orders, we now use market_trade which intelligently
+        // routes through both AMM pools and orderbook for optimal execution
+        
+        // Create some sample hybrid trades to demonstrate the new system
+        const hybridTrades = [
+            // Example: Trade ECH for STEEM
             {
-                pairId: 'ECH-STEEM',
-                type: 'LIMIT',
-                side: 'BUY',
-                price: '900',           // 0.9 STEEM per ECH
-                quantity: '100000000',  // 1.0 ECH
-                timeInForce: 'GTC'
+                trader: username,
+                tokenIn: 'ECH@echelon-node1',
+                tokenOut: 'STEEM@echelon-node1', 
+                amountIn: '100000000', // 1.0 ECH (8 decimals)
+                maxSlippagePercent: 2.0 // 2% max slippage
             },
+            // Example: Trade STEEM for ECH
             {
-                pairId: 'ECH-STEEM',
-                type: 'LIMIT', 
-                side: 'BUY',
-                price: '850',           // 0.85 STEEM per ECH
-                quantity: '200000000',  // 2.0 ECH
-                timeInForce: 'GTC'
-            },
-            {
-                pairId: 'ECH-STEEM',
-                type: 'LIMIT',
-                side: 'BUY', 
-                price: '800',           // 0.8 STEEM per ECH
-                quantity: '500000000',  // 5.0 ECH
-                timeInForce: 'GTC'
-            },
-            // SELL orders (asks) - selling ECH for STEEM
-            {
-                pairId: 'ECH-STEEM',
-                type: 'LIMIT',
-                side: 'SELL',
-                price: '1000',          // 1.0 STEEM per ECH
-                quantity: '100000000',  // 1.0 ECH
-                timeInForce: 'GTC'
-            },
-            {
-                pairId: 'ECH-STEEM',
-                type: 'LIMIT',
-                side: 'SELL',
-                price: '1050',          // 1.05 STEEM per ECH
-                quantity: '200000000',  // 2.0 ECH
-                timeInForce: 'GTC'
-            },
-            {
-                pairId: 'ECH-STEEM',
-                type: 'LIMIT',
-                side: 'SELL',
-                price: '1100',          // 1.1 STEEM per ECH
-                quantity: '300000000',  // 3.0 ECH
-                timeInForce: 'GTC'
+                trader: username,
+                tokenIn: 'STEEM@echelon-node1',
+                tokenOut: 'ECH@echelon-node1',
+                amountIn: '1000', // 1.0 STEEM (3 decimals)
+                maxSlippagePercent: 2.0
             }
         ];
 
-        for (let i = 0; i < orders.length; i++) {
-            const orderData = {
-                userId: username,
-                ...orders[i]
-            };
+        console.log('\n📢 IMPORTANT: The market system has been upgraded!');
+        console.log('• Old system: Individual orderbook orders (market_place_order)'); 
+        console.log('• New system: Hybrid trading (market_trade) with smart routing');
+        console.log('• Benefits: Automatic best price discovery across AMM + orderbook\n');
 
-            console.log(`\nPlacing order ${i + 1}/${orders.length}:`);
-            console.log(JSON.stringify(orderData, null, 2));
+        for (let i = 0; i < hybridTrades.length; i++) {
+            const tradeData = hybridTrades[i];
 
+            console.log(`\nExample hybrid trade ${i + 1}/${hybridTrades.length}:`);
+            console.log(JSON.stringify(tradeData, null, 2));
+
+            // Uncomment to actually execute the trades:
+            /*
             await sendCustomJson(
                 client,
                 sscId,
-                'market_place_order',
-                orderData,
+                'market_trade',
+                tradeData,
                 username,
                 privateKey
             );
 
-            console.log(`Order ${i + 1} placed successfully!`);
+            console.log(`Hybrid trade ${i + 1} executed successfully!`);
             
-            // Small delay between orders
+            // Small delay between trades
             await new Promise(resolve => setTimeout(resolve, 1000));
+            */
         }
 
-        console.log('\n✅ All limit orders placed! ECH-STEEM orderbook now has liquidity.');
-        console.log('\nOrderbook structure:');
-        console.log('ASKS (selling ECH):');
-        console.log('  1.10 STEEM - 3.0 ECH');
-        console.log('  1.05 STEEM - 2.0 ECH'); 
-        console.log('  1.00 STEEM - 1.0 ECH');
-        console.log('BIDS (buying ECH):');
-        console.log('  0.90 STEEM - 1.0 ECH');
-        console.log('  0.85 STEEM - 2.0 ECH');
-        console.log('  0.80 STEEM - 5.0 ECH');
-        console.log('\nNow you can test hybrid trades with both AMM and orderbook liquidity!');
+        console.log('\n✅ Hybrid trading examples prepared!');
+        console.log('\nHow the new system works:');
+        console.log('1. Submit a market_trade transaction with tokenIn/tokenOut');
+        console.log('2. System automatically finds best route across:');
+        console.log('   • AMM pools (if available)');
+        console.log('   • Orderbook liquidity (if available)');
+        console.log('3. Optimal execution with minimal slippage');
+        console.log('\nTo execute real trades, uncomment the sendCustomJson calls above.');
+        console.log('\nFor order cancellation, use market_cancel_order transaction type.');
 
     } catch (error) {
         console.error('Error placing orders:', error);

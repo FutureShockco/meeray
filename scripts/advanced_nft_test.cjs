@@ -68,7 +68,7 @@ async function sendCustomJson(contractAction, payload, actingUser, pk) {
     const result = await client.broadcast.sendOperations([operation], pk);
     console.log(`${contractAction} successful: TX ID ${result.id}, Block: ${result.block_num}`);
     // Attempt to find logs/events for critical data like listingId
-    if (result.id && (contractAction === 'nft_list_item' || contractAction === 'market_place_order')) {
+    if (result.id && (contractAction === 'nft_list_item' || contractAction.startsWith('market_'))) {
         try {
             await new Promise(resolve => setTimeout(resolve, 4000)); // Wait for block propagation
             const txInfo = await client.transaction.getTransaction(result.id);

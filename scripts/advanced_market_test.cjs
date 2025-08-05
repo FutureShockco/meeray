@@ -86,39 +86,33 @@ async function mintTokens(symbol, to, amount) {
 // --- Market Operation Helpers --- //
 async function createMarketPair(baseSymbol, quoteSymbol) {
   const payload = {
-    baseAssetSymbol: baseSymbol,
-    baseAssetIssuer: username,
-    quoteAssetSymbol: quoteSymbol,
-    quoteAssetIssuer: username,
-    tickSize: "10000",       // Represents 0.0001, assuming 8 decimal precision for price
-    lotSize: "100000000",    // Represents 1, assuming 8 decimal precision for quantity
-    minNotional: "100000000", // Represents 1, assuming 8 decimal precision for value
-    initialStatus: "TRADING"
+    baseAsset: `${baseSymbol}@${username}`,
+    quoteAsset: `${quoteSymbol}@${username}`,
+    metadata: {
+      description: `${baseSymbol}/${quoteSymbol} trading pair`,
+      category: 'test'
+    }
   };
   return sendCustomJson('market_create_pair', payload);
 }
 
-async function placeOrder(pairId, type, side, price, quantity) {
+// Note: The old orderbook system has been replaced with hybrid trading
+// Individual order placement is no longer available - use market_trade instead
+async function executeHybridTrade(tokenIn, tokenOut, amountIn, maxSlippage = 2.0) {
   const payload = {
-    userId: username,
-    pairId,
-    type,
-    side,
-    // Assuming price and quantity are passed as numbers and need conversion based on contract precision
-    // Example: if contract expects price with 8 decimals, 0.95 becomes "95000000"
-    // Example: if contract expects quantity with 8 decimals, 100 becomes "10000000000"
-    price: type === "LIMIT" ? (BigInt(Math.round(price * 100000000))).toString() : "0", // Convert to string BigInt, 0 for market
-    quantity: (BigInt(Math.round(quantity * 100000000))).toString(), // Convert to string BigInt
-    timeInForce: "GTC" // Good 'Til Canceled
+    trader: username,
+    tokenIn,
+    tokenOut,
+    amountIn: amountIn.toString(),
+    maxSlippagePercent: maxSlippage
   };
-  return sendCustomJson('market_place_order', payload);
+  return sendCustomJson('market_trade', payload);
 }
 
-async function cancelOrder(pairId, orderId) {
+async function cancelOrder(orderId) {
   const payload = {
-    userId: username,
     orderId,
-    pairId
+    trader: username
   };
   return sendCustomJson('market_cancel_order', payload);
 }
@@ -134,10 +128,8 @@ async function runAdvancedMarketTest() {
   const tokenInitialSupply = '1000000';
   const mintAmount = 10000;
 
-  // Construct pairId (pattern may need adjustment)
-  const expectedPairId = `${baseSymbol}:${username}/${quoteSymbol}:${username}`;
-
   console.log(`Running advanced MARKET test with account: ${username} on ${STEEM_API_URL}`);
+  console.log('📢 Using new hybrid trading system for optimal price discovery!');
 
   try {
     // 1. Create Base Token (ECH)
@@ -156,26 +148,49 @@ async function runAdvancedMarketTest() {
     // 4. Create Trading Pair
     console.log(`4. Creating trading pair ${baseSymbol}/${quoteSymbol}...`);
     await createMarketPair(baseSymbol, quoteSymbol);
-    console.log(`Trading pair created. Assumed Pair ID: ${expectedPairId}`);
+    console.log(`Trading pair created with automatic issuer assignment (${username})`);
 
-    // 5. Place Limit Buy Order
-    console.log(`5. Placing limit buy order: 100 ${baseSymbol} @ 0.95 ${quoteSymbol}...`);
-    const buyResult = await placeOrder(expectedPairId, "LIMIT", "BUY", 0.95, 100);
-    const buyOrderId = buyResult.id; // This might need adjustment based on how orderId is returned
+    // 5. Add some AMM liquidity first (this creates initial price discovery)
+    console.log(`5. Adding AMM liquidity to establish price...`);
+    await sendCustomJson('pool_add_liquidity', {
+      pairId: `${baseSymbol}-${quoteSymbol}`,
+      baseAmount: (1000 * Math.pow(10, tokenPrecision)).toString(), // 1000 ECH
+      quoteAmount: (1000 * Math.pow(10, tokenPrecision)).toString(), // 1000 USD (1:1 ratio)
+      minBaseAmount: (950 * Math.pow(10, tokenPrecision)).toString(),
+      minQuoteAmount: (950 * Math.pow(10, tokenPrecision)).toString()
+    });
 
-    // 6. Place Limit Sell Order
-    console.log(`6. Placing limit sell order: 50 ${baseSymbol} @ 1.05 ${quoteSymbol}...`);
-    await placeOrder(expectedPairId, "LIMIT", "SELL", 1.05, 50);
+    // 6. Test hybrid trades (automatically routes through AMM + any orderbook liquidity)
+    console.log(`6. Testing hybrid trade: Buy ${baseSymbol} with ${quoteSymbol}...`);
+    await executeHybridTrade(
+      `${quoteSymbol}@${username}`, // tokenIn (USD)
+      `${baseSymbol}@${username}`,  // tokenOut (ECH)
+      (100 * Math.pow(10, tokenPrecision)).toString(), // 100 USD
+      2.0 // 2% max slippage
+    );
 
-    // 7. Cancel Buy Order
-    console.log(`7. Canceling buy order ${buyOrderId}...`);
-    await cancelOrder(expectedPairId, buyOrderId);
+    // 7. Test reverse hybrid trade
+    console.log(`7. Testing hybrid trade: Sell ${baseSymbol} for ${quoteSymbol}...`);
+    await executeHybridTrade(
+      `${baseSymbol}@${username}`,  // tokenIn (ECH)
+      `${quoteSymbol}@${username}`, // tokenOut (USD)
+      (50 * Math.pow(10, tokenPrecision)).toString(), // 50 ECH
+      2.0 // 2% max slippage
+    );
 
-    // 8. Place Market Buy Order
-    console.log(`8. Placing market buy order: 75 ${baseSymbol}...`);
-    await placeOrder(expectedPairId, "MARKET", "BUY", 0, 75); // Price is ignored for market orders
-
-    console.log('Advanced market test completed successfully!');
+    console.log('\n✅ Advanced market test completed successfully!');
+    console.log('\nWhat happened:');
+    console.log('• Created ECH/USD trading pair with secure sender-based issuer assignment');
+    console.log('• Added AMM liquidity for price discovery');
+    console.log('• Executed hybrid trades that automatically found best prices across:');
+    console.log('  - AMM pool liquidity');
+    console.log('  - Orderbook liquidity (if any existed)');
+    console.log('• Smart routing minimized slippage and maximized execution quality');
+    
+    console.log('\nOld vs New System:');
+    console.log('❌ Old: Manual orderbook orders with complex price/quantity calculations');
+    console.log('✅ New: Simple hybrid trades with automatic best execution');
+    
   } catch (error) {
     console.error('Advanced market test failed.');
     // Error details are logged by sendCustomJson

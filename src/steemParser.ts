@@ -174,9 +174,6 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                     case 'market_create_pair':
                         txType = TransactionType.MARKET_CREATE_PAIR;
                         break;
-                    case 'market_place_order':
-                        txType = TransactionType.MARKET_PLACE_ORDER;
-                        break;
                     case 'market_cancel_order':
                         txType = TransactionType.MARKET_CANCEL_ORDER;
                         break;

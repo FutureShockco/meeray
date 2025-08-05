@@ -191,40 +191,23 @@ This document provides a comprehensive list of all transaction types implemented
   }
   ```
 
-### Market Place Order (Type 8)
-- **File**: `src/transactions/market/market-place-order.ts`
-- **Purpose**: Submits a buy or sell order for a specific trading pair on the exchange.
-- **Data Structure**:
-  ```typescript
-  export interface MarketPlaceOrderData {
-    userId: string;                        // Will be sender
-    pairId: string;
-    type: OrderType;
-    side: OrderSide;
-    price?: string | bigint;              // Required for LIMIT orders
-    quantity: string | bigint;
-    quoteOrderQty?: string | bigint;      // For MARKET BUY by quote amount
-    timeInForce?: 'GTC' | 'IOC' | 'FOK';
-    expiresAt?: string;                   // ISO string expiry
-    expirationTimestamp?: number;         // Unix timestamp in seconds
-  }
-  ```
-
 ### Market Cancel Order (Type 9)
 - **File**: `src/transactions/market/market-cancel-order.ts`
-- **Purpose**: Cancels a previously placed, open order on the exchange.
+- **Purpose**: Cancels a previously placed order that was created through hybrid trading system.
+- **Use Case**: When hybrid trades route through orderbook, they create actual orders that users can cancel if unfilled.
 - **Data Structure**:
   ```typescript
   export interface MarketCancelOrderData {
     userId: string;                       // Will be sender
     orderId: string;
-    pairId: string;                       // Useful for routing/sharding
+    pairId: string;                       // Trading pair ID for the order
   }
   ```
 
 ### Hybrid Market Trade (Type 10)
 - **File**: `src/transactions/market/market-trade.ts`
 - **Purpose**: Executes trades across both AMM pools and orderbook liquidity for optimal price discovery and execution.
+- **Note**: This is the primary trading method. Users specify what they want to trade and the system finds the best route.
 - **Data Structure**:
   ```typescript
   export interface HybridTradeData {
@@ -1014,5 +997,3 @@ POST /pools/route-swap
     createdAt: string;
   }
   ```
-
-### UserFarmPosition

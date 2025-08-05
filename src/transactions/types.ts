@@ -11,7 +11,6 @@ export enum TransactionType {
 
   // Market Transactions
   MARKET_CREATE_PAIR = 7,
-  MARKET_PLACE_ORDER = 8,
   MARKET_CANCEL_ORDER = 9,
   
   // Market Trading (Hybrid AMM + Orderbook)
@@ -59,7 +58,6 @@ export const transactions: { [key: number]: string } = {
   
   // Market Transactions
   [TransactionType.MARKET_CREATE_PAIR]: 'market_create_pair',
-  [TransactionType.MARKET_PLACE_ORDER]: 'market_place_order',
   [TransactionType.MARKET_CANCEL_ORDER]: 'market_cancel_order',
 
   // Market Trading (Unified AMM + Orderbook)
