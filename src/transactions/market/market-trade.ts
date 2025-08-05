@@ -126,9 +126,9 @@ export async function process(data: HybridTradeData, sender: string, transaction
       let routeResult: { success: boolean; amountOut: bigint; error?: string };
 
       if (route.type === 'AMM') {
-        routeResult = await executeAMMRoute(route, data.tokenIn, data.tokenOut, routeAmountIn, sender, transactionId);
+        routeResult = await executeAMMRoute(route, data, routeAmountIn, sender, transactionId);
       } else {
-        routeResult = await executeOrderbookRoute(route, data.tokenIn, data.tokenOut, routeAmountIn, sender, transactionId);
+        routeResult = await executeOrderbookRoute(route, data, routeAmountIn, sender, transactionId);
       }
 
       if (routeResult.success) {
@@ -190,8 +190,7 @@ export async function process(data: HybridTradeData, sender: string, transaction
  */
 async function executeAMMRoute(
   route: HybridRoute,
-  tokenIn: string,
-  tokenOut: string,
+  tradeData: HybridTradeData,
   amountIn: bigint,
   sender: string,
   transactionId: string
@@ -199,13 +198,17 @@ async function executeAMMRoute(
   try {
     const ammDetails = route.details as any; // AMMRouteDetails
     
+    // Use user's slippagePercent if provided, otherwise default to 1%
+    const slippagePercent = tradeData.maxSlippagePercent || 1.0;
+    
     // Create pool swap data
     const swapData = {
       trader: sender,
-      tokenIn_symbol: tokenIn,
-      tokenOut_symbol: tokenOut,
+      tokenIn_symbol: tradeData.tokenIn,
+      tokenOut_symbol: tradeData.tokenOut,
       amountIn: amountIn.toString(),
       minAmountOut: '1', // Minimum 1 unit (route-level, overall slippage checked later)
+      slippagePercent: slippagePercent, // Use user's slippage preference
       poolId: ammDetails.poolId,
       hops: ammDetails.hops
     };
@@ -236,8 +239,7 @@ async function executeAMMRoute(
  */
 async function executeOrderbookRoute(
   route: HybridRoute,
-  tokenIn: string,
-  tokenOut: string,
+  tradeData: HybridTradeData,
   amountIn: bigint,
   sender: string,
   transactionId: string
@@ -252,8 +254,8 @@ async function executeOrderbookRoute(
       type: OrderType.MARKET,
       side: orderbookDetails.side,
       quantity: amountIn,
-      baseAssetSymbol: tokenIn, // Simplified
-      quoteAssetSymbol: tokenOut // Simplified
+      baseAssetSymbol: tradeData.tokenIn, // Simplified
+      quoteAssetSymbol: tradeData.tokenOut // Simplified
     });
 
     // Submit to matching engine
