@@ -2,6 +2,24 @@
 
 This document provides a comprehensive list of all transaction types implemented in the Meeray blockchain, including their data structures and purposes.
 
+## Token Identifier System
+
+**Important**: All tokens in the Echelon ecosystem use a secure identifier format: `symbol@issuer`
+
+**Examples**:
+- Native tokens: `ECH@echelon-node1`, `STEEM@echelon-node1`, `SBD@echelon-node1`
+- Custom tokens: `MYTOKEN@alice`, `GAMETOKEN@project-team`
+
+**Security Benefits**:
+- **Prevents confusion**: Multiple tokens can have the same symbol but different issuers
+- **Authorization control**: Only the issuer can perform certain operations on their tokens
+- **Automatic verification**: System validates that transaction senders have proper permissions
+
+**Usage in Transactions**:
+- Market pairs: Specify both tokens with full identifiers
+- Trading: Reference exact tokens being exchanged
+- Transfers: Ensure you're sending the correct token variant
+
 ## 1. NFT Transactions
 
 ### NFT Create Collection (Type 1)
@@ -149,9 +167,9 @@ This document provides a comprehensive list of all transaction types implemented
   }
   ```
 
-### NftUpdateMetadataData
-- **File**: `src/transactions/nft/nft-interfaces.ts`
-- **Purpose**: Defines the data structure for updating the metadata (properties or URI) of an existing NFT instance.
+### NFT Update Metadata (Type 7)
+- **File**: `src/transactions/nft/nft-update.ts`
+- **Purpose**: Updates the metadata (properties or URI) of an existing NFT instance.
 - **Data Structure**:
   ```typescript
   export interface NftUpdateMetadataData {
@@ -159,6 +177,21 @@ This document provides a comprehensive list of all transaction types implemented
     instanceId: string;
     properties?: Record<string, any>;
     uri?: string;
+  }
+  ```
+
+### NFT Update Collection (Type 8)
+- **File**: `src/transactions/nft/nft-update-collection.ts`
+- **Purpose**: Updates the metadata or configuration of an existing NFT collection.
+- **Data Structure**:
+  ```typescript
+  export interface NftUpdateCollectionData {
+    symbol: string;
+    name?: string;
+    description?: string;
+    logoUrl?: string;
+    websiteUrl?: string;
+    // Additional collection-level updates
   }
   ```
 
@@ -171,57 +204,341 @@ This document provides a comprehensive list of all transaction types implemented
 - Custom tokens: issued by their creator account
 - Format: `symbol@issuer` ensures unique token identification across the ecosystem
 
-### Market Create Pair (Type 7)
+### Market Create Pair (Type 9)
 - **File**: `src/transactions/market/market-create-pair.ts`
 - **Purpose**: Establishes a new trading pair for assets on the decentralized exchange with automatic issuer security.
-- **Security Enhancement**: The `baseAssetIssuer` and `quoteAssetIssuer` are automatically set to the transaction sender for security, preventing users from specifying arbitrary issuers.
+- **Security Enhancement**: The transaction sender is automatically assigned as the issuer for both assets, preventing users from specifying arbitrary issuers and eliminating potential security vulnerabilities.
 - **Data Structure**:
   ```typescript
   export interface MarketCreatePairData {
-    baseAssetSymbol: string;
-    // baseAssetIssuer: automatically set to transaction sender for security
-    quoteAssetSymbol: string;
-    // quoteAssetIssuer: automatically set to transaction sender for security
-    tickSize: string | bigint;             // Minimum price movement
-    lotSize: string | bigint;              // Minimum quantity movement  
-    minNotional: string | bigint;          // Minimum order value in quote asset
-    initialStatus?: string;                // Default to 'TRADING' or 'PRE_TRADE'
-    minTradeAmount?: string | bigint;      // Minimum trade amount in quote asset
-    maxTradeAmount?: string | bigint;      // Maximum trade amount in quote asset
+    baseAsset: string;        // Full token identifier: symbol@issuer (e.g., "ECH@echelon-node1")
+    quoteAsset: string;       // Full token identifier: symbol@issuer (e.g., "STEEM@echelon-node1")
+    metadata?: {              // Optional metadata for the trading pair
+      description?: string;
+      category?: string;
+      [key: string]: any;
+    };
   }
   ```
 
-### Market Cancel Order (Type 9)
+**Important Security Notes**:
+- The issuer portion of `baseAsset` and `quoteAsset` is automatically set to the transaction sender
+- Users should specify assets as `symbol@issuer` but the system validates and enforces sender authorization
+- This prevents malicious users from creating pairs for tokens they don't control
+
+### Market Cancel Order (Type 10)
 - **File**: `src/transactions/market/market-cancel-order.ts`
-- **Purpose**: Cancels a previously placed order that was created through hybrid trading system.
-- **Use Case**: When hybrid trades route through orderbook, they create actual orders that users can cancel if unfilled.
+- **Purpose**: Cancels a previously placed order that was created through the hybrid trading system.
+- **Use Case**: When hybrid trades route through orderbook, they may create actual orders that users can cancel if unfilled.
 - **Data Structure**:
   ```typescript
   export interface MarketCancelOrderData {
-    userId: string;                       // Will be sender
-    orderId: string;
-    pairId: string;                       // Trading pair ID for the order
+    orderId: string;          // Unique identifier of the order to cancel
+    trader: string;           // Account that placed the order (automatically set to sender)
   }
   ```
 
-### Hybrid Market Trade (Type 10)
+**Note**: Only orders created by the transaction sender can be cancelled for security reasons.
+
+### Hybrid Market Trade (Type 11)
 - **File**: `src/transactions/market/market-trade.ts`
 - **Purpose**: Executes trades across both AMM pools and orderbook liquidity for optimal price discovery and execution.
-- **Note**: This is the primary trading method. Users specify what they want to trade and the system finds the best route.
+- **Note**: This is the primary and recommended trading method. Users specify what they want to trade and the system automatically finds the best route across all available liquidity sources.
 - **Data Structure**:
   ```typescript
-  export interface HybridTradeData {
-    trader: string;                       // Account making the trade
-    tokenIn: string;                      // Token being sold (symbol@issuer)
-    tokenOut: string;                     // Token being bought (symbol@issuer)
+  export interface MarketTradeData {
+    trader: string;                       // Account making the trade (automatically set to sender)
+    tokenIn: string;                      // Token being sold (symbol@issuer format)
+    tokenOut: string;                     // Token being bought (symbol@issuer format)
     amountIn: string | bigint;           // Amount of tokenIn to trade
     minAmountOut?: string | bigint;      // Minimum amount expected (slippage protection)
     maxSlippagePercent?: number;         // Maximum allowed slippage (e.g., 2.0 for 2%)
-    routes?: HybridRoute[];              // Specific routes (optional, auto-route if not provided)
   }
   ```
 
-### Supporting Market Interfaces
+**Trading Process Explained**:
+
+1. **Route Discovery**: The system automatically analyzes all available liquidity sources:
+   - AMM pool liquidity (if pools exist for the token pair)
+   - Orderbook liquidity (existing limit orders)
+   - Multi-hop routes through intermediate tokens
+
+2. **Optimal Execution**: The trade is split and routed to achieve:
+   - Maximum output amount for the given input
+   - Minimum price impact and slippage
+   - Best overall execution quality
+
+3. **Slippage Protection**: 
+   - Set `maxSlippagePercent` for automatic protection (e.g., 2.0 = 2% max slippage)
+   - Or set `minAmountOut` for precise minimum output control
+   - Default slippage tolerance is 1% if not specified
+
+4. **Atomic Execution**: The entire trade is atomic - if any part fails, the whole transaction reverts
+
+**Example Trade**:
+```json
+{
+  "type": 11,
+  "sender": "alice",
+  "data": {
+    "tokenIn": "ECH@echelon-node1",
+    "tokenOut": "STEEM@echelon-node1", 
+    "amountIn": "100000000",
+    "maxSlippagePercent": 2.0
+  }
+}
+```
+
+**Benefits over Traditional Orderbook Trading**:
+- ✅ **No complex order management**: Just specify what you want to trade
+- ✅ **Automatic best price discovery**: System finds optimal route across all liquidity
+- ✅ **Reduced slippage**: Smart routing minimizes price impact
+- ✅ **Simplified UX**: No need to analyze orderbooks or calculate prices manually
+- ✅ **Better execution**: Combines AMM and orderbook advantages
+
+## 8. How to Place Trades - Complete Guide
+
+### Overview
+
+The Echelon blockchain uses a **hybrid trading system** that combines the best of both AMM (Automated Market Maker) pools and traditional orderbook liquidity. This provides users with optimal price discovery and execution without the complexity of managing individual orders.
+
+### Trading Methods
+
+#### 1. Primary Method: Hybrid Trading (Type 10)
+
+**What it is**: A single transaction that automatically routes your trade across all available liquidity sources for the best possible execution.
+
+**How it works**:
+1. You specify what token you want to sell and what you want to buy
+2. The system analyzes all available liquidity:
+   - AMM pools (Uniswap-style)
+   - Orderbook liquidity (traditional exchange-style)
+   - Multi-hop routes through intermediate tokens
+3. Your trade is automatically split and routed for optimal execution
+4. You get the best possible price with minimal slippage
+
+**Example Transaction**:
+```json
+{
+  "type": 11,
+  "sender": "alice",
+  "data": {
+    "tokenIn": "ECH@echelon-node1",
+    "tokenOut": "STEEM@echelon-node1",
+    "amountIn": "100000000",
+    "maxSlippagePercent": 2.0
+  }
+}
+```
+
+**Benefits**:
+- ✅ Simple: Just specify input/output tokens and amounts
+- ✅ Optimal pricing: Automatic best route discovery
+- ✅ Low slippage: Smart routing minimizes price impact
+- ✅ No order management: No need to monitor or cancel orders
+
+### Trading Process Step-by-Step
+
+#### Step 1: Determine Your Trade
+- **Token In**: The token you want to sell (e.g., "ECH@echelon-node1")
+- **Token Out**: The token you want to buy (e.g., "STEEM@echelon-node1")
+- **Amount In**: How much of the input token to trade
+- **Slippage Tolerance**: Maximum acceptable price deviation (typically 1-5%)
+
+#### Step 2: Submit Hybrid Trade Transaction
+```typescript
+const tradeData = {
+  tokenIn: "ECH@echelon-node1",      // Token being sold
+  tokenOut: "STEEM@echelon-node1",   // Token being bought
+  amountIn: "100000000",             // 1.0 ECH (8 decimals)
+  maxSlippagePercent: 2.0            // 2% maximum slippage
+};
+
+// Submit as custom_json transaction
+await client.broadcast.sendOperations([
+  ['custom_json', {
+    required_auths: ['alice'],
+    required_posting_auths: [],
+    id: 'sidechain',
+    json: JSON.stringify({
+      contract: 'market_trade',
+      payload: tradeData
+    })
+  }]
+], privateKey);
+```
+
+#### Step 3: System Execution
+The system automatically:
+1. **Route Discovery**: Finds all possible trading paths
+2. **Optimization**: Calculates the best combination of routes
+3. **Execution**: Atomically executes the trade across multiple liquidity sources
+4. **Settlement**: Updates balances and provides execution summary
+
+### Slippage Protection
+
+**What is slippage?**
+Slippage occurs when the actual execution price differs from the expected price due to market movement or insufficient liquidity.
+
+**Protection Methods**:
+
+1. **Percentage-based** (Recommended):
+   ```json
+   {
+     "maxSlippagePercent": 2.0  // 2% maximum slippage
+   }
+   ```
+
+2. **Absolute minimum output**:
+   ```json
+   {
+     "minAmountOut": "95000000"  // Minimum tokens to receive
+   }
+   ```
+
+**Common Slippage Settings**:
+- **0.1-0.5%**: For stable/highly liquid pairs
+- **1-2%**: For most trading pairs (recommended default)
+- **3-5%**: For volatile or low-liquidity pairs
+- **>5%**: Only for very illiquid pairs or urgent trades
+
+### Token Identifier Format
+
+All tokens use the format: `symbol@issuer`
+
+**Examples**:
+- Native tokens: `ECH@echelon-node1`, `STEEM@echelon-node1`
+- Custom tokens: `MYTOKEN@alice`, `DEFI@project-team`
+
+**Security Note**: The issuer portion ensures you're trading the correct token, as multiple tokens can have the same symbol but different issuers.
+
+### Advanced Features
+
+#### Order Cancellation (Type 9)
+If hybrid trading creates orderbook orders that don't fill immediately, you can cancel them:
+
+```json
+{
+  "type": 10,
+  "sender": "alice", 
+  "data": {
+    "orderId": "order_12345"
+  }
+}
+```
+
+#### Creating Trading Pairs (Type 7)
+Before trading, someone must create the trading pair:
+
+```json
+{
+  "type": 9,
+  "sender": "alice",
+  "data": {
+    "baseAsset": "ECH@echelon-node1",
+    "quoteAsset": "STEEM@echelon-node1",
+    "metadata": {
+      "description": "ECH/STEEM trading pair"
+    }
+  }
+}
+```
+
+### Best Practices
+
+1. **Start with small amounts** to test trading
+2. **Use appropriate slippage** based on pair liquidity
+3. **Check token identifiers** to ensure correct assets
+4. **Monitor execution** for unexpected results
+5. **Understand that all trades are final** - no refunds for user errors
+
+### Common Trading Scenarios
+
+#### Scenario 1: Basic Token Swap
+**Goal**: Swap 1 ECH for STEEM
+```json
+{
+  "tokenIn": "ECH@echelon-node1",
+  "tokenOut": "STEEM@echelon-node1", 
+  "amountIn": "100000000",
+  "maxSlippagePercent": 1.0
+}
+```
+
+#### Scenario 2: Large Trade with Higher Slippage
+**Goal**: Swap 100 ECH, accept up to 3% slippage
+```json
+{
+  "tokenIn": "ECH@echelon-node1",
+  "tokenOut": "STEEM@echelon-node1",
+  "amountIn": "10000000000", 
+  "maxSlippagePercent": 3.0
+}
+```
+
+#### Scenario 3: Precise Output Control
+**Goal**: Ensure receiving at least 0.95 STEEM
+```json
+{
+  "tokenIn": "ECH@echelon-node1",
+  "tokenOut": "STEEM@echelon-node1",
+  "amountIn": "100000000",
+  "minAmountOut": "950"
+}
+```
+
+### Error Handling
+
+**Common Errors**:
+- `"Insufficient balance"`: Not enough input tokens
+- `"Output amount less than minimum"`: Slippage exceeded
+- `"No route found"`: No liquidity path exists
+- `"Invalid token identifier"`: Malformed token format
+
+**Solutions**:
+- Check balances before trading
+- Increase slippage tolerance
+- Ensure trading pairs exist
+- Verify token identifier format
+
+### Migration from Old System
+
+**⚠️ Important**: The old orderbook-only system (market_place_order) has been deprecated and replaced with hybrid trading.
+
+**Old Way** (Deprecated):
+```json
+{
+  "type": 8,  // No longer supported
+  "data": {
+    "pairId": "ECH-STEEM",
+    "type": "LIMIT",
+    "side": "BUY", 
+    "price": "1000000",
+    "quantity": "100000000"
+  }
+}
+```
+
+**New Way** (Current):
+```json
+{
+  "type": 11,
+  "data": {
+    "tokenIn": "STEEM@echelon-node1",
+    "tokenOut": "ECH@echelon-node1",
+    "amountIn": "1000",
+    "maxSlippagePercent": 2.0
+  }
+}
+```
+
+**Benefits of Migration**:
+- ✅ Simpler: No complex order parameters
+- ✅ Better execution: Automatic optimal routing
+- ✅ Less risk: No order management needed
+- ✅ Better UX: Just specify what you want to trade
+
+## 9. Supporting Market Interfaces
 
 ### TradingPair
 - **File**: `src/transactions/market/market-interfaces.ts`
@@ -301,22 +618,6 @@ This document provides a comprehensive list of all transaction types implemented
     price?: string | bigint;             // For LIMIT orders
   }
   ```
-    quoteAssetSymbol: string;
-    type: OrderType;
-    side: OrderSide;
-    status: OrderStatus;
-    price?: number;
-    quantity: number;
-    filledQuantity: number;
-    averageFillPrice?: number;
-    cumulativeQuoteValue?: number;
-    quoteOrderQty?: number;
-    createdAt: string;
-    updatedAt: string;
-    timeInForce?: 'GTC' | 'IOC' | 'FOK';
-    expiresAt?: string;
-  }
-  ```
 
 ### Trade
 - **File**: `src/transactions/market/market-interfaces.ts`
@@ -369,7 +670,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ## 3. Farm Transactions
 
-### Farm Create (Type 10)
+### Farm Create (Type 12)
 - **File**: `src/transactions/farm/farm-create.ts`
 - **Purpose**: Establishes a new yield farm, allowing users to stake LP tokens for rewards.
 - **Data Structure**:
@@ -387,7 +688,7 @@ This document provides a comprehensive list of all transaction types implemented
   }
   ```
 
-### Farm Stake (Type 11)
+### Farm Stake (Type 13)
 - **File**: `src/transactions/farm/farm-stake.ts`
 - **Purpose**: Allows a user to stake their LP (Liquidity Provider) tokens into a specified farm to earn rewards.
 - **Data Structure**:
@@ -399,7 +700,7 @@ This document provides a comprehensive list of all transaction types implemented
   }
   ```
 
-### Farm Unstake (Type 12)
+### Farm Unstake (Type 14)
 - **File**: `src/transactions/farm/farm-unstake.ts`
 - **Purpose**: Allows a user to withdraw their staked LP tokens from a farm.
 - **Data Structure**:
@@ -412,7 +713,7 @@ This document provides a comprehensive list of all transaction types implemented
   }
   ```
 
-### Farm Claim Rewards (Type 13)
+### Farm Claim Rewards (Type 15)
 - **File**: `src/transactions/farm/farm-claim-rewards.ts`
 - **Purpose**: Allows a user to claim the accumulated rewards earned from staking in a farm.
 - **Data Structure**:
@@ -425,7 +726,7 @@ This document provides a comprehensive list of all transaction types implemented
 
 ## 4. Pool Transactions
 
-### Pool Create (Type 14)
+### Pool Create (Type 16)
 - **File**: `src/transactions/pool/pool-create.ts`
 - **Purpose**: Creates a new liquidity pool for a pair of tokens, enabling swaps and liquidity provision.
 - **Data Structure**:
@@ -439,7 +740,7 @@ This document provides a comprehensive list of all transaction types implemented
   }
   ```
 
-### Pool Add Liquidity (Type 15)
+### Pool Add Liquidity (Type 17)
 - **File**: `src/transactions/pool/pool-add-liquidity.ts`
 - **Purpose**: Allows a user to add liquidity to an existing pool by depositing a pair of tokens.
 - **Data Structure**:
@@ -452,7 +753,7 @@ This document provides a comprehensive list of all transaction types implemented
   }
   ```
 
-### Pool Remove Liquidity (Type 16)
+### Pool Remove Liquidity (Type 18)
 - **File**: `src/transactions/pool/pool-remove-liquidity.ts`
 - **Purpose**: Allows a user to remove their provided liquidity from a pool by burning LP tokens.
 - **Data Structure**:
@@ -464,7 +765,7 @@ This document provides a comprehensive list of all transaction types implemented
   }
   ```
 
-### Pool Swap (Type 17)
+### Pool Swap (Type 19)
 - **File**: `src/transactions/pool/pool-swap.ts`
 - **Purpose**: Allows a user to swap one token for another through liquidity pools. This transaction supports three modes:
   1. **Single-hop swap**: Direct swap through a specific pool
@@ -662,7 +963,7 @@ POST /pools/route-swap
 
 ## 5. Token Transactions
 
-### Token Create (Type 18)
+### Token Create (Type 20)
 - **File**: `src/transactions/token/token-create.ts`
 - **Purpose**: Registers a new fungible token on the blockchain with specified properties.
 - **Data Structure**:
@@ -681,7 +982,7 @@ POST /pools/route-swap
   }
   ```
 
-### Token Mint (Type 19)
+### Token Mint (Type 21)
 - **File**: `src/transactions/token/token-mint.ts`
 - **Purpose**: Creates new units of an existing mintable fungible token and assigns them to an account.
 - **Data Structure**:
@@ -693,7 +994,7 @@ POST /pools/route-swap
   }
   ```
 
-### Token Transfer (Type 20)
+### Token Transfer (Type 22)
 - **File**: `src/transactions/token/token-transfer.ts`
 - **Purpose**: Transfers a specified amount of a fungible token from one account to another.
 - **Data Structure**:
@@ -706,7 +1007,7 @@ POST /pools/route-swap
   }
   ```
 
-### Token Update (Type 21)
+### Token Update (Type 23)
 - **File**: `src/transactions/token/token-update.ts`
 - **Purpose**: Modifies the metadata (e.g., name, description, URLs) of an existing fungible token.
 - **Data Structure**:
@@ -722,7 +1023,7 @@ POST /pools/route-swap
 
 ## 6. Witness Transactions
 
-### Witness Register (Type 22)
+### Witness Register (Type 24)
 - **File**: `src/transactions/witness/witness-register.ts`
 - **Purpose**: Allows an account to register as a block-producing witness candidate.
 - **Data Structure**:
@@ -732,7 +1033,7 @@ POST /pools/route-swap
   }
   ```
 
-### Witness Vote (Type 23)
+### Witness Vote (Type 25)
 - **File**: `src/transactions/witness/witness-vote.ts`
 - **Purpose**: Allows an account to cast a vote for a registered witness candidate.
 - **Data Structure**:
@@ -742,7 +1043,7 @@ POST /pools/route-swap
   }
   ```
 
-### Witness Unvote (Type 24)
+### Witness Unvote (Type 26)
 - **File**: `src/transactions/witness/witness-unvote.ts`
 - **Purpose**: Allows an account to retract a previously cast vote for a witness candidate.
 - **Data Structure**:
@@ -754,7 +1055,7 @@ POST /pools/route-swap
 
 ## 7. Launchpad Transactions
 
-### Launchpad Launch Token (Type 25)
+### Launchpad Launch Token (Type 27)
 - **File**: `src/transactions/launchpad/launchpad-launch-token.ts`
 - **Purpose**: Initiates a new token launch project on the launchpad, defining its tokenomics, presale, and liquidity details.
 - **Data Structure**:
@@ -776,7 +1077,7 @@ POST /pools/route-swap
   }
   ```
 
-### Launchpad Participate Presale (Type 26)
+### Launchpad Participate Presale (Type 28)
 - **File**: `src/transactions/launchpad/launchpad-participate-presale.ts`
 - **Purpose**: Allows a user to contribute funds to participate in the presale of a launchpad project.
 - **Data Structure**:
@@ -788,7 +1089,7 @@ POST /pools/route-swap
   }
   ```
 
-### Launchpad Claim Tokens (Type 27)
+### Launchpad Claim Tokens (Type 29)
 - **File**: `src/transactions/launchpad/launchpad-claim-tokens.ts`
 - **Purpose**: Allows a user to claim their allocated tokens from a launchpad project after presale or vesting.
 - **Data Structure**:
@@ -800,7 +1101,7 @@ POST /pools/route-swap
   }
   ```
 
-## 8. Other Core Interfaces
+## 10. Other Core Interfaces
 
 ### VestingSchedule
 - **File**: `src/transactions/launchpad/launchpad-interfaces.ts`

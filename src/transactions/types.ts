@@ -6,15 +6,15 @@ export enum TransactionType {
   NFT_LIST_ITEM = 4,
   NFT_DELIST_ITEM = 5,
   NFT_BUY_ITEM = 6,
-  NFT_UPDATE = 30,
-  NFT_UPDATE_COLLECTION = 31,
+  NFT_UPDATE = 7,
+  NFT_UPDATE_COLLECTION = 8,
 
   // Market Transactions
-  MARKET_CREATE_PAIR = 7,
-  MARKET_CANCEL_ORDER = 9,
+  MARKET_CREATE_PAIR = 9,
+  MARKET_CANCEL_ORDER = 10,
   
   // Market Trading (Hybrid AMM + Orderbook)
-  MARKET_TRADE = 10,
+  MARKET_TRADE = 11,
 
   // Farm Transactions
   FARM_CREATE = 12,
