@@ -204,7 +204,11 @@ export interface HybridTradeData {
   tokenOut: string;                  // Token being bought (format: symbol@issuer)
   amountIn: string | bigint;         // Amount of tokenIn to trade
   
-  // Slippage Protection (choose one approach):
+  // Price Control (choose one approach):
+  price?: string | bigint;           // LIMIT ORDER: Specific price to execute at (overrides slippage protection)
+                                     // When specified, creates limit orders instead of market orders
+  
+  // Slippage Protection (used when price is not specified):
   maxSlippagePercent?: number;       // RECOMMENDED: Maximum allowed slippage percentage (e.g., 2.0 for 2%)
                                      // This automatically calculates minAmountOut based on current market prices
   
@@ -235,7 +239,7 @@ export interface OrderbookRouteDetails {
   pairId: string;                    // Trading pair ID
   side: OrderSide;                   // BUY or SELL
   orderType?: OrderType;             // LIMIT or MARKET (default MARKET for hybrid)
-  price?: string | bigint;           // For LIMIT orders
+  price?: string | bigint;           // For LIMIT orders - the specific price to execute at
 }
 
 // Liquidity source information

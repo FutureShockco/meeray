@@ -12,7 +12,7 @@ import * as poolSwap from '../pool/pool-swap.js';
 import { matchingEngine } from '../market/matching-engine.js';
 import { OrderData, OrderType, OrderSide, OrderStatus, createOrder } from '../market/market-interfaces.js';
 
-const NUMERIC_FIELDS_HYBRID_TRADE: Array<keyof HybridTradeData> = ['amountIn', 'minAmountOut'];
+const NUMERIC_FIELDS_HYBRID_TRADE: Array<keyof HybridTradeData> = ['amountIn', 'minAmountOut', 'price'];
 
 export async function validateTx(data: HybridTradeData, sender: string): Promise<boolean> {
   try {
@@ -46,17 +46,28 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
       return false;
     }
 
-    // Validate slippage protection (only one method allowed)
+    // Validate slippage protection vs price specification
+    const hasPrice = data.price !== undefined;
     const hasMinAmountOut = data.minAmountOut !== undefined;
     const hasMaxSlippage = data.maxSlippagePercent !== undefined;
+    
+    if (hasPrice && (hasMinAmountOut || hasMaxSlippage)) {
+      logger.warn('[hybrid-trade] Cannot specify price together with slippage protection (minAmountOut or maxSlippagePercent). Choose either specific price or slippage protection.');
+      return false;
+    }
+    
+    if (!hasPrice && !hasMinAmountOut && !hasMaxSlippage) {
+      logger.warn('[hybrid-trade] Must specify either price, minAmountOut, or maxSlippagePercent.');
+      return false;
+    }
     
     if (hasMinAmountOut && hasMaxSlippage) {
       logger.warn('[hybrid-trade] Cannot specify both minAmountOut and maxSlippagePercent. Choose one slippage protection method.');
       return false;
     }
-    
-    if (!hasMinAmountOut && !hasMaxSlippage) {
-      logger.warn('[hybrid-trade] Must specify either minAmountOut or maxSlippagePercent for slippage protection.');
+
+    if (hasPrice && toBigInt(data.price!) <= BigInt(0)) {
+      logger.warn('[hybrid-trade] price must be positive.');
       return false;
     }
 
@@ -113,19 +124,40 @@ export async function process(data: HybridTradeData, sender: string, transaction
     // Get optimal route if not provided
     let routes = data.routes;
     if (!routes || routes.length === 0) {
-      const quote = await liquidityAggregator.getBestQuote(data);
-      if (!quote) {
-        logger.warn('[hybrid-trade] No liquidity available for this trade.');
-        return false;
+      // Only auto-route for market orders (no specific price)
+      if (!data.price) {
+        const quote = await liquidityAggregator.getBestQuote(data);
+        if (!quote) {
+          logger.warn('[hybrid-trade] No liquidity available for this trade.');
+          return false;
+        }
+        routes = quote.routes.map(r => ({
+          type: r.type,
+          allocation: r.allocation,
+          details: r.details
+        }));
+      } else {
+        // For limit orders with specific price, default to orderbook only
+        logger.debug('[hybrid-trade] Using orderbook route for limit order with specific price');
+        routes = [{
+          type: 'ORDERBOOK',
+          allocation: 100,
+          details: {
+            pairId: `${data.tokenIn.split('@')[0]}-${data.tokenOut.split('@')[0]}`, // Simplified pair ID generation
+            side: OrderSide.BUY, // Fixed - use enum value
+            orderType: OrderType.LIMIT,
+            price: data.price
+          }
+        }];
       }
-      routes = quote.routes.map(r => ({
-        type: r.type,
-        allocation: r.allocation,
-        details: r.details
-      }));
     }
 
     // Execute trades across all routes
+    if (!routes || routes.length === 0) {
+      logger.error('[hybrid-trade] No routes available for execution.');
+      return false;
+    }
+
     const results: HybridTradeResult['executedRoutes'] = [];
     let totalAmountOut = BigInt(0);
     let totalAmountIn = BigInt(0);
@@ -261,25 +293,41 @@ async function executeOrderbookRoute(
   try {
     const orderbookDetails = route.details as any; // OrderbookRouteDetails
     
-    // Create market order
-    const orderData = createOrder({
+    // Determine order type based on whether price is specified
+    const orderType = tradeData.price ? OrderType.LIMIT : OrderType.MARKET;
+    
+    // Create order (limit or market)
+    const orderData: any = {
       userId: sender,
       pairId: orderbookDetails.pairId,
-      type: OrderType.MARKET,
+      type: orderType,
       side: orderbookDetails.side,
       quantity: amountIn,
       baseAssetSymbol: tradeData.tokenIn, // Simplified
       quoteAssetSymbol: tradeData.tokenOut // Simplified
-    });
+    };
+
+    // Add price for limit orders
+    if (orderType === OrderType.LIMIT && tradeData.price) {
+      orderData.price = tradeData.price;
+    }
+
+    const createdOrder = createOrder(orderData);
 
     // Submit to matching engine
-    const result = await matchingEngine.addOrder(orderData);
+    const result = await matchingEngine.addOrder(createdOrder);
     
     if (!result.accepted) {
       return { success: false, amountOut: BigInt(0), error: result.rejectReason };
     }
 
-    // Calculate output from trades
+    // For limit orders, the order might not be filled immediately
+    if (orderType === OrderType.LIMIT && result.trades.length === 0) {
+      logger.info(`[hybrid-trade] Limit order placed at price ${tradeData.price}, waiting for matching`);
+      return { success: true, amountOut: BigInt(0) }; // Order placed but not filled yet
+    }
+
+    // Calculate output from trades (for market orders or partially filled limit orders)
     const totalOutput = result.trades.reduce((sum, trade) => 
       sum + toBigInt(trade.quantity), BigInt(0));
     

@@ -243,7 +243,7 @@ This document provides a comprehensive list of all transaction types implemented
 ### Hybrid Market Trade (Type 11)
 - **File**: `src/transactions/market/market-trade.ts`
 - **Purpose**: Executes trades across both AMM pools and orderbook liquidity for optimal price discovery and execution.
-- **Note**: This is the primary and recommended trading method. Users specify what they want to trade and the system automatically finds the best route across all available liquidity sources.
+- **Note**: This is the primary and recommended trading method. Users can specify exact prices for limit orders or use slippage protection for market orders.
 - **Data Structure**:
   ```typescript
   export interface MarketTradeData {
@@ -252,16 +252,58 @@ This document provides a comprehensive list of all transaction types implemented
     tokenOut: string;                     // Token being bought (symbol@issuer format)
     amountIn: string | bigint;           // Amount of tokenIn to trade
     
-    // Slippage Protection (choose ONE method):
+    // Price Control (choose ONE method):
+    price?: string | bigint;             // LIMIT ORDER: Specific price to execute at
+                                         // When specified, creates limit orders that wait for your price
+    
+    // Slippage Protection (for market orders - choose ONE method):
     maxSlippagePercent?: number;         // RECOMMENDED: Maximum allowed slippage (e.g., 2.0 for 2%)
     minAmountOut?: string | bigint;      // ADVANCED: Exact minimum output (requires token decimal knowledge)
   }
   ```
 
-**Important**: You must specify exactly one slippage protection method:
-- **Recommended**: Use `maxSlippagePercent` for automatic, token-agnostic protection
-- **Advanced**: Use `minAmountOut` only if you need precise control and know exact token decimals
-- **Error**: Specifying both or neither will cause the transaction to fail
+**Trading Modes**:
+
+1. **LIMIT ORDERS** (specify `price`):
+   - Your order will only execute when market reaches your specified price
+   - Order stays in the orderbook until filled or manually cancelled
+   - Perfect for waiting for favorable prices
+   - Example: "I want to buy STEEM only if I can get it for 0.5 ECH or better"
+
+2. **MARKET ORDERS** (specify slippage protection):
+   - Executes immediately at current market prices
+   - Uses automatic routing for best execution
+   - Slippage protection prevents unfavorable execution
+
+**Examples**:
+
+**Limit Order Example**:
+```json
+{
+  "type": 11,
+  "sender": "alice",
+  "data": {
+    "tokenIn": "ECH@echelon-node1",
+    "tokenOut": "STEEM@echelon-node1", 
+    "amountIn": "100000000",
+    "price": "50000000"     // Will only execute at 0.5 STEEM per ECH or better
+  }
+}
+```
+
+**Market Order Example**:
+```json
+{
+  "type": 11,
+  "sender": "alice",
+  "data": {
+    "tokenIn": "ECH@echelon-node1",
+    "tokenOut": "STEEM@echelon-node1", 
+    "amountIn": "100000000",
+    "maxSlippagePercent": 2.0   // Execute immediately with max 2% slippage
+  }
+}
+```
 
 **Trading Process Explained**:
 
