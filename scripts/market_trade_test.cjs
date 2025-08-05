@@ -17,6 +17,8 @@ async function main() {
         }
 
         console.log('Testing unified market trade (AMM + Orderbook)...');
+        console.log('Note: Using maxSlippagePercent is recommended over minAmountOut');
+        console.log('This approach works with any token decimals without hardcoding amounts.\n');
 
         // Get client and random account
         const { client, sscId } = await getClient();
@@ -26,11 +28,11 @@ async function main() {
         // Test data for a basic market trade (auto-routing)
         const basicTradeData = {
             trader: username,
-            tokenIn: 'ECH',
-            tokenOut: 'STEEM',
-            amountIn: '1000000000',        // 10.000 ECH tokens (10 * 10^8 = 1000000000)
-            minAmountOut: '8500',          // 8.500 STEEM tokens (8.5 * 10^3 = 8500)
-            maxSlippagePercent: 15.0       // Maximum 15% slippage
+            tokenIn: 'ECH@echelon-node1',      // Use full token identifier format
+            tokenOut: 'STEEM@echelon-node1',   // Use full token identifier format
+            amountIn: '100000000',             // 1.0 ECH (ECH has 8 decimals)
+            maxSlippagePercent: 5.0            // Maximum 5% slippage (let system calculate minAmountOut)
+            // minAmountOut: not specified - let the system calculate based on slippage
             // routes: undefined - let the system auto-route for best price
         };
 
@@ -53,10 +55,10 @@ async function main() {
 
         const routedTradeData = {
             trader: username,
-            tokenIn: 'ECH',
-            tokenOut: 'STEEM',
-            amountIn: '500000000',         // 5.000 ECH tokens (5 * 10^8 = 500000000)
-            minAmountOut: '4000',          // 4.000 STEEM tokens (4 * 10^3 = 4000)
+            tokenIn: 'ECH@echelon-node1',      // Use full token identifier format
+            tokenOut: 'STEEM@echelon-node1',   // Use full token identifier format  
+            amountIn: '50000000',              // 0.5 ECH (0.5 * 10^8 = 50000000)
+            maxSlippagePercent: 10.0,          // 10% slippage (let system calculate minAmountOut)
             routes: [
                 {
                     type: 'AMM',
@@ -90,6 +92,33 @@ async function main() {
         );
 
         console.log('Routed market trade sent successfully!');
+
+        // Example of using minAmountOut for precise control (advanced usage)
+        console.log('\n--- Testing with precise minAmountOut control ---');
+        console.log('Note: Only use minAmountOut if you know the exact token decimals and expected output');
+
+        const preciseTradeData = {
+            trader: username,
+            tokenIn: 'ECH@echelon-node1',
+            tokenOut: 'STEEM@echelon-node1',
+            amountIn: '10000000',              // 0.1 ECH (small amount)
+            minAmountOut: '1',                 // Accept as little as 0.001 STEEM (very loose for testing)
+            // maxSlippagePercent: not specified when using minAmountOut
+        };
+
+        console.log('Sending precise trade:');
+        console.log(JSON.stringify(preciseTradeData, null, 2));
+
+        await sendCustomJson(
+            client,
+            sscId,
+            'market_trade',
+            preciseTradeData,
+            username,
+            privateKey
+        );
+
+        console.log('Precise market trade sent successfully!');
 
     } catch (error) {
         console.error('Error in market trade test:', error);

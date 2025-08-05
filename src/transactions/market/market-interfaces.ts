@@ -200,12 +200,19 @@ export interface MarketCancelOrderData {
 // Hybrid trading transaction data
 export interface HybridTradeData {
   trader: string;                    // Account making the trade
-  tokenIn: string;                   // Token being sold
-  tokenOut: string;                  // Token being bought
+  tokenIn: string;                   // Token being sold (format: symbol@issuer)
+  tokenOut: string;                  // Token being bought (format: symbol@issuer)
   amountIn: string | bigint;         // Amount of tokenIn to trade
-  minAmountOut?: string | bigint;    // Minimum amount of tokenOut expected (slippage protection)
-  maxSlippagePercent?: number;       // Maximum allowed slippage percentage (e.g., 2.0 for 2%)
-  routes?: HybridRoute[];            // Specific routes to use (optional, auto-route if not provided)
+  
+  // Slippage Protection (choose one approach):
+  maxSlippagePercent?: number;       // RECOMMENDED: Maximum allowed slippage percentage (e.g., 2.0 for 2%)
+                                     // This automatically calculates minAmountOut based on current market prices
+  
+  minAmountOut?: string | bigint;    // ADVANCED: Exact minimum amount of tokenOut expected
+                                     // Only use if you need precise control and know token decimals
+                                     // Note: Cannot be used together with maxSlippagePercent
+  
+  routes?: HybridRoute[];            // Optional: Specific routes to use (auto-route if not provided)
 }
 
 // Route information for hybrid trades

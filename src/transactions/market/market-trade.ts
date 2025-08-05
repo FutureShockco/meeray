@@ -46,12 +46,26 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
       return false;
     }
 
-    if (data.minAmountOut !== undefined && toBigInt(data.minAmountOut) < BigInt(0)) {
+    // Validate slippage protection (only one method allowed)
+    const hasMinAmountOut = data.minAmountOut !== undefined;
+    const hasMaxSlippage = data.maxSlippagePercent !== undefined;
+    
+    if (hasMinAmountOut && hasMaxSlippage) {
+      logger.warn('[hybrid-trade] Cannot specify both minAmountOut and maxSlippagePercent. Choose one slippage protection method.');
+      return false;
+    }
+    
+    if (!hasMinAmountOut && !hasMaxSlippage) {
+      logger.warn('[hybrid-trade] Must specify either minAmountOut or maxSlippagePercent for slippage protection.');
+      return false;
+    }
+
+    if (hasMinAmountOut && toBigInt(data.minAmountOut!) < BigInt(0)) {
       logger.warn('[hybrid-trade] minAmountOut cannot be negative.');
       return false;
     }
 
-    if (data.maxSlippagePercent !== undefined && (data.maxSlippagePercent < 0 || data.maxSlippagePercent > 100)) {
+    if (hasMaxSlippage && (data.maxSlippagePercent! < 0 || data.maxSlippagePercent! > 100)) {
       logger.warn('[hybrid-trade] maxSlippagePercent must be between 0 and 100.');
       return false;
     }

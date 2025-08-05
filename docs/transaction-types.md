@@ -251,10 +251,17 @@ This document provides a comprehensive list of all transaction types implemented
     tokenIn: string;                      // Token being sold (symbol@issuer format)
     tokenOut: string;                     // Token being bought (symbol@issuer format)
     amountIn: string | bigint;           // Amount of tokenIn to trade
-    minAmountOut?: string | bigint;      // Minimum amount expected (slippage protection)
-    maxSlippagePercent?: number;         // Maximum allowed slippage (e.g., 2.0 for 2%)
+    
+    // Slippage Protection (choose ONE method):
+    maxSlippagePercent?: number;         // RECOMMENDED: Maximum allowed slippage (e.g., 2.0 for 2%)
+    minAmountOut?: string | bigint;      // ADVANCED: Exact minimum output (requires token decimal knowledge)
   }
   ```
+
+**Important**: You must specify exactly one slippage protection method:
+- **Recommended**: Use `maxSlippagePercent` for automatic, token-agnostic protection
+- **Advanced**: Use `minAmountOut` only if you need precise control and know exact token decimals
+- **Error**: Specifying both or neither will cause the transaction to fail
 
 **Trading Process Explained**:
 
