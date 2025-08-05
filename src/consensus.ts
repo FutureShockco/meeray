@@ -52,8 +52,6 @@ const processSyncCollisionWindow = (height: number) => {
         return;
     }
 
-    logger.debug(`[SYNC-COLLISION-WINDOW] Processing ${pendingBlocks.length} blocks for height ${height} after collision window`);
-
     // Debug: Log all pending blocks to help troubleshoot
     for (let i = 0; i < pendingBlocks.length; i++) {
         const block = pendingBlocks[i].block;
@@ -64,7 +62,6 @@ const processSyncCollisionWindow = (height: number) => {
         // Only one block - process normally
         const block = pendingBlocks[0].block;
         const cb = pendingBlocks[0].cb;
-        logger.debug(`[SYNC-COLLISION-WINDOW] Single block for height ${height}, processing normally`);
         consensus.processBlockNormally(0, block, cb);
     } else {
         // Multiple blocks - apply deterministic resolution
@@ -79,7 +76,6 @@ const processSyncCollisionWindow = (height: number) => {
         });
 
         const winningBlock = pendingBlocks[0];
-        logger.info(`[SYNC-COLLISION-WINDOW] Winner: Block ${height} by ${winningBlock.block?.witness || 'unknown'} (timestamp: ${winningBlock.block?.timestamp || 'unknown'})`);
 
         // Log the losing blocks
         for (let i = 1; i < pendingBlocks.length; i++) {
@@ -308,8 +304,12 @@ export const consensus: Consensus = {
             return;
         }
 
-        // COLLISION WINDOW - Use synchronized window for all nodes in round 0 to prevent network splits
-        if (round === 0 && block._id && block.witness && block.timestamp && block.hash) {
+        // COLLISION WINDOW - Use synchronized window only when needed (sync mode or multiple witnesses)
+        const activeWitnessCount = this.activeWitnesses().length;
+        const needCollisionWindow = steem.isInSyncMode() || activeWitnessCount > 1;
+        
+        if (round === 0 && needCollisionWindow && block._id && block.witness && block.timestamp && block.hash) {
+            logger.debug(`[COLLISION-WINDOW] Using collision window for height ${block._id} (activeWitnesses: ${activeWitnessCount}, syncMode: ${steem.isInSyncMode()})`);
             const blockHeight = block._id;
             
             // Check if we already have a timer for this height
@@ -368,6 +368,11 @@ export const consensus: Consensus = {
             syncPendingBlocks[blockHeight].push({ block, cb });
             logger.debug(`[COLLISION-WINDOW] Added block from ${block.witness} to collision window for height ${blockHeight} (${syncPendingBlocks[blockHeight].length} total)`);
             return; // Don't process immediately
+        }
+
+        // Skip collision window for single witness in normal mode
+        if (round === 0 && !needCollisionWindow) {
+            logger.debug(`[COLLISION-WINDOW] Skipping collision window for height ${block._id || 'unknown'} (activeWitnesses: ${activeWitnessCount}, syncMode: ${steem.isInSyncMode()})`);
         }
 
         // Normal processing (non-sync mode or non-round-0)
