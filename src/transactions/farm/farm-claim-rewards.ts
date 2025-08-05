@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { FarmClaimRewardsData, FarmData, UserFarmPositionData } from './farm-interfaces.js';
 import { getAccount, adjustBalance } from '../../utils/account.js'; // For actual reward transfer later
-import { amountToString, convertToString } from '../../utils/bigint.js'; // Import amountToString and convertToString
+import { toDbString, convertToString } from '../../utils/bigint.js'; // Import toDbString and convertToString
 
 export async function validateTx(data: FarmClaimRewardsData, sender: string): Promise<boolean> {
   try {
@@ -74,34 +74,34 @@ export async function process(data: FarmClaimRewardsData, sender: string, id: st
 
     // Update user's token balance with the claimed rewards
     const rewardTokenId = `${farm.rewardToken.symbol}${farm.rewardToken.issuer ? '@' + farm.rewardToken.issuer : ''}`;
-    const balanceUpdateSuccess = await cache.updateOnePromise(
+    
+    // Get current balance and manually add rewards (to maintain proper padding)
+    const stakerAccount = await cache.findOnePromise('accounts', { name: data.staker });
+    const currentBalance = BigInt(stakerAccount?.balances?.[rewardTokenId] || '0');
+    const newBalance = currentBalance + pendingRewards;
+    
+    await cache.updateOnePromise(
       'accounts',
       { name: data.staker },
-      { $inc: { [`balances.${rewardTokenId}`]: amountToString(pendingRewards) } }
+      { $set: { [`balances.${rewardTokenId}`]: toDbString(newBalance) } }
     );
 
-    if (!balanceUpdateSuccess) {
-      logger.error(`[farm-claim-rewards] Failed to update balance for ${data.staker} with ${pendingRewards} ${rewardTokenId}.`);
-      return false;
-    }
-
     // Update UserFarmPosition to reset harvest time and add to pendingRewards for tracking
-    const updateFarmPosSuccess = await cache.updateOnePromise(
+    const currentUserFarmPos = await cache.findOnePromise('userFarmPositions', { _id: userFarmPositionId });
+    const currentPendingRewards = BigInt(currentUserFarmPos?.pendingRewards || '0');
+    const newPendingRewards = currentPendingRewards + pendingRewards;
+    
+    await cache.updateOnePromise(
       'userFarmPositions',
       { _id: userFarmPositionId },
       { 
         $set: { 
           lastHarvestTime: new Date().toISOString(), 
-          lastUpdatedAt: new Date().toISOString() 
-        },
-        $inc: convertToString({ pendingRewards: pendingRewards }, ['pendingRewards'])
+          lastUpdatedAt: new Date().toISOString(),
+          pendingRewards: toDbString(newPendingRewards)
+        }
       }
     );
-
-    if (!updateFarmPosSuccess) {
-      logger.error(`[farm-claim-rewards] CRITICAL: Failed to update user farm position ${userFarmPositionId} harvest time. Rewards were distributed but tracking may be inconsistent.`);
-      // Distributed rewards, but tracking might be wrong. Log for reconciliation.
-    }
 
     logger.debug(`[farm-claim-rewards] ${data.staker} claimed ${pendingRewards} rewards from farm ${data.farmId}.`);
 

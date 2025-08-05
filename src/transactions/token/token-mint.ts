@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { TokenMintData } from './token-interfaces.js';
 import config from '../../config.js';
-import { toBigInt } from '../../utils/bigint.js';
+import { toDbString, toBigInt } from '../../utils/bigint.js';
 
 export async function validateTx(data: TokenMintData, sender: string): Promise<boolean> {
   try {
@@ -80,47 +80,28 @@ export async function process(data: TokenMintData, sender: string, id: string): 
       return false;
     }
 
-    const updateTokenSuccess = await cache.updateOnePromise(
+    await cache.updateOnePromise(
       'tokens',
       { _id: data.symbol },
-      { $set: { currentSupply: newSupply } }
+      { $set: { currentSupply: toDbString(newSupply) } }
     );
-
-    if (!updateTokenSuccess) {
-      logger.error(`[token-mint:process] Failed to update token supply for ${data.symbol}`);
-      return false;
-    }
 
     const recipientAccount = await cache.findOnePromise('accounts', { name: data.to });
     if (!recipientAccount) {
       logger.error(`[token-mint:process] Recipient account ${data.to} not found. Cannot mint to non-existent account.`);
-      await cache.updateOnePromise(
-        'tokens',
-        { _id: data.symbol },
-        { $set: { currentSupply: tokenFromCache!.currentSupply } }
-      );
       return false;
     }
 
     const currentBalanceStr = recipientAccount.balances?.[data.symbol] || '0';
     const newBalance = toBigInt(currentBalanceStr) + toBigInt(data.amount);
 
-    const updateBalanceSuccess = await cache.updateOnePromise(
+    await cache.updateOnePromise(
       'accounts',
       { name: data.to },
-      { $set: { [`balances.${data.symbol}`]: newBalance } }
+      { $set: { [`balances.${data.symbol}`]: toDbString(newBalance) } }
     );
-
-    if (!updateBalanceSuccess) {
-      logger.error(`[token-mint:process] Failed to update balance for ${data.to}. Rolling back token supply.`);
-      await cache.updateOnePromise(
-        'tokens',
-        { _id: data.symbol },
-        { $set: { currentSupply: tokenFromCache!.currentSupply } }
-      );
-      return false;
-    }
-    logger.info(`[token-mint:process] Minted ${data.amount} of ${data.symbol} to ${data.to} by ${sender}. New supply: ${newSupply}.`);
+    
+    logger.info(`[token-mint:process] Minted ${data.amount.toString()} of ${data.symbol} to ${data.to} by ${sender}. New supply: ${newSupply.toString()}.`);
     return true;
   } catch (error) {
     logger.error(`[token-mint:process] Error: ${error}`);

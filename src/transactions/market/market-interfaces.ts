@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { BigIntToString, toBigInt, amountToString } from '../../utils/bigint.js';
+import { BigIntToString, toBigInt, toDbString } from '../../utils/bigint.js';
 
 export enum OrderType {
   LIMIT = 'limit',

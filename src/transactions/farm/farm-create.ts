@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import config from '../../config.js';
 import { FarmCreateData, FarmData } from './farm-interfaces.js';
-import { convertToBigInt, convertToString, amountToString, BigIntMath } from '../../utils/bigint.js';
+import { convertToBigInt, convertToString, toDbString, BigIntMath } from '../../utils/bigint.js';
 import { getAccount } from '../../utils/account.js';
 
 const NUMERIC_FIELDS_FARM_CREATE: Array<keyof FarmCreateData> = ['totalRewards', 'rewardsPerBlock', 'minStakeAmount', 'maxStakeAmount'];
@@ -132,16 +132,11 @@ export async function process(data: FarmCreateData, sender: string, id: string):
             return false;
         }
 
-        const updateSenderBalanceSuccess = await cache.updateOnePromise(
+        await cache.updateOnePromise(
             'accounts',
             { name: sender },
-            { $set: { [senderBalanceKey]: amountToString(newSenderRewardBalance) } }
+            { $set: { [senderBalanceKey]: toDbString(newSenderRewardBalance) } }
         );
-
-        if (!updateSenderBalanceSuccess) {
-            logger.error(`[farm-create] Failed to deduct reward tokens from ${sender}.`);
-            return false;
-        }
 
         const farmDocument: FarmData = {
             _id: farmId,
@@ -172,12 +167,7 @@ export async function process(data: FarmCreateData, sender: string, id: string):
         });
         
         if (!insertSuccess) {
-            logger.error(`[farm-create] Failed to insert farm ${farmId}. Attempting to roll back sender balance.`);
-            await cache.updateOnePromise(
-                'accounts',
-                { name: sender },
-                { $set: { [senderBalanceKey]: amountToString(currentSenderRewardBalance) } }
-            );
+            logger.error(`[farm-create] System error: Failed to insert farm ${farmId}.`);
             return false;
         }
 

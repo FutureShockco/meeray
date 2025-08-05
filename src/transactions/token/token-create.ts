@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import config from '../../config.js';
 import validate from '../../validation/index.js';
 import { TokenData } from './token-interfaces.js';
-import { setTokenDecimals, amountToString, toBigInt } from '../../utils/bigint.js';
+import { toBigInt, toDbString } from '../../utils/bigint.js';
 
 export async function validateTx(data: TokenData, sender: string): Promise<boolean> {
   try {
@@ -84,14 +84,11 @@ export async function validateTx(data: TokenData, sender: string): Promise<boole
 }
 
 export async function process(data: TokenData, sender: string, id: string): Promise<boolean> {
-  console.log(data, sender);
   logger.debug(`[token-create] Processing token creation for ${data.symbol} by ${sender}`);
 
   try {
     // Use 8 as the default precision if not provided
     const effectivePrecision = data.precision === undefined ? 8 : data.precision;
-    
-    setTokenDecimals(data.symbol, effectivePrecision);
 
     const initialSupply = toBigInt(data.initialSupply || 0);
     const maxSupply = toBigInt(data.maxSupply || 0);
@@ -102,8 +99,8 @@ export async function process(data: TokenData, sender: string, id: string): Prom
       name: data.name,
       issuer: sender,
       precision: effectivePrecision,
-      maxSupply: amountToString(maxSupply),
-      currentSupply: amountToString(initialSupply),
+      maxSupply: toDbString(maxSupply),
+      currentSupply: toDbString(initialSupply),
       mintable: data.mintable === undefined ? true : data.mintable,
       burnable: data.burnable === undefined ? true : data.burnable,
       description: data.description || '',

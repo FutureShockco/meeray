@@ -27,7 +27,7 @@ async function main() {
     const tokenMintData = {
         symbol: tokenData.symbol, // Should match an existing token
         to: "echelon-node1",
-        amount: "1000000000000"
+        amount: tokenData.maxSupply / 10
     };
 
     console.log(`Minting tokens with account ${username}:`);

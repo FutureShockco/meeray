@@ -4,7 +4,7 @@ import validate from '../../validation/index.js';
 import { FarmUnstakeData, FarmData, UserFarmPositionData } from './farm-interfaces.js';
 import { UserLiquidityPositionData } from '../pool/pool-interfaces.js';
 import { getAccount } from '../../utils/account.js';
-import { convertToBigInt, convertToString, toBigInt } from '../../utils/bigint.js';
+import { convertToBigInt, convertToString, toBigInt, toDbString } from '../../utils/bigint.js';
 
 const NUMERIC_FIELDS: Array<keyof FarmUnstakeData> = ['lpTokenAmount'];
 
@@ -68,7 +68,7 @@ export async function process(data: FarmUnstakeData, sender: string, id: string)
 
     // 1. Decrease staked amount in UserFarmPosition
     const newStakedAmount = toBigInt(userFarmPos.stakedAmount) - toBigInt(data.lpTokenAmount);
-    const userFarmPosUpdateSuccess = await cache.updateOnePromise(
+    await cache.updateOnePromise(
       'userFarmPositions',
       { _id: userFarmPositionId },
       { 
@@ -79,42 +79,30 @@ export async function process(data: FarmUnstakeData, sender: string, id: string)
       }
     );
 
-    if (!userFarmPosUpdateSuccess) {
-      logger.error(`[farm-unstake] Failed to update user farm position ${userFarmPositionId}. Unstaking aborted.`);
-      return false;
-    }
-
     // 2. Decrease totalStaked in Farm document
-    const farmUpdateSuccess = await cache.updateOnePromise(
+    const currentFarm = await cache.findOnePromise('farms', { _id: data.farmId });
+    const currentTotalStaked = toBigInt(currentFarm?.totalStaked || '0');
+    const newTotalStaked = currentTotalStaked - toBigInt(data.lpTokenAmount);
+    
+    await cache.updateOnePromise(
       'farms',
       { _id: data.farmId },
       { 
-        $inc: { totalStaked: (-toBigInt(data.lpTokenAmount)).toString() },
-        $set: { lastUpdatedAt: new Date().toISOString() }
+        $set: { 
+          totalStaked: toDbString(newTotalStaked),
+          lastUpdatedAt: new Date().toISOString()
+        }
       }
     );
-
-    if (!farmUpdateSuccess) {
-      logger.error(`[farm-unstake] CRITICAL: Failed to update farm total staked. Rolling back user farm position update.`);
-      await cache.updateOnePromise(
-        'userFarmPositions',
-        { _id: userFarmPositionId },
-        { 
-          $set: { stakedAmount: userFarmPos.stakedAmount }
-        }
-      );
-      return false;
-    }
 
     // 3. Return LP tokens to user's liquidity position
     const poolIdForLp = farm.stakingToken.issuer;
     const userLpDestinationPositionId = `${data.staker}-${poolIdForLp}`;
-    let finalLpReturnSuccess = false;
 
     const existingUserLiquidityPos = await cache.findOnePromise('userLiquidityPositions', { _id: userLpDestinationPositionId }) as UserLiquidityPositionData | null;
 
     if (existingUserLiquidityPos) {
-      finalLpReturnSuccess = await cache.updateOnePromise(
+      await cache.updateOnePromise(
         'userLiquidityPositions',
         { _id: userLpDestinationPositionId },
         {
@@ -138,33 +126,16 @@ export async function process(data: FarmUnstakeData, sender: string, id: string)
       // Convert BigInt fields to strings for database storage
       const newUserLiquidityPosDB = convertToString(newUserLiquidityPos, ['lpTokenBalance']);
 
-      finalLpReturnSuccess = await new Promise<boolean>((resolve) => {
+      await new Promise<boolean>((resolve) => {
         cache.insertOne('userLiquidityPositions', newUserLiquidityPosDB, (err, success) => {
           if (err || !success) {
-            logger.error(`[farm-unstake] Failed to insert new user liquidity position ${userLpDestinationPositionId}: ${err || 'insert not successful'}`);
+            logger.error(`[farm-unstake] System error: Failed to insert new user liquidity position ${userLpDestinationPositionId}: ${err || 'insert not successful'}`);
             resolve(false);
           } else {
             resolve(true);
           }
         });
       });
-    }
-
-    if (!finalLpReturnSuccess) {
-      logger.error(`[farm-unstake] CRITICAL: Failed to return LP tokens to user position. Rolling back farm total and user farm position.`);
-      // Rollback farm total
-      await cache.updateOnePromise(
-        'farms',
-        { _id: data.farmId },
-        { $inc: { totalStaked: toBigInt(data.lpTokenAmount).toString() } }
-      );
-      // Rollback user farm position
-      await cache.updateOnePromise(
-        'userFarmPositions',
-        { _id: userFarmPositionId },
-        { $set: { stakedAmount: userFarmPos.stakedAmount } }
-      );
-      return false;
     }
 
     logger.debug(`[farm-unstake] Staker ${data.staker} unstaked ${data.lpTokenAmount} LP tokens from farm ${data.farmId} to pool ${poolIdForLp}.`);
