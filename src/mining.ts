@@ -333,7 +333,15 @@ export const mining = {
                                     } else {
                                         setTimeout(waitForAdvance, 3000);
                                     }
+                                } else {
+                                    // Handle null response - keep retrying to get Steem block instead of stopping
+                                    logger.warn('[MINING:minerWorker] Could not get latest Steem block, retrying...');
+                                    setTimeout(waitForAdvance, 5000);
                                 }
+                            }).catch(error => {
+                                logger.error('[MINING:minerWorker] Error getting latest Steem block:', error);
+                                // Keep retrying on error instead of stopping
+                                setTimeout(waitForAdvance, 5000);
                             });
                         };
                         setTimeout(waitForAdvance, 3000);

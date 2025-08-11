@@ -41,8 +41,10 @@ class SteemApiClient {
     switchToNextEndpoint(): boolean {
         // In development mode, always stick to the testapi - don't switch to mainnet endpoints
         if (process.env.NODE_ENV !== 'production') {
-            logger.warn('Development mode: Not switching endpoints, staying on testnet');
-            return false;
+            logger.warn('Development mode: Retrying testnet endpoint after timeout');
+            // Just reinitialize the same client to retry the connection
+            this.initializeClient();
+            return true;
         }
 
         if (this.apiUrls.length <= 1) return false;
