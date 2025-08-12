@@ -49,7 +49,7 @@ export async function adjustTokenSupply(tokenIdentifier: string, amount: bigint)
         logger.error(`[token-utils] Token ${tokenIdentifier} not found`);
         return false;
     }
-    const newSupply = token.currentSupply + amount;
+    const newSupply = BigInt(token.currentSupply) + amount;
     const updateResult = await cache.updateOnePromise('tokens', { symbol: tokenIdentifier }, { $set: { currentSupply: newSupply } });
     if (!updateResult) {
         logger.error(`[token-utils] Failed to update token supply for ${tokenIdentifier}`);
