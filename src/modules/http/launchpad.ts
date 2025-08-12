@@ -100,7 +100,11 @@ const transformLaunchpadData = (launchpadData: any): any => {
 const listLaunchpadsHandler: RequestHandler = async (req: Request, res: Response) => {
     logger.debug('[API /launchpad] Received request to list launchpads');
     try {
-        const launchpadsFromDB = await cache.findPromise('launchpads', {}); 
+        const query: any = {};
+        if (req.query.status) {
+            query.status = req.query.status;
+        }
+        const launchpadsFromDB = await cache.findPromise('launchpads', query); 
 
         if (!launchpadsFromDB || launchpadsFromDB.length === 0) {
             logger.debug('[API /launchpad] No launchpads found or error fetching.');
@@ -310,5 +314,63 @@ const getClaimableTokensHandler: RequestHandler = async (req: Request, res: Resp
     }
 };
 router.get('/:launchpadId/user/:userId/claimable', getClaimableTokensHandler);
+
+// List participants with pagination
+router.get('/:launchpadId/participants', (async (req: Request, res: Response) => {
+    try {
+        const { launchpadId } = req.params;
+        const limit = parseInt(req.query.limit as string) || 10;
+        const offset = parseInt(req.query.offset as string) || 0;
+        const lp = await cache.findOnePromise('launchpads', { _id: launchpadId });
+        if (!lp || !lp.presale || !Array.isArray(lp.presale.participants)) {
+            return res.status(404).json({ message: 'Launchpad or participants not found' });
+        }
+        const total = lp.presale.participants.length;
+        const data = lp.presale.participants.slice(offset, offset + limit);
+        res.json({ data, total, limit, offset });
+    } catch (error: any) {
+        logger.error('[API /launchpad/:launchpadId/participants] Error:', error);
+        res.status(500).json({ message: 'Error fetching participants', error: error.message });
+    }
+}) as RequestHandler);
+
+// Get whitelist and status
+router.get('/:launchpadId/whitelist', (async (req: Request, res: Response) => {
+    try {
+        const { launchpadId } = req.params;
+        const lp = await cache.findOnePromise('launchpads', { _id: launchpadId });
+        if (!lp) return res.status(404).json({ message: 'Launchpad not found' });
+        const whitelist = lp.presale?.whitelist || [];
+        const whitelistEnabled = !!lp.presale?.whitelistEnabled;
+        res.json({ whitelistEnabled, whitelist });
+    } catch (error: any) {
+        logger.error('[API /launchpad/:launchpadId/whitelist] Error:', error);
+        res.status(500).json({ message: 'Error fetching whitelist', error: error.message });
+    }
+}) as RequestHandler);
+
+// Settlement preview
+router.get('/:launchpadId/settlement-preview', (async (req: Request, res: Response) => {
+    try {
+        const { launchpadId } = req.params;
+        const lp = await cache.findOnePromise('launchpads', { _id: launchpadId });
+        if (!lp || !lp.presale || !lp.presaleDetailsSnapshot) {
+            return res.status(404).json({ message: 'Launchpad or presale data not found' });
+        }
+        const price = toBigInt(lp.presaleDetailsSnapshot.pricePerToken);
+        const tokenDecimals = BigInt(lp.tokenomicsSnapshot.tokenDecimals || 0);
+        const scale = BigInt(10) ** tokenDecimals;
+        const participants = lp.presale.participants || [];
+        const preview = participants.map((p: any) => {
+            const contrib = toBigInt(p.quoteAmountContributed || '0');
+            const alloc = price > BigInt(0) ? (contrib * scale) / price : BigInt(0);
+            return { userId: p.userId, contributed: p.quoteAmountContributed, tokensAllocatedPreview: alloc.toString() };
+        });
+        res.json({ data: preview });
+    } catch (error: any) {
+        logger.error('[API /launchpad/:launchpadId/settlement-preview] Error:', error);
+        res.status(500).json({ message: 'Error computing preview', error: error.message });
+    }
+}) as RequestHandler);
 
 export default router; 

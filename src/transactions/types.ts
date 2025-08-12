@@ -47,7 +47,14 @@ export enum TransactionType {
   // NEW NFT Auction/Bidding Transactions
   NFT_ACCEPT_BID = 30,
   NFT_CLOSE_AUCTION = 31,
-  NFT_BATCH_OPERATIONS = 32
+  NFT_BATCH_OPERATIONS = 32,
+
+  // Launchpad Lifecycle (Extended)
+  LAUNCHPAD_UPDATE_STATUS = 33,
+  LAUNCHPAD_FINALIZE_PRESALE = 34,
+  LAUNCHPAD_SET_MAIN_TOKEN = 35,
+  LAUNCHPAD_REFUND_PRESALE = 36,
+  LAUNCHPAD_UPDATE_WHITELIST = 37
 }
 
 export const transactions: { [key: number]: string } = {
@@ -99,5 +106,12 @@ export const transactions: { [key: number]: string } = {
   // NEW NFT Auction/Bidding Transactions
   [TransactionType.NFT_ACCEPT_BID]: 'nft_accept_bid',
   [TransactionType.NFT_CLOSE_AUCTION]: 'nft_close_auction',
-  [TransactionType.NFT_BATCH_OPERATIONS]: 'nft_batch_operations'
+  [TransactionType.NFT_BATCH_OPERATIONS]: 'nft_batch_operations',
+
+  // Launchpad Lifecycle (Extended)
+  [TransactionType.LAUNCHPAD_UPDATE_STATUS]: 'launchpad_update_status',
+  [TransactionType.LAUNCHPAD_FINALIZE_PRESALE]: 'launchpad_finalize_presale',
+  [TransactionType.LAUNCHPAD_SET_MAIN_TOKEN]: 'launchpad_set_main_token',
+  [TransactionType.LAUNCHPAD_REFUND_PRESALE]: 'launchpad_refund_presale',
+  [TransactionType.LAUNCHPAD_UPDATE_WHITELIST]: 'launchpad_update_whitelist'
 }; 
