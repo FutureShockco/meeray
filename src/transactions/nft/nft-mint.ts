@@ -139,7 +139,8 @@ export async function process(data: NFTMintData, sender: string, id: string): Pr
       instanceId: actualInstanceId,
       owner: data.owner,
       index: nftIndex,
-      coverUrl: data.coverUrl
+      coverUrl: data.coverUrl,
+      ...(data.properties ? { properties: data.properties } : {})
     };
 
     const insertSuccess = await new Promise<boolean>((resolve) => {

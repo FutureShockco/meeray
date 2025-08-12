@@ -153,11 +153,44 @@ Handler: `src/modules/http/launchpad.ts`
         *   `userId` (string): The user's account name.
     *   Response: `{ launchpadId: string, userId: string, totalAllocated: number, claimed: number, claimable: number }` or `{ message: string }`
 
-## `/markets`
+## `/market` and `/markets`
 
-Handler: `src/modules/http/markets.ts`
+Handler: `src/modules/http/market.ts` (available under both `/market` and `/markets`)
 
-### Trading Pairs
+### Hybrid Trading
+
+*   **GET `/sources/:tokenA/:tokenB`**
+    *   Description: List available liquidity sources (AMM and orderbook) for a token pair.
+    *   Path Parameters:
+        *   `tokenA` (string): Token A symbol@issuer.
+        *   `tokenB` (string): Token B symbol@issuer.
+    *   Response: `{ tokenA, tokenB, sources: LiquiditySource[], totalSources: number, ammSources: number, orderbookSources: number }`
+
+*   **POST `/quote`**
+    *   Description: Get an optimal hybrid trade quote across AMM pools and orderbook liquidity.
+    *   Request Body:
+        ```json
+        {
+          "tokenIn": "ECH@echelon-node1",
+          "tokenOut": "STEEM@echelon-node1",
+          "amountIn": "100000000",
+          "maxSlippagePercent": 2.0
+        }
+        ```
+    *   Response: Hybrid quote with formatted fields and route details.
+
+*   **POST `/compare`**
+    *   Description: Compare AMM vs Orderbook outcomes for a specific trade.
+    *   Request Body: `{ tokenIn, tokenOut, amountIn }`
+    *   Response: Comparison summary and recommendation.
+
+*   **GET `/stats`**
+    *   Description: High-level hybrid trading stats (24h volume, route distribution, top pairs).
+
+*   **GET `/health`**
+    *   Description: Health status for AMM, Orderbook and Aggregator subsystems.
+
+### Trading Pairs (compatibility)
 
 *   **GET `/pairs`**
     *   Description: List all trading pairs with pagination and filtering.
@@ -410,12 +443,23 @@ Handler: `src/modules/http/pools.ts`
     *   Query Parameters:
         *   `limit`, `offset` (see Common Query Parameters)
     *   Response: `{ data: Pool[], total: number, limit: number, skip: number }`
+    *   Notes: Each `Pool` includes reserves, `feeTier`, `totalLpTokens`, plus analytics helpers:
+        *   `aprA`, `aprB` (annualized fee APR as ratio, e.g., `0.23` for 23%)
+        *   `fees24hA`, `fees24hB` (raw smallest units for 24h fees)
 
 *   **GET `/:poolId`**
     *   Description: Get details of a specific liquidity pool.
     *   Path Parameters:
         *   `poolId` (string): The ID of the liquidity pool (e.g., `ECH-STM`).
     *   Response: `Pool` object or `{ message: string }` if not found.
+
+*   **GET `/token/:tokenSymbol`**
+    *   Description: List liquidity pools that include a specific token.
+    *   Path Parameters:
+        *   `tokenSymbol` (string): The symbol of the token.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+    *   Response: `{ data: Pool[], total: number, limit: number, skip: number }`
 
 *   **GET `/token/:tokenSymbol`**
     *   Description: List liquidity pools that include a specific token.
@@ -470,6 +514,17 @@ Handler: `src/modules/http/pools.ts`
         }
         ```
     *   Response: `{ bestRoute: TradeRoute, allRoutes: TradeRoute[] }` where `TradeRoute` details hops and amounts, or `{ message: string }` on error.
+
+### Analytics
+
+*   **GET `/:poolId/analytics`**
+    *   Description: Fees/volume/TVL analytics and APR.
+    *   Query Parameters:
+        *   `period` (string, optional, default: `day`): One of `hour|day|week|month|year`.
+        *   `interval` (string, optional): One of `minute|hour|day|week|month`. If omitted, auto-selects.
+    *   Responses:
+        *   Aggregate: `{ poolId, period, from, to, totalVolumeA, totalVolumeB, totalFeesA, totalFeesB, tvlA, tvlB, aprA, aprB }`
+        *   Time series: `{ poolId, period, interval, from, to, timeSeries: [{ timestamp, volumeA, volumeB, feesA, feesB }] }`
 
 
 

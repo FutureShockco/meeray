@@ -17,6 +17,7 @@ export interface NftInstance {
     owner: string;
     index?: number;        // Sequential index within the collection (1, 2, 3, etc.)
     coverUrl?: string;     // Individual cover URL for this NFT (max 2048 chars, must be valid URL)
+    properties?: Record<string, any>; // Optional instance-specific properties
 }
 
 export async function validateTx(data: NFTTransferData, sender: string): Promise<boolean> {

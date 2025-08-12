@@ -260,12 +260,12 @@ router.get('/', (async (req: Request, res: Response) => {
         const eventsByPool: Record<string, any[]> = {};
         if (poolIds.length > 0) {
             const events = await mongo.getDb().collection('events').find({
-                'eventType': 'poolSwap',
-                'eventData.poolId': { $in: poolIds },
-                'createdAt': { $gte: yearAgo.toISOString() }
+                'type': 'poolSwap',
+                'data.poolId': { $in: poolIds },
+                'timestamp': { $gte: yearAgo.toISOString() }
             }).toArray();
             for (const event of events) {
-                const poolId = event.eventData.poolId?.toString();
+                const poolId = event.data?.poolId?.toString();
                 if (!poolId) continue;
                 if (!eventsByPool[poolId]) eventsByPool[poolId] = [];
                 eventsByPool[poolId].push(event);
@@ -276,12 +276,12 @@ router.get('/', (async (req: Request, res: Response) => {
         let events24hByPool: Record<string, any[]> = {};
         if (poolIds.length > 0) {
             const events24h = await mongo.getDb().collection('events').find({
-                'eventType': 'poolSwap',
-                'eventData.poolId': { $in: poolIds },
-                'createdAt': { $gte: dayAgo.toISOString() }
+                'type': 'poolSwap',
+                'data.poolId': { $in: poolIds },
+                'timestamp': { $gte: dayAgo.toISOString() }
             }).toArray();
             for (const event of events24h) {
-                const poolId = event.eventData.poolId?.toString();
+                const poolId = event.data?.poolId?.toString();
                 if (!poolId) continue;
                 if (!events24hByPool[poolId]) events24hByPool[poolId] = [];
                 events24hByPool[poolId].push(event);
@@ -294,7 +294,7 @@ router.get('/', (async (req: Request, res: Response) => {
             let totalFeesA = 0n, totalFeesB = 0n;
             const events = eventsByPool[poolIdStr] || [];
             for (const event of events) {
-                const e = event.eventData;
+                const e = event.data;
                 const feeTier = BigInt(e.feeTier || 300);
                 const feeDivisor = BigInt(10000);
                 const amountIn = toBigInt(e.amountIn);
@@ -310,7 +310,7 @@ router.get('/', (async (req: Request, res: Response) => {
             let fees24hA = 0n, fees24hB = 0n;
             const events24h = events24hByPool[poolIdStr] || [];
             for (const event of events24h) {
-                const e = event.eventData;
+                const e = event.data;
                 const feeTier = BigInt(e.feeTier || 300);
                 const feeDivisor = BigInt(10000);
                 const amountIn = toBigInt(e.amountIn);
@@ -587,16 +587,16 @@ router.get('/:poolId/analytics', (async (req: Request, res: Response) => {
     try {
         // Get all swap events for this pool in the period
         const events = await mongo.getDb().collection('events').find({
-            'eventType': 'poolSwap',
-            'eventData.poolId': poolId,
-            'createdAt': { $gte: startTime.toISOString() }
+            'type': 'poolSwap',
+            'data.poolId': poolId,
+            'timestamp': { $gte: startTime.toISOString() }
         }).toArray();
         // If interval is not set or is 'aggregate', return aggregate as before
         if (!interval || interval === 'aggregate') {
             // Calculate total volume and fees
             let totalVolumeA = 0n, totalVolumeB = 0n, totalFeesA = 0n, totalFeesB = 0n;
             for (const event of events) {
-                const e = event.eventData;
+                const e = event.data;
                 const feeTier = BigInt(e.feeTier || 300);
                 const feeDivisor = BigInt(10000);
                 const amountIn = toBigInt(e.amountIn);
@@ -677,8 +677,8 @@ router.get('/:poolId/analytics', (async (req: Request, res: Response) => {
         }
         // Assign events to buckets
         for (const event of events) {
-            const e = event.eventData;
-            const createdAt = new Date(event.createdAt).getTime();
+            const e = event.data;
+            const createdAt = new Date(event.timestamp).getTime();
             const bucketIdx = Math.floor((createdAt - startTime.getTime()) / bucketMs);
             if (bucketIdx < 0 || bucketIdx >= buckets.length) continue;
             const feeTier = BigInt(e.feeTier || 300);

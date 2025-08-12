@@ -161,7 +161,12 @@ Returns a list of all liquidity pools with formatted token reserves.
       "tokenB_reserve": "500.000",
       "rawTokenB_reserve": "500000000",
       "totalLpTokens": "707106781",
+      "rawTotalLpTokens": "707106781",
       "feeTier": 300,
+      "aprA": 0.1523,
+      "aprB": 0.1489,
+      "fees24hA": "123456",
+      "fees24hB": "98765",
       "createdAt": "2025-01-18T12:00:00.000Z",
       "status": "ACTIVE"
     }
@@ -244,15 +249,39 @@ Returns details for a specific liquidity pool.
   "tokenB_reserve": "500.000",
   "rawTokenB_reserve": "500000000",
   "totalLpTokens": "707106781",
+  "rawTotalLpTokens": "707106781",
   "feeTier": 300,
+  "aprA": 0.1523,
+  "aprB": 0.1489,
   "createdAt": "2025-01-18T12:00:00.000Z",
   "status": "ACTIVE"
 }
 ```
 
+#### GET /pools/:poolId/analytics
+Returns aggregate or time-series analytics for a pool including APR.
+
+**Aggregate Response:**
+```json
+{
+  "poolId": "ECH_STEEM_300",
+  "period": "day",
+  "from": "2025-01-17T12:00:00.000Z",
+  "to": "2025-01-18T12:00:00.000Z",
+  "totalVolumeA": "123456789",
+  "totalVolumeB": "987654321",
+  "totalFeesA": "123456",
+  "totalFeesB": "98765",
+  "tvlA": "1000000000",
+  "tvlB": "500000000",
+  "aprA": 0.31,
+  "aprB": 0.29
+}
+```
+
 ### Markets
 
-#### GET /markets/pairs
+#### GET /market/pairs (also available under /markets/pairs)
 Returns a list of all trading pairs with formatted prices and volumes.
 
 **Response:**
@@ -280,7 +309,7 @@ Returns a list of all trading pairs with formatted prices and volumes.
 }
 ```
 
-#### GET /markets/orders/:orderId
+#### GET /market/orders/:orderId (also available under /markets/orders/:orderId)
 Returns details for a specific order with formatted amounts.
 
 **Response:**
