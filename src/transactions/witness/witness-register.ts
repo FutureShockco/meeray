@@ -2,7 +2,6 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import { AccountDoc } from '../../mongo.js';
 import { isValidPubKey } from '../../crypto.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export interface WitnessRegisterData {
   pub: string;
@@ -69,11 +68,7 @@ export async function process(data: WitnessRegisterData, sender: string, transac
         } else {
           logger.debug(`[process] witness: ${witness}`);
           // Log event for successful registration
-          const eventData = {
-            witness: sender,
-            publicKey: data.pub
-          };
-          await logTransactionEvent('witnessRegister', sender, eventData, transactionId);
+          // event logging removed
           resolve(true);
         }
       });

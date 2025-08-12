@@ -48,7 +48,7 @@ export const witnessesModule = {
 
             const reward = BigInt(config.witnessReward || 0);
             if (reward > BigInt(0)) {
-                const currentBalanceStr = account.balances?.ECH || toDbString(BigInt(0));
+                const currentBalanceStr = account.balances?.[config.nativeTokenSymbol] || toDbString(BigInt(0));
                 const currentBalanceBigInt = toBigInt(currentBalanceStr);
 
                 const rewardBigInt = BigInt(reward);
@@ -60,7 +60,7 @@ export const witnessesModule = {
                 cache.updateOne(
                     'accounts',
                     { name: account.name },
-                    { $set: { "balances.ECH": newBalancePaddedString } },
+                    { $set: { [`balances.${config.nativeTokenSymbol}`]: newBalancePaddedString } },
                     function (err: Error | null, result?: boolean) {
                         if (err) {
                             logger.error('Error updating account balance for rewards:', err);
@@ -72,12 +72,12 @@ export const witnessesModule = {
                         }
 
                         if (account.balances) {
-                            account.balances.ECH = newBalancePaddedString;
+                            account.balances[config.nativeTokenSymbol] = newBalancePaddedString;
                         } else {
-                            account.balances = { ECH: newBalancePaddedString };
+                            account.balances = { [config.nativeTokenSymbol]: newBalancePaddedString };
                         }
-                        if (account.tokens && account.tokens.ECH !== undefined) {
-                            delete account.tokens.ECH;
+                        if (account.tokens && account.tokens[config.nativeTokenSymbol] !== undefined) {
+                            delete account.tokens[config.nativeTokenSymbol];
                             if (Object.keys(account.tokens).length === 0) {
                                 delete account.tokens;
                             }
@@ -86,12 +86,12 @@ export const witnessesModule = {
                         transaction.adjustWitnessWeight(account, rewardBigInt, function () {
                             adjustTokenSupply(config.nativeTokenSymbol, rewardBigInt).then((success) => {
                                 if (!success) {
-                                    logger.error(`[witnessRewards] Failed to update token supply for ECH`);
+                                    logger.error(`[witnessRewards] Failed to update token supply for ${config.nativeTokenSymbol}`);
                                 }
                                 logger.debug(`Distributed reward (${rewardBigInt.toString()} smallest units) to witness ${name}`);
                                 cb(toDbString(rewardBigInt));
                             }).catch((error) => {
-                                logger.error(`[witnessRewards] Failed to update token supply for ECH: ${error}`);
+                                logger.error(`[witnessRewards] Failed to update token supply for ${config.nativeTokenSymbol}: ${error}`);
                             });
                         });
                     }
@@ -125,7 +125,7 @@ export const witnessesModule = {
                 name: account.name,
                 pub: account.witnessPublicKey,
                 witnessPublicKey: account.witnessPublicKey,
-                balance: account.balances?.ECH || toDbString(BigInt(0)),
+                balance: account.balances?.[config.nativeTokenSymbol] || toDbString(BigInt(0)),
                 votedWitnesses: account.votedWitnesses,
                 totalVoteWeight: account.totalVoteWeight,
             };

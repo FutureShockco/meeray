@@ -2,7 +2,6 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { NftBatchPayload, NftBatchOperation } from './nft-market-interfaces.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
 
 // Import individual transaction processors
 import { validateTx as validateListTx, process as processList } from './nft-list-item.js';
@@ -149,21 +148,8 @@ export async function process(data: NftBatchPayload, sender: string, id: string)
       // If atomic mode and any operation fails, rollback and return false
       if (isAtomic && !success) {
         logger.error(`[nft-batch] Operation ${i} failed in atomic mode. Batch will be rolled back.`);
-        
-        // Note: True rollback would require transaction-level reversals
-        // For now, we'll just fail the entire batch
-        // In a production system, you'd implement proper rollback mechanisms
-        
-        const eventData = {
-          totalOperations: data.operations.length,
-          failedAtIndex: i,
-          failedOperation: operation.operation,
-          error: error,
-          isAtomic: true,
-          results: results
-        };
-        await logTransactionEvent('nftBatchFailed', sender, eventData, id);
-        
+
+
         return false;
       }
     }
@@ -177,31 +163,13 @@ export async function process(data: NftBatchPayload, sender: string, id: string)
     // In non-atomic mode, partial success is still considered success
     const batchSuccess = isAtomic ? failureCount === 0 : successCount > 0;
 
-    // Log event
-    const eventData = {
-      totalOperations: data.operations.length,
-      successCount: successCount,
-      failureCount: failureCount,
-      isAtomic: isAtomic,
-      batchSuccess: batchSuccess,
-      results: results
-    };
-    await logTransactionEvent('nftBatchCompleted', sender, eventData, id);
 
     return batchSuccess;
 
   } catch (error) {
     logger.error(`[nft-batch] Error processing batch operations: ${error}`);
     
-    // Log failure event
-    const eventData = {
-      totalOperations: data.operations.length,
-      error: error instanceof Error ? error.message : String(error),
-      isAtomic: isAtomic,
-      results: results
-    };
-    await logTransactionEvent('nftBatchFailed', sender, eventData, id);
-    
+
     return false;
   }
 }

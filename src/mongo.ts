@@ -7,8 +7,7 @@ import config from './config.js';
 import { chain } from './chain.js';
 import { Block } from './block.js';
 import { TokenData} from './transactions/token/token-interfaces.js';
-import { convertToString, toDbString, toBigInt, setTokenDecimals, convertAllBigIntToStringRecursive } from './utils/bigint.js';
-import { logTransactionEvent } from './utils/event-logger.js';
+import { toDbString, setTokenDecimals } from './utils/bigint.js';
 
 const DB_NAME = process.env.MONGO_DB || 'echelon';
 const DB_URL = process.env.MONGO_URL || 'mongodb://localhost:27017';
@@ -196,7 +195,7 @@ export const mongo = {
         const masterAccount: AccountDoc = {
             name: config.masterName,
             created: new Date(),
-            balances: { ECH: toDbString(BigInt(config.masterBalance)) },
+            balances: { [config.nativeTokenSymbol]: toDbString(BigInt(config.masterBalance)) },
             nfts: {},
             totalVoteWeight: toDbString(BigInt(config.masterBalance)),
             votedWitnesses: [config.masterName],
@@ -217,13 +216,13 @@ export const mongo = {
         if (process.env.BLOCKS_DIR) return;
         const currentDb = mongo.getDb();
 
-        setTokenDecimals('ECH', 8);
+        setTokenDecimals(config.nativeTokenSymbol, 8);
 
         const MAX_SUPPLY_ECH_BIGINT = BigInt(config.masterBalance); // 200 million with 8 decimals
         const VERY_LARGE_MAX_SUPPLY_BIGINT = BigInt('1000000000000000000000000000000'); // Effectively unlimited for pegged tokens
 
         // This object represents the INPUT parameters for creating the native token ECH
-        const nativeTokenCreationParamsECH: TokenData = {
+        const nativeTokenCreationParams: TokenData = {
             symbol: config.nativeTokenSymbol,
             name: 'Echelon',
             precision: 8,
@@ -236,23 +235,23 @@ export const mongo = {
             websiteUrl: 'https://echelon.network'
         };
 
-        const nativeTokenToStoreECH: TokenData = {
-            _id: nativeTokenCreationParamsECH.symbol,
-            symbol: nativeTokenCreationParamsECH.symbol,
-            name: nativeTokenCreationParamsECH.name,
-            precision: nativeTokenCreationParamsECH.precision || 8,
-            maxSupply: nativeTokenCreationParamsECH.maxSupply,
-            currentSupply: nativeTokenCreationParamsECH.initialSupply || MAX_SUPPLY_ECH_BIGINT,
-            mintable: nativeTokenCreationParamsECH.mintable === undefined ? true : nativeTokenCreationParamsECH.mintable,
-            burnable: nativeTokenCreationParamsECH.burnable === undefined ? true : nativeTokenCreationParamsECH.burnable,
+        const nativeTokenToStore: TokenData = {
+            _id: nativeTokenCreationParams.symbol,
+            symbol: nativeTokenCreationParams.symbol,
+            name: nativeTokenCreationParams.name,
+            precision: nativeTokenCreationParams.precision || 8,
+            maxSupply: nativeTokenCreationParams.maxSupply,
+            currentSupply: nativeTokenCreationParams.initialSupply || MAX_SUPPLY_ECH_BIGINT,
+            mintable: nativeTokenCreationParams.mintable === undefined ? true : nativeTokenCreationParams.mintable,
+            burnable: nativeTokenCreationParams.burnable === undefined ? true : nativeTokenCreationParams.burnable,
             issuer: config.masterName,
-            description: nativeTokenCreationParamsECH.description,
-            logoUrl: nativeTokenCreationParamsECH.logoUrl,
-            websiteUrl: nativeTokenCreationParamsECH.websiteUrl,
+            description: nativeTokenCreationParams.description,
+            logoUrl: nativeTokenCreationParams.logoUrl,
+            websiteUrl: nativeTokenCreationParams.websiteUrl,
             createdAt: new Date().toISOString()
         };
-        await currentDb.collection<TokenData>('tokens').insertOne(nativeTokenToStoreECH);
-        logger.info('Native token ECH inserted.');
+        await currentDb.collection<TokenData>('tokens').insertOne(nativeTokenToStore);
+        logger.info(`Native token ${config.nativeTokenSymbol} inserted.`);
 
         // --- STEEM ---
         setTokenDecimals('STEEM', 3);

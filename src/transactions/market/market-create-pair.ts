@@ -4,7 +4,6 @@ import validate from '../../validation/index.js';
 import { MarketCreatePairData, TradingPairData } from './market-interfaces.js';
 import { getAccount } from '../../utils/account.js';
 import { convertToBigInt, toDbString, toBigInt } from '../../utils/bigint.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
 import config from '../../config.js';
 
 const NUMERIC_FIELDS: Array<keyof MarketCreatePairData> = ['tickSize', 'lotSize', 'minNotional', 'minTradeAmount', 'maxTradeAmount'];
@@ -210,13 +209,6 @@ export async function process(data: MarketCreatePairData, sender: string, id: st
             return false;
         }
 
-        // Log the event
-        await logTransactionEvent(id, 'market_create_pair', {
-            pairId,
-            baseAsset: `${pairData.baseAssetSymbol}@${baseIssuer}`,
-            quoteAsset: `${pairData.quoteAssetSymbol}@${quoteIssuer}`,
-            creator: sender
-        });
 
         logger.info(`[market-create-pair] Successfully created trading pair ${pairId} by ${sender}`);
         return true;

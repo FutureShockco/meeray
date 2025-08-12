@@ -4,7 +4,6 @@ import validate from '../../validation/index.js';
 import { PoolSwapData, LiquidityPoolData, PoolSwapResult } from './pool-interfaces.js';
 import { adjustBalance, getAccount, Account } from '../../utils/account.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
 import mongo from '../../mongo.js';
 
 // const SWAP_FEE_RATE = 0.003; // 0.3% swap fee - This constant is not used in the BigInt logic below which uses 997/1000 factor
@@ -491,17 +490,7 @@ async function processSingleHopSwap(data: PoolSwapData, sender: string, transact
     logger.info(`[pool-swap] Successful single-hop swap by ${sender} in pool ${data.poolId}: ${data.amountIn} ${tokenIn_symbol} -> ${amountOut} ${tokenOut_symbol}`);
 
     // Log event
-    const eventData = {
-        poolId: data.poolId,
-        sender: sender,
-        tokenIn_symbol: tokenIn_symbol,
-        amountIn: data.amountIn.toString(),
-        tokenOut_symbol: tokenOut_symbol,
-        amountOut: amountOut.toString(),
-        feeTier: poolFromDb.feeTier,
-        swapType: 'single-hop'
-    };
-    await logTransactionEvent('poolSwap', sender, eventData, transactionId);
+    // event logging removed
 
     return true;
 }
@@ -593,17 +582,7 @@ async function processSingleHopSwapWithResult(data: PoolSwapData, sender: string
         logger.info(`[pool-swap] Successful single-hop swap by ${sender} in pool ${data.poolId}: ${data.amountIn} ${tokenIn_symbol} -> ${amountOut} ${tokenOut_symbol}`);
 
         // Log event
-        const eventData = {
-            poolId: data.poolId,
-            sender: sender,
-            tokenIn_symbol: tokenIn_symbol,
-            amountIn: data.amountIn.toString(),
-            tokenOut_symbol: tokenOut_symbol,
-            amountOut: amountOut.toString(),
-            feeTier: poolFromDb.feeTier,
-            swapType: 'single-hop'
-        };
-        await logTransactionEvent('poolSwap', sender, eventData, transactionId);
+        // event logging removed
 
         return { success: true, amountOut };
     } catch (error) {
@@ -726,16 +705,7 @@ async function processRoutedSwap(data: PoolSwapData, sender: string, transaction
     logger.info(`[pool-swap] Successful multi-hop swap by ${sender}: ${data.amountIn} ${data.hops![0].tokenIn_symbol} -> ${totalAmountOut} ${data.hops![data.hops!.length - 1].tokenOut_symbol} through ${data.hops!.length} hops`);
 
     // Log event
-    const eventData = {
-        sender: sender,
-        tokenIn_symbol: data.hops![0].tokenIn_symbol,
-        amountIn: data.amountIn.toString(),
-        tokenOut_symbol: data.hops![data.hops!.length - 1].tokenOut_symbol,
-        amountOut: totalAmountOut.toString(),
-        hops: swapResults,
-        swapType: 'multi-hop'
-    };
-    await logTransactionEvent('poolSwap', sender, eventData, transactionId);
+    // event logging removed
 
     return true;
 }

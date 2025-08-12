@@ -6,7 +6,6 @@ import { NftInstance, CachedNftCollectionForTransfer } from './nft-transfer.js';
 import { adjustBalance } from '../../utils/account.js';
 import { getTokenByIdentifier } from '../../utils/token.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
 import { getHighestBid, releaseEscrowedFunds } from '../../utils/bid.js';
 
 export async function validateTx(data: CloseAuctionData, sender: string): Promise<boolean> {
@@ -134,16 +133,6 @@ export async function process(data: CloseAuctionData, sender: string, id: string
         }
       );
 
-      // Log event
-      const eventData = {
-        listingId: data.listingId,
-        collectionSymbol: listing.collectionId,
-        instanceId: listing.tokenId,
-        endedBy: sender,
-        hasWinner: false
-      };
-      await logTransactionEvent('nftAuctionClosed', sender, eventData, id);
-
       return true;
     }
 
@@ -268,23 +257,6 @@ export async function process(data: CloseAuctionData, sender: string, id: string
     }
 
     logger.debug(`[nft-close-auction] Auction ${data.listingId} successfully closed by ${sender}. Winner: ${winningBid.bidder}.`);
-
-    // Log event
-    const eventData = {
-      listingId: data.listingId,
-      winningBidId: winningBid._id,
-      collectionSymbol: listing.collectionId,
-      instanceId: listing.tokenId,
-      seller: listing.seller,
-      winner: winningBid.bidder,
-      finalPrice: bidAmount.toString(),
-      paymentTokenSymbol: paymentToken.symbol,
-      paymentTokenIssuer: paymentToken.issuer,
-      royaltyAmount: royaltyAmount.toString(),
-      endedBy: sender,
-      hasWinner: true
-    };
-    await logTransactionEvent('nftAuctionClosed', sender, eventData, id);
 
     return true;
 

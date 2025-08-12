@@ -2,7 +2,6 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 import config from '../../config.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export interface WitnessVoteData {
   target: string;
@@ -57,9 +56,8 @@ export async function process(data: WitnessVoteData, sender: string, transaction
     }
     const originalVotedWitnesses = [...senderAccount.votedWitnesses];
     
-    const balanceStr = senderAccount.balances?.ECH || toDbString(BigInt(0));
-    logger.trace(`[witness-vote process] Sender ${sender} ECH balance string: ${balanceStr}`);
-    logger.trace(`[witness-vote process] Sender ${sender} ECH balance BigInt: ${toBigInt(balanceStr).toString()}`);
+    const balanceStr = senderAccount.balances?.[config.nativeTokenSymbol] || toDbString(BigInt(0));
+    logger.trace(`[witness-vote process] Sender ${sender} ${config.nativeTokenSymbol} balance BigInt: ${toBigInt(balanceStr).toString()}`);
 
     const oldSharePerWitnessBigInt = originalVotedWitnesses.length > 0 ? 
       toBigInt(balanceStr) / BigInt(originalVotedWitnesses.length) : BigInt(0);
@@ -123,16 +121,7 @@ export async function process(data: WitnessVoteData, sender: string, transaction
       }
 
       // Log the successful vote event
-      const eventData = {
-        voter: sender,
-        targetWitness: data.target,
-        newVotedWitnesses: newVotedWitnessesList,
-        newSharePerWitness: newSharePerWitnessBigIntCalculated.toString()
-      };
-      // TODO: The original code was missing the transactionId for logTransactionEvent.
-      // Assuming it should be passed, but it's not available in this scope. 
-      // For now, logging without it. This might need to be addressed.
-      await logTransactionEvent('witnessVote', sender, eventData, transactionId);
+      // event logging removed
 
       return true;
     } catch (updateError: any) {

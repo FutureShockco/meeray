@@ -5,6 +5,7 @@ import logger from './logger.js';
 import mongo from './mongo.js';
 import { AccountDoc } from './mongo.js';
 import { toDbString } from './utils/bigint.js';
+import config from './config.js';
 
 const possibleAccountFields = ['target', 'receiver', 'owner', 'delegate', 'to', 'from', 'account'];
 
@@ -51,7 +52,7 @@ export async function upsertAccountsReferencedInTx(tx: ParsedTransaction | Trans
       const newAccountData: AccountDoc = {
         name: username,
         created: new Date(),
-        balances: { ECH: toDbString(BigInt(0)) },
+        balances: { [config.nativeTokenSymbol]: toDbString(BigInt(0)) },
         nfts: {},
         totalVoteWeight: toDbString(BigInt(0)),
         votedWitnesses: []

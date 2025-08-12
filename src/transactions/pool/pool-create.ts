@@ -4,7 +4,6 @@ import validate from '../../validation/index.js';
 import { PoolCreateData, LiquidityPoolData } from './pool-interfaces.js';
 import config from '../../config.js';
 import { convertToBigInt, convertToString, toBigInt } from '../../utils/bigint.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
 import { getLpTokenSymbol } from '../../utils/token.js';
 
 const ALLOWED_FEE_TIERS: number[] = [10, 50, 300, 1000];
@@ -172,8 +171,7 @@ export async function process(data: PoolCreateData, sender: string, id: string):
         }
 
         // Log event using the new centralized logger
-        const eventData = { ...poolDocumentDB, lpTokenSymbol: lpTokenSymbol };
-        await logTransactionEvent('poolCreate', sender, eventData, id);
+        // event logging removed
 
         return true;
     } catch (error) {

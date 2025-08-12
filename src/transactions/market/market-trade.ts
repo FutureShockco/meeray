@@ -5,7 +5,6 @@ import { HybridTradeData, HybridTradeResult, HybridRoute } from './market-interf
 import { liquidityAggregator } from './market-aggregator.js';
 import { getAccount, adjustBalance } from '../../utils/account.js';
 import { toBigInt } from '../../utils/bigint.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
 
 // Import transaction processors for different route types
 import * as poolSwap from '../pool/pool-swap.js';
@@ -210,18 +209,6 @@ export async function process(data: HybridTradeData, sender: string, transaction
     const actualPriceImpact = results.length > 0 ? 
       Number(totalAmountIn - totalAmountOut) / Number(totalAmountIn) : 0;
 
-    // Log the successful trade
-    const eventData = {
-      trader: data.trader,
-      tokenIn: data.tokenIn,
-      tokenOut: data.tokenOut,
-      amountIn: totalAmountIn.toString(),
-      amountOut: totalAmountOut.toString(),
-      actualPriceImpact,
-      routesExecuted: results.length,
-      routes: results
-    };
-    await logTransactionEvent('hybridTradeExecuted', sender, eventData, transactionId);
 
     logger.debug(`[hybrid-trade] Hybrid trade completed: ${totalAmountIn} ${data.tokenIn} -> ${totalAmountOut} ${data.tokenOut}`);
     return true;

@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js'; // Shared validation module
 import { NFTCollectionCreateData } from './nft-interfaces.js';
 import config from '../../config.js'; // For potential fees or other params
-import { logTransactionEvent } from '../../utils/event-logger.js'; // Import the new event logger
+// event logger removed
 
 export async function validateTx(data: NFTCollectionCreateData, sender: string): Promise<boolean> {
   try {
@@ -194,19 +194,7 @@ export async function process(data: NFTCollectionCreateData, sender: string, id:
         logger.debug(`[nft-create-collection] Collection ${data.symbol} created successfully by ${sender}.`);
 
         // Log event
-        const eventData = { 
-            symbol: data.symbol,
-            name: data.name,
-            description: data.description,
-            maxSupply: data.maxSupply,
-            royaltyBps: data.royaltyBps,
-            creatorFee: data.creatorFee,
-            mintable: data.mintable,
-            burnable: data.burnable,
-            transferable: data.transferable,
-            creator: data.creator
-        };
-        await logTransactionEvent('nftCreateCollection', sender, eventData, id);
+        // event logging removed
 
         return true;
     } catch (error) {

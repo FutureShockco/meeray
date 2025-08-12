@@ -215,7 +215,7 @@ const transaction: TransactionModule = {
         }
 
         // This is the balance *after* the reward has been added by witnessRewards
-        const balance_after_reward_str = acc.balances?.ECH || toDbString(BigInt(0));
+        const balance_after_reward_str = acc.balances?.[config.nativeTokenSymbol] || toDbString(BigInt(0));
         const balance_after_reward_bigint = toBigInt(balance_after_reward_str);
         
         // Calculate the balance as it was *before* this reward was added

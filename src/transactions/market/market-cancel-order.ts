@@ -5,7 +5,6 @@ import { MarketCancelOrderData, OrderData, OrderStatus, OrderSide } from './mark
 import { getAccount, adjustBalance } from '../../utils/account.js';
 import { matchingEngine } from './matching-engine.js';
 import { toBigInt } from '../../utils/bigint.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: MarketCancelOrderData, sender: string): Promise<boolean> {
     try {
@@ -139,17 +138,6 @@ export async function process(data: MarketCancelOrderData, sender: string, id: s
             }
         }
 
-        // Log the cancellation event
-        await logTransactionEvent(id, 'market_cancel_order', {
-            orderId: data.orderId,
-            pairId: data.pairId,
-            userId: data.userId,
-            orderType: order.type,
-            orderSide: order.side,
-            originalQuantity: order.quantity.toString(),
-            filledQuantity: order.filledQuantity.toString(),
-            refundAmount: unfilledQuantity.toString()
-        });
 
         logger.info(`[market-cancel-order] Successfully cancelled order ${data.orderId} for user ${sender}`);
         return true;

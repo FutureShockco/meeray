@@ -5,6 +5,7 @@ const config = {
   chainId: 'sidechain-dev',
   networkName: 'Echelon Devnet',
   nativeTokenSymbol: 'ECH',
+  nativeTokenName: 'Echelon',
   nativeTokenPrecision: 8,
   originHash: 'e201950993be0e15b14ab19dccb165972ff0ba7ea162c5ad6eec9b5268bce468',
   burnAccountName: 'null',

@@ -3,7 +3,6 @@ import cache from '../../cache.js';
 import { getAccount, adjustBalance } from '../../utils/account.js';
 import { LaunchpadData, LaunchpadStatus, PresaleDetails, LaunchpadParticipatePresaleData } from './launchpad-interfaces.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
 
 // Interfaces for participant data conversion
 interface LaunchpadParticipantDB {
@@ -133,16 +132,6 @@ export async function process(dataDb: LaunchpadParticipatePresaleData, sender: s
         return false;
     }
 
-    // Log event using the new centralized logger
-    const eventData = {
-        launchpadId: data.launchpadId,
-        userId: data.userId,
-        contributionAmount: data.contributionAmount.toString(),
-        contributionTokenSymbol: presaleDetails.quoteAssetForPresaleSymbol,
-        contributionTokenIssuer: presaleDetails.quoteAssetForPresaleIssuer,
-        newTotalRaised: newTotalRaised.toString()
-    };
-    await logTransactionEvent('launchpadPresaleParticipation', sender, eventData, transactionId);
 
     logger.debug(`[launchpad-participate-presale] Participation processed for ${data.contributionAmount}.`);
     return true;

@@ -1,7 +1,7 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
+import config from '../../config.js';
 
 export interface WitnessUnvoteData {
   target: string;
@@ -49,7 +49,7 @@ export async function process(data: WitnessUnvoteData, sender: string, transacti
     const newVotedWitnesses = votedWitnesses.filter((w: string) => w !== data.target);
     
     // Calculate vote weight changes
-    const balanceStr = senderAccount.tokens?.ECH || toDbString(BigInt(0));
+    const balanceStr = senderAccount.balances?.[config.nativeTokenSymbol] || toDbString(BigInt(0));
 
     const newVoteWeightBigIntCalculated = newVotedWitnesses.length > 0 ? 
       toBigInt(balanceStr) / BigInt(newVotedWitnesses.length) : BigInt(0);
@@ -104,13 +104,7 @@ export async function process(data: WitnessUnvoteData, sender: string, transacti
       logger.debug(`Witness unvote from ${sender} to ${data.target} processed successfully`);
       
       // Log event for successful unvote
-      const eventData = {
-        unvoter: sender,
-        targetWitness: data.target,
-        remainingVotedWitnesses: newVotedWitnesses,
-        newSharePerWitnessForUnvoter: newVoteWeightBigIntCalculated.toString() // Share for remaining votes by unvoter
-      };
-      await logTransactionEvent('witnessUnvote', sender, eventData, transactionId);
+      // event logging removed
       
       return true;
     } catch (updateError: any) {

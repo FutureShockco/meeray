@@ -6,7 +6,6 @@ import { NftInstance, CachedNftCollectionForTransfer } from './nft-transfer.js';
 import { Account, adjustBalance, getAccount } from '../../utils/account.js';
 import { Token, getTokenByIdentifier } from '../../utils/token.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
 import { 
   generateBidId, 
   getHighestBid, 
@@ -257,21 +256,6 @@ async function executeImmediatePurchase(listing: NFTListingData, buyer: string, 
 
     logger.debug(`[nft-buy-item] NFT Listing ${listing._id} successfully processed for buyer ${buyer}.`);
 
-    // Log event
-    const eventData = { 
-        listingId: listing._id,
-        collectionSymbol: listing.collectionId,
-        instanceId: listing.tokenId,
-        seller: listing.seller,
-        buyer: buyer,
-        price: price.toString(),
-        paymentTokenSymbol: paymentToken.symbol,
-        paymentTokenIssuer: paymentToken.issuer,
-        royaltyAmount: royaltyAmount.toString(),
-        collectionCreator: collection.creator, 
-    };
-    await logTransactionEvent('nftBuyItem', buyer, eventData, transactionId);
-
     return true;
 
   } catch (error: any) {
@@ -363,20 +347,6 @@ async function submitBid(listing: NFTListingData, bidder: string, bidAmount: big
     }
 
     logger.debug(`[nft-buy-item] Bid submitted: ${bidAmount} ${paymentToken.symbol} by ${bidder} for listing ${listing._id}. Bid ID: ${bidId}`);
-
-    // Log event
-    const eventData = { 
-        listingId: listing._id,
-        bidId: bidId,
-        collectionSymbol: listing.collectionId,
-        instanceId: listing.tokenId,
-        bidder: bidder,
-        bidAmount: bidAmount.toString(),
-        paymentTokenSymbol: paymentToken.symbol,
-        paymentTokenIssuer: paymentToken.issuer,
-        isHighestBid: isHighestBid
-    };
-    await logTransactionEvent('nftBidSubmitted', bidder, eventData, transactionId);
 
     return true;
 

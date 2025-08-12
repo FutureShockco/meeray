@@ -3,7 +3,6 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import config from '../../config.js'; // For BURN_ACCOUNT_NAME eventually
 import { NFTTransferData, NFTCollectionCreateData } from './nft-interfaces.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
 
 const BURN_ACCOUNT_NAME = 'null';
 
@@ -141,13 +140,7 @@ export async function process(data: NFTTransferData, sender: string, id: string)
       }
 
       logger.debug(`[nft-burn] NFT ${fullInstanceId} successfully burnt by ${sender}. Memo: ${data.memo || 'N/A'}`);
-      const eventData = { 
-        collectionSymbol: data.collectionSymbol, 
-        instanceId: data.instanceId, 
-        from: sender, 
-        memo: data.memo || null 
-      };
-      await logTransactionEvent('nftBurn', sender, eventData);
+      // event logging removed
     } else {
       // --- REGULAR TRANSFER LOGIC ---
       // 1. Update NFT owner
@@ -163,14 +156,7 @@ export async function process(data: NFTTransferData, sender: string, id: string)
       }
 
       logger.debug(`[nft-transfer] NFT ${fullInstanceId} successfully transferred from ${sender} to ${data.to}. Memo: ${data.memo || 'N/A'}`);
-      const eventDataTransfer = {
-        collectionSymbol: data.collectionSymbol, 
-        instanceId: data.instanceId, 
-        from: sender, 
-        to: data.to, 
-        memo: data.memo || null 
-      };
-      await logTransactionEvent('nftTransfer', sender, eventDataTransfer, id);
+      // event logging removed
     }
     return true;
   } catch (error) {

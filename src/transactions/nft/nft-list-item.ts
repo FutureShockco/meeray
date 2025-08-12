@@ -6,7 +6,7 @@ import { NftInstance } from './nft-transfer.js'; // Assuming NftInstance is expo
 import { CachedNftCollectionForTransfer } from './nft-transfer.js'; // Assuming this is also suitable
 import config from '../../config.js';
 import { getTokenByIdentifier } from '../../utils/token.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
+// event logger removed
 import { toBigInt, toDbString } from '../../utils/bigint.js'; // Import toBigInt and toDbString
 
 // Helper to generate a unique listing ID

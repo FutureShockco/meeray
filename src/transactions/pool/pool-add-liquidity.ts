@@ -4,7 +4,7 @@ import validate from '../../validation/index.js';
 import { PoolAddLiquidityData, LiquidityPoolData, UserLiquidityPositionData } from './pool-interfaces.js';
 import { adjustBalance, getAccount, Account } from '../../utils/account.js';
 import { convertToString, toBigInt } from '../../utils/bigint.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
+// event logger removed
 import { getLpTokenSymbol } from '../../utils/token.js';
 
 const NUMERIC_FIELDS: Array<keyof PoolAddLiquidityData> = ['tokenA_amount', 'tokenB_amount'];

@@ -20,7 +20,6 @@ import {
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 import validate from '../../validation/index.js'; // Assuming validate exists
 import config from '../../config.js'; // Import config
-import { logTransactionEvent } from '../../utils/event-logger.js'; // Import the new event logger
 
 
 function generateLaunchpadId(): string {
@@ -170,15 +169,6 @@ export async function process(launchData: LaunchpadLaunchTokenData, sender: stri
         });
     });
 
-    // Log event using the new centralized logger
-    const eventData = {
-        launchpadId: launchpadId,
-        tokenName: launchData.tokenName,
-        tokenSymbol: launchData.tokenSymbol,
-        totalSupply: toDbString(totalSupplyBigInt), 
-        status: launchpadProjectData.status,
-    };
-    await logTransactionEvent('launchpadLaunchTokenInitiated', sender, eventData, transactionId);
 
     logger.debug(`[launchpad-launch-token] Launch request for ${launchData.tokenSymbol} by ${sender} processed successfully. Launchpad ID: ${launchpadId}`);
     return true;
