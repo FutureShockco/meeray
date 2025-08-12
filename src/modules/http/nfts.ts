@@ -44,15 +44,6 @@ const transformNftCollectionData = (collectionData: any): any => {
 const transformNftInstanceData = (instanceData: any): any => {
     if (!instanceData) return instanceData;
     const transformed = { ...instanceData };
-    // _id is nftId (string, e.g. SYMBOL-001), typically no transformation to 'id' needed.
-
-    // Get the collection symbol for formatting
-    const collectionSymbol = transformed.collectionSymbol || 'UNKNOWN';
-
-    // instanceId is likely already a number, but if it could be a numeric string:
-    // if (transformed.instanceId && typeof transformed.instanceId === 'string') {
-    //     transformed.instanceId = toBigInt(transformed.instanceId).toString(); 
-    // }
 
     if (transformed.saleData) {
         const sd = { ...transformed.saleData };

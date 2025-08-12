@@ -41,7 +41,7 @@ export interface TokenAllocation {
 
 export interface Tokenomics {
   totalSupply: string | bigint;        // Total token supply
-  tokenDecimals: string | bigint;      // Number of decimal places (0-18)
+  tokenDecimals: number;      // Number of decimal places (0-18)
   allocations: TokenAllocation[];
 }
 
