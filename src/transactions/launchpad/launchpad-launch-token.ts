@@ -17,7 +17,7 @@ import {
   TokenData,
   LaunchpadData
 } from './launchpad-interfaces.js';
-import { toBigInt } from '../../utils/bigint.js';
+import { toBigInt, toDbString } from '../../utils/bigint.js';
 import validate from '../../validation/index.js'; // Assuming validate exists
 import config from '../../config.js'; // Import config
 import { logTransactionEvent } from '../../utils/event-logger.js'; // Import the new event logger
@@ -121,21 +121,21 @@ export async function process(launchData: LaunchpadLaunchTokenData, sender: stri
         symbol: launchData.tokenSymbol,
         standard: launchData.tokenStandard,
         decimals: tokenDecimalsNumber, // Use converted number
-        totalSupply: totalSupplyBigInt, // Use BigInt directly
+        totalSupply: toDbString(totalSupplyBigInt), // Convert to string for storage
       },
       tokenomicsSnapshot: {
         ...launchData.tokenomics,
-        totalSupply: totalSupplyBigInt, // Ensure BigInt
-        tokenDecimals: tokenDecimalsBigInt, // Ensure BigInt
+        totalSupply: toDbString(totalSupplyBigInt), // Convert to string
+        tokenDecimals: toDbString(tokenDecimalsBigInt), // Convert to string
       },
       presaleDetailsSnapshot: launchData.presaleDetails ? {
         ...launchData.presaleDetails,
         // Ensure all BigInt fields are indeed BigInt
-        pricePerToken: toBigInt(launchData.presaleDetails.pricePerToken),
-        minContributionPerUser: toBigInt(launchData.presaleDetails.minContributionPerUser),
-        maxContributionPerUser: toBigInt(launchData.presaleDetails.maxContributionPerUser),
-        hardCap: toBigInt(launchData.presaleDetails.hardCap),
-        softCap: launchData.presaleDetails.softCap ? toBigInt(launchData.presaleDetails.softCap) : undefined,
+        pricePerToken: toDbString(toBigInt(launchData.presaleDetails.pricePerToken)),
+        minContributionPerUser: toDbString(toBigInt(launchData.presaleDetails.minContributionPerUser)),
+        maxContributionPerUser: toDbString(toBigInt(launchData.presaleDetails.maxContributionPerUser)),
+        hardCap: toDbString(toBigInt(launchData.presaleDetails.hardCap)),
+        softCap: launchData.presaleDetails.softCap ? toDbString(toBigInt(launchData.presaleDetails.softCap)) : undefined,
       } : undefined,
       liquidityProvisionDetailsSnapshot: launchData.liquidityProvisionDetails,
       launchedByUserId: sender,
@@ -143,7 +143,7 @@ export async function process(launchData: LaunchpadLaunchTokenData, sender: stri
       updatedAt: now,
       feePaid: false, 
       presale: launchData.presaleDetails ? {
-          totalQuoteRaised: 0n, // Initialize with BigInt(0)
+          totalQuoteRaised: '0', // Initialize with string '0'
           participants: [],
           status: 'NOT_STARTED'
       } : undefined,
@@ -154,8 +154,8 @@ export async function process(launchData: LaunchpadLaunchTokenData, sender: stri
       ...launchpadProjectData,
       tokenomicsSnapshot: {
         ...launchpadProjectData.tokenomicsSnapshot,
-        totalSupply: launchpadProjectData.tokenomicsSnapshot.totalSupply.toString(),
-        tokenDecimals: launchpadProjectData.tokenomicsSnapshot.tokenDecimals.toString()
+        totalSupply: toDbString(toBigInt(launchpadProjectData.tokenomicsSnapshot.totalSupply)),
+        tokenDecimals: toDbString(toBigInt(launchpadProjectData.tokenomicsSnapshot.tokenDecimals))
       }
     };
 
@@ -175,7 +175,7 @@ export async function process(launchData: LaunchpadLaunchTokenData, sender: stri
         launchpadId: launchpadId,
         tokenName: launchData.tokenName,
         tokenSymbol: launchData.tokenSymbol,
-        totalSupply: totalSupplyBigInt.toString(), 
+        totalSupply: toDbString(totalSupplyBigInt), 
         status: launchpadProjectData.status,
     };
     await logTransactionEvent('launchpadLaunchTokenInitiated', sender, eventData, transactionId);

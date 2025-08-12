@@ -5,7 +5,7 @@ import { NftAcceptBidData, NftBid, NFTListingData } from './nft-market-interface
 import { NftInstance, CachedNftCollectionForTransfer } from './nft-transfer.js';
 import { adjustBalance, getAccount } from '../../utils/account.js';
 import { getTokenByIdentifier } from '../../utils/token.js';
-import { toBigInt } from '../../utils/bigint.js';
+import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 import { releaseEscrowedFunds } from '../../utils/bid.js';
 
@@ -202,8 +202,8 @@ export async function process(data: NftAcceptBidData, sender: string, id: string
           status: 'sold',
           buyer: bid.bidder,
           soldAt: new Date().toISOString(),
-          finalPrice: bidAmount.toString(),
-          royaltyPaid: royaltyAmount.toString(),
+          finalPrice: toDbString(bidAmount),
+          royaltyPaid: toDbString(royaltyAmount),
           acceptedBidId: data.bidId
         }
       }

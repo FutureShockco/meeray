@@ -5,7 +5,7 @@ import { CloseAuctionData, NftBid, NFTListingData } from './nft-market-interface
 import { NftInstance, CachedNftCollectionForTransfer } from './nft-transfer.js';
 import { adjustBalance } from '../../utils/account.js';
 import { getTokenByIdentifier } from '../../utils/token.js';
-import { toBigInt } from '../../utils/bigint.js';
+import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 import { getHighestBid, releaseEscrowedFunds } from '../../utils/bid.js';
 
@@ -216,8 +216,8 @@ export async function process(data: CloseAuctionData, sender: string, id: string
           status: 'sold',
           buyer: winningBid.bidder,
           soldAt: new Date().toISOString(),
-          finalPrice: bidAmount.toString(),
-          royaltyPaid: royaltyAmount.toString(),
+          finalPrice: toDbString(bidAmount),
+          royaltyPaid: toDbString(royaltyAmount),
           winningBidId: winningBid._id,
           endedBy: sender
         }

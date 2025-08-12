@@ -75,9 +75,9 @@ export async function process(data: PoolRemoveLiquidityData, sender: string, tra
       { _id: data.poolId },
       {
         $set: {
-          tokenA_reserve: (toBigInt(pool.tokenA_reserve) - tokenAAmountToReturn).toString(),
-          tokenB_reserve: (toBigInt(pool.tokenB_reserve) - tokenBAmountToReturn).toString(), 
-          totalLpTokens: (toBigInt(pool.totalLpTokens) - toBigInt(data.lpTokenAmount)).toString(),
+          tokenA_reserve: toDbString(toBigInt(pool.tokenA_reserve) - tokenAAmountToReturn),
+          tokenB_reserve: toDbString(toBigInt(pool.tokenB_reserve) - tokenBAmountToReturn), 
+          totalLpTokens: toDbString(toBigInt(pool.totalLpTokens) - toBigInt(data.lpTokenAmount)),
           lastUpdatedAt: new Date().toISOString()
         }
       }
@@ -95,7 +95,7 @@ export async function process(data: PoolRemoveLiquidityData, sender: string, tra
         { _id: userLpPositionId },
         { 
           $set: {
-            lpTokenBalance: newLpBalance.toString(),
+            lpTokenBalance: toDbString(newLpBalance),
             lastUpdatedAt: new Date().toISOString()
           }
         }

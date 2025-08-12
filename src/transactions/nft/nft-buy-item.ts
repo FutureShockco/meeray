@@ -246,8 +246,8 @@ async function executeImmediatePurchase(listing: NFTListingData, buyer: string, 
           status: 'sold', 
           buyer: buyer, 
           soldAt: new Date().toISOString(), 
-          finalPrice: price.toString(),
-          royaltyPaid: royaltyAmount.toString()
+          finalPrice: toDbString(price),
+          royaltyPaid: toDbString(royaltyAmount)
         } 
       }
     );

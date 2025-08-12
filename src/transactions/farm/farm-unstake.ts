@@ -73,7 +73,7 @@ export async function process(data: FarmUnstakeData, sender: string, id: string)
       { _id: userFarmPositionId },
       { 
         $set: {
-          stakedAmount: newStakedAmount.toString(),
+          stakedAmount: toDbString(newStakedAmount),
           lastUpdatedAt: new Date().toISOString()
         }
       }
@@ -107,7 +107,7 @@ export async function process(data: FarmUnstakeData, sender: string, id: string)
         { _id: userLpDestinationPositionId },
         {
           $set: {
-            lpTokenBalance: (toBigInt(existingUserLiquidityPos.lpTokenBalance) + toBigInt(data.lpTokenAmount)).toString(),
+            lpTokenBalance: toDbString(toBigInt(existingUserLiquidityPos.lpTokenBalance) + toBigInt(data.lpTokenAmount)),
             lastUpdatedAt: new Date().toISOString()
           }
         }

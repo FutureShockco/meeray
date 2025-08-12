@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { PoolSwapData, LiquidityPoolData, PoolSwapResult } from './pool-interfaces.js';
 import { adjustBalance, getAccount, Account } from '../../utils/account.js';
-import { toBigInt } from '../../utils/bigint.js';
+import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 import mongo from '../../mongo.js';
 
@@ -465,15 +465,15 @@ async function processSingleHopSwap(data: PoolSwapData, sender: string, transact
     // Save updated pool state
     const poolUpdateSet: any = {
         lastTradeAt: new Date().toISOString(),
-        feeGrowthGlobalA: newFeeGrowthGlobalA.toString(),
-        feeGrowthGlobalB: newFeeGrowthGlobalB.toString()
+        feeGrowthGlobalA: toDbString(newFeeGrowthGlobalA),
+        feeGrowthGlobalB: toDbString(newFeeGrowthGlobalB)
     };
     if (tokenInIsA) {
-        poolUpdateSet.tokenA_reserve = newReserveIn.toString();
-        poolUpdateSet.tokenB_reserve = newReserveOut.toString();
+        poolUpdateSet.tokenA_reserve = toDbString(newReserveIn);
+        poolUpdateSet.tokenB_reserve = toDbString(newReserveOut);
     } else {
-        poolUpdateSet.tokenB_reserve = newReserveIn.toString();
-        poolUpdateSet.tokenA_reserve = newReserveOut.toString();
+        poolUpdateSet.tokenB_reserve = toDbString(newReserveIn);
+        poolUpdateSet.tokenA_reserve = toDbString(newReserveOut);
     }
 
     const updateSuccess = await cache.updateOnePromise('liquidityPools', { _id: data.poolId }, {
@@ -568,15 +568,15 @@ async function processSingleHopSwapWithResult(data: PoolSwapData, sender: string
         // Save updated pool state
         const poolUpdateSet: any = {
             lastTradeAt: new Date().toISOString(),
-            feeGrowthGlobalA: newFeeGrowthGlobalA.toString(),
-            feeGrowthGlobalB: newFeeGrowthGlobalB.toString()
+            feeGrowthGlobalA: toDbString(newFeeGrowthGlobalA),
+            feeGrowthGlobalB: toDbString(newFeeGrowthGlobalB)
         };
         if (tokenInIsA) {
-            poolUpdateSet.tokenA_reserve = newReserveIn.toString();
-            poolUpdateSet.tokenB_reserve = newReserveOut.toString();
+            poolUpdateSet.tokenA_reserve = toDbString(newReserveIn);
+            poolUpdateSet.tokenB_reserve = toDbString(newReserveOut);
         } else {
-            poolUpdateSet.tokenB_reserve = newReserveIn.toString();
-            poolUpdateSet.tokenA_reserve = newReserveOut.toString();
+            poolUpdateSet.tokenB_reserve = toDbString(newReserveIn);
+            poolUpdateSet.tokenA_reserve = toDbString(newReserveOut);
         }
 
         const updateSuccess = await cache.updateOnePromise('liquidityPools', { _id: data.poolId }, {
@@ -679,15 +679,15 @@ async function processRoutedSwap(data: PoolSwapData, sender: string, transaction
         // Save updated pool state for this hop
         const poolUpdateSet: any = {
             lastTradeAt: new Date().toISOString(),
-            feeGrowthGlobalA: newFeeGrowthGlobalA.toString(),
-            feeGrowthGlobalB: newFeeGrowthGlobalB.toString()
+            feeGrowthGlobalA: toDbString(newFeeGrowthGlobalA),
+            feeGrowthGlobalB: toDbString(newFeeGrowthGlobalB)
         };
         if (tokenInIsA) {
-            poolUpdateSet.tokenA_reserve = newReserveIn.toString();
-            poolUpdateSet.tokenB_reserve = newReserveOut.toString();
+            poolUpdateSet.tokenA_reserve = toDbString(newReserveIn);
+            poolUpdateSet.tokenB_reserve = toDbString(newReserveOut);
         } else {
-            poolUpdateSet.tokenB_reserve = newReserveIn.toString();
-            poolUpdateSet.tokenA_reserve = newReserveOut.toString();
+            poolUpdateSet.tokenB_reserve = toDbString(newReserveIn);
+            poolUpdateSet.tokenA_reserve = toDbString(newReserveOut);
         }
 
         const updateSuccess = await cache.updateOnePromise('liquidityPools', { _id: hop.poolId }, {
