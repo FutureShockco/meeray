@@ -1,6 +1,7 @@
 import cache from '../cache.js';
 import logger from '../logger.js';
 import config from '../config.js';
+import { toDbString } from './bigint.js';
 
 export interface Token {
     _id: string;                // Typically the symbol
@@ -50,7 +51,7 @@ export async function adjustTokenSupply(tokenIdentifier: string, amount: bigint)
         return false;
     }
     const newSupply = BigInt(token.currentSupply) + amount;
-    const updateResult = await cache.updateOnePromise('tokens', { symbol: tokenIdentifier }, { $set: { currentSupply: newSupply } });
+    const updateResult = await cache.updateOnePromise('tokens', { symbol: tokenIdentifier }, { $set: { currentSupply: toDbString(newSupply) } });
     if (!updateResult) {
         logger.error(`[token-utils] Failed to update token supply for ${tokenIdentifier}`);
         return false;
