@@ -24,7 +24,7 @@ const transformNftCollectionData = (collectionData: any): any => {
     const collectionSymbol = transformed.symbol || transformed._id || 'UNKNOWN';
 
     // Format collection amounts using the collection symbol
-    const numericFields = ['maxSupply', 'currentSupply', 'mintPrice'];
+    const numericFields = ['mintPrice'];
     for (const field of numericFields) {
         if (transformed[field]) {
             const formatted = formatTokenAmountForResponse(transformed[field], collectionSymbol);
