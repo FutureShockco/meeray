@@ -2,7 +2,7 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import { getAccount, adjustBalance } from '../../utils/account.js';
 import { LaunchpadData, LaunchpadStatus, PresaleDetails, LaunchpadParticipatePresaleData } from './launchpad-interfaces.js';
-import { toBigInt } from '../../utils/bigint.js';
+import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
 // Interfaces for participant data conversion
@@ -107,11 +107,11 @@ export async function process(dataDb: LaunchpadParticipatePresaleData, sender: s
     let newTotalRaised = toBigInt(launchpad.presale!.totalQuoteRaised || '0') + toBigInt(data.contributionAmount);
 
     if (participantIndex > -1) {
-        updatedParticipantsList[participantIndex].quoteAmountContributed = (toBigInt(updatedParticipantsList[participantIndex].quoteAmountContributed) + toBigInt(data.contributionAmount)).toString();
+        updatedParticipantsList[participantIndex].quoteAmountContributed = toDbString(toBigInt(updatedParticipantsList[participantIndex].quoteAmountContributed) + toBigInt(data.contributionAmount));
     } else {
         updatedParticipantsList.push({
             userId: data.userId,
-            quoteAmountContributed: data.contributionAmount.toString(),
+            quoteAmountContributed: toDbString(toBigInt(data.contributionAmount)),
             claimed: false
         });
     }
@@ -120,7 +120,7 @@ export async function process(dataDb: LaunchpadParticipatePresaleData, sender: s
     const updatePayload = {
         $set: {
             'presale.participants': updatedParticipantsList,
-            'presale.totalQuoteRaised': newTotalRaised.toString(),
+            'presale.totalQuoteRaised': toDbString(newTotalRaised),
             updatedAt: new Date().toISOString(),
         }
     };

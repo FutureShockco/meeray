@@ -150,7 +150,7 @@ export async function process(data: PoolCreateData, sender: string, id: string):
                 symbol: tokenSymbol,
                 name: `LP Token for ${tokenA_symbol}-${tokenB_symbol}`,
                 issuer: 'null',
-                precision: 8,
+                precision: 18,
                 maxSupply: '1000000000000000000', // Large max supply
                 currentSupply: '0',
                 mintable: false,

@@ -29,9 +29,7 @@ export async function adjustBalance(
         }
         const currentBalance = toBigInt(account.balances?.[tokenIdentifier] || '0');
         const newBalance = currentBalance + amount;
-        console.log(`[account-utils] Token: ${token}`);
-        console.log(`[account-utils] Token: ${tokenIdentifier}, Amount: ${amount}`);
-        console.log(`[account-utils] Current balance: ${currentBalance}, New balance: ${newBalance}`);
+
         if (newBalance < 0n) {
             logger.error(`[account-utils] Insufficient balance for ${accountId}: ${currentBalance} + ${amount} = ${newBalance}`);
             return false;
