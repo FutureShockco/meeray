@@ -5,7 +5,7 @@ import { NftBuyPayload, NFTListingData, NftBid } from './nft-market-interfaces.j
 import { NftInstance, CachedNftCollectionForTransfer } from './nft-transfer.js';
 import { Account, adjustBalance, getAccount } from '../../utils/account.js';
 import { Token, getTokenByIdentifier } from '../../utils/token.js';
-import { toBigInt } from '../../utils/bigint.js';
+import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 import { 
   generateBidId, 
@@ -326,13 +326,13 @@ async function submitBid(listing: NFTListingData, bidder: string, bidAmount: big
       _id: bidId,
       listingId: listing._id,
       bidder: bidder,
-      bidAmount: bidAmount,
+      bidAmount: toDbString(bidAmount),
       status: isHighestBid ? 'WINNING' : 'ACTIVE',
       paymentToken: {
         symbol: listing.paymentToken.symbol,
         issuer: listing.paymentToken.issuer
       },
-      escrowedAmount: bidAmount,
+      escrowedAmount: toDbString(bidAmount),
       createdAt: new Date().toISOString(),
       isHighestBid: isHighestBid,
       previousHighBidId: currentHighestBid?._id

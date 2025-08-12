@@ -163,10 +163,10 @@ export async function process(data: NftListPayload, sender: string, id: string):
       
       // NEW AUCTION FIELDS:
       listingType: data.listingType || 'FIXED_PRICE',
-      reservePrice: data.reservePrice ? toBigInt(data.reservePrice) : undefined,
+      reservePrice: data.reservePrice ? toDbString(toBigInt(data.reservePrice)) : undefined,
       auctionEndTime: data.auctionEndTime,
       allowBuyNow: data.allowBuyNow || false,
-      minimumBidIncrement: data.minimumBidIncrement ? toBigInt(data.minimumBidIncrement) : toBigInt('100000'), // Default increment
+      minimumBidIncrement: data.minimumBidIncrement ? toDbString(toBigInt(data.minimumBidIncrement)) : toDbString(toBigInt('100000')), // Default increment
       currentHighestBid: undefined,
       currentHighestBidder: undefined,
       totalBids: 0,
