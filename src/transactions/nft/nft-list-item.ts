@@ -153,7 +153,7 @@ export async function process(data: NftListPayload, sender: string, id: string):
       collectionId: data.collectionSymbol,
       tokenId: data.instanceId,
       seller: sender,
-      price: priceAsBigInt,
+      price: toDbString(priceAsBigInt),
       paymentToken: {
         symbol: data.paymentTokenSymbol,
         issuer: data.paymentTokenIssuer

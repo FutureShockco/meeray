@@ -5,7 +5,6 @@ import { NftBuyPayload, NFTListingData, NftBid } from './nft-market-interfaces.j
 import { NftInstance, CachedNftCollectionForTransfer } from './nft-transfer.js';
 import { Account, adjustBalance, getAccount } from '../../utils/account.js';
 import { Token, getTokenByIdentifier } from '../../utils/token.js';
-import config from '../../config.js';
 import { toBigInt } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 import { 
@@ -72,7 +71,7 @@ export async function validateTx(data: NftBuyPayload, sender: string): Promise<b
       
       // Get current highest bid for validation
       const currentHighestBid = await getHighestBid(data.listingId);
-      const bidValidation = validateBidAmount(bidAmount, listing, currentHighestBid);
+      const bidValidation = validateBidAmount(bidAmount, listing, currentHighestBid ?? undefined);
       
       if (!bidValidation.valid) {
         logger.warn(`[nft-buy-item] Invalid bid: ${bidValidation.reason}`);
