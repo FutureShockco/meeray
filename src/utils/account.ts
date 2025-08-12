@@ -35,11 +35,10 @@ export async function adjustBalance(
             logger.error(`[account-utils] Insufficient balance for ${accountId}: ${currentBalance} + ${amount} = ${newBalance}`);
             return false;
         }
-        const formattedBalance = toDbString(newBalance, precision);
         const updateResult = await cache.updateOnePromise(
             'accounts',
             { name: accountId },
-            { $set: { [`balances.${tokenIdentifier}`]: formattedBalance } }
+            { $set: { [`balances.${tokenIdentifier}`]: toDbString(newBalance) } }
         );
         if (!updateResult) {
             logger.error(`[account-utils] Failed to update balance for ${accountId}`);
