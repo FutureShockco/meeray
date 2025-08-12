@@ -42,7 +42,12 @@ export enum TransactionType {
   // Launchpad Transactions
   LAUNCHPAD_LAUNCH_TOKEN = 27,
   LAUNCHPAD_PARTICIPATE_PRESALE = 28,
-  LAUNCHPAD_CLAIM_TOKENS = 29
+  LAUNCHPAD_CLAIM_TOKENS = 29,
+
+  // NEW NFT Auction/Bidding Transactions
+  NFT_ACCEPT_BID = 30,
+  NFT_CLOSE_AUCTION = 31,
+  NFT_BATCH_OPERATIONS = 32
 }
 
 export const transactions: { [key: number]: string } = {
@@ -89,5 +94,10 @@ export const transactions: { [key: number]: string } = {
   // Launchpad Transactions
   [TransactionType.LAUNCHPAD_LAUNCH_TOKEN]: 'launchpad_launch_token',
   [TransactionType.LAUNCHPAD_PARTICIPATE_PRESALE]: 'launchpad_participate_presale',
-  [TransactionType.LAUNCHPAD_CLAIM_TOKENS]: 'launchpad_claim_tokens'
+  [TransactionType.LAUNCHPAD_CLAIM_TOKENS]: 'launchpad_claim_tokens',
+
+  // NEW NFT Auction/Bidding Transactions
+  [TransactionType.NFT_ACCEPT_BID]: 'nft_accept_bid',
+  [TransactionType.NFT_CLOSE_AUCTION]: 'nft_close_auction',
+  [TransactionType.NFT_BATCH_OPERATIONS]: 'nft_batch_operations'
 }; 

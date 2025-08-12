@@ -4,6 +4,7 @@ import logger from './logger.js';
 import p2p from './p2p.js';
 import transaction from './transaction.js';
 import { toBigInt, toDbString } from './utils/bigint.js';
+import { adjustTokenSupply } from './utils/token.js';
 
 export const witnessesModule = {
 
@@ -82,9 +83,16 @@ export const witnessesModule = {
                             }
                         }
 
-                        transaction.adjustWitnessWeight(account, reward, function () {
-                            logger.debug(`Distributed reward (${rewardBigInt.toString()} smallest units) to witness ${name}`);
-                            cb(toDbString(rewardBigInt));
+                        transaction.adjustWitnessWeight(account, rewardBigInt, function () {
+                            adjustTokenSupply(config.nativeTokenSymbol, rewardBigInt).then((success) => {
+                                if (!success) {
+                                    logger.error(`[witnessRewards] Failed to update token supply for ECH`);
+                                }
+                                logger.debug(`Distributed reward (${rewardBigInt.toString()} smallest units) to witness ${name}`);
+                                cb(toDbString(rewardBigInt));
+                            }).catch((error) => {
+                                logger.error(`[witnessRewards] Failed to update token supply for ECH: ${error}`);
+                            });
                         });
                     }
                 );

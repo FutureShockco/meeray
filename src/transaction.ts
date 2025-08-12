@@ -218,11 +218,8 @@ const transaction: TransactionModule = {
         const balance_after_reward_str = acc.balances?.ECH || toDbString(BigInt(0));
         const balance_after_reward_bigint = toBigInt(balance_after_reward_str);
         
-        // newCoins is now the reward in smallest units, already scaled.
-        const newCoinsBigInt = BigInt(newCoins);
-
         // Calculate the balance as it was *before* this reward was added
-        const balance_before_reward_bigint = balance_after_reward_bigint - newCoinsBigInt;
+        const balance_before_reward_bigint = balance_after_reward_bigint - newCoins;
 
         const witness_share_before_reward_bigint = acc.votedWitnesses.length > 0 ? 
             balance_before_reward_bigint / BigInt(acc.votedWitnesses.length) : BigInt(0);

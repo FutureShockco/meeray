@@ -21,6 +21,57 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
       return false;
     }
 
+    // Validate auction-specific fields
+    const listingType = data.listingType || 'FIXED_PRICE';
+    
+    if (listingType === 'AUCTION' || listingType === 'RESERVE_AUCTION') {
+      if (!data.auctionEndTime) {
+        logger.warn('[nft-list-item] Auction listings require auctionEndTime.');
+        return false;
+      }
+      
+      const endTime = new Date(data.auctionEndTime);
+      if (isNaN(endTime.getTime()) || endTime <= new Date()) {
+        logger.warn('[nft-list-item] Invalid auctionEndTime: must be a valid future date.');
+        return false;
+      }
+      
+      // Validate minimum auction duration (e.g., at least 1 hour)
+      const minDuration = 60 * 60 * 1000; // 1 hour in milliseconds
+      if (endTime.getTime() - Date.now() < minDuration) {
+        logger.warn('[nft-list-item] Auction duration too short: minimum 1 hour required.');
+        return false;
+      }
+    }
+    
+    if (listingType === 'RESERVE_AUCTION') {
+      if (!data.reservePrice) {
+        logger.warn('[nft-list-item] Reserve auctions require reservePrice.');
+        return false;
+      }
+      
+      const reservePriceBigInt = toBigInt(data.reservePrice);
+      const startingPriceBigInt = toBigInt(data.price);
+      
+      if (reservePriceBigInt <= BigInt(0)) {
+        logger.warn('[nft-list-item] Reserve price must be positive.');
+        return false;
+      }
+      
+      if (reservePriceBigInt < startingPriceBigInt) {
+        logger.warn('[nft-list-item] Reserve price cannot be lower than starting price.');
+        return false;
+      }
+    }
+    
+    if (data.minimumBidIncrement) {
+      const incrementBigInt = toBigInt(data.minimumBidIncrement);
+      if (incrementBigInt <= BigInt(0)) {
+        logger.warn('[nft-list-item] Minimum bid increment must be positive.');
+        return false;
+      }
+    }
+
     if (!validate.string(data.price, 64, 1) || !/^[1-9]\d*$/.test(data.price)) {
         logger.warn(`[nft-list-item] Invalid price format. Must be a string representing a positive integer. Received: ${data.price}`);
         return false;
@@ -40,11 +91,11 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
         return false;
     }
     // Validate payment token details
-    if (data.paymentTokenSymbol !== config.nativeToken && !data.paymentTokenIssuer) {
+    if (data.paymentTokenSymbol !== config.nativeTokenSymbol && !data.paymentTokenIssuer) {
         logger.warn(`[nft-list-item] paymentTokenIssuer is required for non-native token ${data.paymentTokenSymbol}.`);
         return false;
     }
-    if (data.paymentTokenSymbol !== config.nativeToken && data.paymentTokenIssuer && !validate.string(data.paymentTokenIssuer, 64, 3)) {
+    if (data.paymentTokenSymbol !== config.nativeTokenSymbol && data.paymentTokenIssuer && !validate.string(data.paymentTokenIssuer, 64, 3)) {
         logger.warn(`[nft-list-item] Invalid paymentTokenIssuer format for ${data.paymentTokenSymbol}.`);
         return false;
     }
@@ -109,6 +160,16 @@ export async function process(data: NftListPayload, sender: string, id: string):
       },
       status: 'active',
       createdAt: new Date().toISOString(),
+      
+      // NEW AUCTION FIELDS:
+      listingType: data.listingType || 'FIXED_PRICE',
+      reservePrice: data.reservePrice ? toBigInt(data.reservePrice) : undefined,
+      auctionEndTime: data.auctionEndTime,
+      allowBuyNow: data.allowBuyNow || false,
+      minimumBidIncrement: data.minimumBidIncrement ? toBigInt(data.minimumBidIncrement) : toBigInt('100000'), // Default increment
+      currentHighestBid: undefined,
+      currentHighestBidder: undefined,
+      totalBids: 0,
     };
 
     const listSuccess = await new Promise<boolean>((resolve) => {
@@ -126,7 +187,8 @@ export async function process(data: NftListPayload, sender: string, id: string):
       return null; // Indicate failure
     }
 
-    logger.debug(`[nft-list-item] NFT ${data.collectionSymbol}-${data.instanceId} listed by ${sender} for ${data.price} ${data.paymentTokenSymbol}. Listing ID: ${listingId}`);
+    const listingTypeStr = data.listingType || 'FIXED_PRICE';
+    logger.debug(`[nft-list-item] NFT ${data.collectionSymbol}-${data.instanceId} listed by ${sender} as ${listingTypeStr} for ${data.price} ${data.paymentTokenSymbol}. Listing ID: ${listingId}`);
 
     return listingId; // Return the ID of the created listing
 

@@ -110,8 +110,8 @@ export const chain = {
         outputLog += '  ' + chain.nextOutput.txs + ' tx';
         if (chain.nextOutput.txs > 1)
             outputLog += 's';
-        const distInECH = (Number(chain.nextOutput.dist) / Math.pow(10, config.nativeTokenPrecision));
-        outputLog += '  dist: ' + distInECH + ' ' + config.nativeToken;
+        const distInNativeToken = (Number(chain.nextOutput.dist) / Math.pow(10, config.nativeTokenPrecision));
+        outputLog += '  dist: ' + distInNativeToken + ' ' + config.nativeTokenSymbol;
         outputLog += '  delay: ' + (currentOutTime - block.timestamp);
         if (block.missedBy && !rebuilding)
             outputLog += '  MISS: ' + block.missedBy;

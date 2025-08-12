@@ -37,7 +37,7 @@ router.get('/', (async (req: Request, res: Response) => {
                 transformedWit.id = _id.toString();
             }
             if (totalVoteWeight) {
-                transformedWit.totalVoteWeight = formatTokenAmountForResponse(totalVoteWeight, config.nativeToken);
+                transformedWit.totalVoteWeight = formatTokenAmountForResponse(totalVoteWeight, config.nativeTokenSymbol);
             }
             if (balances) {
                 // Format token balances with proper decimals

@@ -83,7 +83,7 @@ export async function process(data: TokenTransferData, sender: string, id: strin
                 { $set: { [`balances.${data.symbol}`]: toDbString(newRecipientBalance) } }
             );
 
-            if (data.symbol === config.nativeToken) {
+            if (data.symbol === config.nativeTokenSymbol) {
                 try {
                     await transaction.adjustWitnessWeight(sender, newSenderBalance, () => {
                         logger.debug(`[token-transfer] Witness weight adjusted for sender ${sender}`);

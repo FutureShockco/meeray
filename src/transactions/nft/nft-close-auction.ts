@@ -1,0 +1,295 @@
+import logger from '../../logger.js';
+import cache from '../../cache.js';
+import validate from '../../validation/index.js';
+import { CloseAuctionData, NftBid, NFTListingData } from './nft-market-interfaces.js';
+import { NftInstance, CachedNftCollectionForTransfer } from './nft-transfer.js';
+import { adjustBalance } from '../../utils/account.js';
+import { getTokenByIdentifier } from '../../utils/token.js';
+import { toBigInt } from '../../utils/bigint.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
+import { getHighestBid, releaseEscrowedFunds } from '../../utils/bid.js';
+
+export async function validateTx(data: CloseAuctionData, sender: string): Promise<boolean> {
+  try {
+    if (!data.listingId) {
+      logger.warn('[nft-close-auction] Invalid data: Missing required field (listingId).');
+      return false;
+    }
+
+    if (!validate.string(data.listingId, 256, 3)) {
+      logger.warn(`[nft-close-auction] Invalid listingId format or length: ${data.listingId}.`);
+      return false;
+    }
+
+    // Validate listing exists
+    const listing = await cache.findOnePromise('nftListings', { _id: data.listingId }) as NFTListingData | null;
+    if (!listing) {
+      logger.warn(`[nft-close-auction] Listing ${data.listingId} not found.`);
+      return false;
+    }
+
+    if (listing.status !== 'active') {
+      logger.warn(`[nft-close-auction] Listing ${data.listingId} is not active. Status: ${listing.status}.`);
+      return false;
+    }
+
+    // Only auction types can be closed this way
+    if (listing.listingType !== 'AUCTION' && listing.listingType !== 'RESERVE_AUCTION') {
+      logger.warn(`[nft-close-auction] Listing ${data.listingId} is not an auction. Type: ${listing.listingType}.`);
+      return false;
+    }
+
+    // Check permissions - either seller or anyone after auction end time
+    const isOwner = listing.seller === sender;
+    const auctionHasEnded = listing.auctionEndTime && new Date() >= new Date(listing.auctionEndTime);
+    
+    if (!isOwner && !auctionHasEnded && !data.force) {
+      logger.warn(`[nft-close-auction] Only seller can close auction before end time, or use force flag.`);
+      return false;
+    }
+
+    // If specific winning bid is provided, validate it
+    if (data.winningBidId) {
+      if (!validate.string(data.winningBidId, 256, 3)) {
+        logger.warn(`[nft-close-auction] Invalid winningBidId format: ${data.winningBidId}.`);
+        return false;
+      }
+
+      const winningBid = await cache.findOnePromise('nftBids', { _id: data.winningBidId }) as NftBid | null;
+      if (!winningBid) {
+        logger.warn(`[nft-close-auction] Winning bid ${data.winningBidId} not found.`);
+        return false;
+      }
+
+      if (winningBid.listingId !== data.listingId) {
+        logger.warn(`[nft-close-auction] Winning bid ${data.winningBidId} does not belong to listing ${data.listingId}.`);
+        return false;
+      }
+
+      if (winningBid.status !== 'ACTIVE' && winningBid.status !== 'WINNING') {
+        logger.warn(`[nft-close-auction] Winning bid ${data.winningBidId} is not active. Status: ${winningBid.status}.`);
+        return false;
+      }
+    }
+
+    // Validate reserve price requirements for reserve auctions
+    if (listing.listingType === 'RESERVE_AUCTION' && listing.reservePrice) {
+      const highestBid = data.winningBidId ? 
+        await cache.findOnePromise('nftBids', { _id: data.winningBidId }) as NftBid | null :
+        await getHighestBid(data.listingId);
+
+      if (!highestBid) {
+        logger.warn(`[nft-close-auction] No bids found for reserve auction ${data.listingId}.`);
+        return false;
+      }
+
+      const bidAmount = toBigInt(highestBid.bidAmount);
+      const reservePrice = toBigInt(listing.reservePrice);
+      
+      if (bidAmount < reservePrice) {
+        logger.warn(`[nft-close-auction] Highest bid ${bidAmount} does not meet reserve price ${reservePrice}.`);
+        return false;
+      }
+    }
+
+    return true;
+  } catch (error) {
+    logger.error(`[nft-close-auction] Error validating close auction for ${data.listingId}: ${error}`);
+    return false;
+  }
+}
+
+export async function process(data: CloseAuctionData, sender: string, id: string): Promise<boolean> {
+  try {
+    // Re-fetch listing for processing
+    const listing = await cache.findOnePromise('nftListings', { _id: data.listingId }) as NFTListingData | null;
+    if (!listing) {
+      logger.error(`[nft-close-auction] CRITICAL: Listing ${data.listingId} not found during processing.`);
+      return false;
+    }
+
+    // Determine winning bid
+    let winningBid: NftBid | null = null;
+    
+    if (data.winningBidId) {
+      winningBid = await cache.findOnePromise('nftBids', { _id: data.winningBidId }) as NftBid | null;
+    } else {
+      winningBid = await getHighestBid(data.listingId);
+    }
+
+    // Handle case where no bids exist or no qualifying bids
+    if (!winningBid) {
+      logger.debug(`[nft-close-auction] No winning bid found for auction ${data.listingId}. Ending auction without sale.`);
+      
+      // Update listing status to ended
+      await cache.updateOnePromise(
+        'nftListings',
+        { _id: data.listingId },
+        {
+          $set: {
+            status: 'ended',
+            endedAt: new Date().toISOString(),
+            endedBy: sender
+          }
+        }
+      );
+
+      // Log event
+      const eventData = {
+        listingId: data.listingId,
+        collectionSymbol: listing.collectionId,
+        instanceId: listing.tokenId,
+        endedBy: sender,
+        hasWinner: false
+      };
+      await logTransactionEvent('nftAuctionClosed', sender, eventData, id);
+
+      return true;
+    }
+
+    // Process winning bid (similar to accept bid logic)
+    const collection = await cache.findOnePromise('nftCollections', { _id: listing.collectionId }) as (CachedNftCollectionForTransfer & { creatorFee?: number }) | null;
+    if (!collection || collection.transferable === false) {
+      logger.error(`[nft-close-auction] CRITICAL: Collection ${listing.collectionId} not found or not transferable.`);
+      return false;
+    }
+
+    const paymentToken = await getTokenByIdentifier(listing.paymentToken.symbol, listing.paymentToken.issuer);
+    if (!paymentToken) {
+      logger.error(`[nft-close-auction] CRITICAL: Payment token ${listing.paymentToken.symbol} not found.`);
+      return false;
+    }
+
+    const paymentTokenIdentifier = `${paymentToken.symbol}${paymentToken.issuer ? '@' + paymentToken.issuer : ''}`;
+    const creatorFeePercent = toBigInt(collection.creatorFee || 0);
+
+    // Calculate payments
+    const bidAmount = toBigInt(winningBid.bidAmount);
+    const royaltyAmount = (bidAmount * creatorFeePercent) / BigInt(100);
+    const sellerProceeds = bidAmount - royaltyAmount;
+
+    logger.debug(`[nft-close-auction] Processing auction close: Bid=${bidAmount}, Royalty=${royaltyAmount}, SellerGets=${sellerProceeds}`);
+
+    // 1. Pay seller their proceeds
+    if (!await adjustBalance(listing.seller, paymentTokenIdentifier, sellerProceeds)) {
+      logger.error(`[nft-close-auction] Failed to pay seller ${listing.seller} proceeds of ${sellerProceeds}.`);
+      return false;
+    }
+
+    // 2. Pay royalty to creator (if applicable)
+    if (royaltyAmount > 0n && collection.creator && collection.creator !== listing.seller) {
+      if (!await adjustBalance(collection.creator, paymentTokenIdentifier, royaltyAmount)) {
+        logger.error(`[nft-close-auction] Failed to pay royalty ${royaltyAmount} to creator ${collection.creator}.`);
+        // Revert seller payment
+        await adjustBalance(listing.seller, paymentTokenIdentifier, -sellerProceeds);
+        return false;
+      }
+      logger.debug(`[nft-close-auction] Royalty of ${royaltyAmount} paid to creator ${collection.creator}.`);
+    }
+
+    // 3. Transfer NFT ownership
+    const fullInstanceId = `${listing.collectionId}-${listing.tokenId}`;
+    const updateNftOwnerSuccess = await cache.updateOnePromise(
+      'nfts',
+      { _id: fullInstanceId, owner: listing.seller },
+      { $set: { owner: winningBid.bidder, lastTransferredAt: new Date().toISOString() } }
+    );
+
+    if (!updateNftOwnerSuccess) {
+      logger.error(`[nft-close-auction] CRITICAL: Failed to update NFT ${fullInstanceId} owner to ${winningBid.bidder}.`);
+      // Revert payments
+      if (royaltyAmount > 0n && collection.creator && collection.creator !== listing.seller) {
+        await adjustBalance(collection.creator, paymentTokenIdentifier, -royaltyAmount);
+      }
+      await adjustBalance(listing.seller, paymentTokenIdentifier, -sellerProceeds);
+      return false;
+    }
+
+    logger.debug(`[nft-close-auction] NFT ${fullInstanceId} ownership transferred from ${listing.seller} to ${winningBid.bidder}.`);
+
+    // 4. Update listing status
+    const updateListingSuccess = await cache.updateOnePromise(
+      'nftListings',
+      { _id: data.listingId },
+      {
+        $set: {
+          status: 'sold',
+          buyer: winningBid.bidder,
+          soldAt: new Date().toISOString(),
+          finalPrice: bidAmount.toString(),
+          royaltyPaid: royaltyAmount.toString(),
+          winningBidId: winningBid._id,
+          endedBy: sender
+        }
+      }
+    );
+
+    if (!updateListingSuccess) {
+      logger.error(`[nft-close-auction] CRITICAL: Failed to update listing ${data.listingId} status.`);
+    }
+
+    // 5. Update winning bid status
+    const updateWinningBidSuccess = await cache.updateOnePromise(
+      'nftBids',
+      { _id: winningBid._id },
+      {
+        $set: {
+          status: 'WON',
+          wonAt: new Date().toISOString()
+        }
+      }
+    );
+
+    if (!updateWinningBidSuccess) {
+      logger.error(`[nft-close-auction] CRITICAL: Failed to update winning bid ${winningBid._id} status.`);
+    }
+
+    // 6. Update all losing bids and release their escrow
+    const losingBids = await cache.findPromise('nftBids', {
+      listingId: data.listingId,
+      _id: { $ne: winningBid._id },
+      status: { $in: ['ACTIVE', 'WINNING', 'OUTBID'] }
+    }) as NftBid[] | null;
+
+    if (losingBids && losingBids.length > 0) {
+      for (const losingBid of losingBids) {
+        // Release escrow for losing bids
+        const escrowAmount = toBigInt(losingBid.escrowedAmount);
+        await releaseEscrowedFunds(losingBid.bidder, escrowAmount, paymentTokenIdentifier);
+        
+        // Update bid status
+        await cache.updateOnePromise(
+          'nftBids',
+          { _id: losingBid._id },
+          { $set: { status: 'LOST' } }
+        );
+      }
+      logger.debug(`[nft-close-auction] Released escrow for ${losingBids.length} losing bids.`);
+    }
+
+    logger.debug(`[nft-close-auction] Auction ${data.listingId} successfully closed by ${sender}. Winner: ${winningBid.bidder}.`);
+
+    // Log event
+    const eventData = {
+      listingId: data.listingId,
+      winningBidId: winningBid._id,
+      collectionSymbol: listing.collectionId,
+      instanceId: listing.tokenId,
+      seller: listing.seller,
+      winner: winningBid.bidder,
+      finalPrice: bidAmount.toString(),
+      paymentTokenSymbol: paymentToken.symbol,
+      paymentTokenIssuer: paymentToken.issuer,
+      royaltyAmount: royaltyAmount.toString(),
+      endedBy: sender,
+      hasWinner: true
+    };
+    await logTransactionEvent('nftAuctionClosed', sender, eventData, id);
+
+    return true;
+
+  } catch (error) {
+    logger.error(`[nft-close-auction] Error processing auction close for ${data.listingId}: ${error}`);
+    return false;
+  }
+}

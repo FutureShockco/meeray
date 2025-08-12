@@ -21,7 +21,7 @@ function generatePairId(baseSymbol: string, baseIssuer: string, quoteSymbol: str
  */
 async function validateTokenExists(symbol: string, issuer: string): Promise<boolean> {
     // For native tokens (ECH, STEEM, SBD), check if issuer matches master name
-    const nativeTokens = ['ECH', 'STEEM', 'SBD'];
+    const nativeTokens = [config.nativeTokenSymbol, 'STEEM', 'SBD'];
     if (nativeTokens.includes(symbol)) {
         if (issuer !== config.masterName) {
             logger.warn(`[market-create-pair] Native token ${symbol} must have issuer as ${config.masterName}, got ${issuer}`);

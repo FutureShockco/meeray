@@ -664,4 +664,421 @@ router.get('/collections/stats', (async (req: Request, res: Response) => {
     }
 }) as RequestHandler);
 
+// ===== NEW BIDDING AND AUCTION ENDPOINTS =====
+
+// GET /nfts/bids - List all bids with filtering
+router.get('/bids', (async (req: Request, res: Response) => {
+    const { limit, skip } = getPagination(req);
+    
+    try {
+        const query: any = {};
+        
+        // Filter by listing
+        if (req.query.listingId) {
+            query.listingId = req.query.listingId;
+        }
+        
+        // Filter by bidder
+        if (req.query.bidder) {
+            query.bidder = req.query.bidder;
+        }
+        
+        // Filter by status
+        if (req.query.status) {
+            query.status = req.query.status;
+        }
+        
+        // Filter by bid amount range
+        if (req.query.minBid) {
+            query.bidAmount = { $gte: req.query.minBid };
+        }
+        if (req.query.maxBid) {
+            if (!query.bidAmount) query.bidAmount = {};
+            query.bidAmount.$lte = req.query.maxBid;
+        }
+        
+        // Sort options (default newest first)
+        const sortField = req.query.sortBy as string || 'createdAt';
+        const sortDirection = req.query.sortDirection === 'asc' ? 1 : -1;
+        const sort: any = {};
+        sort[sortField] = sortDirection;
+        
+        const bidsFromDB = await cache.findPromise('nftBids', query, { 
+            limit, 
+            skip, 
+            sort 
+        });
+        
+        const total = await mongo.getDb().collection('nftBids').countDocuments(query);
+        
+        if (!bidsFromDB || bidsFromDB.length === 0) {
+            return res.status(200).json({ data: [], total: 0, limit, skip });
+        }
+        
+        res.json({
+            data: bidsFromDB,
+            total,
+            limit,
+            skip
+        });
+    } catch (error: any) {
+        logger.error('Error fetching NFT bids:', error);
+        res.status(500).json({ message: 'Error fetching NFT bids', error: error.message });
+    }
+}) as RequestHandler);
+
+// GET /nfts/bids/listing/:listingId - Get all bids for a specific listing
+router.get('/bids/listing/:listingId', (async (req: Request, res: Response) => {
+    const { listingId } = req.params;
+    const { limit, skip } = getPagination(req);
+    
+    try {
+        const query = { listingId };
+        
+        // Filter by status (default to active bids)
+        if (req.query.status) {
+            query.status = req.query.status;
+        }
+        
+        const bidsFromDB = await cache.findPromise('nftBids', query, { 
+            limit, 
+            skip, 
+            sort: { bidAmount: -1, createdAt: -1 } // Highest bids first, then newest
+        });
+        
+        const total = await mongo.getDb().collection('nftBids').countDocuments(query);
+        
+        if (!bidsFromDB) {
+            return res.status(200).json({ data: [], total: 0, limit, skip });
+        }
+        
+        res.json({
+            data: bidsFromDB,
+            total,
+            limit,
+            skip
+        });
+    } catch (error: any) {
+        logger.error(`Error fetching bids for listing ${listingId}:`, error);
+        res.status(500).json({ message: 'Error fetching listing bids', error: error.message });
+    }
+}) as RequestHandler);
+
+// GET /nfts/bids/user/:userId - Get all bids by a specific user
+router.get('/bids/user/:userId', (async (req: Request, res: Response) => {
+    const { userId } = req.params;
+    const { limit, skip } = getPagination(req);
+    
+    try {
+        const query = { bidder: userId };
+        
+        // Filter by status
+        if (req.query.status) {
+            query.status = req.query.status;
+        }
+        
+        const bidsFromDB = await cache.findPromise('nftBids', query, { 
+            limit, 
+            skip, 
+            sort: { createdAt: -1 } // Newest first
+        });
+        
+        const total = await mongo.getDb().collection('nftBids').countDocuments(query);
+        
+        if (!bidsFromDB) {
+            return res.status(200).json({ data: [], total: 0, limit, skip });
+        }
+        
+        res.json({
+            data: bidsFromDB,
+            total,
+            limit,
+            skip
+        });
+    } catch (error: any) {
+        logger.error(`Error fetching bids for user ${userId}:`, error);
+        res.status(500).json({ message: 'Error fetching user bids', error: error.message });
+    }
+}) as RequestHandler);
+
+// GET /nfts/bids/:bidId - Get specific bid details
+router.get('/bids/:bidId', (async (req: Request, res: Response) => {
+    const { bidId } = req.params;
+    
+    try {
+        const bid = await cache.findOnePromise('nftBids', { _id: bidId });
+        
+        if (!bid) {
+            return res.status(404).json({ message: `Bid with ID ${bidId} not found.` });
+        }
+        
+        res.json(bid);
+    } catch (error: any) {
+        logger.error(`Error fetching bid ${bidId}:`, error);
+        res.status(500).json({ message: 'Error fetching bid', error: error.message });
+    }
+}) as RequestHandler);
+
+// GET /nfts/auctions - List active auctions
+router.get('/auctions', (async (req: Request, res: Response) => {
+    const { limit, skip } = getPagination(req);
+    
+    try {
+        const query: any = { 
+            status: 'active',
+            listingType: { $in: ['AUCTION', 'RESERVE_AUCTION'] }
+        };
+        
+        // Filter by collection
+        if (req.query.collectionSymbol) {
+            query.collectionId = req.query.collectionSymbol;
+        }
+        
+        // Filter by seller
+        if (req.query.seller) {
+            query.seller = req.query.seller;
+        }
+        
+        // Filter auctions ending soon
+        if (req.query.endingSoon === 'true') {
+            const soonThreshold = new Date(Date.now() + 24 * 60 * 60 * 1000); // Next 24 hours
+            query.auctionEndTime = { $lte: soonThreshold.toISOString() };
+        }
+        
+        // Sort options (default by auction end time)
+        const sortField = req.query.sortBy as string || 'auctionEndTime';
+        const sortDirection = req.query.sortDirection === 'desc' ? -1 : 1;
+        const sort: any = {};
+        sort[sortField] = sortDirection;
+        
+        const auctionsFromDB = await cache.findPromise('nftListings', query, { 
+            limit, 
+            skip, 
+            sort 
+        });
+        
+        const total = await mongo.getDb().collection('nftListings').countDocuments(query);
+        
+        if (!auctionsFromDB || auctionsFromDB.length === 0) {
+            return res.status(200).json({ data: [], total: 0, limit, skip });
+        }
+        
+        const auctions = auctionsFromDB.map(transformNftListingData);
+        res.json({
+            data: auctions,
+            total,
+            limit,
+            skip
+        });
+    } catch (error: any) {
+        logger.error('Error fetching NFT auctions:', error);
+        res.status(500).json({ message: 'Error fetching NFT auctions', error: error.message });
+    }
+}) as RequestHandler);
+
+// GET /nfts/auctions/:listingId/bids - Get all bids for a specific auction
+router.get('/auctions/:listingId/bids', (async (req: Request, res: Response) => {
+    const { listingId } = req.params;
+    const { limit, skip } = getPagination(req);
+    
+    try {
+        // First verify this is actually an auction
+        const listing = await cache.findOnePromise('nftListings', { _id: listingId });
+        if (!listing) {
+            return res.status(404).json({ message: `Auction with ID ${listingId} not found.` });
+        }
+        
+        if (listing.listingType !== 'AUCTION' && listing.listingType !== 'RESERVE_AUCTION') {
+            return res.status(400).json({ message: `Listing ${listingId} is not an auction.` });
+        }
+        
+        const query = { 
+            listingId,
+            status: { $in: ['ACTIVE', 'WINNING', 'OUTBID', 'WON', 'LOST'] }
+        };
+        
+        const bidsFromDB = await cache.findPromise('nftBids', query, { 
+            limit, 
+            skip, 
+            sort: { bidAmount: -1, createdAt: -1 } // Highest bids first
+        });
+        
+        const total = await mongo.getDb().collection('nftBids').countDocuments(query);
+        
+        if (!bidsFromDB) {
+            return res.status(200).json({ data: [], total: 0, limit, skip });
+        }
+        
+        res.json({
+            listingId,
+            listingType: listing.listingType,
+            auctionEndTime: listing.auctionEndTime,
+            reservePrice: listing.reservePrice,
+            currentHighestBid: listing.currentHighestBid,
+            currentHighestBidder: listing.currentHighestBidder,
+            data: bidsFromDB,
+            total,
+            limit,
+            skip
+        });
+    } catch (error: any) {
+        logger.error(`Error fetching auction bids for ${listingId}:`, error);
+        res.status(500).json({ message: 'Error fetching auction bids', error: error.message });
+    }
+}) as RequestHandler);
+
+// GET /nfts/auctions/ending-soon - Get auctions ending in the next 24 hours
+router.get('/auctions/ending-soon', (async (req: Request, res: Response) => {
+    const { limit, skip } = getPagination(req);
+    const hours = parseInt(req.query.hours as string) || 24; // Default 24 hours
+    
+    try {
+        const endThreshold = new Date(Date.now() + hours * 60 * 60 * 1000);
+        
+        const query = {
+            status: 'active',
+            listingType: { $in: ['AUCTION', 'RESERVE_AUCTION'] },
+            auctionEndTime: { 
+                $lte: endThreshold.toISOString(),
+                $gt: new Date().toISOString() // Still active
+            }
+        };
+        
+        const auctionsFromDB = await cache.findPromise('nftListings', query, { 
+            limit, 
+            skip, 
+            sort: { auctionEndTime: 1 } // Soonest first
+        });
+        
+        const total = await mongo.getDb().collection('nftListings').countDocuments(query);
+        
+        if (!auctionsFromDB || auctionsFromDB.length === 0) {
+            return res.status(200).json({ data: [], total: 0, limit, skip });
+        }
+        
+        const auctions = auctionsFromDB.map(transformNftListingData);
+        res.json({
+            data: auctions,
+            total,
+            limit,
+            skip,
+            endingWithinHours: hours
+        });
+    } catch (error: any) {
+        logger.error('Error fetching ending soon auctions:', error);
+        res.status(500).json({ message: 'Error fetching ending soon auctions', error: error.message });
+    }
+}) as RequestHandler);
+
+// GET /nfts/user/:userId/bidding - Get auctions where user has active bids
+router.get('/user/:userId/bidding', (async (req: Request, res: Response) => {
+    const { userId } = req.params;
+    const { limit, skip } = getPagination(req);
+    
+    try {
+        // Get user's active bids
+        const activeBids = await cache.findPromise('nftBids', { 
+            bidder: userId, 
+            status: { $in: ['ACTIVE', 'WINNING'] }
+        });
+        
+        if (!activeBids || activeBids.length === 0) {
+            return res.status(200).json({ data: [], total: 0, limit, skip });
+        }
+        
+        // Get unique listing IDs
+        const listingIds = [...new Set(activeBids.map(bid => bid.listingId))];
+        
+        // Get the corresponding listings
+        const listingsFromDB = await cache.findPromise('nftListings', { 
+            _id: { $in: listingIds },
+            status: 'active'
+        }, { limit, skip, sort: { auctionEndTime: 1 } });
+        
+        if (!listingsFromDB) {
+            return res.status(200).json({ data: [], total: 0, limit, skip });
+        }
+        
+        // Enhance listings with user's bid info
+        const enhancedListings = listingsFromDB.map(listing => {
+            const userBid = activeBids.find(bid => bid.listingId === listing._id);
+            return {
+                ...transformNftListingData(listing),
+                userBid: userBid ? {
+                    bidId: userBid._id,
+                    bidAmount: userBid.bidAmount,
+                    status: userBid.status,
+                    isHighestBid: userBid.isHighestBid,
+                    createdAt: userBid.createdAt
+                } : null
+            };
+        });
+        
+        res.json({
+            data: enhancedListings,
+            total: listingIds.length,
+            limit,
+            skip
+        });
+    } catch (error: any) {
+        logger.error(`Error fetching bidding auctions for user ${userId}:`, error);
+        res.status(500).json({ message: 'Error fetching user bidding auctions', error: error.message });
+    }
+}) as RequestHandler);
+
+// GET /nfts/user/:userId/winning - Get auctions where user is currently winning
+router.get('/user/:userId/winning', (async (req: Request, res: Response) => {
+    const { userId } = req.params;
+    const { limit, skip } = getPagination(req);
+    
+    try {
+        // Get user's winning bids
+        const winningBids = await cache.findPromise('nftBids', { 
+            bidder: userId, 
+            status: 'WINNING',
+            isHighestBid: true
+        });
+        
+        if (!winningBids || winningBids.length === 0) {
+            return res.status(200).json({ data: [], total: 0, limit, skip });
+        }
+        
+        // Get unique listing IDs
+        const listingIds = [...new Set(winningBids.map(bid => bid.listingId))];
+        
+        // Get the corresponding active listings
+        const listingsFromDB = await cache.findPromise('nftListings', { 
+            _id: { $in: listingIds },
+            status: 'active'
+        }, { limit, skip, sort: { auctionEndTime: 1 } });
+        
+        if (!listingsFromDB) {
+            return res.status(200).json({ data: [], total: 0, limit, skip });
+        }
+        
+        // Enhance listings with winning bid info
+        const enhancedListings = listingsFromDB.map(listing => {
+            const winningBid = winningBids.find(bid => bid.listingId === listing._id);
+            return {
+                ...transformNftListingData(listing),
+                winningBid: winningBid ? {
+                    bidId: winningBid._id,
+                    bidAmount: winningBid.bidAmount,
+                    createdAt: winningBid.createdAt
+                } : null
+            };
+        });
+        
+        res.json({
+            data: enhancedListings,
+            total: listingIds.length,
+            limit,
+            skip
+        });
+    } catch (error: any) {
+        logger.error(`Error fetching winning auctions for user ${userId}:`, error);
+        res.status(500).json({ message: 'Error fetching user winning auctions', error: error.message });
+    }
+}) as RequestHandler);
+
 export default router; 

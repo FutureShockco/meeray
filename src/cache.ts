@@ -36,6 +36,7 @@ interface CacheCopyCollections {
     tradingPairs: CacheCollectionStore;
     orders: CacheCollectionStore;
     nftListings: CacheCollectionStore;
+    nftBids: CacheCollectionStore;
     events: CacheCollectionStore;
     farms: CacheCollectionStore;
     userFarmPositions: CacheCollectionStore;
@@ -56,6 +57,7 @@ interface CacheMainDataCollections {
     tradingPairs: CacheCollectionStore;
     orders: CacheCollectionStore;
     nftListings: CacheCollectionStore;
+    nftBids: CacheCollectionStore;
     events: CacheCollectionStore;
     farms: CacheCollectionStore;
     userFarmPositions: CacheCollectionStore;
@@ -129,14 +131,14 @@ const cache: CacheType = {
     copy: {
         accounts: {}, blocks: {}, state: {}, tokens: {},
         nftCollections: {}, nfts: {}, tradingPairs: {}, orders: {},
-        nftListings: {}, events: {}, farms: {}, userFarmPositions: {}, userLiquidityPositions: {},
+        nftListings: {}, nftBids: {}, events: {}, farms: {}, userFarmPositions: {}, userLiquidityPositions: {},
         trades: {},
         launchpads: {},
         liquidityPools: {}
     },
     accounts: {}, blocks: {}, state: {}, tokens: {},
     nftCollections: {}, nfts: {}, tradingPairs: {}, orders: {},
-    nftListings: {}, events: {}, farms: {}, userFarmPositions: {}, userLiquidityPositions: {},
+    nftListings: {}, nftBids: {}, events: {}, farms: {}, userFarmPositions: {}, userLiquidityPositions: {},
     trades: {},
     launchpads: {},
     liquidityPools: {},

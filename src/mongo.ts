@@ -224,7 +224,7 @@ export const mongo = {
 
         // This object represents the INPUT parameters for creating the native token ECH
         const nativeTokenCreationParamsECH: TokenData = {
-            symbol: 'ECH',
+            symbol: config.nativeTokenSymbol,
             name: 'Echelon',
             precision: 8,
             maxSupply: toDbString(VERY_LARGE_MAX_SUPPLY_BIGINT),
