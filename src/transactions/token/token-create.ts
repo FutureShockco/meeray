@@ -126,7 +126,7 @@ export async function process(data: TokenData, sender: string, id: string): Prom
       const updateSuccess = await cache.updateOnePromise(
         'accounts',
         { name: sender },
-        { $set: { [`balances.${tokenToStore._id}`]: initialSupply } }
+        { $set: { [`balances.${tokenToStore._id}`]: toDbString(initialSupply) } }
       );
       if (!updateSuccess) {
         logger.error(`[token-create] Failed to set initial balance for ${sender} for token ${tokenToStore._id}.`);

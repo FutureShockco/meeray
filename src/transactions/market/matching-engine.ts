@@ -3,7 +3,7 @@ import { OrderBook, OrderBookMatchResult } from './orderbook.js';
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import { adjustBalance } from '../../utils/account.js';
-import { toBigInt } from '../../utils/bigint.js';
+import { toBigInt, toDbString } from '../../utils/bigint.js';
 
 /**
  * Result returned by the MatchingEngine after processing an order.
@@ -189,12 +189,12 @@ class MatchingEngine {
       const finalOrderState = { ...takerOrder, status: OrderStatus.REJECTED, updatedAt: new Date().toISOString() };
       const orderForDB = {
         ...finalOrderState,
-        price: finalOrderState.price?.toString(),
-        quantity: finalOrderState.quantity.toString(),
-        filledQuantity: finalOrderState.filledQuantity.toString(),
-        averageFillPrice: finalOrderState.averageFillPrice?.toString(),
-        cumulativeQuoteValue: finalOrderState.cumulativeQuoteValue?.toString(),
-        quoteOrderQty: finalOrderState.quoteOrderQty?.toString()
+        price: finalOrderState.price !== undefined ? toDbString(toBigInt(finalOrderState.price)) : undefined,
+        quantity: toDbString(toBigInt(finalOrderState.quantity)),
+        filledQuantity: toDbString(toBigInt(finalOrderState.filledQuantity)),
+        averageFillPrice: finalOrderState.averageFillPrice !== undefined ? toDbString(toBigInt(finalOrderState.averageFillPrice)) : undefined,
+        cumulativeQuoteValue: finalOrderState.cumulativeQuoteValue !== undefined ? toDbString(toBigInt(finalOrderState.cumulativeQuoteValue)) : undefined,
+        quoteOrderQty: finalOrderState.quoteOrderQty !== undefined ? toDbString(toBigInt(finalOrderState.quoteOrderQty)) : undefined
       };
       
       const existingOrderCheck = await cache.findOnePromise('orders', { _id: takerOrder._id });
@@ -220,9 +220,9 @@ class MatchingEngine {
       const finalOrderState = { ...takerOrder, status: OrderStatus.REJECTED, updatedAt: new Date().toISOString() };
       const orderForDB = {
         ...finalOrderState,
-        price: finalOrderState.price?.toString(),
-        quantity: finalOrderState.quantity.toString(),
-        filledQuantity: finalOrderState.filledQuantity.toString()
+        price: finalOrderState.price !== undefined ? toDbString(toBigInt(finalOrderState.price)) : undefined,
+        quantity: toDbString(toBigInt(finalOrderState.quantity)),
+        filledQuantity: toDbString(toBigInt(finalOrderState.filledQuantity))
       };
       
       const existingOrderCheck = await cache.findOnePromise('orders', { _id: takerOrder._id });
@@ -255,12 +255,12 @@ class MatchingEngine {
     if (!existingOrderDB) {
       const orderToInsertDB = {
         ...takerOrder,
-        price: takerOrder.price?.toString(),
-        quantity: takerOrder.quantity.toString(),
-        filledQuantity: takerOrder.filledQuantity.toString(),
-        averageFillPrice: takerOrder.averageFillPrice?.toString(),
-        cumulativeQuoteValue: takerOrder.cumulativeQuoteValue?.toString(),
-        quoteOrderQty: takerOrder.quoteOrderQty?.toString()
+        price: takerOrder.price !== undefined ? toDbString(toBigInt(takerOrder.price)) : undefined,
+        quantity: toDbString(toBigInt(takerOrder.quantity)),
+        filledQuantity: toDbString(toBigInt(takerOrder.filledQuantity)),
+        averageFillPrice: takerOrder.averageFillPrice !== undefined ? toDbString(toBigInt(takerOrder.averageFillPrice)) : undefined,
+        cumulativeQuoteValue: takerOrder.cumulativeQuoteValue !== undefined ? toDbString(toBigInt(takerOrder.cumulativeQuoteValue)) : undefined,
+        quoteOrderQty: takerOrder.quoteOrderQty !== undefined ? toDbString(toBigInt(takerOrder.quoteOrderQty)) : undefined
       };
       
       await new Promise<void>((resolve, reject) => {
@@ -287,12 +287,12 @@ class MatchingEngine {
       for (const trade of tradesAppFormat) {
         const tradeForDB = {
           ...trade,
-          price: trade.price.toString(),
-          quantity: trade.quantity.toString(),
-          feeAmount: trade.feeAmount?.toString(),
-          makerFee: trade.makerFee?.toString(),
-          takerFee: trade.takerFee?.toString(),
-          total: trade.total.toString()
+          price: toDbString(toBigInt(trade.price)),
+          quantity: toDbString(toBigInt(trade.quantity)),
+          feeAmount: trade.feeAmount !== undefined ? toDbString(toBigInt(trade.feeAmount)) : undefined,
+          makerFee: trade.makerFee !== undefined ? toDbString(toBigInt(trade.makerFee)) : undefined,
+          takerFee: trade.takerFee !== undefined ? toDbString(toBigInt(trade.takerFee)) : undefined,
+          total: toDbString(toBigInt(trade.total))
         };
         
         const tradePersisted = await new Promise<boolean>((resolve) => {
@@ -336,10 +336,10 @@ class MatchingEngine {
     if (matchOutput.updatedMakerOrder) {
       const { _id, filledQuantity, status, averageFillPrice, cumulativeQuoteValue } = matchOutput.updatedMakerOrder;
       const updateSet = {
-        filledQuantity: filledQuantity.toString(), 
+        filledQuantity: toDbString(toBigInt(filledQuantity)), 
         status,
-        averageFillPrice: averageFillPrice ? averageFillPrice.toString() : undefined,
-        cumulativeQuoteValue: cumulativeQuoteValue ? cumulativeQuoteValue.toString() : undefined,
+        averageFillPrice: averageFillPrice ? toDbString(toBigInt(averageFillPrice)) : undefined,
+        cumulativeQuoteValue: cumulativeQuoteValue ? toDbString(toBigInt(cumulativeQuoteValue)) : undefined,
         updatedAt: new Date().toISOString()
       };
       await cache.updateOnePromise('orders', { _id }, { $set: updateSet });
@@ -370,12 +370,12 @@ class MatchingEngine {
 
     const finalTakerOrderForDB = {
       ...takerOrder,
-      price: takerOrder.price?.toString(),
-      quantity: takerOrder.quantity.toString(),
-      filledQuantity: takerOrder.filledQuantity.toString(),
-      averageFillPrice: takerOrder.averageFillPrice?.toString(),
-      cumulativeQuoteValue: takerOrder.cumulativeQuoteValue?.toString(),
-      quoteOrderQty: takerOrder.quoteOrderQty?.toString()
+      price: takerOrder.price !== undefined ? toDbString(toBigInt(takerOrder.price)) : undefined,
+      quantity: toDbString(toBigInt(takerOrder.quantity)),
+      filledQuantity: toDbString(toBigInt(takerOrder.filledQuantity)),
+      averageFillPrice: takerOrder.averageFillPrice !== undefined ? toDbString(toBigInt(takerOrder.averageFillPrice)) : undefined,
+      cumulativeQuoteValue: takerOrder.cumulativeQuoteValue !== undefined ? toDbString(toBigInt(takerOrder.cumulativeQuoteValue)) : undefined,
+      quoteOrderQty: takerOrder.quoteOrderQty !== undefined ? toDbString(toBigInt(takerOrder.quoteOrderQty)) : undefined
     };
     await cache.updateOnePromise('orders', { _id: takerOrder._id }, { $set: finalTakerOrderForDB });
 

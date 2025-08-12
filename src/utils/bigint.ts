@@ -42,12 +42,12 @@ export function toBigInt(value: string | bigint | number | null | undefined): bi
  * @param padLength Optional custom pad length
  * @returns A zero-padded string representation
  */
-export function toDbString(value: bigint, padLength: number = MAX_INTEGER_LENGTH): string {
+export function toDbString(value: bigint): string {
     const str = value.toString();
     // Ensure positive numbers are properly padded for lexicographical sorting
     return str.startsWith('-')
-        ? '-' + str.slice(1).padStart(padLength, '0')
-        : str.padStart(padLength, '0');
+        ? '-' + str.slice(1).padStart(MAX_INTEGER_LENGTH, '0')
+        : str.padStart(MAX_INTEGER_LENGTH, '0');
 }
 
 /**
@@ -75,17 +75,6 @@ export function parseTokenAmount(value: string, symbol: string): bigint {
     const [integerPart = '0', decimalPart = ''] = value.split('.');
     const paddedDecimal = decimalPart.padEnd(decimals, '0').slice(0, decimals);
     return BigInt(integerPart + paddedDecimal);
-}
-
-/**
- * Create a MongoDB query operator with proper padding
- * @param operator The MongoDB comparison operator ('$gt', '$lt', etc.)
- * @param value The BigInt value to compare against
- * @param padLength Optional custom pad length
- * @returns An object with the properly padded query operator
- */
-export function createMongoQuery(operator: '$gt' | '$gte' | '$lt' | '$lte' | '$eq', value: bigint, padLength: number = MAX_INTEGER_LENGTH) {
-    return { [operator]: toDbString(value, padLength) };
 }
 
 /**
@@ -283,13 +272,12 @@ export const BigIntMath = {
      * Create a range query for MongoDB
      * @param min Minimum value (inclusive)
      * @param max Maximum value (inclusive)
-     * @param padLength Optional custom pad length
      * @returns MongoDB range query object
      */
-    createRangeQuery(min: bigint, max: bigint, padLength: number = MAX_INTEGER_LENGTH) {
+    createRangeQuery(min: bigint, max: bigint) {
         return {
-            $gte: toDbString(min, padLength),
-            $lte: toDbString(max, padLength)
+            $gte: toDbString(min),
+            $lte: toDbString(max)
         };
     },
 

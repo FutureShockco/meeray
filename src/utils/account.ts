@@ -22,7 +22,6 @@ export async function adjustBalance(
             logger.error(`[account-utils] Token ${tokenIdentifier} not found`);
             return false;
         }
-        const precision = token.precision ?? 0;
         const account = await getAccount(accountId);
         if (!account) {
             logger.error(`[account-utils] Account ${accountId} not found`);
@@ -30,7 +29,9 @@ export async function adjustBalance(
         }
         const currentBalance = toBigInt(account.balances?.[tokenIdentifier] || '0');
         const newBalance = currentBalance + amount;
-
+        console.log(`[account-utils] Token: ${token}`);
+        console.log(`[account-utils] Token: ${tokenIdentifier}, Amount: ${amount}`);
+        console.log(`[account-utils] Current balance: ${currentBalance}, New balance: ${newBalance}`);
         if (newBalance < 0n) {
             logger.error(`[account-utils] Insufficient balance for ${accountId}: ${currentBalance} + ${amount} = ${newBalance}`);
             return false;
@@ -44,7 +45,7 @@ export async function adjustBalance(
             logger.error(`[account-utils] Failed to update balance for ${accountId}`);
             return false;
         }
-        logger.debug(`[account-utils] Updated balance for ${accountId}: ${tokenIdentifier} ${currentBalance} -> ${newBalance} (precision: ${precision})`);
+        logger.debug(`[account-utils] Updated balance for ${accountId}: ${tokenIdentifier} ${currentBalance} -> ${newBalance} (precision: ${token.precision})`);
         return true;
     } catch (error) {
         logger.error(`[account-utils] Error adjusting balance for ${accountId}: ${error}`);

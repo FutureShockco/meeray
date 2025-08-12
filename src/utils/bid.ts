@@ -1,7 +1,7 @@
 import logger from '../logger.js';
 import cache from '../cache.js';
 import { NftBid, NFTListingData } from '../transactions/nft/nft-market-interfaces.js';
-import { toBigInt } from './bigint.js';
+import { toBigInt, toDbString } from './bigint.js';
 import { adjustBalance } from './account.js';
 import crypto from 'crypto';
 
@@ -210,7 +210,7 @@ export async function updateListingWithBid(
       { _id: listingId },
       { 
         $set: { 
-          currentHighestBid: bidAmount,
+          currentHighestBid: toDbString(bidAmount),
           currentHighestBidder: bidder,
           lastUpdatedAt: new Date().toISOString()
         },
