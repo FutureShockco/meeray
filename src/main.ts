@@ -14,6 +14,7 @@ import { witnessesModule } from './witnesses.js';
 import { initializeModules } from './initialize.js';
 import { Block } from './block.js';
 import settings from './settings.js';
+import { startWorker as startSteemBridgeWorker } from './modules/steemBridge.js';
 
 process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
     logger.error('CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
@@ -222,6 +223,12 @@ async function startDaemon(cfg: any) {
     p2p.init();
     p2p.connect(settings.peers, true);
     setTimeout(() => p2p.keepAlive(), 3000);
+
+    if (settings.steemBridgeEnabled) {
+        logger.info('Starting Steem bridge worker...');
+        startSteemBridgeWorker();
+        logger.info('Steem bridge worker started successfully.');
+    }
 
     setInterval(() => {
         transaction.cleanPool?.();

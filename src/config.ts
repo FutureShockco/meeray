@@ -15,7 +15,7 @@ const config = {
   witnessReward: 100000000,
   farmReward: 100000000,
   steemChainId: '0000000000000000000000000000000000000000000000000000000000000000',
-  steemStartBlock: process.env.NODE_ENV === 'development' ? 2717705 : 95762370,
+  steemStartBlock: process.env.NODE_ENV === 'development' ? 2718445 : 95762370,
   steemBlockDelay: 1,
   steemBlockMaxDelay: 6,
   b58Alphabet: '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz',

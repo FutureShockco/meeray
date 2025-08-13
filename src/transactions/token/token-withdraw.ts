@@ -5,7 +5,7 @@ import config from '../../config.js';
 import transaction from '../../transaction.js';
 import { TokenTransferData } from './token-interfaces.js';
 import { toDbString, toBigInt, BigIntMath } from '../../utils/bigint.js';
-import steemBridge from '../../modules/steemBridge.js';
+import { steemBridge } from '../../modules/steemBridge.js';
 import settings from '../../settings.js';
 const BURN_ACCOUNT_NAME = config.burnAccountName || 'null';
 
@@ -75,7 +75,8 @@ export async function process(data: TokenTransferData, sender: string, id: strin
         const token = await cache.findOnePromise('tokens', { _id: data.symbol });
         const decimals = typeof token?.precision === 'number' ? token.precision : parseInt(String(token?.precision || 0), 10);
         const formattedAmount = BigIntMath.formatWithDecimals(toBigInt(data.amount), isNaN(decimals) ? 8 : decimals);
-        await steemBridge.transfer(sender, formattedAmount, data.symbol, 'Withdraw from Echelon');
+        // Enqueue withdraw to process asynchronously off the block path
+        await steemBridge.enqueueWithdraw(sender, formattedAmount, data.symbol, 'Withdraw from Echelon');
 
         return true;
     } catch (error) {
