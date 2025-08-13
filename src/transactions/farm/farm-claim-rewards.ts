@@ -2,8 +2,9 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { FarmClaimRewardsData, FarmData, UserFarmPositionData } from './farm-interfaces.js';
-import { getAccount, adjustBalance } from '../../utils/account.js'; // For actual reward transfer later
-import { toDbString, convertToString } from '../../utils/bigint.js'; // Import toDbString and convertToString
+import { getAccount, adjustBalance } from '../../utils/account.js';
+import { toDbString, convertToString, toBigInt } from '../../utils/bigint.js';
+import config from '../../config.js';
 
 export async function validateTx(data: FarmClaimRewardsData, sender: string): Promise<boolean> {
   try {
@@ -47,48 +48,81 @@ export async function validateTx(data: FarmClaimRewardsData, sender: string): Pr
   }
 }
 
-export async function process(data: FarmClaimRewardsData, sender: string, id: string): Promise<boolean> {
+export async function process(data: FarmClaimRewardsData, sender: string, id: string, ts?: number): Promise<boolean> {
   try {
-    const farm = (await cache.findOnePromise('farms', { _id: data.farmId }) as FarmData)!;
+    const farm = (await cache.findOnePromise('farms', { _id: data.farmId }) as FarmData);
     const userFarmPositionId = `${data.staker}-${data.farmId}`;
-    const userFarmPos = (await cache.findOnePromise('userFarmPositions', { _id: userFarmPositionId }) as UserFarmPositionData)!;
+    const userFarmPos = (await cache.findOnePromise('userFarmPositions', { _id: userFarmPositionId }) as UserFarmPositionData);
 
-    // This is where we'd calculate pending rewards based on:
-    // - farm.rewardRate, farm.rewardState (e.g., accumulatedRewardsPerShare, lastDistributionTime)
-    // - userFarmPos.stakedAmount, userFarmPos.lastHarvestTime
-    // For simplicity, using hardcoded calculation logic here.
+    // Use Steem tx timestamp if provided to make replays deterministic
+    const nowMs = ts ?? Date.now();
+    const fromMs = new Date(userFarmPos.lastHarvestTime).getTime();
+    const elapsedMs = Math.max(0, nowMs - fromMs);
 
-    // Simplified reward calculation (in reality, rewards would depend on time staked, pool share, etc.)
-    const timeStaked = Date.now() - new Date(userFarmPos.lastHarvestTime).getTime();
-    const rewardRate = BigInt(100); // Example: 100 reward tokens per day
-    const msPerDay = 24 * 60 * 60 * 1000;
-    const daysStaked = BigInt(Math.floor(timeStaked / msPerDay));
-    const pendingRewards = daysStaked * rewardRate;
+    // Guard: Farm active window
+    const farmStart = new Date(farm.startTime).getTime();
+    const farmEnd = new Date(farm.endTime).getTime();
+    if (nowMs < farmStart || nowMs > farmEnd || farm.status !== 'active') {
+      logger.warn(`[farm-claim-rewards] Farm ${data.farmId} not active at ts=${nowMs}.`);
+      return true;
+    }
+
+    // Approximate per-second rewards from per-block using configured block time
+    const rewardsPerBlock = toBigInt(farm.rewardsPerBlock || '0');
+    if (rewardsPerBlock <= BigInt(0)) {
+      logger.warn(`[farm-claim-rewards] rewardsPerBlock is zero for farm ${data.farmId}.`);
+      return true;
+    }
+
+    const blockTimeMs = config.blockTime || 3000;
+    // Total rewards generated in elapsed time proportionally to staker share of total staked
+    const totalStaked = toBigInt(farm.totalStaked || '0');
+    const stakedAmount = toBigInt(userFarmPos.stakedAmount || '0');
+    if (totalStaked === BigInt(0) || stakedAmount === BigInt(0)) {
+      logger.warn(`[farm-claim-rewards] No stake or totalStaked zero for farm ${data.farmId}.`);
+      return true;
+    }
+    const blocksElapsed = BigInt(Math.floor(elapsedMs / blockTimeMs));
+    const farmRewardsGenerated = rewardsPerBlock * blocksElapsed;
+    let pendingRewards = (farmRewardsGenerated * stakedAmount) / totalStaked;
+    // Cap by rewardsRemaining if present
+    const rewardsRemaining = toBigInt((farm as any).rewardsRemaining || farm.totalRewards || '0');
+    if (rewardsRemaining > BigInt(0) && pendingRewards > rewardsRemaining) {
+      pendingRewards = rewardsRemaining;
+    }
 
     if (pendingRewards <= BigInt(0)) {
-      logger.warn(`[farm-claim-rewards] No rewards available for ${data.staker} in farm ${data.farmId}. Time staked: ${timeStaked}ms`);
+      logger.warn(`[farm-claim-rewards] No rewards available for ${data.staker} in farm ${data.farmId}. Elapsed: ${elapsedMs}ms`);
       return true; // Not an error, just no rewards
     }
 
-    logger.debug(`[farm-claim-rewards] Calculated rewards for ${data.staker}: ${pendingRewards} (${daysStaked} days staked).`);
+    logger.debug(`[farm-claim-rewards] Calculated rewards for ${data.staker}: ${pendingRewards} (elapsedMs=${elapsedMs}, blocks=${blocksElapsed}).`);
 
-    // Update user's token balance with the claimed rewards
-    const rewardTokenId = `${farm.rewardToken.symbol}${farm.rewardToken.issuer ? '@' + farm.rewardToken.issuer : ''}`;
-    
-    // Get current balance and manually add rewards (to maintain proper padding)
-    const stakerAccount = await cache.findOnePromise('accounts', { name: data.staker });
-    const currentBalance = BigInt(stakerAccount?.balances?.[rewardTokenId] || '0');
-    const newBalance = currentBalance + pendingRewards;
-    
-    await cache.updateOnePromise(
-      'accounts',
-      { name: data.staker },
-      { $set: { [`balances.${rewardTokenId}`]: toDbString(newBalance) } }
-    );
+    // Debit vault and credit user reward symbol (native farms should reward native token as well)
+    const rewardSymbol = farm.rewardToken.symbol;
+    const vaultAccountName = (farm as any).vaultAccount as string | undefined;
+    if (vaultAccountName) {
+      const debitVaultOk = await adjustBalance(vaultAccountName, rewardSymbol, -pendingRewards);
+      if (!debitVaultOk) {
+        logger.error(`[farm-claim-rewards] Failed to debit vault ${vaultAccountName} for ${pendingRewards} ${rewardSymbol}.`);
+        return false;
+      }
+    }
+    const creditOk = await adjustBalance(data.staker, rewardSymbol, pendingRewards);
+    if (!creditOk) {
+      logger.error(`[farm-claim-rewards] Failed to credit rewards for ${data.staker} in ${rewardSymbol}.`);
+      return false;
+    }
 
-    // Update UserFarmPosition to reset harvest time and add to pendingRewards for tracking
+    // Decrement farm rewardsRemaining
+    if ((farm as any).rewardsRemaining !== undefined) {
+      const updatedRemaining = rewardsRemaining - pendingRewards;
+      await cache.updateOnePromise('farms', { _id: data.farmId }, { $set: { rewardsRemaining: toDbString(updatedRemaining), lastUpdatedAt: new Date().toISOString() } });
+    }
+
+    // Update UserFarmPosition harvest time and accumulate pendingRewards for history
     const currentUserFarmPos = await cache.findOnePromise('userFarmPositions', { _id: userFarmPositionId });
-    const currentPendingRewards = BigInt(currentUserFarmPos?.pendingRewards || '0');
+    const currentPendingRewards = toBigInt(currentUserFarmPos?.pendingRewards || '0');
     const newPendingRewards = currentPendingRewards + pendingRewards;
     
     await cache.updateOnePromise(
@@ -96,7 +130,7 @@ export async function process(data: FarmClaimRewardsData, sender: string, id: st
       { _id: userFarmPositionId },
       { 
         $set: { 
-          lastHarvestTime: new Date().toISOString(), 
+          lastHarvestTime: new Date(nowMs).toISOString(), 
           lastUpdatedAt: new Date().toISOString(),
           pendingRewards: toDbString(newPendingRewards)
         }

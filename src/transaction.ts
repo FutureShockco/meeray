@@ -187,7 +187,7 @@ const transaction: TransactionModule = {
     execute: (tx: TransactionInterface, ts: number, cb: ExecutionCallback): void => {
         const handler = transactionHandlers[tx.type as TransactionType];
         if (handler)
-            handler.process(tx.data, tx.sender, tx.hash)
+            handler.process(tx.data, tx.sender, tx.hash, tx.ts || ts)
                 .then((success: boolean) => {
                     if (!success) {
                         logr.warn(`Execution failed for type ${TransactionType[tx.type as TransactionType]} by sender ${tx.sender}`);

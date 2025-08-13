@@ -103,6 +103,7 @@ interface CacheType extends CacheMainDataCollections {
     updateOne: (collection: string, query: Filter<BasicCacheDoc>, changes: UpdateFilter<BasicCacheDoc> | Partial<BasicCacheDoc>, cb: StandardCallback<boolean>) => void;
     updateMany: (collection: string, query: Filter<BasicCacheDoc>, changes: UpdateFilter<BasicCacheDoc> | Partial<BasicCacheDoc>, cb: StandardCallback<any[]>) => void;
     insertOne: (collection: string, document: BasicCacheDoc, cb: StandardCallback<boolean>) => void;
+    insertOnePromise: (collection: string, document: BasicCacheDoc) => Promise<boolean>;
     addWitness: (witness: string, isRollback: boolean, cb: StandardCallback) => void;
     removeWitness: (witness: string, isRollback: boolean) => void;
     clear: () => void;
@@ -123,7 +124,7 @@ export const setMongoDbInstance = (mongoDbInstance: Db): void => {
         throw new Error('MongoDB instance cannot be null or undefined for cache setup.');
     }
     db = mongoDbInstance;
-    logger.debug('[CACHE] MongoDB instance has been set.');
+    logger.trace('[CACHE] MongoDB instance has been set.');
 };
 
 const cache: CacheType = {
@@ -237,9 +238,9 @@ const cache: CacheType = {
         const collectionName = collection as keyof CacheMainDataCollections;
 
         // DEBUGGING LOGS START
-        logger.debug(`[CACHE findOne] Checking collection: '${collection}', cast to collectionName: '${collectionName}'`);
-        logger.debug(`[CACHE findOne] this.copy object keys: ${Object.keys(this.copy).join(', ')}`);
-        logger.debug(`[CACHE findOne] Value of this.copy['${collectionName}']: ${JSON.stringify(this.copy[collectionName as keyof CacheCopyCollections])}`);
+        logger.trace(`[CACHE findOne] Checking collection: '${collection}', cast to collectionName: '${collectionName}'`);
+        logger.trace(`[CACHE findOne] this.copy object keys: ${Object.keys(this.copy).join(', ')}`);
+        logger.trace(`[CACHE findOne] Value of this.copy['${collectionName}']: ${JSON.stringify(this.copy[collectionName as keyof CacheCopyCollections])}`);
         // DEBUGGING LOGS END
 
         if (!this.copy[collectionName as keyof CacheCopyCollections]) { // Check against known copy collections
@@ -293,12 +294,12 @@ const cache: CacheType = {
 
             if (docId !== undefined && this[collectionName] && (this[collectionName] as CacheCollectionStore)[docId]) {
                 delete (this[collectionName] as CacheCollectionStore)[docId];
-                logger.debug(`[CACHE deleteOnePromise] Removed ${collection}/${docId} from in-memory store.`);
+                logger.trace(`[CACHE deleteOnePromise] Removed ${collection}/${docId} from in-memory store.`);
             }
             // Also remove from copy if it exists there (though less likely to be hit directly for a delete operation)
             if (docId !== undefined && this.copy[collectionName as keyof CacheCopyCollections] && (this.copy[collectionName as keyof CacheCopyCollections] as CacheCollectionStore)[docId]) {
                 delete (this.copy[collectionName as keyof CacheCopyCollections] as CacheCollectionStore)[docId];
-                logger.debug(`[CACHE deleteOnePromise] Removed ${collection}/${docId} from copy store.`);
+                logger.trace(`[CACHE deleteOnePromise] Removed ${collection}/${docId} from copy store.`);
             }
 
             const result = await db.collection<BasicCacheDoc>(collection).deleteOne(query);
@@ -310,7 +311,7 @@ const cache: CacheType = {
             if (result.deletedCount && result.deletedCount > 0) {
                 // For now, we don't add to this.changes for deletions, as writeToDisk mainly handles inserts/updates.
                 // If deletion needs to be part of the batching/rollback system, this needs more thought.
-                logger.debug(`[CACHE deleteOnePromise] Successfully deleted document from ${collection} matching query:`, query);
+                logger.trace(`[CACHE deleteOnePromise] Successfully deleted document from ${collection} matching query:`, query);
                 return true;
             } else {
                 logger.warn(`[CACHE deleteOnePromise] No document found in ${collection} to delete for query:`, query);
@@ -504,6 +505,12 @@ const cache: CacheType = {
         cb(null, true);
     },
 
+    insertOnePromise: function (collection, document) {
+        return new Promise((rs, rj) => {
+            this.insertOne(collection, document, (e, d) => e ? rj(e) : rs(d || false));
+        });
+    },
+
     addWitness: function (witness, isRollback, cb) {
         if (!this.witnesses[witness]) {
             this.witnesses[witness] = 1;
@@ -592,7 +599,7 @@ const cache: CacheType = {
                     }
                 });
             } else {
-                 logger.warn(`[CACHE writeToDisk Refactor] Skipped invalid or empty changeOp for ${collection} updateOne. Query: ${JSON.stringify(changeOp.query)}, Changes: ${JSON.stringify(changeOp.changes)}`);
+                logger.warn(`cacheWriter: Skipped invalid or empty changeOp for ${collection} updateOne. Query: ${JSON.stringify(changeOp.query)}, Changes: ${JSON.stringify(changeOp.changes)}`);
             }
         }
 
@@ -600,13 +607,13 @@ const cache: CacheType = {
         let dbExecutions: Promise<any>[] = [];
         for (const collectionName in bulkOpsByCollection) {
             if (bulkOpsByCollection[collectionName].length > 0) {
-                logger.debug(`[CACHE writeToDisk Refactor] Preparing bulkWrite for ${collectionName} with ${bulkOpsByCollection[collectionName].length} ops.`);
+                logger.trace(`cacheWriter: Preparing bulkWrite for ${collectionName} with ${bulkOpsByCollection[collectionName].length} ops.`);
                 dbExecutions.push(
                     currentDb.collection(collectionName).bulkWrite(bulkOpsByCollection[collectionName], { ordered: false })
                 );
             }
         }
-        
+
         // 4. Handle other specific updates (txHistory, witnessesStats, state)
         // These are not easily batched with the above, keep them as separate ops for now,
         // or convert them to bulkWrite if they consistently target the same collections and can be structured as bulk ops.
@@ -621,7 +628,7 @@ const cache: CacheType = {
                     singleOpExecutions.push(...(witnessesStatsWriteOps as AsyncDbFunction[]));
                 }
             } catch (e) {
-                logger.error('[CACHE writeToDisk] Error getting witnessesStats write ops:', e);
+                logger.error('cacheWriter: Error getting witnessesStats write ops:', e);
             }
         }
 
@@ -632,7 +639,7 @@ const cache: CacheType = {
                     singleOpExecutions.push(...(txHistoryWriteOps as AsyncDbFunction[]));
                 }
             } catch (e) {
-                logger.error('[CACHE writeToDisk] Error getting txHistory write ops:', e);
+                logger.error('cacheWriter: Error getting txHistory write ops:', e);
             }
         }
 
@@ -644,12 +651,12 @@ const cache: CacheType = {
                 currentDb.collection<BasicCacheDoc>('state').updateOne(stateQuery, stateUpdate, { upsert: true })
                     .then(() => callback(null, true))
                     .catch(err => {
-                        logger.error('[CACHE writeToDisk] State update error:', err);
+                        logger.error('cacheWriter: State update error:', err);
                         callback(err);
                     });
             });
         } else {
-            logger.warn('[CACHE writeToDisk] Skipping state update, latest block or _id is undefined.');
+            logger.warn('cacheWriter: Skipping state update, latest block or _id is undefined.');
         }
 
         const allOpsDoneCallback = (err?: Error | null, results?: any[]) => {
@@ -663,7 +670,7 @@ const cache: CacheType = {
                     // witnessChanges are cleared in processRebuildOps
                 }
             } else {
-                logger.error('[CACHE writeToDisk] Batch failed. Cache not cleared (or partially cleared for rebuild).', err);
+                logger.error('cacheWriter: Batch failed. Cache not cleared (or partially cleared for rebuild).', err);
             }
             if (cb) {
                 cb(err ?? null, results);
@@ -674,7 +681,7 @@ const cache: CacheType = {
         const totalSingleOps = singleOpExecutions.length;
 
         if (totalBulkOps === 0 && totalSingleOps === 0) {
-            logger.debug('[CACHE writeToDisk Refactor] No DB operations for this batch.');
+            logger.trace('cacheWriter: No DB operations for this batch.');
             allOpsDoneCallback(null, []);
             return;
         }
@@ -688,7 +695,7 @@ const cache: CacheType = {
                         parallel(singleOpExecutions, (singleErr: Error | null, singleResults: any) => {
                             let execTime = new Date().getTime() - timeBefore;
                             if (singleErr) {
-                                logger.error('[CACHE writeToDisk Refactor] Error in single operations part of batch:', singleErr);
+                                logger.error('cacheWriter: Error in single operations part of batch:', singleErr);
                             }
                             // Combine results if needed, or just pass singleResults
                             const finalResults = (bulkResults || []).concat(singleResults || []);
@@ -701,17 +708,17 @@ const cache: CacheType = {
                 })
                 .catch(bulkErr => {
                     let execTime = new Date().getTime() - timeBefore;
-                    logger.error('[CACHE writeToDisk Refactor] Error in bulkWrite operations:', bulkErr);
+                    logger.error('cacheWriter: Error in bulkWrite operations:', bulkErr);
                     logTimingAndCallDone(bulkErr, [], execTime); // Pass empty results on bulk error
                 });
         };
-        
+
         const logTimingAndCallDone = (err: Error | null, results: any[], execTime: number) => {
             const numOps = insertArr.length + changesArr.length + singleOpExecutions.length; // Approximate total original ops
             if (config && config.blockTime && !rebuild && execTime >= config.blockTime / 2) {
-                logger.warn(`[CACHE writeToDisk Refactor] Slow DB batch: ${numOps} original ops (${totalBulkOps} bulk, ${totalSingleOps} single), ${execTime}ms`);
+                logger.warn(`cacheWriter: Slow DB batch: ${numOps} original ops (${totalBulkOps} bulk, ${totalSingleOps} single), ${execTime}ms`);
             } else {
-                logger.debug(`[CACHE writeToDisk Refactor] DB batch took ${execTime}ms for ${numOps} original ops (${totalBulkOps} bulk, ${totalSingleOps} single).`);
+                logger.trace(`cacheWriter: DB batch took ${execTime}ms for ${numOps} original ops (${totalBulkOps} bulk, ${totalSingleOps} single).`);
             }
             allOpsDoneCallback(err ?? null, results as any[]);
         };
@@ -720,7 +727,7 @@ const cache: CacheType = {
         if (typeof cb === 'function') {
             executeAllOperations();
         } else {
-            logger.debug(`[CACHE writeToDisk Refactor] Queuing ${totalBulkOps} bulk and ${totalSingleOps} single DB ops.`);
+            logger.trace(`cacheWriter: Queuing ${totalBulkOps} bulk and ${totalSingleOps} single DB ops.`);
             this.writerQueue.push((queueCb: StandardCallback) => {
                 executeAllOperations();
             });
@@ -756,7 +763,7 @@ const cache: CacheType = {
     // Warmup only implements 'accounts' as 'contents' is not in the target collection structure
     warmup: async function (collection: string, maxDoc: number): Promise<void> {
         if (!db) {
-            logger.error(`[CACHE warmup] Database not initialized for ${collection}.`);
+            logger.error(`cacheWarmUp: Database not initialized for ${collection}.`);
             return Promise.resolve();
         }
         if (!collection || !maxDoc || maxDoc === 0) {
@@ -776,9 +783,9 @@ const cache: CacheType = {
                             (this.accounts as CacheCollectionStore)[acc.name] = acc;
                         }
                     }
-                    logger.debug(`[CACHE warmup] Warmed up ${accountsDocs.length} accounts.`);
+                    logger.trace(`cacheWarmUp: Warmed up ${accountsDocs.length} accounts.`);
                 } catch (err) {
-                    logger.error(`[CACHE warmup] Error warming up ${collection}:`, err);
+                    logger.error(`cacheWarmUp: Error warming up ${collection}:`, err);
                     throw err;
                 }
                 break;
@@ -792,15 +799,15 @@ const cache: CacheType = {
                             (this.tokens as CacheCollectionStore)[token.identifier] = token;
                         }
                     }
-                    logger.debug(`[CACHE warmup] Warmed up ${tokensDocs.length} tokens.`);
+                    logger.trace(`cacheWarmUp: Warmed up ${tokensDocs.length} tokens.`);
                 } catch (err) {
-                    logger.error(`[CACHE warmup] Error warming up ${collection}:`, err);
+                    logger.error(`cacheWarmUp: Error warming up ${collection}:`, err);
                     throw err;
                 }
                 break;
             // 'contents' logic from JS is omitted as it's not in the target collection set.
             default:
-                logger.warn(`[CACHE warmup] Collection type '${collection}' not implemented for warmup in this configuration.`);
+                logger.warn(`cacheWarmUp: Collection type '${collection}' not implemented for warmup in this configuration.`);
                 // Original JS would reject, returning resolve to not break Promise.all if used elsewhere
                 return Promise.resolve();
         }
@@ -823,10 +830,10 @@ const cache: CacheType = {
                         cache.accounts[name] = accs[i];
                 }
             }
-            logger.debug(`[CACHE warmupWitnesses] Warmed up ${accs.length} witnesses.`);
+            logger.trace(`cacheWarmUp: Warmed up ${accs.length} witnesses.`);
             return accs.length;
         } catch (e) {
-            logger.error('[CACHE warmupWitnesses] Error:', e);
+            logger.error('cacheWarmUp: Error warming up witnesses:', e);
             throw e;
         }
     }

@@ -5,6 +5,7 @@ import p2p from './p2p.js';
 import transaction from './transaction.js';
 import { toBigInt, toDbString } from './utils/bigint.js';
 import { adjustTokenSupply } from './utils/token.js';
+import { adjustBalance } from './utils/account.js';
 
 export const witnessesModule = {
 
@@ -34,72 +35,31 @@ export const witnessesModule = {
             shuffle: shuffledWitnesses
         };
     },
-    witnessRewards: (name: string, ts: number, cb: (dist: string) => void) => {
-        cache.findOne('accounts', { name: name }, async function (err: any, account: any) {
-            if (err) {
-                logger.error('Error finding account for witness rewards:', err);
+    witnessRewards: async (name: string, ts: number, cb: (dist: string) => void) => {
+        const account = await cache.findOnePromise('accounts', { name: name })
+        const reward = BigInt(config.witnessReward || 0);
+        if (reward > BigInt(0)) {
+            const rewardBigInt = BigInt(reward);
+            logger.trace(`witnessRewards: Applying reward for ${name}: ${rewardBigInt.toString()}`);
+            const adjusted = await adjustBalance(account!.name!, config.nativeTokenSymbol, rewardBigInt);
+            if (!adjusted) {
+                logger.error(`witnessRewards: Failed to adjust balance for ${account!.name} when distributing rewards.`);
                 return cb('0');
             }
-
-            if (!account) {
-                logger.error('Account not found for witness rewards:', name);
-                return cb('0');
-            }
-
-            const reward = BigInt(config.witnessReward || 0);
-            if (reward > BigInt(0)) {
-                const currentBalanceStr = account.balances?.[config.nativeTokenSymbol] || toDbString(BigInt(0));
-                const currentBalanceBigInt = toBigInt(currentBalanceStr);
-
-                const rewardBigInt = BigInt(reward);
-                logger.debug(`[witnessRewards] Applying reward for ${name}: ${rewardBigInt.toString()}`);
-
-                const newBalanceBigInt = currentBalanceBigInt + rewardBigInt;
-                const newBalancePaddedString = toDbString(newBalanceBigInt);
-
-                cache.updateOne(
-                    'accounts',
-                    { name: account.name },
-                    { $set: { [`balances.${config.nativeTokenSymbol}`]: newBalancePaddedString } },
-                    function (err: Error | null, result?: boolean) {
-                        if (err) {
-                            logger.error('Error updating account balance for rewards:', err);
-                            return cb('0');
-                        }
-
-                        if (result === false) {
-                            logger.warn(`[witnessRewards] cache.updateOne for ${account.name} reported no document was updated.`);
-                        }
-
-                        if (account.balances) {
-                            account.balances[config.nativeTokenSymbol] = newBalancePaddedString;
-                        } else {
-                            account.balances = { [config.nativeTokenSymbol]: newBalancePaddedString };
-                        }
-                        if (account.tokens && account.tokens[config.nativeTokenSymbol] !== undefined) {
-                            delete account.tokens[config.nativeTokenSymbol];
-                            if (Object.keys(account.tokens).length === 0) {
-                                delete account.tokens;
-                            }
-                        }
-
-                        transaction.adjustWitnessWeight(account, rewardBigInt, function () {
-                            adjustTokenSupply(config.nativeTokenSymbol, rewardBigInt).then((success) => {
-                                if (!success) {
-                                    logger.error(`[witnessRewards] Failed to update token supply for ${config.nativeTokenSymbol}`);
-                                }
-                                logger.debug(`Distributed reward (${rewardBigInt.toString()} smallest units) to witness ${name}`);
-                                cb(toDbString(rewardBigInt));
-                            }).catch((error) => {
-                                logger.error(`[witnessRewards] Failed to update token supply for ${config.nativeTokenSymbol}: ${error}`);
-                            });
-                        });
-                    }
-                );
-            } else {
+            adjustTokenSupply(config.nativeTokenSymbol, rewardBigInt).then((success) => {
+                if (!success) {
+                    logger.error(`witnessRewards: Failed to update token supply for ${config.nativeTokenSymbol}`);
+                }
+                logger.trace(`witnessRewards: Distributed reward (${rewardBigInt.toString()} smallest units) to witness ${name}`);
+                cb(toDbString(rewardBigInt));
+            }).catch((error) => {
+                logger.error(`witnessRewards: Failed to update token supply for ${config.nativeTokenSymbol}: ${error}`);
                 cb('0');
-            }
-        });
+            });
+        } else {
+            cb('0');
+        }
+
     },
     generateWitnesses: (withWitnessPub: boolean, withWs: boolean, limit: number, start: number) => {
         let witnesses: any[] = [];
@@ -107,17 +67,17 @@ export const witnessesModule = {
         let witnessAccSource = withWitnessPub ? cache.witnesses : cache.accounts;
 
         if (!witnessAccSource || Object.keys(witnessAccSource).length === 0) {
-            logger.warn('[generateWitnesses] witnessAccSource is empty or undefined.');
+            logger.warn('generateWitnesses: witnessAccSource is empty or undefined.');
         }
         for (const key in witnessAccSource) {
             const account = cache.accounts[key];
             if (!account) {
-                logger.warn(`[generateWitnesses] Account not found in cache.accounts for key: ${key}`);
+                logger.warn(`generateWitnesses: Account not found in cache.accounts for key: ${key}`);
                 continue;
             }
 
             if (!account.totalVoteWeight || account.totalVoteWeight <= 0) {
-                logger.debug(`[generateWitnesses] Account ${account.name} has no totalVoteWeight or totalVoteWeight is less than or equal to 0.`);
+                logger.trace(`generateWitnesses: Account ${account.name} has no totalVoteWeight or totalVoteWeight is less than or equal to 0.`);
                 continue;
             }
 

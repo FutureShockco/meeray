@@ -26,7 +26,7 @@ export async function validateTx(data: TokenMintData, sender: string): Promise<b
     }
 
     // Validate amount (must be a positive bigint)
-    if (!validate.bigint(data.amount, false, false, undefined, BigInt(1))) {
+    if (!validate.bigint(data.amount, false, false, BigInt(1))) {
       logger.warn(`[token-mint] Invalid amount: ${data.amount}. Must be a positive integer.`);
       return false;
     }
@@ -71,14 +71,8 @@ export async function validateTx(data: TokenMintData, sender: string): Promise<b
 
 export async function process(data: TokenMintData, sender: string, id: string): Promise<boolean> {
   try {
-    const tokenFromCache = await cache.findOnePromise('tokens', { _id: data.symbol });
-    
-    const newSupply = toBigInt(tokenFromCache!.currentSupply || 0) + toBigInt(data.amount);
-
-    if (newSupply > toBigInt(tokenFromCache!.maxSupply)) {
-      logger.error(`[token-mint:process] Mint would exceed max supply for ${data.symbol}. Current: ${tokenFromCache!.currentSupply}, Amount: ${data.amount}, Max: ${tokenFromCache!.maxSupply}. This should have been caught by validateTx.`);
-      return false;
-    }
+    const tokenFromCache = (await cache.findOnePromise('tokens', { _id: data.symbol })) as any; // validateTx ensures existence
+    const newSupply = toBigInt(tokenFromCache.currentSupply || 0) + toBigInt(data.amount);
 
     await cache.updateOnePromise(
       'tokens',
@@ -86,11 +80,7 @@ export async function process(data: TokenMintData, sender: string, id: string): 
       { $set: { currentSupply: toDbString(newSupply) } }
     );
 
-    const recipientAccount = await cache.findOnePromise('accounts', { name: data.to });
-    if (!recipientAccount) {
-      logger.error(`[token-mint:process] Recipient account ${data.to} not found. Cannot mint to non-existent account.`);
-      return false;
-    }
+    const recipientAccount = (await cache.findOnePromise('accounts', { name: data.to })) as any; // validateTx ensures account format; account upsert happens before
 
     const currentBalanceStr = recipientAccount.balances?.[data.symbol] || '0';
     const newBalance = toBigInt(currentBalanceStr) + toBigInt(data.amount);

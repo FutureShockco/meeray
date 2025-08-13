@@ -295,7 +295,7 @@ class SyncManager {
         const oldValue = this.behindBlocks;
         this.behindBlocks = count;
         if (oldValue !== count) {
-            logger.info(`DEBUG updateBehindBlocks: ${oldValue} -> ${count} (change: ${count - oldValue})`);
+            logger.trace(`updateBehindBlocks: ${oldValue} -> ${count} (change: ${count - oldValue})`);
         }
     }
     setSyncExitTarget(target: number | null): void { this.syncExitTargetBlock = target; }

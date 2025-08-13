@@ -17,7 +17,8 @@ export interface Transaction {
 // Define transaction handler interface
 interface TransactionHandler<T> {
   validate: (data: T, sender: string) => Promise<boolean>;
-  process: (data: T, sender: string, id: string) => Promise<boolean>;
+  // ts is optional to preserve backward compatibility; when provided, it is the tx timestamp from Steem
+  process: (data: T, sender: string, id: string, ts?: number) => Promise<boolean>;
 }
 
 // Create a map of transaction handlers
@@ -26,8 +27,8 @@ const transactionHandlers: { [key in TransactionType]?: TransactionHandler<any> 
 // Function to recursively search for transaction handlers
 async function searchForHandlers(dirPath: string) {
   const files = await fs.readdir(dirPath);
-  logger.debug(`Searching directory: ${dirPath}`);
-  logger.debug(`Found files: ${files.join(', ')}`);
+  logger.trace(`Searching directory: ${dirPath}`);
+  logger.trace(`Found files: ${files.join(', ')}`);
 
   for (const file of files) {
     const filePath = path.join(dirPath, file);
@@ -35,16 +36,16 @@ async function searchForHandlers(dirPath: string) {
 
     if (stats.isDirectory()) {
       // Recursively search subdirectories
-      logger.debug(`Entering subdirectory: ${filePath}`);
+      logger.trace(`Entering subdirectory: ${filePath}`);
       await searchForHandlers(filePath);
     } else if ((file.endsWith('.ts') || file.endsWith('.js')) && !file.endsWith('.d.ts')) {
       // Skip the index file itself and utility files
       if (file === 'index.ts' || file === 'index.js' || file.includes('interfaces') || file === 'orderbook.ts' || file === 'orderbook.js' || file === 'matching-engine.ts' || file === 'matching-engine.js' || file === 'market-aggregator.ts' || file === 'market-aggregator.js' || file === 'types.ts' || file === 'types.js') {
-        logger.debug(`Skipping index, interface, or utility files: ${filePath}`);
+        logger.trace(`Skipping index, interface, or utility files: ${filePath}`);
         continue;
       }
 
-      logger.debug(`Loading transaction handler from: ${filePath}`);
+      logger.trace(`Loading transaction handler from: ${filePath}`);
       try {
         const module = await import(pathToFileURL(filePath).href);
 
@@ -57,16 +58,16 @@ async function searchForHandlers(dirPath: string) {
             .map(part => part.toUpperCase())
             .join('_');
 
-          logger.debug(`Extracted type name from ${file}: ${typeName}`);
+          logger.trace(`Extracted type name from ${file}: ${typeName}`);
           const txType = TransactionType[typeName as keyof typeof TransactionType];
-          logger.debug(`Mapped to transaction type: ${txType} (${TransactionType[txType]})`);
+          logger.trace(`Mapped to transaction type: ${txType} (${TransactionType[txType]})`);
 
           if (txType !== undefined) {
             transactionHandlers[txType] = {
               validate: module.validateTx,
               process: module.process
             };
-            logger.debug(`Registered transaction handler for ${typeName} (type ${txType})`);
+            logger.trace(`Registered transaction handler for ${typeName} (type ${txType})`);
           } else {
             logger.warn(`Failed to map ${typeName} to a valid TransactionType. Available types: ${Object.keys(TransactionType).filter(k => isNaN(Number(k))).join(', ')}`);
 
@@ -119,13 +120,13 @@ async function searchForHandlers(dirPath: string) {
 export async function discoverTransactionHandlers() {
   try {
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
-    logger.debug(`Looking for transaction handlers in ${__dirname}`);
+    logger.trace(`Looking for transaction handlers in ${__dirname}`);
 
     // Start recursive search from the transactions directory
     await searchForHandlers(__dirname);
 
     // Log all registered handlers
-    logger.debug(`Registered transaction handlers: ${Object.keys(transactionHandlers).map(k => `${k} (${TransactionType[Number(k)]})`).join(', ')}`);
+    logger.trace(`Registered transaction handlers: ${Object.keys(transactionHandlers).map(k => `${k} (${TransactionType[Number(k)]})`).join(', ')}`);
   } catch (error) {
     logger.error('Error discovering transaction handlers:', error);
     throw error;

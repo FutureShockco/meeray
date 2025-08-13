@@ -92,27 +92,27 @@ export async function validateTx(data: MarketCreatePairData, sender: string): Pr
         }
 
         // Validate numeric parameters
-        if (!validate.bigint(pairData.tickSize, false, false, undefined, BigInt(1))) {
+        if (!validate.bigint(pairData.tickSize, false, false, BigInt(1))) {
             logger.warn('[market-create-pair] tickSize must be a positive integer');
             return false;
         }
 
-        if (!validate.bigint(pairData.lotSize, false, false, undefined, BigInt(1))) {
+        if (!validate.bigint(pairData.lotSize, false, false, BigInt(1))) {
             logger.warn('[market-create-pair] lotSize must be a positive integer');
             return false;
         }
 
-        if (!validate.bigint(pairData.minNotional, false, false, undefined, BigInt(1))) {
+        if (!validate.bigint(pairData.minNotional, false, false, BigInt(1))) {
             logger.warn('[market-create-pair] minNotional must be a positive integer');
             return false;
         }
 
-        if (pairData.minTradeAmount !== undefined && !validate.bigint(pairData.minTradeAmount, true, false, undefined, BigInt(0))) {
+        if (pairData.minTradeAmount !== undefined && !validate.bigint(pairData.minTradeAmount, true, false, BigInt(0))) {
             logger.warn('[market-create-pair] minTradeAmount must be non-negative if provided');
             return false;
         }
 
-        if (pairData.maxTradeAmount !== undefined && !validate.bigint(pairData.maxTradeAmount, false, false, undefined, BigInt(1))) {
+        if (pairData.maxTradeAmount !== undefined && !validate.bigint(pairData.maxTradeAmount, false, false, BigInt(1))) {
             logger.warn('[market-create-pair] maxTradeAmount must be positive if provided');
             return false;
         }

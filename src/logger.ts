@@ -35,7 +35,7 @@ const logr = winston.createLogger({
         })
     ),
     transports: [
-        new winston.transports.Console({ level: logLevel }),
+        new winston.transports.Console({ level: logLevel, format: winston.format.simple() }),
         new winston.transports.File({ 
             filename: logFile,
             level: logLevel,
@@ -60,7 +60,7 @@ const logger = Object.assign(logr, {
     cons: (message: string, ...meta: any[]) => logr.info(`[CONS] ${message}`, ...meta),
     perf: (message: string, ...meta: any[]) => logr.debug(`[PERF] ${message}`, ...meta),
     fatal: (message: string, ...meta: any[]) => logr.error(`[FATAL] ${message}`, ...meta),
-    trace: (message: string, ...meta: any[]) => logr.debug(`[TRACE] ${message}`, ...meta)
+    trace: (message: string, ...meta: any[]) => logr.silly(`[TRACE] ${message}`, ...meta)
 });
 
 

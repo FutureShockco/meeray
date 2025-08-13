@@ -28,18 +28,18 @@ export async function validateTx(data: FarmStakeData, sender: string): Promise<b
       return false;
     }
 
-    if (!validate.bigint(stakeData.lpTokenAmount, false, false, undefined, BigInt(1))) {
+    if (!validate.bigint(stakeData.lpTokenAmount, false, false, BigInt(1))) {
       logger.warn('[farm-stake] lpTokenAmount must be a positive number.');
       return false;
     }
 
-    const farm = await cache.findOnePromise('farms', { _id: stakeData.farmId }) as FarmData | null;
+    const farm = await cache.findOnePromise('farms', { _id: stakeData.farmId }) as FarmData;
     if (!farm) {
       logger.warn(`[farm-stake] Farm ${stakeData.farmId} not found.`);
       return false;
     }
 
-    // The farm.lpTokenIssuer is assumed to be the poolId where these LP tokens originate
+    // The farm.stakingToken.issuer is assumed to be the poolId where these LP tokens originate
     const poolIdForLp = farm.stakingToken.issuer;
     const userLpPositionId = `${stakeData.staker}-${poolIdForLp}`;
     const userLiquidityPosDB = await cache.findOnePromise('userLiquidityPositions', { _id: userLpPositionId }) as UserLiquidityPositionData | null;
@@ -65,14 +65,31 @@ export async function validateTx(data: FarmStakeData, sender: string): Promise<b
   }
 }
 
-export async function process(data: FarmStakeData, sender: string, id: string): Promise<boolean> {
+export async function process(data: FarmStakeData, sender: string, id: string, ts?: number): Promise<boolean> {
   try {
     const stakeData = data;
     const farm = await cache.findOnePromise('farms', { _id: stakeData.farmId }) as FarmData | null;
+    // Validate farm timing and status using tx timestamp if provided
+    const nowMs = ts ?? Date.now();
+    if (!farm) return false;
+    const farmStart = new Date(farm.startTime).getTime();
+    const farmEnd = new Date(farm.endTime).getTime();
+    if (farm.status !== 'active' || nowMs < farmStart || nowMs > farmEnd) {
+      logger.warn(`[farm-stake] Farm ${stakeData.farmId} not active at ts=${nowMs}.`);
+      return false;
+    }
+
+    // Enforce min/max stake constraints if set (0 means unlimited)
+    const minStake = toBigInt((farm as any).minStakeAmount || '0');
+    const maxStake = toBigInt((farm as any).maxStakeAmount || '0');
+    if (minStake > BigInt(0) && toBigInt(stakeData.lpTokenAmount) < minStake) {
+      logger.warn(`[farm-stake] Amount below minStakeAmount for farm ${stakeData.farmId}.`);
+      return false;
+    }
     const poolIdForLp = farm!.stakingToken.issuer;
     const userLpSourcePositionId = `${stakeData.staker}-${poolIdForLp}`;
-    const userLiquidityPosDB = await cache.findOnePromise('userLiquidityPositions', { _id: userLpSourcePositionId }) as UserLiquidityPositionData | null;
-    const userLiquidityPos = userLiquidityPosDB!;
+    const userLiquidityPosDB = await cache.findOnePromise('userLiquidityPositions', { _id: userLpSourcePositionId }) as UserLiquidityPositionData;
+    const userLiquidityPos = userLiquidityPosDB;
 
     if (!userLiquidityPos || userLiquidityPos.lpTokenBalance < stakeData.lpTokenAmount) {
       logger.error(`[farm-stake] CRITICAL: Staker ${stakeData.staker} has insufficient LP balance for ${poolIdForLp} during processing.`);
@@ -135,7 +152,7 @@ export async function process(data: FarmStakeData, sender: string, id: string): 
         farmId: stakeData.farmId,
         stakedAmount: stakeData.lpTokenAmount,
         pendingRewards: BigInt(0),
-        lastHarvestTime: new Date().toISOString(),
+        lastHarvestTime: new Date(nowMs).toISOString(),
         createdAt: new Date().toISOString(),
         lastUpdatedAt: new Date().toISOString()
       };

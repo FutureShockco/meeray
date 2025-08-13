@@ -87,11 +87,7 @@ export async function process(dataDb: LaunchpadParticipatePresaleData, sender: s
   logger.debug(`[launchpad-participate-presale] Processing participation from ${sender} for ${data.launchpadId}: amount ${data.contributionAmount}`);
   try {
     const launchpadFromCache = await cache.findOnePromise('launchpads', { _id: data.launchpadId });
-    if (!launchpadFromCache || !launchpadFromCache.presaleDetailsSnapshot || !launchpadFromCache.presale) {
-        logger.error(`[launchpad-participate-presale] CRITICAL: Launchpad ${data.launchpadId} or its presale details not found during processing.`);
-        return false;
-    }
-    const launchpad = launchpadFromCache; // Use data directly 
+    const launchpad = launchpadFromCache as any; // validateTx ensures existence and presale fields
     const presaleDetails = launchpad.presaleDetailsSnapshot!;
     const contributionTokenIdentifier = `${presaleDetails.quoteAssetForPresaleSymbol}${presaleDetails.quoteAssetForPresaleIssuer ? '@' + presaleDetails.quoteAssetForPresaleIssuer : ''}`;
 
@@ -127,8 +123,7 @@ export async function process(dataDb: LaunchpadParticipatePresaleData, sender: s
     const updateSuccessful = await cache.updateOnePromise('launchpads', { _id: data.launchpadId }, updatePayload);
 
     if (!updateSuccessful) {
-        logger.error(`[launchpad-participate-presale] Failed to update launchpad ${data.launchpadId}. Rolling back balance.`);
-        await adjustBalance(sender, contributionTokenIdentifier, toBigInt(data.contributionAmount)); // Rollback with positive BigInt
+        logger.error(`[launchpad-participate-presale] Failed to update launchpad ${data.launchpadId}.`);
         return false;
     }
 

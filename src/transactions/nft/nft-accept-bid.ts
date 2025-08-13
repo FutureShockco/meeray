@@ -113,25 +113,16 @@ export async function validateTx(data: NftAcceptBidData, sender: string): Promis
 export async function process(data: NftAcceptBidData, sender: string, id: string): Promise<boolean> {
   try {
     // Re-fetch data for processing
-    const listing = await cache.findOnePromise('nftListings', { _id: data.listingId }) as NFTListingData | null;
-    const bid = await cache.findOnePromise('nftBids', { _id: data.bidId }) as NftBid | null;
+    const listing = await cache.findOnePromise('nftListings', { _id: data.listingId }) as NFTListingData;
+    const bid = await cache.findOnePromise('nftBids', { _id: data.bidId }) as NftBid;
 
-    if (!listing || !bid) {
-      logger.error(`[nft-accept-bid] CRITICAL: Listing or bid not found during processing.`);
+    const collection = await cache.findOnePromise('nftCollections', { _id: listing.collectionId }) as (CachedNftCollectionForTransfer & { creatorFee?: number });
+    if (collection.transferable === false) {
+      logger.error(`[nft-accept-bid] CRITICAL: Collection ${listing.collectionId} not transferable.`);
       return false;
     }
 
-    const collection = await cache.findOnePromise('nftCollections', { _id: listing.collectionId }) as (CachedNftCollectionForTransfer & { creatorFee?: number }) | null;
-    if (!collection || collection.transferable === false) {
-      logger.error(`[nft-accept-bid] CRITICAL: Collection ${listing.collectionId} not found or not transferable.`);
-      return false;
-    }
-
-    const paymentToken = await getTokenByIdentifier(listing.paymentToken.symbol, listing.paymentToken.issuer);
-    if (!paymentToken) {
-      logger.error(`[nft-accept-bid] CRITICAL: Payment token ${listing.paymentToken.symbol} not found.`);
-      return false;
-    }
+    const paymentToken = (await getTokenByIdentifier(listing.paymentToken.symbol, listing.paymentToken.issuer))!;
 
     const paymentTokenIdentifier = `${paymentToken.symbol}${paymentToken.issuer ? '@' + paymentToken.issuer : ''}`;
     const creatorFeePercent = toBigInt(collection.creatorFee || 0);
@@ -156,8 +147,6 @@ export async function process(data: NftAcceptBidData, sender: string, id: string
     if (royaltyAmount > 0n && collection.creator && collection.creator !== listing.seller) {
       if (!await adjustBalance(collection.creator, paymentTokenIdentifier, royaltyAmount)) {
         logger.error(`[nft-accept-bid] Failed to pay royalty ${royaltyAmount} to creator ${collection.creator}.`);
-        // Revert seller payment
-        await adjustBalance(listing.seller, paymentTokenIdentifier, -sellerProceeds);
         return false;
       }
       logger.debug(`[nft-accept-bid] Royalty of ${royaltyAmount} paid to creator ${collection.creator}.`);
@@ -182,11 +171,6 @@ export async function process(data: NftAcceptBidData, sender: string, id: string
 
     if (!updateNftOwnerSuccess) {
       logger.error(`[nft-accept-bid] CRITICAL: Failed to update NFT ${fullInstanceId} owner to ${bid.bidder}.`);
-      // Revert payments
-      if (royaltyAmount > 0n && collection.creator && collection.creator !== listing.seller) {
-        await adjustBalance(collection.creator, paymentTokenIdentifier, -royaltyAmount);
-      }
-      await adjustBalance(listing.seller, paymentTokenIdentifier, -sellerProceeds);
       return false;
     }
 

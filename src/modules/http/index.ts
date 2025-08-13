@@ -24,7 +24,7 @@ export function init(): void {
         app.use(cors());
         app.use(express.json());
         
-        logger.debug('Setting up HTTP endpoints...');
+        logger.trace('Setting up HTTP endpoints...');
 
         const files = fs.readdirSync(__dirname)
             .filter(file =>
@@ -37,7 +37,7 @@ export function init(): void {
         const endpointPromises = files.map(async (file) => {
             const filePath = path.join(__dirname, file);
             const importUrl = new URL(`file:///${filePath.replace(/\\/g, '/')}`).href;
-            logger.debug(`Importing endpoint module from: ${importUrl}`);
+            logger.trace(`Importing endpoint module from: ${importUrl}`);
             try {
                 const endpointModule = await import(/* webpackIgnore: true */ importUrl);
                 if (!endpointModule.default) {
@@ -47,7 +47,7 @@ export function init(): void {
                 // Use the filename (without extension) as the route
                 const routeName = '/' + file.replace(/\.(ts|js)$/, '');
                 app.use(routeName, endpointModule.default);
-                logger.debug('Initialized API endpoint ' + routeName);
+                logger.trace('Initialized API endpoint ' + routeName);
             } catch (error) {
                 logger.error('Failed to load API endpoint ' + file, error);
             }
@@ -55,7 +55,7 @@ export function init(): void {
         
         // Wait for all endpoints to initialize
         Promise.allSettled(endpointPromises).then(() => {
-            logger.debug('All available API endpoints initialized');
+            logger.info('All available API endpoints initialized');
             
             // Set host for Linux platform
             if (process.platform === 'linux') {

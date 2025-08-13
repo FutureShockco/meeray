@@ -1,6 +1,7 @@
 import logger from '../logger.js';
 import cache from '../cache.js';
 import { toDbString, toBigInt } from './bigint.js';
+import config from '../config.js';
 
 export interface Account {
     _id: string;
@@ -13,37 +14,44 @@ export async function getAccount(accountId: string): Promise<Account | null> {
 
 export async function adjustBalance(
     accountId: string,
-    tokenIdentifier: string, 
+    tokenSymbol: string,
     amount: bigint
 ): Promise<boolean> {
     try {
-        const token = await cache.findOnePromise('tokens', { symbol: tokenIdentifier });
-        if (!token) {
-            logger.error(`[account-utils] Token ${tokenIdentifier} not found`);
-            return false;
-        }
         const account = await getAccount(accountId);
-        if (!account) {
-            logger.error(`[account-utils] Account ${accountId} not found`);
-            return false;
-        }
-        const currentBalance = toBigInt(account.balances?.[tokenIdentifier] || '0');
+        const currentBalance = toBigInt(account!.balances?.[tokenSymbol] || '0');
         const newBalance = currentBalance + amount;
 
         if (newBalance < 0n) {
             logger.error(`[account-utils] Insufficient balance for ${accountId}: ${currentBalance} + ${amount} = ${newBalance}`);
             return false;
         }
-        const updateResult = await cache.updateOnePromise(
+        await cache.updateOnePromise(
             'accounts',
             { name: accountId },
-            { $set: { [`balances.${tokenIdentifier}`]: toDbString(newBalance) } }
+            { $set: { [`balances.${tokenSymbol}`]: toDbString(newBalance) } }
         );
-        if (!updateResult) {
-            logger.error(`[account-utils] Failed to update balance for ${accountId}`);
-            return false;
+        // Adjust vote weights if native token changed, matching original share-diff logic
+        if (tokenSymbol === config.nativeTokenSymbol && amount !== 0n) {
+            const voterAccount = account || (await getAccount(accountId));
+            const voted: string[] = (voterAccount as any)?.votedWitnesses || [];
+            const numVoted = BigInt(voted.length || 0);
+            if (numVoted > 0n) {
+                const beforeSharePerWitness = currentBalance / numVoted;
+                const afterSharePerWitness = newBalance / numVoted;
+                const diffPerWitness = afterSharePerWitness - beforeSharePerWitness;
+                if (diffPerWitness !== 0n) {
+                    for (const witnessName of voted) {
+                        const witnessAccount = await cache.findOnePromise('accounts', { name: witnessName });
+                        const currentVoteWeight = toBigInt(witnessAccount?.totalVoteWeight || toDbString(BigInt(0)));
+                        let updated = currentVoteWeight + diffPerWitness;
+                        if (updated < 0n) updated = 0n;
+                        await cache.updateOnePromise('accounts', { name: witnessName }, { $set: { totalVoteWeight: toDbString(updated) } });
+                    }
+                }
+            }
         }
-        logger.debug(`[account-utils] Updated balance for ${accountId}: ${tokenIdentifier} ${currentBalance} -> ${newBalance} (precision: ${token.precision})`);
+        logger.trace(`[account-utils] Updated balance for ${accountId}: ${tokenSymbol} ${currentBalance} -> ${newBalance}`);
         return true;
     } catch (error) {
         logger.error(`[account-utils] Error adjusting balance for ${accountId}: ${error}`);

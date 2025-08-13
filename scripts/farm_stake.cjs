@@ -14,7 +14,7 @@ async function main() {
     const farmStakeData = {
         farmId: farmIdPlaceholder,
         staker: username,
-        stakingAmount
+        lpTokenAmount: stakingAmount
     };
 
     console.log(`Staking in farm with account ${username}:`);

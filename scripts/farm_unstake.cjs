@@ -14,7 +14,7 @@ async function main() {
     const farmUnstakeData = {
         farmId: farmIdPlaceholder,
         staker: username,
-        unstakingAmount
+        lpTokenAmount: unstakingAmount
     };
 
     console.log(`Unstaking from farm with account ${username}:`);

@@ -106,11 +106,7 @@ export async function process(data: PoolAddLiquidityData, sender: string, id: st
     try {
         const addLiquidityData = data;
 
-        const poolDB = await cache.findOnePromise('liquidityPools', { _id: addLiquidityData.poolId }) as LiquidityPoolData | null;
-        if (!poolDB) {
-            logger.error(`[pool-add-liquidity] CRITICAL: Pool ${addLiquidityData.poolId} not found during processing.`);
-            return false;
-        }
+        const poolDB = await cache.findOnePromise('liquidityPools', { _id: addLiquidityData.poolId }) as LiquidityPoolData; // validateTx guarantees existence
 
         // Ensure fee accounting fields are present and initialized as bigint
         let feeGrowthGlobalA = toBigInt(poolDB.feeGrowthGlobalA || '0');
@@ -126,17 +122,13 @@ export async function process(data: PoolAddLiquidityData, sender: string, id: st
         const debitBSuccess = await adjustBalance(addLiquidityData.provider, pool.tokenB_symbol, -toBigInt(addLiquidityData.tokenB_amount));
 
         if (!debitASuccess || !debitBSuccess) {
-            logger.error(`[pool-add-liquidity] Failed to debit tokens from ${addLiquidityData.provider}. Rolling back any debits.`);
-            if (debitASuccess) await adjustBalance(addLiquidityData.provider, pool.tokenA_symbol, toBigInt(addLiquidityData.tokenA_amount));
-            if (debitBSuccess) await adjustBalance(addLiquidityData.provider, pool.tokenB_symbol, toBigInt(addLiquidityData.tokenB_amount));
+            logger.error(`[pool-add-liquidity] Failed to debit tokens from ${addLiquidityData.provider}.`);
             return false;
         }
 
         const lpTokensToMint = calculateLpTokensToMint(toBigInt(addLiquidityData.tokenA_amount), toBigInt(addLiquidityData.tokenB_amount), pool);
         if (lpTokensToMint <= BigInt(0)) {
-            logger.error('[pool-add-liquidity] CRITICAL: LP token calculation resulted in zero or negative amount. Rolling back token debits.');
-            await adjustBalance(addLiquidityData.provider, pool.tokenA_symbol, toBigInt(addLiquidityData.tokenA_amount));
-            await adjustBalance(addLiquidityData.provider, pool.tokenB_symbol, toBigInt(addLiquidityData.tokenB_amount));
+            logger.error('[pool-add-liquidity] CRITICAL: LP token calculation resulted in zero or negative amount.');
             return false;
         }
 
@@ -236,25 +228,7 @@ export async function process(data: PoolAddLiquidityData, sender: string, id: st
         }
 
         if (!userPosUpdateSuccess) {
-            logger.error(`[pool-add-liquidity] CRITICAL: Failed to update user position. Rolling back pool update and token debits.`);
-            await adjustBalance(addLiquidityData.provider, pool.tokenA_symbol, toBigInt(addLiquidityData.tokenA_amount));
-            await adjustBalance(addLiquidityData.provider, pool.tokenB_symbol, toBigInt(addLiquidityData.tokenB_amount));
-            await cache.updateOnePromise(
-                'liquidityPools',
-                { _id: addLiquidityData.poolId },
-                {
-                    $set: convertToString(
-                        {
-                            tokenA_reserve: toBigInt(pool.tokenA_reserve),
-                            tokenB_reserve: toBigInt(pool.tokenB_reserve),
-                            totalLpTokens: toBigInt(pool.totalLpTokens),
-                            feeGrowthGlobalA: pool.feeGrowthGlobalA,
-                            feeGrowthGlobalB: pool.feeGrowthGlobalB
-                        },
-                        ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens', 'feeGrowthGlobalA', 'feeGrowthGlobalB']
-                    )
-                }
-            );
+            logger.error(`[pool-add-liquidity] CRITICAL: Failed to update user position.`);
             return false;
         }
 
@@ -269,8 +243,7 @@ export async function process(data: PoolAddLiquidityData, sender: string, id: st
         // After updating userLiquidityPositions, credit LP tokens to user account
         const creditLPSuccess = await adjustBalance(addLiquidityData.provider, lpTokenSymbol, lpTokensToMint);
         if (!creditLPSuccess) {
-            logger.error(`[pool-add-liquidity] Failed to credit LP tokens (${lpTokenSymbol}) to ${addLiquidityData.provider}. Rolling back pool and user position updates.`);
-            // Rollback: remove liquidity position update and pool update (not implemented here, but should be for full atomicity)
+            logger.error(`[pool-add-liquidity] Failed to credit LP tokens (${lpTokenSymbol}) to ${addLiquidityData.provider}.`);
             return false;
         }
 

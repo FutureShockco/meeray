@@ -107,7 +107,7 @@ export const mongo = {
             for (const tokenDoc of allTokens) {
                 if (tokenDoc.symbol && typeof tokenDoc.precision === 'number') {
                     setTokenDecimals(tokenDoc.symbol, tokenDoc.precision);
-                    logger.debug(`[mongo] Registered decimals for ${tokenDoc.symbol}: ${tokenDoc.precision}`);
+                    logger.trace(`[mongo] Registered decimals for ${tokenDoc.symbol}: ${tokenDoc.precision}`);
                 } else {
                     logger.warn(`[mongo] Token document ${tokenDoc._id} is missing symbol or precision, or precision is not a number. Skipping registration.`);
                 }

@@ -29,7 +29,7 @@ export async function validateTx(data: TokenTransferData, sender: string): Promi
             return false;
         }
 
-        if (!validate.bigint(data.amount, false, false, undefined, BigInt(1))) {
+        if (!validate.bigint(data.amount, false, false, BigInt(1))) {
             logger.warn(`[token-transfer] Invalid amount: ${toBigInt(data.amount).toString()}. Must be a positive integer.`);
             return false;
         }

@@ -26,8 +26,8 @@ const transformFarmData = (farmData: any): any => {
     }
 
     // Format farm amounts using appropriate token symbols
-    const stakingTokenSymbol = transformed.stakingTokenSymbol || 'UNKNOWN';
-    const rewardTokenSymbol = transformed.rewardTokenSymbol || 'UNKNOWN';
+    const stakingTokenSymbol = transformed.stakingToken?.symbol || 'LP_TOKEN';
+    const rewardTokenSymbol = transformed.rewardToken?.symbol || 'REWARD_TOKEN';
     
     // Format staking-related amounts using staking token decimals
     const stakingFields = ['totalStaked', 'minStakeAmount', 'maxStakeAmount'];
@@ -40,7 +40,7 @@ const transformFarmData = (farmData: any): any => {
     }
     
     // Format reward-related amounts using reward token decimals
-    const rewardFields = ['rewardRate', 'totalRewardsAllocated', 'rewardsRemaining'];
+    const rewardFields = ['rewardsPerBlock', 'totalRewards', 'rewardsRemaining'];
     for (const field of rewardFields) {
         if (transformed[field]) {
             const formatted = formatTokenAmountForResponse(transformed[field], rewardTokenSymbol);
@@ -108,7 +108,7 @@ router.get('/', (async (req: Request, res: Response) => {
         query.status = req.query.status as string; // e.g., ACTIVE, ENDED
     }
     if (req.query.rewardTokenSymbol) {
-        query.rewardTokenSymbol = req.query.rewardTokenSymbol as string;
+        query['rewardToken.symbol'] = req.query.rewardTokenSymbol as string;
     }
     try {
         const farmsFromDB = await cache.findPromise('farms', query, { limit, skip, sort: { _id: 1 } });
@@ -141,8 +141,8 @@ router.get('/positions/user/:userId', (async (req: Request, res: Response) => {
     const { userId } = req.params; // Assuming userId is the staker
     const { limit, skip } = getPagination(req);
     try {
-        const positionsFromDB = await cache.findPromise('userFarmPositions', { staker: userId }, { limit, skip, sort: { _id: 1 } });
-        const total = await mongo.getDb().collection('userFarmPositions').countDocuments({ staker: userId });
+        const positionsFromDB = await cache.findPromise('userFarmPositions', { userId: userId }, { limit, skip, sort: { _id: 1 } });
+        const total = await mongo.getDb().collection('userFarmPositions').countDocuments({ userId: userId });
         const positions = (positionsFromDB || []).map(transformUserFarmPositionData);
         res.json({ data: positions, total, limit, skip });
     } catch (error: any) {

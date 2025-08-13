@@ -402,23 +402,22 @@ export const chain = {
     },
     validateAndAddBlock: async (block: any, revalidate: boolean, cb: (err: any, newBlock: any) => void) => {
         if (chain.shuttingDown) return
-        logger.debug(`[validateAndAddBlock] Entered. Block ID: ${block?._id}, Revalidate: ${revalidate}, Witness: ${block?.witness}`);
-
-        // Log the received block before validation begins
         isValidNewBlock(block, revalidate, false, function (isValid: boolean) {
-            logger.debug(`[validateAndAddBlock] isValidNewBlock for Block ID: ${block?._id} returned: ${isValid}`);
+            logger.trace(`validateAndAddBlock: isValidNewBlock for Block ID: ${block?._id} returned: ${isValid}`);
             if (!isValid) {
-                logger.warn(`[validateAndAddBlock] Block ID: ${block?._id} failed isValidNewBlock. Witness: ${block?.witness}`);
+                logger.warn(`validateAndAddBlock: Block ID: ${block?._id} failed isValidNewBlock. Witness: ${block?.witness}`);
                 return cb("Block failed basic validation", null);
             }
-            logger.debug(`Block ID: ${block?._id} passed isValidNewBlock. Witness: ${block?.witness}`); // Changed from console.log
+            logger.trace(`validateAndAddBlock: Block ID: ${block?._id} passed isValidNewBlock. Witness: ${block?.witness}`); // Changed from console.log
             // straight execution
             chain.executeBlockTransactions(block, false, function (successfullyExecutedTxs: any[], distributed: string) {
-                logger.debug(`[validateAndAddBlock] executeBlockTransactions for Block ID: ${block?._id} completed. Valid Txs: ${successfullyExecutedTxs?.length}/${block?.txs?.length}, Distributed: ${distributed}`);
+                logger.trace(`validateAndAddBlock: executeBlockTransactions for Block ID: ${block?._id} completed. Valid Txs: ${successfullyExecutedTxs?.length}/${block?.txs?.length}, Distributed: ${distributed}`);
 
                 // if any transaction failed execution, reject the block
                 if (block.txs.length !== successfullyExecutedTxs.length) {
-                    logger.error(`[validateAndAddBlock] Not all transactions in Block ID: ${block?._id} executed successfully. Expected: ${block.txs.length}, Executed: ${successfullyExecutedTxs.length}. Rejecting block.`);
+                    logger.error(`validateAndAddBlock: Not all transactions in Block ID: ${block?._id} executed successfully. Expected: ${block.txs.length}, Executed: ${successfullyExecutedTxs.length}. Rejecting block.`);
+                    // Roll back any in-memory cache mutations captured during tx executions
+                    try { cache.rollback(); } catch (e) { logger.error('validateAndAddBlock: Error during cache rollback after tx failure:', e); }
                     cb("Not all transactions executed successfully", null); // Signal block error
                     return;
                 }
@@ -428,7 +427,8 @@ export const chain = {
                 // error if distributed computed amounts are different than the reported one
                 let blockDist = block.dist || "0";
                 if (blockDist !== distributed) {
-                    logger.error(`[validateAndAddBlock] Wrong dist amount for Block ID: ${block?._id}. Expected: ${blockDist}, Got: ${distributed}. Rejecting block.`);
+                    logger.error(`validateAndAddBlock: Wrong dist amount for Block ID: ${block?._id}. Expected: ${blockDist}, Got: ${distributed}. Rejecting block.`);
+                    try { cache.rollback(); } catch (e) { logger.error('validateAndAddBlock: Error during cache rollback after dist mismatch:', e); }
                     cb("Wrong distribution amount", null); // Signal block error
                     return;
                 }

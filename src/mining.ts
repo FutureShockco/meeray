@@ -13,7 +13,6 @@ import { hashAndSignBlock } from './crypto.js';
 export const mining = {
 
     prepareBlock: (cb: (err: any, newBlock?: any) => void) => {
-        logger.debug('[MINING:prepareBlock] Entered.');
         let previousBlock = chain.getLatestBlock();
         if (!previousBlock) {
             logger.error('[MINING:prepareBlock] Cannot get latest block from chain. Aborting.');
@@ -21,33 +20,20 @@ export const mining = {
             return;
         }
         let nextIndex = previousBlock._id + 1;
-
-        // Determine the correct timestamp for the new block
         const targetBlockInterval = steem.isInSyncMode() ? config.syncBlockTime : config.blockTime;
         const minTimestampForNewBlock = previousBlock.timestamp + targetBlockInterval;
         const currentSystemTime = new Date().getTime();
-
-        // Ensure the new block's timestamp is at least minTimestampForNewBlock for the current mode,
-        // but use currentSystemTime if it's later, allowing the chain to progress naturally if there were delays.
         let nextTimestamp = Math.max(currentSystemTime, minTimestampForNewBlock);
-
-        // isValidNewBlock should be the ultimate arbiter of whether a timestamp is too far in the future.
-
-        // Steem block numbers and timestamps in the Echelon block are related to the Steem block being processed,
-        // not directly to Echelon block timing intervals in the same way Echelon timestamps are.
         let nextSteemBlockNum = previousBlock.steemBlockNum + 1;
         let nextSteemBlockTimestamp = previousBlock.steemBlockTimestamp + targetBlockInterval; // Approximate, actual comes from Steem block
 
-        logger.debug(`[MINING:prepareBlock] Mode: ${steem.isInSyncMode() ? 'SYNC' : 'NORMAL'}, TargetInterval: ${targetBlockInterval}ms`);
-        logger.debug(`[MINING:prepareBlock] previousBlock ID: ${previousBlock._id}, timestamp: ${new Date(previousBlock.timestamp).toISOString()}`);
-        logger.debug(`[MINING:prepareBlock] Calculated minTimestampForNewBlock: ${new Date(minTimestampForNewBlock).toISOString()}, currentSystemTime: ${new Date(currentSystemTime).toISOString()}, chosen nextTimestamp: ${new Date(nextTimestamp).toISOString()}`);
-        logger.debug(`[MINING:prepareBlock] Attempting to process Steem virtual op block corresponding to Echelon block ${nextIndex} using Steem block number ${nextSteemBlockNum}.`);
+        logger.trace(`prepareBlock: Mode: ${steem.isInSyncMode() ? 'SYNC' : 'NORMAL'}, TargetInterval: ${targetBlockInterval}ms`);
 
         steem.processBlock(nextSteemBlockNum).then((transactions) => {
             if (!transactions) {
                 // Handle the case where the Steem block doesn't exist yet
                 if (steem.getBehindBlocks() <= 0) {
-                    logger.debug(`[MINING:prepareBlock] Steem block ${nextSteemBlockNum} not found, but caught up. Retrying.`);
+                    logger.trace(`prepareBlock: Steem block ${nextSteemBlockNum} not found, but caught up. Retrying.`);
 
                     // If we're at the head of Steem, wait a bit and let the caller retry
                     setTimeout(() => {
@@ -56,11 +42,11 @@ export const mining = {
                     return; // Add explicit return to prevent further execution
                 }
 
-                logger.warn(`[MINING:prepareBlock] Steem block ${nextSteemBlockNum} not found, behind by ${steem.getBehindBlocks()} blocks. Cannot prepare Echelon block.`);
+                logger.warn(`prepareBlock: Steem block ${nextSteemBlockNum} not found, behind by ${steem.getBehindBlocks()} blocks. Cannot prepare Echelon block.`);
                 cb(true, null)
                 return; // Add explicit return to prevent further execution
             }
-            logger.debug(`[MINING:prepareBlock] Successfully processed Steem block ${nextSteemBlockNum}. Transactions found: ${transactions.transactions.length}`);
+            logger.trace(`prepareBlock: Successfully processed Steem block ${nextSteemBlockNum}. Transactions found: ${transactions.transactions.length}`);
 
             // Add mempool transactions
             let txs = []
@@ -90,7 +76,7 @@ export const mining = {
 
             transaction.removeFromPool(txs)
 
-            logger.debug(`[MINING:prepareBlock] Added ${txs.length} transactions from mempool.`);
+            logger.trace(`prepareBlock: Added ${txs.length} transactions from mempool.`);
 
             // Create the initial block
             let newBlock: Block = {
@@ -111,10 +97,10 @@ export const mining = {
             if (config.witnessReward > 0) {
                 newBlock.dist = BigInt(config.witnessReward).toString()
             }
-            logger.debug(`[MINING:prepareBlock] Prepared Echelon block candidate for _id ${newBlock._id}: ${JSON.stringify(newBlock)}`);
+            logger.trace(`prepareBlock: Prepared block candidate for _id ${newBlock._id}: ${JSON.stringify(newBlock)}`);
             cb(null, newBlock)
         }).catch((error) => {
-            logger.error(`[MINING:prepareBlock] Error processing Steem block ${nextSteemBlockNum}:`, error)
+            logger.error(`prepareBlock: Error processing Steem block ${nextSteemBlockNum}:`, error)
             cb(true, null)
         })
     },
@@ -123,18 +109,17 @@ export const mining = {
      * Check if this node can mine the next block.
      */
     canMineBlock: (cb: (err: boolean | null, newBlock?: any) => void) => {
-        logger.debug('[MINING:canMineBlock] Entered.');
         if (chain.shuttingDown) {
-            logger.warn('[MINING:canMineBlock] Chain shutting down, aborting.');
+            logger.warn('canMineBlock: Chain shutting down, aborting.');
             cb(true, null); return;
         }
         mining.prepareBlock((err, newBlock) => {
-            logger.debug(`[MINING:canMineBlock] prepareBlock result - err: ${err}, newBlock._id: ${newBlock?._id}`);
+            logger.trace(`canMineBlock: prepareBlock result - err: ${err}, newBlock._id: ${newBlock?._id}`);
             if (newBlock === null || newBlock === undefined) {
                 cb(true, null); return;
             }
             isValidNewBlock(newBlock, false, false, function (isValid: boolean) {
-                logger.debug(`[MINING:canMineBlock] isValidNewBlock for _id ${newBlock._id} result: ${isValid}`);
+                logger.trace(`canMineBlock: isValidNewBlock for _id ${newBlock._id} result: ${isValid}`);
                 if (!isValid) {
                     cb(true, newBlock); return;
                 }
@@ -144,22 +129,19 @@ export const mining = {
     },
 
     mineBlock: (cb: (err: boolean | null, newBlock?: any) => void) => {
-        logger.debug('[MINING:mineBlock] Entered.');
         if (chain.shuttingDown) {
-            logger.warn('[MINING:mineBlock] Chain shutting down, aborting.');
+            logger.warn('mineBlock: Chain shutting down, aborting.');
             return;
         }
         mining.canMineBlock(function (err, newBlock) {
-            logger.debug(`[MINING:mineBlock] canMineBlock result - err: ${err}, newBlock._id: ${newBlock?._id}`);
+            logger.trace(`mineBlock: canMineBlock: result - err: ${err}, newBlock._id: ${newBlock?._id}`);
             if (err) {
                 cb(true, newBlock); return;
             }
-            // at this point transactions in the pool seem all validated
-            // BUT with a different ts and without checking for double spend
-            // so we will execute transactions in order and revalidate after each execution
-            logger.debug(`[MINING:mineBlock] Before executeBlockTransactions for _id ${newBlock._id}. Initial Txs: ${newBlock.txs?.length}`);
+
+            logger.trace(`mineBlock: Before executeBlockTransactions for _id ${newBlock._id}. Initial Txs: ${newBlock.txs?.length}`);
             chain.executeBlockTransactions(newBlock, true, function (validTxs: Transaction[], distributed: string) {
-                logger.debug(`[MINING:mineBlock] After executeBlockTransactions for _id ${newBlock._id}. Valid Txs: ${validTxs?.length}, Distributed: ${distributed}`);
+                logger.trace(`mineBlock: After executeBlockTransactions for _id ${newBlock._id}. Valid Txs: ${validTxs?.length}, Distributed: ${distributed}`);
                 try {
                     cache.rollback()
                     // Assign the executed transactions to the block (fix)
@@ -174,22 +156,18 @@ export const mining = {
                             newBlock.missedBy = chain.schedule.shuffle[missedWitnessIndex].name;
                         }
                     } else {
-                        logger.warn(`[MINING:mineBlock] Witness schedule not available or shuffle array empty when trying to set missedBy for block ${newBlock._id}.`);
+                        logger.warn(`mineBlock: Witness schedule not available or shuffle array empty when trying to set missedBy for block ${newBlock._id}.`);
                     }
 
                     if (distributed) newBlock.dist = distributed;
 
-                    logger.debug(`[MINING:mineBlock] Before hashAndSignBlock for _id ${newBlock._id}.`);
                     newBlock = hashAndSignBlock(newBlock);
-                    logger.debug(`[MINING:mineBlock] After hashAndSignBlock for _id ${newBlock._id}. Hash: ${newBlock.hash}`);
 
-                    // Add this check before proposing to consensus
                     if (newBlock.phash !== chain.getLatestBlock().hash) {
-                        logger.warn(`[MINING] Chain advanced while preparing block ${newBlock._id}. Own block is stale. Aborting mining attempt for ${process.env.STEEM_ACCOUNT}.`);
-                        cb(true, newBlock); // Indicate an error/stale block
+                        logger.warn(`mineBlock: Chain advanced while preparing block ${newBlock._id}. Own block is stale. Aborting mining attempt for ${process.env.STEEM_ACCOUNT}.`);
+                        cb(true, newBlock);
                         return;
                     }
-                    // End of added check
 
                     let possBlock: any = {
                         block: newBlock
@@ -197,7 +175,7 @@ export const mining = {
                     for (let r = 0; r < config.consensusRounds; r++)
                         possBlock[r] = [];
 
-                    logger.debug(`[MINING:mineBlock] Proposing block _id ${newBlock._id} to consensus. Witness: ${process.env.STEEM_ACCOUNT}`);
+                    logger.trace(`mineBlock: Proposing block _id ${newBlock._id} to consensus. Witness: ${process.env.STEEM_ACCOUNT}`);
                     possBlock[0].push(process.env.STEEM_ACCOUNT);
                     consensus.possBlocks.push(possBlock);
                     consensus.endRound(0, newBlock);
@@ -211,7 +189,7 @@ export const mining = {
     },
 
     minerWorker: (block: Block): void => {
-        logger.debug(`[MINING:minerWorker] Entered. Current chain head _id: ${block._id}. p2p.recovering: ${p2p.recovering}`);
+        logger.trace(`minerWorker: Entered. Current chain head _id: ${block._id}. p2p.recovering: ${p2p.recovering}`);
         if (p2p.recovering) return;
         clearTimeout(chain.worker);
 
@@ -243,17 +221,17 @@ export const mining = {
         const thisNodeIsPrimaryWitness = primaryWitnessForNextBlock === process.env.STEEM_ACCOUNT;
 
         if (thisNodeIsPrimaryWitness && chain.lastWriteWasSlow) {
-            logger.warn(`[MINING:minerWorker] Previous cache write was slow. This node (${process.env.STEEM_ACCOUNT}) is primary for next block ${nextBlockId}. Forcing a delay to allow backups.`);
+            logger.warn(`minerWorker: Previous cache write was slow. This node (${process.env.STEEM_ACCOUNT}) is primary for next block ${nextBlockId}. Forcing a delay to allow backups.`);
             mineInMs = -blockTime;
             chain.lastWriteWasSlow = false;
-            logger.info(`[MINING:minerWorker] Self-throttle applied: mineInMs set to ${mineInMs} for block ${nextBlockId}.`);
+            logger.trace(`minerWorker: Self-throttle applied: mineInMs set to ${mineInMs} for block ${nextBlockId}.`);
         }
 
         if (thisNodeIsPrimaryWitness && mineInMs === null) {
             if (justExitedSync) {
                 const targetTimestamp = lastBlockTimestamp + config.blockTime;
                 mineInMs = targetTimestamp - currentTime;
-                logger.debug(`[MINING:minerWorker] Post-sync transition: Scheduled as next witness. Target: ${new Date(targetTimestamp).toISOString()}. Current: ${new Date(currentTime).toISOString()}. Calculated mineInMs: ${mineInMs}`);
+                logger.trace(`minerWorker: Post-sync transition: Scheduled as next witness. Target: ${new Date(targetTimestamp).toISOString()}. Current: ${new Date(currentTime).toISOString()}. Calculated mineInMs: ${mineInMs}`);
             } else {
                 mineInMs = blockTime;
             }
@@ -265,11 +243,11 @@ export const mining = {
                     if (justExitedSync) {
                         const targetTimestamp = lastBlockTimestamp + (config.blockTime * (i + 1));
                         mineInMs = targetTimestamp - currentTime;
-                        logger.debug(`[MINING:minerWorker] Post-sync transition: Backup witness (slot ${i + 1}). Target: ${new Date(targetTimestamp).toISOString()}. Current: ${new Date(currentTime).toISOString()}. Calculated mineInMs: ${mineInMs}`);
+                        logger.trace(`minerWorker: Post-sync transition: Backup witness (slot ${i + 1}). Target: ${new Date(targetTimestamp).toISOString()}. Current: ${new Date(currentTime).toISOString()}. Calculated mineInMs: ${mineInMs}`);
                     } else {
                         mineInMs = blockTime * (i + 1);
                     }
-                    logger.debug(`[MINING:minerWorker] Scheduled as backup witness (slot ${i + 1}). Initial mineInMs: ${mineInMs}ms`);
+                    logger.debug(`minerWorker: Scheduled as backup witness (slot ${i + 1}). Initial mineInMs: ${mineInMs}ms`);
                     break;
                 }
             }
@@ -280,26 +258,26 @@ export const mining = {
             mineInMs += 40;
             const timeSinceLastBlock = chain.lastBlockTime ? Date.now() - chain.lastBlockTime : 0;
             chain.lastBlockTime = Date.now();
-            logger.debug(`[MINING:minerWorker] Calculated mineInMs: ${mineInMs}. Will try to mine for block _id ${block._id + 1}. (sync: ${steem.isInSyncMode()}), timeSinceLastBlock: ${timeSinceLastBlock}ms`);
+            logger.trace(`minerWorker: Calculated mineInMs: ${mineInMs}. Will try to mine for block _id ${block._id + 1}. (sync: ${steem.isInSyncMode()}), timeSinceLastBlock: ${timeSinceLastBlock}ms`);
             consensus.observer = false;
 
             if (steem.isInSyncMode()) {
                 const syncSkipThreshold = Math.max(20, blockTime / 100);
                 if (mineInMs < syncSkipThreshold) {
                     const newCalculatedDelay = Math.max(50, Math.floor(blockTime / 4));
-                    logger.warn(`[MINING:minerWorker] In Sync: mineInMs (${mineInMs}ms) is below threshold (${syncSkipThreshold}ms). Calculated new delay: ${newCalculatedDelay}ms. Scheduling to mine then.`);
+                    logger.warn(`minerWorker: In Sync: mineInMs (${mineInMs}ms) is below threshold (${syncSkipThreshold}ms). Calculated new delay: ${newCalculatedDelay}ms. Scheduling to mine then.`);
                     mineInMs = newCalculatedDelay;
                 }
             } else {
                 const postSyncGracePeriod = (config.blockTime || 3000) * 10;
                 if (chain.lastWriteWasSlow) {
-                    logger.warn('[MINING:minerWorker] Post-block-add check: lastWriteWasSlow is true. Prioritizing network health. Will not mine this slot.');
+                    logger.warn('minerWorker: Post-block-add check: lastWriteWasSlow is true. Prioritizing network health. Will not mine this slot.');
                     return;
                 }
                 if (lastSyncExitTime && (currentTime - lastSyncExitTime < postSyncGracePeriod)) {
                     const lenientSkipThreshold = Math.max(100, blockTime / 10);
                     if (mineInMs < lenientSkipThreshold) {
-                        logger.warn(`[MINING:minerWorker] Post-sync Grace Period: mineInMs (${mineInMs}ms) is below lenient threshold (${lenientSkipThreshold}ms). Waiting for chain head to advance.`);
+                        logger.warn(`minerWorker: Post-sync Grace Period: mineInMs (${mineInMs}ms) is below lenient threshold (${lenientSkipThreshold}ms). Waiting for chain head to advance.`);
                         // Only retry if chain head advances
                         const currentBlockId = block._id;
                         const waitForAdvance = () => {
@@ -315,19 +293,19 @@ export const mining = {
                     }
                 } else {
                     const normalSkipThreshold = Math.max(150, blockTime / 3);
-                    logger.debug(`[MINING:minerWorker] Normal Mode: mineInMs (${mineInMs}ms) is above threshold (${normalSkipThreshold}ms). Proceeding to mine.`);
+                    logger.debug(`minerWorker: Normal Mode: mineInMs (${mineInMs}ms) is above threshold (${normalSkipThreshold}ms). Proceeding to mine.`);
                     if (mineInMs < normalSkipThreshold) {
-                        logger.warn(`[MINING:minerWorker] Normal Mode: mineInMs (${mineInMs}ms) is below threshold (${normalSkipThreshold}ms). Waiting for chain head to advance.`);
+                        logger.warn(`minerWorker: Normal Mode: mineInMs (${mineInMs}ms) is below threshold (${normalSkipThreshold}ms). Waiting for chain head to advance.`);
                         const waitForAdvance = () => {
                             const latestBlock = chain.getLatestBlock();
                             steem.getLatestSteemBlockNum().then(latestSteemBlock => {
-                                logger.warn(`[MINING:minerWorker] Normal Mode: latestBlock (${latestSteemBlock})`);
+                                logger.warn(`minerWorker: Normal Mode: latestBlock (${latestSteemBlock})`);
                                 if (latestSteemBlock) {
                                     console.log(`Waiting for steem chain head to advance: latestBlock=${latestBlock?.steemBlockNum}, latestSteemBlock=${latestSteemBlock}`);
                                     if (latestBlock && latestBlock.steemBlockNum < latestSteemBlock) {
                                         mining.mineBlock(function (error, finalBlock) {
                                             if (error) {
-                                                logger.warn(`[MINING:minerWorker] mineBlock callback error for ${block._id + 1}. finalBlock._id: ${finalBlock?._id}`, error);
+                                                logger.warn(`minerWorker: mineBlock: callback error for ${block._id + 1}. finalBlock._id: ${finalBlock?._id}`, error);
                                             }
                                         });
                                     } else {
@@ -335,11 +313,11 @@ export const mining = {
                                     }
                                 } else {
                                     // Handle null response - keep retrying to get Steem block instead of stopping
-                                    logger.warn('[MINING:minerWorker] Could not get latest Steem block, retrying...');
+                                    logger.warn('minerWorker: Could not get latest Steem block, retrying...');
                                     setTimeout(waitForAdvance, 5000);
                                 }
                             }).catch(error => {
-                                logger.error('[MINING:minerWorker] Error getting latest Steem block:', error);
+                                logger.error('minerWorker: Error getting latest Steem block:', error);
                                 // Keep retrying on error instead of stopping
                                 setTimeout(waitForAdvance, 5000);
                             });
@@ -354,7 +332,7 @@ export const mining = {
             chain.worker = setTimeout(function () {
                 mining.mineBlock(function (error, finalBlock) {
                     if (error) {
-                        logger.warn(`[MINING:minerWorker] mineBlock callback error for ${block._id + 1}. finalBlock._id: ${finalBlock?._id}`, error);
+                        logger.warn(`minerWorker: mineBlock: callback error for ${block._id + 1}. finalBlock._id: ${finalBlock?._id}`, error);
                     }
                 });
             }, mineInMs);

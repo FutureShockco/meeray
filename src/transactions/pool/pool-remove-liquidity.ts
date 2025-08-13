@@ -56,9 +56,9 @@ export async function validateTx(data: PoolRemoveLiquidityData, sender: string):
 
 export async function process(data: PoolRemoveLiquidityData, sender: string, transactionId: string): Promise<boolean> {
   try {
-    const pool = (await cache.findOnePromise('liquidityPools', { _id: data.poolId }) as LiquidityPoolData)!;
+    const pool = (await cache.findOnePromise('liquidityPools', { _id: data.poolId }) as LiquidityPoolData); // validateTx guarantees existence
     const userLpPositionId = `${data.provider}-${data.poolId}`;
-    const userPosition = (await cache.findOnePromise('userLiquidityPositions', { _id: userLpPositionId }) as UserLiquidityPositionData)!;
+    const userPosition = (await cache.findOnePromise('userLiquidityPositions', { _id: userLpPositionId }) as UserLiquidityPositionData); // validateTx guarantees existence
 
     const tokenAAmountToReturn = (toBigInt(data.lpTokenAmount) * toBigInt(pool.tokenA_reserve)) / toBigInt(pool.totalLpTokens);
     const tokenBAmountToReturn = (toBigInt(data.lpTokenAmount) * toBigInt(pool.tokenB_reserve)) / toBigInt(pool.totalLpTokens);
@@ -101,14 +101,7 @@ export async function process(data: PoolRemoveLiquidityData, sender: string, tra
     );
 
     if (!userPositionUpdateSuccess) {
-        logger.error(`[pool-remove-liquidity] CRITICAL: Failed to update user LP position ${userLpPositionId}. Rolling back pool update.`);
-        await cache.updateOnePromise('liquidityPools', { _id: data.poolId }, { 
-          $set: {
-            tokenA_reserve: pool.tokenA_reserve,
-            tokenB_reserve: pool.tokenB_reserve,
-            totalLpTokens: pool.totalLpTokens
-          }
-        });
+        logger.error(`[pool-remove-liquidity] CRITICAL: Failed to update user LP position ${userLpPositionId}.`);
         return false;
     }
 
@@ -116,21 +109,20 @@ export async function process(data: PoolRemoveLiquidityData, sender: string, tra
     const lpTokenSymbol = getLpTokenSymbol(pool.tokenA_symbol, pool.tokenB_symbol);
     const debitLPSuccess = await adjustBalance(data.provider, lpTokenSymbol, -toBigInt(data.lpTokenAmount));
     if (!debitLPSuccess) {
-        logger.error(`[pool-remove-liquidity] Failed to debit LP tokens (${lpTokenSymbol}) from ${data.provider}. Rolling back user position and pool update.`);
+        logger.error(`[pool-remove-liquidity] Failed to debit LP tokens (${lpTokenSymbol}) from ${data.provider}.`);
         return false;
     }
 
     // Credit the provider's account with the withdrawn tokens
     const creditASuccess = await adjustBalance(data.provider, pool.tokenA_symbol, tokenAAmountToReturn);
     if (!creditASuccess) {
-        logger.error(`[pool-remove-liquidity] CRITICAL: Failed to credit ${tokenAAmountToReturn} ${pool.tokenA_symbol} to ${data.provider}. Rolling back.`);
+        logger.error(`[pool-remove-liquidity] CRITICAL: Failed to credit ${tokenAAmountToReturn} ${pool.tokenA_symbol} to ${data.provider}.`);
         return false; 
     }
 
     const creditBSuccess = await adjustBalance(data.provider, pool.tokenB_symbol, tokenBAmountToReturn);
     if (!creditBSuccess) {
-        logger.error(`[pool-remove-liquidity] CRITICAL: Failed to credit ${tokenBAmountToReturn} ${pool.tokenB_symbol} to ${data.provider}. Rolling back.`);
-        await adjustBalance(data.provider, pool.tokenA_symbol, -tokenAAmountToReturn); // Debit back token A
+        logger.error(`[pool-remove-liquidity] CRITICAL: Failed to credit ${tokenBAmountToReturn} ${pool.tokenB_symbol} to ${data.provider}.`);
         return false;
     }
 

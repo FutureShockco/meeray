@@ -19,7 +19,7 @@ class MatchingEngine {
   private orderBooks: Map<string, OrderBook>; // Key: pairId
 
   constructor() {
-    logger.debug('[MatchingEngine] Initializing...');
+    logger.trace('[MatchingEngine] Initializing...');
     this.orderBooks = new Map<string, OrderBook>();
     this._initializeBooks().catch(err => {
       logger.error('[MatchingEngine] CRITICAL: Failed to initialize order books during construction:', err);
@@ -27,12 +27,12 @@ class MatchingEngine {
   }
 
   private async _initializeBooks(): Promise<void> {
-    logger.debug('[MatchingEngine] Loading trading pairs and initializing order books...');
+    logger.trace('[MatchingEngine] Loading trading pairs and initializing order books...');
     const activePairsDB = await cache.findPromise('tradingPairs', { status: 'TRADING' }) as TradingPairData[] | null;
 
     if (!activePairsDB || activePairsDB.length === 0) {
       logger.warn('[MatchingEngine] No active trading pairs found to initialize.');
-      logger.debug('[MatchingEngine] Order books initialization skipped: No active pairs loaded.');
+      logger.trace('[MatchingEngine] Order books initialization skipped: No active pairs loaded.');
       return;
     }
 

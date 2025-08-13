@@ -27,7 +27,7 @@ export async function validateTx(data: FarmUnstakeData, sender: string): Promise
       return false;
     }
 
-    if (!validate.bigint(unstakeData.lpTokenAmount, false, false, undefined, BigInt(1))) {
+    if (!validate.bigint(unstakeData.lpTokenAmount, false, false, BigInt(1))) {
       logger.warn('[farm-unstake] lpTokenAmount must be a positive number.');
       return false;
     }
@@ -60,11 +60,20 @@ export async function validateTx(data: FarmUnstakeData, sender: string): Promise
   }
 }
 
-export async function process(data: FarmUnstakeData, sender: string, id: string): Promise<boolean> {
+export async function process(data: FarmUnstakeData, sender: string, id: string, ts?: number): Promise<boolean> {
   try {
-    const farm = (await cache.findOnePromise('farms', { _id: data.farmId }) as FarmData)!;
+    const farm = (await cache.findOnePromise('farms', { _id: data.farmId }) as FarmData);
+    const nowMs = ts ?? Date.now();
+    const farmStart = new Date(farm.startTime).getTime();
+    const farmEnd = new Date(farm.endTime).getTime();
+    if (farm.status !== 'active' || nowMs < farmStart || nowMs > farmEnd) {
+      logger.warn(`[farm-unstake] Farm ${data.farmId} not active at ts=${nowMs}.`);
+      return false;
+    }
+
+    // Optional: prevent unstake below minStake if desired for residuals. Not enforcing here.
     const userFarmPositionId = `${data.staker}-${data.farmId}`;
-    const userFarmPos = (await cache.findOnePromise('userFarmPositions', { _id: userFarmPositionId }) as UserFarmPositionData)!;
+    const userFarmPos = (await cache.findOnePromise('userFarmPositions', { _id: userFarmPositionId }) as UserFarmPositionData);
 
     // 1. Decrease staked amount in UserFarmPosition
     const newStakedAmount = toBigInt(userFarmPos.stakedAmount) - toBigInt(data.lpTokenAmount);

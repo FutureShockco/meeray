@@ -57,6 +57,9 @@ export interface FarmData {
   status: 'active' | 'ended' | 'cancelled';
   createdAt: string;
   lastUpdatedAt?: string;
+  // Optional fields for runtime accounting
+  rewardsRemaining?: string | bigint;
+  vaultAccount?: string;
 }
 
 export interface UserFarmPositionData {

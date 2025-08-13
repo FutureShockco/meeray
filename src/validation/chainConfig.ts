@@ -21,9 +21,9 @@ interface ParameterGroup {
  */
 const types: Record<string, ValidationType> = {
     posInt: (val: any) => validateBigInt(val, false, false),
-    posNonZeroInt: (val: any) => validateBigInt(val, false, false, undefined, BigInt(1)),
+    posNonZeroInt: (val: any) => validateBigInt(val, false, false, BigInt(1)),
     posAmount: (val: any) => validateBigInt(val, true, false),
-    posNonZeroAmount: (val: any) => validateBigInt(val, false, false, undefined, BigInt(1))
+    posNonZeroAmount: (val: any) => validateBigInt(val, false, false, BigInt(1))
 };
 
 /**

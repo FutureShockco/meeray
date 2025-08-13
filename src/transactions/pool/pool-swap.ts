@@ -214,7 +214,7 @@ export async function validateTx(data: PoolSwapData, sender: string): Promise<bo
 
 async function validateSingleHopSwap(data: PoolSwapData, sender: string, traderAccount: Account): Promise<boolean> {
     // Get pool data
-    const poolFromDb = await cache.findOnePromise('liquidityPools', { _id: data.poolId });
+    const poolFromDb = (await cache.findOnePromise('liquidityPools', { _id: data.poolId }))!;
     if (!poolFromDb) {
         logger.warn(`[pool-swap] Pool ${data.poolId} not found.`);
         return false;
@@ -251,7 +251,7 @@ async function validateRoutedSwap(data: PoolSwapData, sender: string, traderAcco
         const hop = data.hops![i];
         
         // Get pool data for this hop
-        const poolFromDb = await cache.findOnePromise('liquidityPools', { _id: hop.poolId });
+        const poolFromDb = (await cache.findOnePromise('liquidityPools', { _id: hop.poolId }))!;
         if (!poolFromDb) {
             logger.warn(`[pool-swap] Pool ${hop.poolId} not found for hop ${i + 1}.`);
             return false;
@@ -326,7 +326,7 @@ async function validateAutoRouteSwap(data: PoolSwapData, sender: string, traderA
         const hop = bestRoute.hops[i];
         
         // Get current pool data (same as execution)
-        const poolFromDb = await cache.findOnePromise('liquidityPools', { _id: hop.poolId });
+        const poolFromDb = (await cache.findOnePromise('liquidityPools', { _id: hop.poolId })) as { tokenA_symbol: string; tokenA_reserve: string; tokenB_symbol: string; tokenB_reserve: string; feeTier: number };
         if (!poolFromDb) {
             logger.warn(`[pool-swap] Pool ${hop.poolId} not found during validation for hop ${i + 1}.`);
             return false;
@@ -406,11 +406,7 @@ export async function processWithResult(data: PoolSwapData, sender: string, tran
 
 async function processSingleHopSwap(data: PoolSwapData, sender: string, transactionId: string): Promise<boolean> {
     // Get pool data
-    const poolFromDb = await cache.findOnePromise('liquidityPools', { _id: data.poolId });
-    if (!poolFromDb) {
-        logger.warn(`[pool-swap] Pool ${data.poolId} not found during processing.`);
-        return false;
-    }
+    const poolFromDb = (await cache.findOnePromise('liquidityPools', { _id: data.poolId })) as any; // validateTx ensures existence
 
     // Determine token indices
     const tokenInIsA = data.tokenIn_symbol === poolFromDb.tokenA_symbol;
@@ -456,8 +452,7 @@ async function processSingleHopSwap(data: PoolSwapData, sender: string, transact
     }
     const creditSuccess = await adjustBalance(sender, tokenOut_symbol, amountOut);
     if (!creditSuccess) {
-        logger.error(`[pool-swap] Failed to credit ${amountOut} ${tokenOut_symbol} to ${sender}. Rolling back deduction.`);
-        await adjustBalance(sender, tokenIn_symbol, toBigInt(data.amountIn)); // Credit back
+        logger.error(`[pool-swap] Failed to credit ${amountOut} ${tokenOut_symbol} to ${sender}.`);
         return false;
     }
 
@@ -480,10 +475,7 @@ async function processSingleHopSwap(data: PoolSwapData, sender: string, transact
     });
 
     if (!updateSuccess) {
-        logger.error(`[pool-swap] Failed to update pool ${data.poolId} reserves. Critical: Balances changed but pool reserves not. Rolling back balance changes.`);
-        // Attempt to rollback balance changes
-        await adjustBalance(sender, tokenOut_symbol, -amountOut); // Deduct credited amountOut
-        await adjustBalance(sender, tokenIn_symbol, toBigInt(data.amountIn)); // Credit back original amountIn
+        logger.error(`[pool-swap] Failed to update pool ${data.poolId} reserves. Critical: Balances changed but pool reserves not.`);
         return false;
     }
 
@@ -549,8 +541,6 @@ async function processSingleHopSwapWithResult(data: PoolSwapData, sender: string
         }
         const creditSuccess = await adjustBalance(sender, tokenOut_symbol, amountOut);
         if (!creditSuccess) {
-            // Rollback deduction
-            await adjustBalance(sender, tokenIn_symbol, toBigInt(data.amountIn));
             return { success: false, amountOut: BigInt(0), error: `Failed to credit ${amountOut} ${tokenOut_symbol} to ${sender}` };
         }
 
@@ -573,9 +563,6 @@ async function processSingleHopSwapWithResult(data: PoolSwapData, sender: string
         });
 
         if (!updateSuccess) {
-            // Rollback balance changes
-            await adjustBalance(sender, tokenOut_symbol, -amountOut);
-            await adjustBalance(sender, tokenIn_symbol, toBigInt(data.amountIn));
             return { success: false, amountOut: BigInt(0), error: `Failed to update pool ${data.poolId} reserves` };
         }
 
@@ -600,11 +587,7 @@ async function processRoutedSwap(data: PoolSwapData, sender: string, transaction
         const hop = data.hops![i];
 
         // Get pool data for this hop
-        const poolFromDb = await cache.findOnePromise('liquidityPools', { _id: hop.poolId });
-        if (!poolFromDb) {
-            logger.warn(`[pool-swap] Pool ${hop.poolId} not found during processing for hop ${i + 1}.`);
-            return false;
-        }
+        const poolFromDb = (await cache.findOnePromise('liquidityPools', { _id: hop.poolId })) as any; // validateTx ensures existence
 
         // Determine token indices for this hop
         const tokenInIsA = hop.tokenIn_symbol === poolFromDb.tokenA_symbol;
@@ -650,8 +633,7 @@ async function processRoutedSwap(data: PoolSwapData, sender: string, transaction
         }
         const creditSuccess = await adjustBalance(sender, tokenOut_symbol, amountOut);
         if (!creditSuccess) {
-            logger.error(`[pool-swap] Failed to credit ${amountOut} ${tokenOut_symbol} to ${sender} in hop ${i + 1}. Rolling back deduction.`);
-            await adjustBalance(sender, tokenIn_symbol, currentAmountIn); // Credit back
+            logger.error(`[pool-swap] Failed to credit ${amountOut} ${tokenOut_symbol} to ${sender} in hop ${i + 1}.`);
             return false;
         }
 
@@ -674,9 +656,7 @@ async function processRoutedSwap(data: PoolSwapData, sender: string, transaction
         });
 
         if (!updateSuccess) {
-            logger.error(`[pool-swap] Failed to update pool ${hop.poolId} reserves in hop ${i + 1}. Rolling back balance changes.`);
-            await adjustBalance(sender, tokenOut_symbol, -amountOut);
-            await adjustBalance(sender, tokenIn_symbol, currentAmountIn);
+            logger.error(`[pool-swap] Failed to update pool ${hop.poolId} reserves in hop ${i + 1}.`);
             return false;
         }
 

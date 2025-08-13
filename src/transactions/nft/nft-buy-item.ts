@@ -131,11 +131,7 @@ export async function process(data: NftBuyPayload, sender: string, id: string): 
   const buyer = sender;
   
   try {
-    const listing = await cache.findOnePromise('nftListings', { _id: data.listingId, status: 'active' }) as NFTListingData | null;
-    if (!listing) {
-      logger.error(`[nft-buy-item] CRITICAL: Listing ${data.listingId} not found or not active during processing.`);
-      return false;
-    }
+    const listing = await cache.findOnePromise('nftListings', { _id: data.listingId, status: 'active' }) as NFTListingData; // validateTx ensures existence
 
     if (listing.seller === buyer) {
         logger.error(`[nft-buy-item] CRITICAL: Buyer ${buyer} is also the seller ${listing.seller}. Validation missed this?`);

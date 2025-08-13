@@ -107,13 +107,13 @@ export async function process(data: NFTTransferData, sender: string, id: string)
   }
   
   const fullInstanceId = `${data.collectionSymbol}-${data.instanceId}`;
-  let originalNftOwner: string | null = null; // For potential rollback if transfer fails
+  let originalNftOwner: string | null = null; // No manual rollback needed; block-level rollback will discard changes
 
   try {
     // Fetch NFT to confirm current owner again before proceeding (safeguard against race conditions)
-    const nftToProcess = await cache.findOnePromise('nfts', { _id: fullInstanceId }) as NftInstance | null;
-    if (!nftToProcess || nftToProcess.owner !== sender) {
-        logger.error(`[${isBurning?'nft-burn':'nft-transfer'}] CRITICAL: NFT ${fullInstanceId} not found or sender ${sender} is not owner during processing. Validation might be stale.`);
+    const nftToProcess = await cache.findOnePromise('nfts', { _id: fullInstanceId }) as NftInstance;
+    if (nftToProcess.owner !== sender) {
+        logger.error(`[${isBurning?'nft-burn':'nft-transfer'}] CRITICAL: Sender ${sender} is not owner during processing. Validation might be stale.`);
         return false;
     }
     originalNftOwner = nftToProcess.owner; // Should be sender
@@ -162,15 +162,6 @@ export async function process(data: NFTTransferData, sender: string, id: string)
     return true;
   } catch (error) {
     logger.error(`[${isBurning?'nft-burn':'nft-transfer'}] Error processing NFT operation for ${fullInstanceId}: ${error}`);
-    // Attempt rollback for failed transfer if original owner was captured and it's not a burn
-    if (!isBurning && originalNftOwner) {
-        try {
-            await cache.updateOnePromise('nfts', {_id: fullInstanceId, owner: data.to }, {$set: {owner: originalNftOwner}});
-            logger.debug(`[nft-transfer] Attempted to roll back NFT ${fullInstanceId} ownership to ${originalNftOwner} due to error.`);
-        } catch (rollbackError) {
-            logger.error(`[nft-transfer] CRITICAL: Failed to roll back NFT ${fullInstanceId} ownership after error: ${rollbackError}`);
-        }
-    }
     return false;
   }
 } 

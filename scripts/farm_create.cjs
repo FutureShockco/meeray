@@ -8,16 +8,24 @@ async function main() {
     // Generate random farm data
     const farmData = generateRandomFarmData();
 
+    const now = Date.now();
+    const durationMs = 7 * 24 * 60 * 60 * 1000; // 7 days
     const farmCreateData = {
-        farmType: farmData.farmType,
-        stakingTokenSymbol: farmData.stakingTokenSymbol,
-        stakingTokenIssuer: farmData.stakingTokenIssuer,
-        rewardTokenSymbol: farmData.rewardTokenSymbol,
-        rewardTokenIssuer: farmData.rewardTokenIssuer,
-        rewardPerBlock: farmData.rewardPerBlock,
-        rewardInterval: farmData.rewardInterval,
-        multiplier: farmData.multiplier,
-        maxStakingAmount: farmData.maxStakingAmount
+        name: `Farm ${farmData.stakingTokenSymbol}-${farmData.rewardTokenSymbol}`,
+        stakingToken: {
+            symbol: `LP_${[farmData.stakingTokenSymbol, farmData.rewardTokenSymbol].sort().join('_')}_300`,
+            issuer: `${[farmData.stakingTokenSymbol, farmData.rewardTokenSymbol].sort().join('_')}_300` // poolId convention
+        },
+        rewardToken: {
+            symbol: farmData.rewardTokenSymbol,
+            issuer: farmData.rewardTokenIssuer
+        },
+        startTime: new Date(now).toISOString(),
+        endTime: new Date(now + durationMs).toISOString(),
+        totalRewards: BigInt(farmData.rewardPerBlock) * BigInt(Math.floor(durationMs / 3000)),
+        rewardsPerBlock: farmData.rewardPerBlock,
+        minStakeAmount: '0',
+        maxStakeAmount: '0'
     };
 
     console.log(`Creating farm with account ${username}:`);
