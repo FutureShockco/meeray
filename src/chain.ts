@@ -14,6 +14,7 @@ import witnessesStats from './modules/witnessesStats.js';
 import { witnessesModule } from './witnesses.js';
 import p2p from './p2p.js';
 import notifications from './modules/notifications.js';
+import settings from './settings.js';
 import mongo from './mongo.js';
 import steem from './steem.js';
 import { upsertAccountsReferencedInTx } from './account.js';
@@ -80,7 +81,7 @@ export const chain = {
     },
 
     cleanMemoryBlocks: () => {
-        let extraBlocks = chain.recentBlocks.length - (config.ecoBlocks || 10000);
+        let extraBlocks = chain.recentBlocks.length - (config.memoryBlocks || 10000);
         while (extraBlocks > 0) {
             chain.recentBlocks.shift();
             extraBlocks--;
@@ -442,7 +443,7 @@ export const chain = {
                         p2p.broadcastBlock(block)
 
                     // process notifications and witness stats (non blocking)
-                    if (process.env.USE_NOTIFICATION === 'true')
+                    if (settings.useNotification)
                         notifications.processBlock(block)
 
                     // emit event to confirm new transactions in the http api

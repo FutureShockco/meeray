@@ -1,9 +1,9 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
-import validate from '../../validation/index.js'; // Shared validation module
+import validate from '../../validation/index.js';
 import { NFTCollectionCreateData } from './nft-interfaces.js';
-import config from '../../config.js'; // For potential fees or other params
-// event logger removed
+import config from '../../config.js';
+import { adjustBalance } from '../../utils/account.js';
 
 export async function validateTx(data: NFTCollectionCreateData, sender: string): Promise<boolean> {
   try {
@@ -63,54 +63,54 @@ export async function validateTx(data: NFTCollectionCreateData, sender: string):
       }
     }
 
-    if (data.mintable !== undefined && typeof data.mintable !== 'boolean') {
-        logger.warn('[nft-create-collection] Invalid mintable flag. Must be boolean.');
-        return false;
+    if (data.mintable !== undefined && !validate.boolean(data.mintable)) {
+      logger.warn('[nft-create-collection] Invalid mintable flag. Must be boolean.');
+      return false;
     }
 
-    if (data.burnable !== undefined && typeof data.burnable !== 'boolean') {
-        logger.warn('[nft-create-collection] Invalid burnable flag. Must be boolean.');
-        return false;
+    if (data.burnable !== undefined && !validate.boolean(data.burnable)) {
+      logger.warn('[nft-create-collection] Invalid burnable flag. Must be boolean.');
+      return false;
     }
 
     if (data.transferable !== undefined && typeof data.transferable !== 'boolean') {
-        logger.warn('[nft-create-collection] Invalid transferable flag. Must be boolean.');
-        return false;
+      logger.warn('[nft-create-collection] Invalid transferable flag. Must be boolean.');
+      return false;
     }
 
     if (data.schema !== undefined && typeof data.schema !== 'string') {
-        logger.warn('[nft-create-collection] Schema, if provided, must be a string (e.g., JSON schema).');
-        return false;
+      logger.warn('[nft-create-collection] Schema, if provided, must be a string (e.g., JSON schema).');
+      return false;
     }
 
     if (data.description !== undefined && !validate.string(data.description, 1000, 0)) {
-        logger.warn('[nft-create-collection] Invalid description length (must be 0-1000 chars).');
-        return false;
+      logger.warn('[nft-create-collection] Invalid description length (must be 0-1000 chars).');
+      return false;
     }
 
     if (data.metadata?.imageUrl !== undefined && (!validate.string(data.metadata.imageUrl, 2048, 10) || !data.metadata.imageUrl.startsWith('http'))) {
-        logger.warn('[nft-create-collection] Invalid imageUrl: incorrect format, or length (10-2048 chars).');
-        return false;
+      logger.warn('[nft-create-collection] Invalid imageUrl: incorrect format, or length (10-2048 chars).');
+      return false;
     }
 
     if (data.metadata?.externalUrl !== undefined && (!validate.string(data.metadata.externalUrl, 2048, 10) || !data.metadata.externalUrl.startsWith('http'))) {
-        logger.warn('[nft-create-collection] Invalid externalUrl: incorrect format, or length (10-2048 chars).');
-        return false;
+      logger.warn('[nft-create-collection] Invalid externalUrl: incorrect format, or length (10-2048 chars).');
+      return false;
     }
 
     if (data.logoUrl !== undefined && (!validate.string(data.logoUrl, 2048, 10) || !data.logoUrl.startsWith('http'))) {
-        logger.warn('[nft-create-collection] Invalid logoUrl: incorrect format, or length (10-2048 chars).');
-        return false;
+      logger.warn('[nft-create-collection] Invalid logoUrl: incorrect format, or length (10-2048 chars).');
+      return false;
     }
 
     if (data.websiteUrl !== undefined && (!validate.string(data.websiteUrl, 2048, 10) || !data.websiteUrl.startsWith('http'))) {
-        logger.warn('[nft-create-collection] Invalid websiteUrl: incorrect format, or length (10-2048 chars).');
-        return false;
+      logger.warn('[nft-create-collection] Invalid websiteUrl: incorrect format, or length (10-2048 chars).');
+      return false;
     }
 
     if (data.baseCoverUrl !== undefined && (!validate.string(data.baseCoverUrl, 2048, 10) || !data.baseCoverUrl.startsWith('http'))) {
-        logger.warn('[nft-create-collection] Invalid baseCoverUrl: incorrect format, or length (10-2048 chars).');
-        return false;
+      logger.warn('[nft-create-collection] Invalid baseCoverUrl: incorrect format, or length (10-2048 chars).');
+      return false;
     }
 
     // Check for symbol uniqueness
@@ -119,14 +119,18 @@ export async function validateTx(data: NFTCollectionCreateData, sender: string):
       logger.warn(`[nft-create-collection] NFT Collection with symbol ${data.symbol} already exists.`);
       return false;
     }
-    
+
     // Validate sender account exists (creator)
     const creatorAccount = await cache.findOnePromise('accounts', { name: sender });
     if (!creatorAccount) {
       logger.warn(`[nft-create-collection] Creator account ${sender} not found.`);
       return false;
     }
-    
+
+    if (BigInt(creatorAccount.balance[config.nativeTokenSymbol]) < BigInt(config.nftCollectionCreationFee)) {
+      logger.warn(`[nft-create-collection] Sender account ${sender} does not have enough balance to create an NFT collection.`);
+      return false;
+    }
 
     return true;
   } catch (error) {
@@ -136,69 +140,72 @@ export async function validateTx(data: NFTCollectionCreateData, sender: string):
 }
 
 export async function process(data: NFTCollectionCreateData, sender: string, id: string): Promise<boolean> {
-    try {
-        const existingCollection = await cache.findOnePromise('nftCollections', { _id: data.symbol });
-        if (existingCollection) {
-            logger.error(`[nft-create-collection] Collection with symbol ${data.symbol} already exists during processing.`);
-            return false;
-        }
-
-        // Convert maxSupply to number for storage, handling string | bigint
-        let maxSupplyForStorage: number;
-        if (data.maxSupply === undefined) {
-            maxSupplyForStorage = Number.MAX_SAFE_INTEGER;
-        } else if (typeof data.maxSupply === 'string') {
-            maxSupplyForStorage = Number(data.maxSupply);
-        } else if (typeof data.maxSupply === 'bigint') {
-            maxSupplyForStorage = Number(data.maxSupply);
-        } else {
-            maxSupplyForStorage = Number.MAX_SAFE_INTEGER;
-        }
-
-        const collectionToStore = {
-            _id: data.symbol,
-            symbol: data.symbol,
-            name: data.name,
-            description: data.description || '',
-            creator: data.creator,
-            currentSupply: 0,
-            nextIndex: 1,  // Start indexing from 1
-            maxSupply: maxSupplyForStorage,
-            mintable: data.mintable === undefined ? true : data.mintable,
-            burnable: data.burnable === undefined ? true : data.burnable,
-            transferable: data.transferable === undefined ? true : data.transferable,
-            royaltyBps: data.royaltyBps || data.creatorFee || 0, // Use royaltyBps or fallback to creatorFee
-            logoUrl: data.logoUrl || '',
-            websiteUrl: data.websiteUrl || '',
-            baseCoverUrl: data.baseCoverUrl || '',
-            schema: data.schema || '',
-            metadata: data.metadata || {},
-            createdAt: new Date().toISOString()
-        };
-
-        const insertSuccess = await new Promise<boolean>((resolve) => {
-            cache.insertOne('nftCollections', collectionToStore, (err, result) => {
-                if (err || !result) {
-                    logger.error(`[nft-create-collection] Failed to insert collection ${data.symbol}: ${err || 'no result'}`);
-                    resolve(false);
-                } else {
-                    resolve(true);
-                }
-            });
-        });
-
-        if (!insertSuccess) {
-            return false;
-        }
-
-        logger.debug(`[nft-create-collection] Collection ${data.symbol} created successfully by ${sender}.`);
-
-        // Log event
-        // event logging removed
-
-        return true;
-    } catch (error) {
-        logger.error(`[nft-create-collection] Error processing collection creation for ${data.symbol} by ${sender}: ${error}`);
-        return false;
+  try {
+    const existingCollection = await cache.findOnePromise('nftCollections', { _id: data.symbol });
+    if (existingCollection) {
+      logger.error(`[nft-create-collection] Collection with symbol ${data.symbol} already exists during processing.`);
+      return false;
     }
+
+    // Convert maxSupply to number for storage, handling string | bigint
+    let maxSupplyForStorage: number;
+    if (data.maxSupply === undefined) {
+      maxSupplyForStorage = Number.MAX_SAFE_INTEGER;
+    } else if (typeof data.maxSupply === 'string') {
+      maxSupplyForStorage = Number(data.maxSupply);
+    } else if (typeof data.maxSupply === 'bigint') {
+      maxSupplyForStorage = Number(data.maxSupply);
+    } else {
+      maxSupplyForStorage = Number.MAX_SAFE_INTEGER;
+    }
+
+    const collectionToStore = {
+      _id: data.symbol,
+      symbol: data.symbol,
+      name: data.name,
+      description: data.description || '',
+      creator: data.creator,
+      currentSupply: 0,
+      nextIndex: 1,  // Start indexing from 1
+      maxSupply: maxSupplyForStorage,
+      mintable: data.mintable === undefined ? true : data.mintable,
+      burnable: data.burnable === undefined ? true : data.burnable,
+      transferable: data.transferable === undefined ? true : data.transferable,
+      royaltyBps: data.royaltyBps || data.creatorFee || 0, // Use royaltyBps or fallback to creatorFee
+      logoUrl: data.logoUrl || '',
+      websiteUrl: data.websiteUrl || '',
+      baseCoverUrl: data.baseCoverUrl || '',
+      schema: data.schema || '',
+      metadata: data.metadata || {},
+      createdAt: new Date().toISOString()
+    };
+
+    const insertSuccess = await new Promise<boolean>((resolve) => {
+      cache.insertOne('nftCollections', collectionToStore, (err, result) => {
+        if (err || !result) {
+          logger.error(`[nft-create-collection] Failed to insert collection ${data.symbol}: ${err || 'no result'}`);
+          resolve(false);
+        } else {
+          resolve(true);
+        }
+      });
+    });
+
+    if (!insertSuccess) {
+      return false;
+    }
+
+    const deductSuccess = await adjustBalance(sender, config.nativeTokenSymbol, BigInt(-config.nftCollectionCreationFee));
+    if (!deductSuccess) {
+      logger.error(`[nft-create-collection] Failed to deduct ${config.nftCollectionCreationFee} of ${config.nativeTokenSymbol} from ${sender}.`);
+      return false;
+    }
+
+    logger.debug(`[nft-create-collection] Collection ${data.symbol} created successfully by ${sender}.`);
+
+    return true;
+  } catch (error) {
+    logger.error(`[nft-create-collection] Error processing collection creation for ${data.symbol} by ${sender}: ${error}`);
+    return false;
+  }
 } 

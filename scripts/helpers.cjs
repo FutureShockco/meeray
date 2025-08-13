@@ -319,6 +319,32 @@ async function sendCustomJson(client, sscId, contractAction, payload, username, 
     }
 }
 
+// Helper for broadcasting custom_json operations
+async function transfer(client, from, to, amount, username, privateKey) {
+    const operation = ['transfer', {
+        required_auths: [username],
+        required_posting_auths: [],
+        from,
+        to,
+        amount,
+        memo: 'Deposit from Steem'
+    }];
+
+    try {
+        console.log(`Broadcasting transfer from ${from} to ${to} with amount: ${amount}`);
+        const result = await client.broadcast.sendOperations([operation], privateKey);
+        console.log(`Transfer successful: TX ID ${result.id}`);
+        console.log(result.block_num);
+        return result;
+    } catch (error) {
+        console.error(`Error in transfer:`, error);
+        if (error.data && error.data.stack) {
+            console.error('dsteem error data:', error.data.stack);
+        }
+        throw error;
+    }
+}
+
 module.exports = {
     getClient,
     getRandomAccount,
@@ -332,5 +358,6 @@ module.exports = {
     generateRandomFarmOperation,
     generateRandomLaunchpadData,
     generateRandomLaunchpadOperation,
-    sendCustomJson
+    sendCustomJson,
+    transfer
 }; 

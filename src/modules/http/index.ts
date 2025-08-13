@@ -5,8 +5,9 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import logger from '../../logger.js';
+import settings from '../../settings.js';
 
-const http_port = process.env.API_PORT;
+const http_port = settings.apiPort;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 

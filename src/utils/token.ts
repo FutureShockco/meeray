@@ -1,6 +1,7 @@
 import cache from '../cache.js';
 import logger from '../logger.js';
 import config from '../config.js';
+import settings from '../settings.js';
 import { toDbString } from './bigint.js';
 
 export interface Token {
@@ -58,3 +59,19 @@ export async function adjustTokenSupply(tokenIdentifier: string, amount: bigint)
     }
     return true;
 } 
+
+/**
+ * Checks whether a token is issued by this node's configured bridge account
+ */
+export async function isTokenIssuedByNode(symbol: string): Promise<boolean> {
+    const token = await cache.findOnePromise('tokens', { _id: symbol });
+    if (!token) {
+        logger.warn(`[token-utils] Token ${symbol} not found while checking issuer.`);
+        return false;
+    }
+    const isIssuer = token.issuer === settings.steemBridgeAccount;
+    if (!isIssuer) {
+        logger.warn(`[token-utils] Token ${symbol} issuer (${token.issuer}) does not match node bridge account (${settings.steemBridgeAccount}).`);
+    }
+    return isIssuer;
+}

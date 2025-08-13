@@ -2,6 +2,7 @@ import cache from '../cache.js';
 import logger from '../logger.js';
 import { ObjectId } from 'mongodb'; // Import ObjectId from mongodb
 import { initializeKafkaProducer, sendKafkaEvent } from '../modules/kafka.js'; // Added Kafka producer import
+import settings from '../settings.js';
 
 const KAFKA_NOTIFICATIONS_TOPIC = 'notifications';
 const KAFKA_MARKET_EVENTS_TOPIC = 'dex-market-updates';
@@ -45,7 +46,7 @@ export async function logTransactionEvent(
     // We do this here to ensure it's ready before the first event might be sent.
     // If Kafka is optional, this could be moved or made conditional based on config.
     try {
-        if (process.env.USE_NOTIFICATION === 'true') {
+        if (settings.useNotification) {
             await initializeKafkaProducer();
         }
     } catch (initError) {
@@ -90,7 +91,7 @@ export async function logTransactionEvent(
                         // Optionally, could send to a specific "problem_market_events" topic or handle differently
                     }
                 }
-                if (process.env.USE_NOTIFICATION === 'true')
+                if (settings.useNotification)
                     sendKafkaEvent(kafkaTopic, eventDocument, kafkaKey)
                         .then(() => {
                             logger.debug(`[event-logger] Event ${eventDocument._id} (Key: ${kafkaKey}) successfully queued to Kafka topic '${kafkaTopic}'.`);

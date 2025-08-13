@@ -5,6 +5,7 @@ import json from './json.js';
 import publicKey from './publicKey.js';
 import string from './string.js';
 import bigint from './bigint.js';
+import boolean from './boolean.js';
 
 /**
  * Chain configuration validation
@@ -29,6 +30,7 @@ export interface ValidationModule {
     publicKey: (value: any, max?: number) => boolean;
     string: (value: any, maxLength?: number, minLength?: number, allowedChars?: string, allowedCharsMiddle?: string) => boolean;
     bigint: (value: string | bigint, allowZero?: boolean, allowNegative?: boolean, maxValue?: bigint, minValue?: bigint) => boolean;
+    boolean: (value: any) => boolean;
 }
 
 /**
@@ -41,7 +43,8 @@ const validation: ValidationModule = {
     json,
     publicKey,
     string,
-    bigint
+    bigint,
+    boolean
 };
 
 export default validation; 

@@ -6,6 +6,7 @@ import { AccountDoc } from '../../mongo.js'; // Assuming AccountDoc is exported 
 import { toBigInt } from '../../utils/bigint.js';
 import { formatTokenAmountForResponse, formatTokenBalancesForResponse } from '../../utils/http.js';
 import config from '../../config.js';
+import { getNewKeyPair } from '../../crypto.js';
 
 const router: Router = express.Router();
 
@@ -126,3 +127,17 @@ router.get('/votersfor/:witnessName', (async (req: Request, res: Response) => {
 }) as RequestHandler);
 
 export default router; 
+ 
+// Generate a new witness key pair
+router.get('/generate-keypair', ((req: Request, res: Response) => {
+    try {
+        const keypair = getNewKeyPair();
+        res.json({
+            pub: keypair.pub,
+            priv: keypair.priv
+        });
+    } catch (error: any) {
+        logger.error('Error generating witness key pair:', error);
+        res.status(500).json({ message: 'Error generating witness key pair', error: error.message });
+    }
+}) as RequestHandler);

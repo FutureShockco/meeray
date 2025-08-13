@@ -4,6 +4,7 @@ import config from '../../config.js';
 import validate from '../../validation/index.js';
 import { TokenData } from './token-interfaces.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
+import { adjustBalance } from '../../utils/account.js';
 
 export async function validateTx(data: TokenData, sender: string): Promise<boolean> {
   try {
@@ -76,6 +77,11 @@ export async function validateTx(data: TokenData, sender: string): Promise<boole
       return false;
     }
 
+    if (BigInt(senderAccount.balance[config.nativeTokenSymbol]) < BigInt(config.tokenCreationFee)) {
+      logger.warn(`[token-create] Sender account ${sender} does not have enough balance to create a token.`);
+      return false;
+    }
+
     return true;
   } catch (error) {
     logger.error(`[token-create] Error validating token creation: ${error}`);
@@ -133,7 +139,12 @@ export async function process(data: TokenData, sender: string, id: string): Prom
         return false;
       }
     }
-
+    const deductSuccess = await adjustBalance(sender, config.nativeTokenSymbol, BigInt(-config.tokenCreationFee));
+    if (!deductSuccess) {
+        logger.error(`[token-create] Failed to deduct ${config.tokenCreationFee} of ${config.nativeTokenSymbol} from ${sender}.`);
+        return false;
+    }
+    
     logger.info(`[token-create] Token ${tokenToStore._id} created successfully by ${sender}.`);
     return true;
 

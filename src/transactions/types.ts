@@ -33,6 +33,7 @@ export enum TransactionType {
   TOKEN_MINT = 21,
   TOKEN_TRANSFER = 22,
   TOKEN_UPDATE = 23,
+  TOKEN_WITHDRAW = 38,
   
   // Witness Transactions
   WITNESS_REGISTER = 24,
@@ -92,6 +93,7 @@ export const transactions: { [key: number]: string } = {
   [TransactionType.TOKEN_MINT]: 'token_mint',
   [TransactionType.TOKEN_TRANSFER]: 'token_transfer',
   [TransactionType.TOKEN_UPDATE]: 'token_update',
+  [TransactionType.TOKEN_WITHDRAW]: 'token_withdraw',
   
   // Witness Transactions
   [TransactionType.WITNESS_REGISTER]: 'witness_register',

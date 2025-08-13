@@ -2,6 +2,7 @@ import { Client as DsteemClient } from 'dsteem';
 import logger from '../logger.js';
 import config from '../config.js';
 import steemConfig from './config.js';
+import settings from '../settings.js';
 
 interface RpcHeightData {
     height: number;
@@ -15,8 +16,8 @@ class SteemApiClient {
     private rpcHeightData = new Map<string, RpcHeightData>();
 
     constructor() {
-        this.apiUrls = process.env.STEEM_API
-            ? process.env.STEEM_API.split(',').map(url => url.trim())
+        this.apiUrls = settings.steemApiUrls.length > 0
+            ? settings.steemApiUrls
             : steemConfig.defaultSteemEndpoints;
 
         this.initializeClient();
@@ -120,6 +121,11 @@ class SteemApiClient {
 
     getRpcHeightData(): Map<string, RpcHeightData> {
         return this.rpcHeightData;
+    }
+
+    // Thin wrapper to broadcast operations (used by steemBridge)
+    async sendOperations(operations: any[], privateKey: any): Promise<any> {
+        return this.client.broadcast.sendOperations(operations, privateKey);
     }
 }
 

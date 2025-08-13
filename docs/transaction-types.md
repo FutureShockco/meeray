@@ -25,6 +25,7 @@ This document provides a comprehensive list of all transaction types implemented
 ### NFT Create Collection (Type 1)
 - **File**: `src/transactions/nft/nft-create-collection.ts`
 - **Purpose**: Defines and registers a new collection of Non-Fungible Tokens (NFTs) on the blockchain.
+- **Fees**: Requires paying `config.nftCollectionCreationFee` in `config.nativeTokenSymbol`. The fee is deducted from the sender during processing; insufficient balance causes validation failure.
 - **Data Structure**:
   ```typescript
   export interface NftCreateCollectionData {
@@ -1015,6 +1016,7 @@ POST /pools/route-swap
 ### Token Create (Type 20)
 - **File**: `src/transactions/token/token-create.ts`
 - **Purpose**: Registers a new fungible token on the blockchain with specified properties.
+- **Fees**: Requires paying `config.tokenCreationFee` in `config.nativeTokenSymbol`. The fee is deducted from the sender during processing; insufficient balance causes validation failure.
 - **Data Structure**:
   ```typescript
   export interface TokenCreateData {

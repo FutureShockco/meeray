@@ -3,6 +3,7 @@ import assert from 'assert';
 import * as BSON from 'bson';
 import logger from './logger.js';
 import config from './config.js';
+import chain from './chain.js';
 
 
 const isRebuild = process.env.REBUILD_STATE === '1';
@@ -201,9 +202,8 @@ export const blocks: any = {
     fillInMemoryBlocks: (headBlock: number = blocks.height + 1) => {
         assert(blocks.isOpen, blocks.notOpenError);
         let end = headBlock - 1;
-        // let start = end - (config.ecoBlocksIncreasesSoon ? config.ecoBlocksIncreasesSoon : config.ecoBlocks) + 1;
-        // chain.recentBlocks = blocks.readRange(start, end);
-        // eco.loadHistory();
+        let start = end - config.memoryBlocks || 0 + 1;
+        chain.recentBlocks = blocks.readRange(start, end);
     },
     lastBlock: () => blocks.read(blocks.height),
     close: () => {

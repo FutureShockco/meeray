@@ -13,6 +13,7 @@ import { mongo, StateDoc } from './mongo.js';
 import { witnessesModule } from './witnesses.js';
 import { initializeModules } from './initialize.js';
 import { Block } from './block.js';
+import settings from './settings.js';
 
 process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
     logger.error('CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
@@ -219,7 +220,7 @@ async function startDaemon(cfg: any) {
 
     http.init();
     p2p.init();
-    p2p.connect(process.env.PEERS ? process.env.PEERS.split(',') : [], true);
+    p2p.connect(settings.peers, true);
     setTimeout(() => p2p.keepAlive(), 3000);
 
     setInterval(() => {

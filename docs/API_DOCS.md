@@ -401,6 +401,16 @@ Returns a list of all launchpad projects with formatted amounts.
 }
 ```
 
+#### Launchpad Transactions (custom_json)
+- Type 27 `launchpad_launch_token`: Create a launchpad project.
+- Type 28 `launchpad_participate_presale`: Contribute to presale.
+- Type 29 `launchpad_claim_tokens`: Claim tokens (presale participants).
+- Type 33 `launchpad_update_status`: Lifecycle transitions (activate/schedule, pause/resume, end, cancel).
+- Type 34 `launchpad_finalize_presale`: Compute `tokensAllocated` for participants, set success/failed.
+- Type 35 `launchpad_set_main_token`: Attach main token id (TGE step).
+- Type 36 `launchpad_refund_presale`: Refund contributors on failure/cancel.
+- Type 37 `launchpad_update_whitelist`: Manage presale whitelist (add/remove/enable/disable/replace).
+
 ### NFTs
 
 #### GET /nfts/collections
@@ -648,6 +658,32 @@ Returns details for a specific event.
    ```
    GET /events?poolId=ECH_STEEM_300&type=pool_swap&limit=20
    ```
+
+### Witnesses
+
+#### GET /witnesses
+Returns a list of top witnesses by total vote weight.
+
+#### GET /witnesses/:name/details
+Returns account details for a specific witness.
+
+#### GET /witnesses/votescastby/:voterName
+Returns witnesses that a specific account has voted for.
+
+#### GET /witnesses/votersfor/:witnessName
+Returns accounts that have voted for a specific witness.
+
+#### GET /witnesses/generate-keypair
+Generate a new witness key pair.
+
+Response:
+```json
+{
+  "pub": "base58-public-key",
+  "priv": "base58-private-key"
+}
+```
+Security: The private key is only returned in the response and is not stored by the server. Store it securely.
 
 ## Error Responses
 

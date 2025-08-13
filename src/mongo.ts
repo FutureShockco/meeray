@@ -6,8 +6,9 @@ import logger from './logger.js';
 import config from './config.js';
 import { chain } from './chain.js';
 import { Block } from './block.js';
-import { TokenData} from './transactions/token/token-interfaces.js';
+import { TokenData } from './transactions/token/token-interfaces.js';
 import { toDbString, setTokenDecimals } from './utils/bigint.js';
+import settings from './settings.js';
 
 const DB_NAME = process.env.MONGO_DB || 'echelon';
 const DB_URL = process.env.MONGO_URL || 'mongodb://localhost:27017';
@@ -151,7 +152,7 @@ export const mongo = {
 
         } catch (err) {
             logger.warn('No genesis.zip file found or error during processing. Creating minimal genesis.');
-            await mongo.insertMasterAccount();
+            await mongo.insertMasterAndNullAccount();
             await mongo.insertBlockZero();
             await mongo.insertNativeTokens();
         }
@@ -189,7 +190,7 @@ export const mongo = {
         });
     },
 
-    insertMasterAccount: async (): Promise<void> => {
+    insertMasterAndNullAccount: async (): Promise<void> => {
         const currentDb = mongo.getDb();
         logger.info('Inserting new master account: ' + config.masterName);
         const masterAccount: AccountDoc = {
@@ -201,7 +202,17 @@ export const mongo = {
             votedWitnesses: [config.masterName],
             witnessPublicKey: config.masterPublicKey
         };
+        const nullAccount: AccountDoc = {
+            name: config.burnAccountName,
+            created: new Date(),
+            balances: { [config.nativeTokenSymbol]: toDbString(BigInt(0)) },
+            nfts: {},
+            totalVoteWeight: toDbString(BigInt(0)),
+            votedWitnesses: [],
+            witnessPublicKey: ''
+        };
         await currentDb.collection<AccountDoc>('accounts').insertOne(masterAccount);
+        await currentDb.collection<AccountDoc>('accounts').insertOne(nullAccount);
     },
 
     insertBlockZero: async (): Promise<void> => {
@@ -255,7 +266,6 @@ export const mongo = {
 
         // --- STEEM ---
         setTokenDecimals('STEEM', 3);
-
         const nativeTokenCreationParamsSTEEM: TokenData = {
             symbol: 'STEEM',
             name: 'Steem',
@@ -268,6 +278,10 @@ export const mongo = {
             logoUrl: 'https://steem.com/images/steem-logo.png', // Placeholder URL
             websiteUrl: 'https://steem.com'
         };
+        if (process.env.NODE_ENV === 'development') {
+            nativeTokenCreationParamsSTEEM.symbol = 'TESTS';
+            setTokenDecimals('TESTS', 3);
+        }
 
         const nativeTokenToStoreSTEEM: TokenData = {
             _id: nativeTokenCreationParamsSTEEM.symbol,
@@ -303,7 +317,10 @@ export const mongo = {
             logoUrl: 'https://steem.com/images/sbd-logo.png', // Placeholder URL
             websiteUrl: 'https://steem.com'
         };
-
+        if (process.env.NODE_ENV === 'development') {
+            nativeTokenCreationParamsSBD.symbol = 'TBD';
+            setTokenDecimals('TBD', 3);
+        }
         const nativeTokenToStoreSBD: TokenData = {
             _id: nativeTokenCreationParamsSBD.symbol,
             symbol: nativeTokenCreationParamsSBD.symbol,
@@ -462,7 +479,7 @@ export const mongo = {
         try {
             const blocksFromDb = await currentDb.collection<Block>('blocks').find(query, {
                 sort: { _id: -1 },
-                limit: config.ecoBlocksIncreasesSoon ? config.ecoBlocksIncreasesSoon : config.ecoBlocks || 1000
+                limit: config.memoryBlocks || 1000
             }).toArray();
 
             chain.recentBlocks = blocksFromDb.reverse();
