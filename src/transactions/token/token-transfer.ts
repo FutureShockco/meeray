@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import config from '../../config.js';
 import { TokenTransferData } from './token-interfaces.js';
-import { toDbString, toBigInt } from '../../utils/bigint.js';
+import { toBigInt } from '../../utils/bigint.js';
 import { adjustBalance } from '../../utils/account.js';
 
 const BURN_ACCOUNT_NAME = config.burnAccountName || 'null';
@@ -54,15 +54,12 @@ export async function validateTx(data: TokenTransferData, sender: string): Promi
     }
 }
 
-export async function process(data: TokenTransferData, sender: string, id: string): Promise<boolean> {
+export async function process(data: TokenTransferData, sender: string): Promise<boolean> {
     try {
         const debitOk = await adjustBalance(sender, data.symbol, -toBigInt(data.amount));
         if (!debitOk) return false;
-        if (data.to !== BURN_ACCOUNT_NAME) {
-            const creditOk = await adjustBalance(data.to, data.symbol, toBigInt(data.amount));
-            if (!creditOk) return false;
-        }
-
+        const creditOk = await adjustBalance(data.to, data.symbol, toBigInt(data.amount));
+        if (!creditOk) return false;
         return true;
     } catch (error) {
         logger.error(`[token-transfer:process] Error processing transfer: ${error}`);

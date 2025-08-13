@@ -202,7 +202,6 @@ const cache: CacheType = {
             }
         }
         this.witnessChanges = [];
-        // eco.nextBlock(); // Removed
     },
 
     findOnePromise: function (collection, query, skipClone) {

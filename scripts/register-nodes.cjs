@@ -1,11 +1,11 @@
 const fs = require('fs');
 const path = require('path');
-const { default: dsteem, PrivateKey } = await import('dsteem');
+const { PrivateKey } = require('dsteem');
+const { getClient, sendCustomJson } = require('./helpers.cjs');
 
 async function main() {
-    // Dynamic import for dsteem
+    const { client, sscId } = await getClient();
 
-    const client = new dsteem.Client('https://api.justyy.com');
     let privateKeys;
     try {
         // Load private keys from external file that will be gitignored
@@ -42,8 +42,12 @@ async function main() {
                 ];
 
                 // Send the operation with proper credentials
-                const result = await client.broadcast.sendOperations(
-                    [customJsonOperation],
+                const result = await sendCustomJson(client, sscId,
+                    'witness_register',
+                    {
+                        pub: pubkey
+                    },
+                    node,
                     PrivateKey.fromString(pkey)
                 );
 
@@ -81,12 +85,12 @@ async function main() {
                 ];
 
                 // Send the operation with proper credentials
-                const result = await client.broadcast.sendOperations(
-                    [voteOperation],
-                    PrivateKey.fromString(privateKeys[0])
-                );
+                // const result = await client.broadcast.sendOperations(
+                //     [voteOperation],
+                //     PrivateKey.fromString(privateKeys[0])
+                // );
 
-                console.log(`Vote operation sent for ${node}:`, result);
+                // console.log(`Vote operation sent for ${node}:`, result);
             }
 
             console.log("Voting process completed.");
