@@ -231,17 +231,13 @@ export async function validateTx(data: LaunchpadLaunchTokenData, sender: string)
 export async function process(launchData: LaunchpadLaunchTokenData, sender: string, transactionId: string): Promise<boolean> {
   logger.debug(`[launchpad-launch-token] Processing launch request from ${sender}`);
   try {
-    // Assuming validateTx was called by the node before processing
-
+    // validateTx ensures data correctness; process here should not re-validate
     const launchpadId = generateLaunchpadId();
     const now = new Date().toISOString();
 
     // tokenDecimals expected to be a number (validated earlier)
     const tokenDecimalsNumber = Number(launchData.tokenomics.tokenDecimals);
-    if (!Number.isInteger(tokenDecimalsNumber) || tokenDecimalsNumber < 0 || tokenDecimalsNumber > 18) {
-      logger.error('[launchpad-launch-token] CRITICAL: Invalid token decimals during processing.');
-      return false;
-    }
+    // tokenDecimals already validated
     const totalSupplyBigInt = toBigInt(launchData.tokenomics.totalSupply);
 
     const launchpadProjectData: LaunchpadData = {

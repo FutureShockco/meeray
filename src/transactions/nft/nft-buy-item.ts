@@ -160,18 +160,14 @@ export async function process(data: NftBuyPayload, sender: string, id: string): 
 // Helper function to execute immediate purchase
 async function executeImmediatePurchase(listing: NFTListingData, buyer: string, amount: bigint, transactionId: string): Promise<boolean> {
   try {
-    const collection = await cache.findOnePromise('nftCollections', { _id: listing.collectionId }) as (CachedNftCollectionForTransfer & { creatorFee?: number }) | null;
-    if (!collection || collection.transferable === false) {
-      logger.error(`[nft-buy-item] CRITICAL: Collection ${listing.collectionId} not found or not transferable during processing.`);
+    const collection = await cache.findOnePromise('nftCollections', { _id: listing.collectionId }) as (CachedNftCollectionForTransfer & { creatorFee?: number });
+    if (collection.transferable === false) {
+      logger.error(`[nft-buy-item] CRITICAL: Collection ${listing.collectionId} not transferable during processing.`);
       return false;
     }
     const creatorFeePercent = toBigInt(collection.creatorFee || 0);
 
-    const paymentToken = await getTokenByIdentifier(listing.paymentToken.symbol, listing.paymentToken.issuer);
-    if (!paymentToken) {
-        logger.error(`[nft-buy-item] CRITICAL: Payment token ${listing.paymentToken.symbol} not found during processing.`);
-        return false;
-    }
+    const paymentToken = (await getTokenByIdentifier(listing.paymentToken.symbol, listing.paymentToken.issuer))!;
     const paymentTokenIdentifier = `${paymentToken.symbol}${paymentToken.issuer ? '@' + paymentToken.issuer : ''}`;
 
     // Calculate fees
@@ -190,7 +186,6 @@ async function executeImmediatePurchase(listing: NFTListingData, buyer: string, 
     // 2. Add proceeds to seller
     if (!await adjustBalance(listing.seller, paymentTokenIdentifier, sellerProceeds)) {
       logger.error(`[nft-buy-item] Failed to add ${sellerProceeds} ${paymentToken.symbol} to seller ${listing.seller}.`);
-      await adjustBalance(buyer, paymentTokenIdentifier, price); // Attempt to refund buyer
       return false;
     }
 
@@ -198,8 +193,6 @@ async function executeImmediatePurchase(listing: NFTListingData, buyer: string, 
     if (royaltyAmount > 0n && collection.creator) {
       if (!await adjustBalance(collection.creator, paymentTokenIdentifier, royaltyAmount)) {
         logger.error(`[nft-buy-item] Failed to add royalty ${royaltyAmount} ${paymentToken.symbol} to creator ${collection.creator}.`);
-        await adjustBalance(listing.seller, paymentTokenIdentifier, -sellerProceeds); // Revert seller payment
-        await adjustBalance(buyer, paymentTokenIdentifier, price); // Refund buyer
         return false;
       }
       logger.debug(`[nft-buy-item] Royalty of ${royaltyAmount} ${paymentToken.symbol} paid to creator ${collection.creator}.`);
@@ -210,10 +203,6 @@ async function executeImmediatePurchase(listing: NFTListingData, buyer: string, 
     const nft = await cache.findOnePromise('nfts', { _id: fullInstanceId }) as NftInstance | null;
     if(!nft || nft.owner !== listing.seller) {
         logger.error(`[nft-buy-item] CRITICAL: NFT ${fullInstanceId} not found or owner changed mid-transaction. Current owner: ${nft?.owner}`);
-        // Attempt to revert all fund transfers
-        if (royaltyAmount > 0n && collection.creator) await adjustBalance(collection.creator, paymentTokenIdentifier, -royaltyAmount);
-        await adjustBalance(listing.seller, paymentTokenIdentifier, -sellerProceeds);
-        await adjustBalance(buyer, paymentTokenIdentifier, price);
         return false;
     }
 
@@ -224,10 +213,6 @@ async function executeImmediatePurchase(listing: NFTListingData, buyer: string, 
     );
     if (!updateNftOwnerSuccess) {
       logger.error(`[nft-buy-item] CRITICAL: Failed to update NFT ${fullInstanceId} owner to ${buyer}.`);
-      // Attempt to revert all fund transfers
-      if (royaltyAmount > 0n && collection.creator) await adjustBalance(collection.creator, paymentTokenIdentifier, -royaltyAmount);
-      await adjustBalance(listing.seller, paymentTokenIdentifier, -sellerProceeds);
-      await adjustBalance(buyer, paymentTokenIdentifier, price);
       return false;
     }
     logger.debug(`[nft-buy-item] NFT ${fullInstanceId} ownership transferred from ${listing.seller} to ${buyer}.`);

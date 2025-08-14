@@ -18,11 +18,6 @@ export async function validateTx(data: TokenTransferData, sender: string): Promi
             logger.warn(`[token-transfer] Invalid token symbol format: ${data.symbol}.`);
             return false;
         }
-        const token = await cache.findOnePromise('tokens', { _id: data.symbol });
-        if (!token) {
-            logger.warn(`[token-transfer] Token ${data.symbol} not found.`);
-            return false;
-        }
         if (data.to !== BURN_ACCOUNT_NAME && !validate.string(data.to, 16, 3)) {
             logger.warn(`[token-transfer] Invalid recipient account name format: ${data.to}.`);
             return false;
@@ -31,18 +26,17 @@ export async function validateTx(data: TokenTransferData, sender: string): Promi
             logger.warn(`[token-transfer] Sender and recipient cannot be the same: ${data.to}.`);
             return false;
         }
-
         if (!validate.bigint(data.amount, false, false, BigInt(1))) {
             logger.warn(`[token-transfer] Invalid amount: ${toBigInt(data.amount).toString()}. Must be a positive integer.`);
             return false;
         }
-        const senderAccount = await cache.findOnePromise('accounts', { name: sender });
-        if (!senderAccount) {
-            logger.warn(`[token-transfer] Sender account ${sender} not found.`);
+        const token = await cache.findOnePromise('tokens', { _id: data.symbol });
+        if (!token) {
+            logger.warn(`[token-transfer] Token ${data.symbol} not found.`);
             return false;
         }
-        const senderBalanceString = senderAccount.balances?.[data.symbol] || '0';
-        const currentSenderBalance = toBigInt(senderBalanceString);
+        const senderAccount = await cache.findOnePromise('accounts', { name: sender });
+        const currentSenderBalance = toBigInt(senderAccount?.balances?.[data.symbol] || '0');
         if (currentSenderBalance < toBigInt(data.amount)) {
             logger.warn(`[token-transfer] Insufficient balance for ${sender}. Has: ${currentSenderBalance.toString()}, Needs: ${toBigInt(data.amount).toString()}`);
             return false;

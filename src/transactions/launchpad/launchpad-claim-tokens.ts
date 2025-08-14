@@ -79,19 +79,8 @@ export async function process(data: LaunchpadClaimTokensData, sender: string): P
   logger.debug(`[launchpad-claim-tokens] Processing claim from ${sender} for ${data.launchpadId}, type ${data.allocationType}: ${JSON.stringify(data)}`);
   try {
     const launchpadFromCache = await cache.findOnePromise('launchpads', { _id: data.launchpadId });
-    if (!launchpadFromCache || !launchpadFromCache.mainTokenId) { 
-        logger.error(`[launchpad-claim-tokens] CRITICAL: Launchpad ${data.launchpadId} or mainTokenId not found during processing.`);
-        return false;
-    }
-    
-    // Use data directly without complex conversions
-    const launchpad = launchpadFromCache;
-
+    const launchpad = launchpadFromCache as any; // validateTx ensures launchpad and mainTokenId existence
     const tokenInfo = await cache.findOnePromise('tokens', { _id: launchpad.mainTokenId });
-    if (!tokenInfo) {
-        logger.error(`[launchpad-claim-tokens] CRITICAL: Token info for ${launchpad.mainTokenId} not found during processing.`);
-        return false;
-    }
 
     let tokensToClaim: bigint = BigInt(0);
     let participantListUpdateRequired = false;

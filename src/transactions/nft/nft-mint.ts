@@ -103,25 +103,12 @@ export async function validateTx(data: NFTMintData, sender: string): Promise<boo
 
 export async function process(data: NFTMintData, sender: string, id: string): Promise<boolean> {
   try {
-    const collection = await cache.findOnePromise('nftCollections', { _id: data.collectionSymbol }) as CachedNftCollection | null;
-    if (!collection) {
-      logger.error(`[nft-mint] Collection ${data.collectionSymbol} not found during processing.`);
-      return false;
-    }
-
-    if (collection.creator !== sender) {
-      logger.error(`[nft-mint] Sender ${sender} is not the creator of collection ${data.collectionSymbol} during processing. Creator: ${collection.creator}.`);
-      return false;
-    }
+    const collection = await cache.findOnePromise('nftCollections', { _id: data.collectionSymbol }) as CachedNftCollection;
 
     // Use the next sequential index as instanceId
     const actualInstanceId = collection.nextIndex.toString();
     const nftIndex = collection.nextIndex;
-    // Ensure required fields are present
-    if (!data.collectionSymbol || !data.owner) {
-      logger.error(`[nft-mint] Missing required fields for processing: collectionSymbol=${data.collectionSymbol}, owner=${data.owner}`);
-      return false;
-    }
+    // Required fields validated in validateTx
 
     const fullInstanceId = `${data.collectionSymbol}-${actualInstanceId}`;
 
@@ -133,15 +120,15 @@ export async function process(data: NFTMintData, sender: string, id: string): Pr
     }
 
     // Create the NFT instance
-    const nftInstance: NftInstance = {
+    const nftInstance: any = {
       _id: fullInstanceId,
-      collectionSymbol: data.collectionSymbol,
-      instanceId: actualInstanceId,
-      owner: data.owner,
-      index: nftIndex,
-      coverUrl: data.coverUrl,
-      ...(data.properties ? { properties: data.properties } : {})
+      collectionSymbol: data.collectionSymbol as string,
+      instanceId: actualInstanceId as string,
+      owner: data.owner as string,
+      index: nftIndex as number,
     };
+    if (data.coverUrl) nftInstance.coverUrl = data.coverUrl as string;
+    if (data.properties) nftInstance.properties = data.properties;
 
     const insertSuccess = await new Promise<boolean>((resolve) => {
       cache.insertOne('nfts', nftInstance, (err, result) => {

@@ -40,22 +40,7 @@ export async function validateTx(data: NftDelistPayload, sender: string): Promis
 
 export async function process(data: NftDelistPayload, sender: string, id: string): Promise<boolean> {
   try {
-    const listing = await cache.findOnePromise('nftListings', { _id: data.listingId }) as NFTListingData | null;
-
-    if (!listing) {
-      logger.error(`[nft-delist-item] Listing with ID ${data.listingId} not found during processing.`);
-      return false;
-    }
-
-    if (listing.seller !== sender) {
-      logger.error(`[nft-delist-item] Sender ${sender} is not the seller of listing ${data.listingId} during processing. Seller: ${listing.seller}.`);
-      return false;
-    }
-
-    if (listing.status !== 'active') {
-      logger.error(`[nft-delist-item] Listing ${data.listingId} is not active during processing. Current status: ${listing.status}.`);
-      return false;
-    }
+    const listing = await cache.findOnePromise('nftListings', { _id: data.listingId }) as NFTListingData;
 
     const updateSuccess = await cache.updateOnePromise(
       'nftListings',

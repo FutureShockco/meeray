@@ -6,8 +6,8 @@ import { isValidNewBlock } from './block.js';
 import { signMessage } from './crypto.js';
 import steem from './steem.js';
 
-const consensus_need = 2;
-const consensus_total = 3;
+const consensus_need = 1;  // Reduced for 2-node setup
+const consensus_total = 2;  // Reduced for 2-node setup
 const consensus_threshold = consensus_need / consensus_total;
 
 // Sync mode collision detection window - 200ms

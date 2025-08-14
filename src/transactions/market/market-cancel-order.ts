@@ -75,16 +75,7 @@ export async function process(data: MarketCancelOrderData, sender: string, id: s
         logger.debug(`[market-cancel-order] Processing cancellation from ${sender} for order ${data.orderId}`);
 
         // Get the order from cache
-        const order = await cache.findOnePromise('orders', { 
-            _id: data.orderId, 
-            pairId: data.pairId, 
-            userId: data.userId 
-        }) as OrderData;
-
-        if (!order) {
-            logger.error(`[market-cancel-order] Order ${data.orderId} not found during processing.`);
-            return false;
-        }
+        const order = await cache.findOnePromise('orders', { _id: data.orderId, pairId: data.pairId, userId: data.userId }) as OrderData;
 
         // Use matching engine to cancel the order
         const cancelSuccess = await matchingEngine.cancelOrder(data.orderId, data.pairId, data.userId);
