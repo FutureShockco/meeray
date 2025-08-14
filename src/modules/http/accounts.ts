@@ -70,6 +70,37 @@ router.get('/', (async (req: Request, res: Response) => {
     }
 }) as RequestHandler);
 
+// GET /accounts/count - Get total number of accounts
+router.get('/count', (async (req: Request, res: Response) => {
+    try {
+        const query: any = {};
+        
+        // Apply the same filters as the main accounts endpoint if provided
+        if (req.query.hasToken) {
+            const tokenSymbol = req.query.hasToken as string;
+            query[`tokens.${tokenSymbol}`] = { $exists: true, $gt: 0 };
+        }
+        
+        if (req.query.isWitness === 'true') {
+            query.witnessPublicKey = { $exists: true, $ne: '' };
+        }
+        
+        const totalAccounts = await mongo.getDb().collection('accounts').countDocuments(query);
+        
+        res.json({ 
+            success: true, 
+            count: totalAccounts,
+            filters: {
+                hasToken: req.query.hasToken || null,
+                isWitness: req.query.isWitness === 'true' || false
+            }
+        });
+    } catch (err) {
+        logger.error('Error fetching accounts count:', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+}) as RequestHandler);
+
 // GET /accounts/:name - Get a specific account by name
 router.get('/:name', (async (req: Request, res: Response) => {
     try {
@@ -202,5 +233,8 @@ router.get('/:name/tokens', (async (req: Request, res: Response) => {
         res.status(500).json({ success: false, error: 'Internal server error' });
     }
 }) as RequestHandler);
+
+
+
 
 export default router; 

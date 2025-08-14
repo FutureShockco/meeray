@@ -241,7 +241,7 @@ export const mining = {
                 const recentBlockIndex = chain.recentBlocks.length - i;
                 if (recentBlockIndex >= 0 && chain.recentBlocks[recentBlockIndex].witness === process.env.STEEM_ACCOUNT) {
                     if (justExitedSync) {
-                        const targetTimestamp = lastBlockTimestamp + (config.blockTime * (i + 1));
+                        const targetTimestamp = lastBlockTimestamp + (config.blockTime * (i + 1) + 1500);
                         mineInMs = targetTimestamp - currentTime;
                         logger.trace(`minerWorker: Post-sync transition: Backup witness (slot ${i + 1}). Target: ${new Date(targetTimestamp).toISOString()}. Current: ${new Date(currentTime).toISOString()}. Calculated mineInMs: ${mineInMs}`);
                     } else {

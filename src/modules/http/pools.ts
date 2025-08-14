@@ -345,6 +345,44 @@ router.get('/', (async (req: Request, res: Response) => {
     }
 }) as RequestHandler);
 
+// GET /pools/count - Get total number of liquidity pools
+router.get('/count', (async (req: Request, res: Response) => {
+    try {
+        const query: any = {};
+        
+        // Apply filters if provided (similar to main pools endpoint)
+        if (req.query.hasLiquidity === 'true') {
+            // Only count pools with actual liquidity
+            query.$or = [
+                { tokenA_reserve: { $gt: '0' } },
+                { tokenB_reserve: { $gt: '0' } }
+            ];
+        }
+        
+        if (req.query.tokenSymbol) {
+            const tokenSymbol = req.query.tokenSymbol as string;
+            query.$or = [
+                { tokenA_symbol: tokenSymbol },
+                { tokenB_symbol: tokenSymbol }
+            ];
+        }
+        
+        const totalPools = await mongo.getDb().collection('liquidityPools').countDocuments(query);
+        
+        res.json({ 
+            success: true, 
+            count: totalPools,
+            filters: {
+                hasLiquidity: req.query.hasLiquidity === 'true' || false,
+                tokenSymbol: req.query.tokenSymbol || null
+            }
+        });
+    } catch (error: any) {
+        logger.error('Error fetching pools count:', error);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+}) as RequestHandler);
+
 router.get('/:poolId', (async (req: Request, res: Response) => {
     const { poolId } = req.params;
     try {
