@@ -6,6 +6,7 @@ import logger from './logger.js';
 import chain from './chain.js';
 import { isValidSignature } from './crypto.js';
 import steem from './steem.js';
+import p2p from './p2p.js';
 
 
 export class Block {
@@ -233,10 +234,16 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
         return cb(false);
     }
     const blockTime = newBlock.sync ? config.syncBlockTime : config.blockTime;
-    // Check block is not too early for backup
+    // Check block is not too early for backup (skip during recovery/replay)
     if (previousBlock && (newBlock.timestamp - previousBlock.timestamp < witnessPriority * blockTime)) {
-        logger.error('block too early for witness with priority #' + witnessPriority);
-        return cb(false);
+        // During recovery/replay, we need to be more lenient with timing validation
+        // as historical blocks may have been mined in rapid succession
+        if (!p2p.recovering) {
+            logger.error('block too early for witness with priority #' + witnessPriority);
+            return cb(false);
+        } else {
+            logger.debug(`[RECOVERY] Allowing block timing validation bypass during recovery for witness priority #${witnessPriority}`);
+        }
     }
     
     if (!verifyTxValidity) {

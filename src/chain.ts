@@ -402,10 +402,15 @@ export const chain = {
     },
     validateAndAddBlock: async (block: any, revalidate: boolean, cb: (err: any, newBlock: any) => void) => {
         if (chain.shuttingDown) return
+        
+        // Add recovery context to logging
+        const recoveryMode = p2p.recovering ? ' [RECOVERY]' : '';
+        logger.trace(`validateAndAddBlock${recoveryMode}: Processing Block ID: ${block?._id}, Witness: ${block?.witness}, Timestamp: ${block?.timestamp}`);
+        
         isValidNewBlock(block, revalidate, false, function (isValid: boolean) {
-            logger.trace(`validateAndAddBlock: isValidNewBlock for Block ID: ${block?._id} returned: ${isValid}`);
+            logger.trace(`validateAndAddBlock${recoveryMode}: isValidNewBlock for Block ID: ${block?._id} returned: ${isValid}`);
             if (!isValid) {
-                logger.warn(`validateAndAddBlock: Block ID: ${block?._id} failed isValidNewBlock. Witness: ${block?.witness}`);
+                logger.warn(`validateAndAddBlock${recoveryMode}: Block ID: ${block?._id} failed isValidNewBlock. Witness: ${block?.witness}`);
                 return cb("Block failed basic validation", null);
             }
             logger.trace(`validateAndAddBlock: Block ID: ${block?._id} passed isValidNewBlock. Witness: ${block?.witness}`); // Changed from console.log
