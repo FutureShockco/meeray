@@ -777,12 +777,11 @@ export const p2p = {
         }
 
         const currentBlock = chain.getLatestBlock()._id;
-        logger.debug('Current block:', currentBlock);
-        logger.debug('Origin hash:', config.originHash);
+        logger.trace('Current block:', currentBlock);
 
         // Debug each socket's status
         p2p.sockets.forEach((socket, index) => {
-            logger.debug(`Peer ${index}:`, {
+            logger.trace(`Peer ${index}:`, {
                 hasNodeStatus: !!socket.node_status,
                 headBlock: socket.node_status?.head_block,
                 originBlock: socket.node_status?.origin_block,
@@ -812,7 +811,7 @@ export const p2p = {
             p2p.sendJSON(champion, { t: MessageType.QUERY_BLOCK, d: nextBlock });
             p2p.recoveringBlocks.push(nextBlock);
 
-            logger.debug(`Querying block #${nextBlock} from peer (head: ${champion.node_status!.head_block})`);
+            logger.trace(`Querying block #${nextBlock} from peer (head: ${champion.node_status!.head_block})`);
 
             if (nextBlock % 2) {
                 p2p.recover();

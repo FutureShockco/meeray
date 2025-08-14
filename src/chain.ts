@@ -224,7 +224,7 @@ export const chain = {
         if (block._id % REPLAY_OUTPUT === 0 || (!rebuilding && !p2p.recovering))
             logger.info(outputLog);
         else
-            logger.debug(outputLog);
+            logger.trace(outputLog);
 
         chain.nextOutput = { txs: 0, dist: '0' };
     },
@@ -378,7 +378,7 @@ export const chain = {
             // Use setTimeout to make this non-blocking
             setTimeout(() => {
                 // Only broadcast if p2p is available and we have peers
-                if (p2p && p2p.nodeId && p2p.sockets && p2p.sockets.length > 0) {
+                if (p2p && p2p.nodeId && p2p.sockets && p2p.sockets.length > 0 && !p2p.recovering) {
                     const currentStatus = {
                         nodeId: p2p.nodeId.pub,
                         behindBlocks: steem.getBehindBlocks(),

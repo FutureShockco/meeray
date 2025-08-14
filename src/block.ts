@@ -238,11 +238,19 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
     if (previousBlock && (newBlock.timestamp - previousBlock.timestamp < witnessPriority * blockTime)) {
         // During recovery/replay, we need to be more lenient with timing validation
         // as historical blocks may have been mined in rapid succession
-        if (!p2p.recovering) {
+        
+        // Check multiple recovery indicators for robustness
+        const isRecovering = p2p.recovering || p2p.recoveringBlocks.length > 0 || p2p.recoverAttempt > 0;
+        const isHistoricalBlock = newBlock.timestamp < (Date.now() - 24 * 60 * 60 * 1000); // Block older than 24 hours
+        const isReplayMode = process.env.REBUILD_STATE === '1';
+        
+        logger.debug(`[TIMING-CHECK] Block ${newBlock._id}: timeDiff=${newBlock.timestamp - previousBlock.timestamp}, required=${witnessPriority * blockTime}, priority=#${witnessPriority}, recovering=${isRecovering}, historical=${isHistoricalBlock}, rebuild=${isReplayMode}, p2p.recovering=${p2p.recovering}, recoveringBlocks=${p2p.recoveringBlocks.length}, recoverAttempt=${p2p.recoverAttempt}`);
+        
+        if (!isRecovering && !isHistoricalBlock && !isReplayMode) {
             logger.error('block too early for witness with priority #' + witnessPriority);
             return cb(false);
         } else {
-            logger.debug(`[RECOVERY] Allowing block timing validation bypass during recovery for witness priority #${witnessPriority}`);
+            logger.info(`[RECOVERY] Allowing block timing validation bypass for block ${newBlock._id} with witness priority #${witnessPriority} (recovering=${isRecovering}, historical=${isHistoricalBlock}, rebuild=${isReplayMode})`);
         }
     }
     
