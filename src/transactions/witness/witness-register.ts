@@ -39,7 +39,7 @@ export async function process(data: WitnessRegisterData, sender: string, transac
           logger.error(`Error adding witness ${sender} to cache: ${err}`);
           resolve(false);
         } else {
-          logger.error(`[process] witness: ${witness}`);
+          logger.info(`[process] Successfully registered witness: ${sender} with public key: ${data.pub}`);
           resolve(true);
         }
       });

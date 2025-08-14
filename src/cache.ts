@@ -511,7 +511,8 @@ const cache: CacheType = {
     },
 
     addWitness: function (witness, isRollback, cb) {
-        if (!this.witnesses[witness]) {
+        const wasNew = !this.witnesses[witness];
+        if (wasNew) {
             this.witnesses[witness] = 1;
         }
         if (!isRollback) {
@@ -521,7 +522,7 @@ const cache: CacheType = {
             if (err) {
                 cb(err, null);
             } else {
-                cb(null, witness);
+                cb(null, { witness, wasNew });  // Return whether it was new
             }
         });
     },
