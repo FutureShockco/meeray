@@ -223,7 +223,7 @@ router.get('/stats', (async (req: Request, res: Response) => {
       avgPriceImprovement: 0.34, // Percentage improvement vs single source
       topPairs: [
         { pair: 'STEEM/USDT', volume24h: '234,567.89', trades: 342 },
-        { pair: 'ECH/STEEM', volume24h: '123,456.78', trades: 189 },
+        { pair: 'MRY/STEEM', volume24h: '123,456.78', trades: 189 },
         { pair: 'BTC/USDT', volume24h: '98,765.43', trades: 156 }
       ]
     };

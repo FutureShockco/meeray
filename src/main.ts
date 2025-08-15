@@ -52,7 +52,7 @@ let erroredRebuild = false;
 let closing = false;
 
 export async function main() {
-    logger.info('Starting ECH Node...');
+    logger.info('Starting MeeRay Node...');
 
     mongo.init(async (error: Error | null, state?: StateDoc | null) => {
         if (error) {
@@ -252,7 +252,7 @@ process.on('SIGINT', async function () {
         blocks.close()
         if (isQueueEmpty && !isProcessing) {
             clearInterval(shutdownCheck);
-            logger.info('Echelon exited safely');
+            logger.info('MeeRay exited safely');
             process.exit(0);
         }
     }, 1000);

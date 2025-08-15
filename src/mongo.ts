@@ -10,7 +10,7 @@ import { TokenData } from './transactions/token/token-interfaces.js';
 import { toDbString, setTokenDecimals } from './utils/bigint.js';
 import settings from './settings.js';
 
-const DB_NAME = process.env.MONGO_DB || 'echelon';
+const DB_NAME = process.env.MONGO_DB || 'meeray';
 const DB_URL = process.env.MONGO_URL || 'mongodb://localhost:27017';
 
 let dbInstance: Db | null = null;
@@ -229,21 +229,21 @@ export const mongo = {
 
         setTokenDecimals(config.nativeTokenSymbol, 8);
 
-        const MAX_SUPPLY_ECH_BIGINT = BigInt(config.masterBalance); // 200 million with 8 decimals
+        const MAX_SUPPLY_MRY_BIGINT = BigInt(config.masterBalance); // 200 million with 8 decimals
         const VERY_LARGE_MAX_SUPPLY_BIGINT = BigInt('1000000000000000000000000000000'); // Effectively unlimited for pegged tokens
 
-        // This object represents the INPUT parameters for creating the native token ECH
+        // This object represents the INPUT parameters for creating the native token MRY
         const nativeTokenCreationParams: TokenData = {
             symbol: config.nativeTokenSymbol,
-            name: 'Echelon',
+            name: config.nativeTokenName,
             precision: 8,
             maxSupply: toDbString(VERY_LARGE_MAX_SUPPLY_BIGINT),
-            initialSupply: toDbString(MAX_SUPPLY_ECH_BIGINT),
+            initialSupply: toDbString(MAX_SUPPLY_MRY_BIGINT),
             mintable: true,
             burnable: true,
-            description: 'Echelon is the native token of the Echelon Network',
+            description: 'MeeRay is the native token of the MeeRay Sidechain',
             logoUrl: '',
-            websiteUrl: 'https://echelon.network'
+            websiteUrl: 'https://meeray.com'
         };
 
         const nativeTokenToStore: TokenData = {
@@ -252,7 +252,7 @@ export const mongo = {
             name: nativeTokenCreationParams.name,
             precision: nativeTokenCreationParams.precision || 8,
             maxSupply: nativeTokenCreationParams.maxSupply,
-            currentSupply: nativeTokenCreationParams.initialSupply || MAX_SUPPLY_ECH_BIGINT,
+            currentSupply: nativeTokenCreationParams.initialSupply || MAX_SUPPLY_MRY_BIGINT,
             mintable: nativeTokenCreationParams.mintable === undefined ? true : nativeTokenCreationParams.mintable,
             burnable: nativeTokenCreationParams.burnable === undefined ? true : nativeTokenCreationParams.burnable,
             issuer: config.masterName,

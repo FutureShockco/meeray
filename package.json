@@ -1,5 +1,5 @@
 {
-  "name": "steem-sidechain",
+  "name": "meeray-sidechain",
   "version": "1.0.0",
   "type": "module",
   "main": "./dist/main.js",
@@ -7,11 +7,11 @@
     "start": "tsx dist/main.js",
     "test": "nodemon --watch src --ext ts --exec \"tsx src/main.ts\"",
     "dev": "nodemon --watch src --ext ts --exec \"tsx src/main.ts\"",
-    "observer": "npm run reset-observer && cross-env PEERS=ws://localhost:6001 LOG_LEVEL=info MONGO_DB=echelon_observer STEEM_ACCOUNT=observer_node API_PORT=3001 P2P_PORT=6002 nodemon --watch src --ext ts --exec \"tsx src/main.ts\"",
-    "producer": "npm run reset-producer && cross-env PEERS=ws://localhost:6001 API_PORT=3002 WITNESS_PUBLIC_KEY=mxRB23vGuuj4YjJNApTrjJ1D4urDoGJPt5Bqht26ZXm6 WITNESS_PRIVATE_KEY=H1sYYQs2wmmez5gj2YRfYGXKA1LjHYfPXDb4hhAUfFx LOG_LEVEL=debug MONGO_DB=echelon_producer STEEM_ACCOUNT=echelon-node2 nodemon --watch src --ext ts --exec \"tsx src/main.ts\"",
-    "reset": "mongosh echelon --eval \"db.dropDatabase()\"",
-    "reset-observer": "mongosh echelon_observer --eval \"db.dropDatabase()\"",
-    "reset-producer": "mongosh echelon_producer --eval \"db.dropDatabase()\"",
+    "observer": "npm run reset-observer && cross-env PEERS=ws://localhost:6001 LOG_LEVEL=info MONGO_DB=meeray_observer STEEM_ACCOUNT=observer_node API_PORT=3001 P2P_PORT=6002 nodemon --watch src --ext ts --exec \"tsx src/main.ts\"",
+    "producer": "npm run reset-producer && cross-env PEERS=ws://localhost:6001 API_PORT=3002 WITNESS_PUBLIC_KEY=mxRB23vGuuj4YjJNApTrjJ1D4urDoGJPt5Bqht26ZXm6 WITNESS_PRIVATE_KEY=H1sYYQs2wmmez5gj2YRfYGXKA1LjHYfPXDb4hhAUfFx LOG_LEVEL=debug MONGO_DB=meeray_producer STEEM_ACCOUNT=meeray-node2 nodemon --watch src --ext ts --exec \"tsx src/main.ts\"",
+    "reset": "mongosh meeray --eval \"db.dropDatabase()\"",
+    "reset-observer": "mongosh meeray_observer --eval \"db.dropDatabase()\"",
+    "reset-producer": "mongosh meeray_producer --eval \"db.dropDatabase()\"",
     "build": "rimraf dist && tsc",
     "genkey": "tsx src/generateKeypair.ts"
   },

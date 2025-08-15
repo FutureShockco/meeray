@@ -1,8 +1,8 @@
 const config = {
   chainId: 'sidechain',
-  networkName: 'Echelon Devnet',
-  nativeTokenSymbol: 'ECH',
-  nativeTokenName: 'Echelon',
+  networkName: 'MeeRay Devnet',
+  nativeTokenSymbol: 'MRY',
+  nativeTokenName: 'MeeRay',
   nativeTokenPrecision: 8,
   originHash: 'e201950993be0e15b14ab19dccb165972ff0ba7ea162c5ad6eec9b5268bce468',
   burnAccountName: 'null',
@@ -10,10 +10,10 @@ const config = {
   masterBalance: '20000000000000000',
   masterName: 'echelon-node1',
   masterPublicKey: 'e27B66QHwRLjnjxi5KAa9G7fLSDajtoB6CxuZ87oTdfS',
-  blockTime: 2940,
+  blockTime: 3000,
   syncBlockTime: 1000,
-  witnessReward: 100000000,
-  farmReward: 100000000,
+  witnessReward: 100000000, // 1 MRY
+  farmReward: 100000000, // 1 MRY
   steemChainId: '0000000000000000000000000000000000000000000000000000000000000000',
   steemStartBlock: process.env.NODE_ENV === 'development' ? 2757515 : 95762370,
   steemBlockDelay: 1,
@@ -22,15 +22,14 @@ const config = {
   tokenSymbolAllowedChars: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890',
   tokenNameAllowedChars: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
   tokenNameMaxLength: 50,
-  tokenCreationFee: 10000000000, // 100 ECH
-  nftCollectionCreationFee: 10000000000, // 100 ECH
+  tokenCreationFee: 10000000000, // 100 MRY
+  nftCollectionCreationFee: 10000000000, // 100 MRY
   tokenSymbolMaxLength: 10,
   tokenSymbolMinLength: 3,
   tokenPrecisionMax: 18,
   tokenPrecisionMin: 0,
   tokenMinSupply: 1,
   tokenMaxSupply: 1000000000000000000,
-  maxTokenAmountDigits: 30, // Maximum digits for token amounts
   consensusRounds: 2,
   witnesses: 20,
   maxDrift: 30000,

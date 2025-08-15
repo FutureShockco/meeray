@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Echelon API provides RESTful endpoints for interacting with the blockchain. All endpoints return JSON responses.
+The MeeRay API provides RESTful endpoints for interacting with the blockchain. All endpoints return JSON responses.
 
 ## Token Amount Formatting
 
@@ -19,8 +19,8 @@ This approach provides both user-friendly display values and precise values for 
 
 ```json
 {
-  "symbol": "ECH",
-  "name": "Echelon Token",
+  "symbol": "MRY",
+  "name": "MeeRay Token",
   "maxSupply": "123.456",
   "rawMaxSupply": "123456000",
   "currentSupply": "50.000",
@@ -37,7 +37,7 @@ Account balance responses include both formatted and raw values for each token:
 {
   "name": "alice",
   "balances": {
-    "ECH": {
+    "MRY": {
       "amount": "123.456",
       "rawAmount": "123456000"
     },
@@ -61,14 +61,14 @@ Returns a list of all registered tokens with formatted supply values.
 {
   "data": [
     {
-      "symbol": "ECH",
-      "name": "Echelon Token",
+      "symbol": "MRY",
+      "name": "MeeRay Token",
       "maxSupply": "1000000.000",
       "rawMaxSupply": "1000000000000",
       "currentSupply": "500000.000",
       "rawCurrentSupply": "500000000000",
       "precision": 3,
-      "issuer": "echelon-issuer"
+      "issuer": "meeray-issuer"
     }
   ],
   "total": 1,
@@ -83,15 +83,15 @@ Returns details for a specific token.
 **Response:**
 ```json
 {
-  "symbol": "ECH",
-  "name": "Echelon Token",
+  "symbol": "MRY",
+  "name": "MeeRay Token",
   "maxSupply": "1000000.000",
   "rawMaxSupply": "1000000000000",
   "currentSupply": "500000.000",
   "rawCurrentSupply": "500000000000",
   "precision": 3,
-  "issuer": "echelon-issuer",
-  "description": "The native token of Echelon blockchain"
+  "issuer": "meeray-issuer",
+  "description": "The native token of MeeRay blockchain"
 }
 ```
 
@@ -107,7 +107,7 @@ Returns account details with formatted token balances.
   "account": {
     "name": "alice",
     "balances": {
-      "ECH": {
+      "MRY": {
         "amount": "123.456",
         "rawAmount": "123456000"
       },
@@ -130,7 +130,7 @@ Returns all tokens held by an account.
   "success": true,
   "data": [
     {
-      "symbol": "ECH",
+      "symbol": "MRY",
       "amount": "123.456",
       "rawAmount": "123456000"
     },
@@ -153,8 +153,8 @@ Returns a list of all liquidity pools with formatted token reserves.
 {
   "data": [
     {
-      "id": "ECH_STEEM_300",
-      "tokenA_symbol": "ECH",
+      "id": "MRY_STEEM_300",
+      "tokenA_symbol": "MRY",
       "tokenA_reserve": "1000.000",
       "rawTokenA_reserve": "1000000000",
       "tokenB_symbol": "STEEM",
@@ -184,7 +184,7 @@ Returns the best swap route between two tokens.
 ```json
 {
   "fromTokenSymbol": "STEEM",
-  "toTokenSymbol": "ECH",
+  "toTokenSymbol": "MRY",
   "amountIn": 1,
   "slippage": 0.5
 }
@@ -202,8 +202,8 @@ Returns the best swap route between two tokens.
   "bestRoute": {
     "hops": [
       {
-        "poolId": "ECH_STEEM_300",
-        "tokenIn": "ECH",
+        "poolId": "MRY_STEEM_300",
+        "tokenIn": "MRY",
         "tokenOut": "STEEM",
         "amountIn": "100000000",
         "amountOut": "45000000",
@@ -241,8 +241,8 @@ Returns details for a specific liquidity pool.
 **Response:**
 ```json
 {
-  "id": "ECH_STEEM_300",
-  "tokenA_symbol": "ECH",
+  "id": "MRY_STEEM_300",
+  "tokenA_symbol": "MRY",
   "tokenA_reserve": "1000.000",
   "rawTokenA_reserve": "1000000000",
   "tokenB_symbol": "STEEM",
@@ -264,7 +264,7 @@ Returns aggregate or time-series analytics for a pool including APR.
 **Aggregate Response:**
 ```json
 {
-  "poolId": "ECH_STEEM_300",
+  "poolId": "MRY_STEEM_300",
   "period": "day",
   "from": "2025-01-17T12:00:00.000Z",
   "to": "2025-01-18T12:00:00.000Z",
@@ -289,8 +289,8 @@ Returns a list of all trading pairs with formatted prices and volumes.
 {
   "data": [
     {
-      "id": "ECH-STEEM",
-      "baseSymbol": "ECH",
+      "id": "MRY-STEEM",
+      "baseSymbol": "MRY",
       "quoteSymbol": "STEEM",
       "lastPrice": "0.500",
       "rawLastPrice": "500000000",
@@ -316,7 +316,7 @@ Returns details for a specific order with formatted amounts.
 ```json
 {
   "id": "order123",
-  "pairId": "ECH-STEEM",
+  "pairId": "MRY-STEEM",
   "side": "buy",
   "type": "limit",
   "price": "0.500",
@@ -342,8 +342,8 @@ Returns a list of all farming pools with formatted amounts.
   "data": [
     {
       "id": "farm123",
-      "stakingTokenSymbol": "LP_ECH_STEEM_300",
-      "rewardTokenSymbol": "ECH",
+      "stakingTokenSymbol": "LP_MRY_STEEM_300",
+      "rewardTokenSymbol": "MRY",
       "totalStaked": "1000.000",
       "rawTotalStaked": "1000000000",
       "rewardRate": "10.000",
@@ -467,7 +467,7 @@ Returns a list of blockchain events with optional filtering and pagination.
 - `type` (optional): Filter by event type (e.g., "pool_created", "pool_swap", "token_transfer")
 - `actor` (optional): Filter by actor/participant (e.g., "alice", "bob")
 - `transactionId` (optional): Filter by specific transaction ID
-- `poolId` (optional): Filter by specific pool ID (e.g., "ECH_STEEM_300")
+- `poolId` (optional): Filter by specific pool ID (e.g., "MRY_STEEM_300")
 - `startTime` (optional): Filter events from this timestamp (ISO date string)
 - `endTime` (optional): Filter events until this timestamp (ISO date string)
 - `sortDirection` (optional): "asc" or "desc" (default: "desc")
@@ -486,8 +486,8 @@ Returns a list of blockchain events with optional filtering and pagination.
       "transactionId": "tx456",
       "timestamp": "2025-01-18T12:00:00.000Z",
       "data": {
-        "poolId": "ECH_STEEM_300",
-        "tokenA": "ECH",
+        "poolId": "MRY_STEEM_300",
+        "tokenA": "MRY",
         "tokenB": "STEEM",
         "feeTier": 300,
         "initialLiquidity": {
@@ -505,8 +505,8 @@ Returns a list of blockchain events with optional filtering and pagination.
       "transactionId": "tx457",
       "timestamp": "2025-01-18T12:05:00.000Z",
       "data": {
-        "poolId": "ECH_STEEM_300",
-        "tokenIn": "ECH",
+        "poolId": "MRY_STEEM_300",
+        "tokenIn": "MRY",
         "tokenOut": "STEEM",
         "amountIn": "100.000",
         "rawAmountIn": "100000000",
@@ -523,7 +523,7 @@ Returns a list of blockchain events with optional filtering and pagination.
       "transactionId": "tx458",
       "timestamp": "2025-01-18T12:10:00.000Z",
       "data": {
-        "poolId": "ECH_STEEM_300",
+        "poolId": "MRY_STEEM_300",
         "tokenAAmount": "200.000",
         "rawTokenAAmount": "200000000",
         "tokenBAmount": "100.000",
@@ -539,7 +539,7 @@ Returns a list of blockchain events with optional filtering and pagination.
       "transactionId": "tx459",
       "timestamp": "2025-01-18T12:15:00.000Z",
       "data": {
-        "poolId": "ECH_STEEM_300",
+        "poolId": "MRY_STEEM_300",
         "tokenAAmount": "50.000",
         "rawTokenAAmount": "50000000",
         "tokenBAmount": "25.000",
@@ -601,8 +601,8 @@ Returns details for a specific event.
     "transactionId": "tx456",
     "timestamp": "2025-01-18T12:00:00.000Z",
     "data": {
-      "poolId": "ECH_STEEM_300",
-      "tokenIn": "ECH",
+      "poolId": "MRY_STEEM_300",
+      "tokenIn": "MRY",
       "tokenOut": "STEEM",
       "amountIn": "100.000",
       "rawAmountIn": "100000000",
@@ -646,17 +646,17 @@ Returns details for a specific event.
 
 6. **Get all events for a specific pool:**
    ```
-   GET /events?poolId=ECH_STEEM_300
+   GET /events?poolId=MRY_STEEM_300
    ```
 
 7. **Get pool events for a specific user:**
    ```
-   GET /events?poolId=ECH_STEEM_300&actor=alice
+   GET /events?poolId=MRY_STEEM_300&actor=alice
    ```
 
 8. **Get recent pool swaps only:**
    ```
-   GET /events?poolId=ECH_STEEM_300&type=pool_swap&limit=20
+   GET /events?poolId=MRY_STEEM_300&type=pool_swap&limit=20
    ```
 
 ### Witnesses

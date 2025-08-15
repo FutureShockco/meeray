@@ -19,7 +19,7 @@ function generatePairId(baseSymbol: string, baseIssuer: string, quoteSymbol: str
  * Validate if a token exists and is properly formatted
  */
 async function validateTokenExists(symbol: string, issuer: string): Promise<boolean> {
-    // For native tokens (ECH, STEEM, SBD), check if issuer matches master name
+    // For native tokens (MRY, STEEM, SBD), check if issuer matches master name
     const nativeTokens = [config.nativeTokenSymbol, 'STEEM', 'SBD'];
     if (nativeTokens.includes(symbol)) {
         if (issuer !== config.masterName) {

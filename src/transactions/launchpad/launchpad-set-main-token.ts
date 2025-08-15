@@ -5,7 +5,7 @@ import validate from '../../validation/index.js';
 export interface LaunchpadSetMainTokenData {
   userId: string;
   launchpadId: string;
-  mainTokenId: string; // e.g., MYT@echelon-node1
+  mainTokenId: string; // e.g., MYT@meeray-node1
 }
 
 export async function validateTx(data: LaunchpadSetMainTokenData, sender: string): Promise<boolean> {

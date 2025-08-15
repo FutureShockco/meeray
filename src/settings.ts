@@ -14,7 +14,7 @@ export const p2pPort: number = process.env.P2P_PORT ? Number(process.env.P2P_POR
 export const logLevel: string = process.env.LOG_LEVEL || 'debug';
 export const peers: string[] = process.env.PEERS ? process.env.PEERS.split(',').map(s => s.trim()).filter(Boolean) : [];
 export const mongoUrl: string = process.env.MONGO_URL || 'mongodb://localhost:27017';
-export const mongoDb: string = process.env.MONGO_DB || 'echelon';
+export const mongoDb: string = process.env.MONGO_DB || 'meeray';
 export const useNotification: boolean = process.env.USE_NOTIFICATION === 'true';
 
 
