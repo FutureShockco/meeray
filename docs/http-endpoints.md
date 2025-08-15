@@ -15,7 +15,7 @@ Handler: `src/modules/http/accounts.ts`
     *   Description: List accounts with pagination and filtering.
     *   Query Parameters:
         *   `limit`, `offset` (see Common Query Parameters)
-        *   `hasToken` (string, optional): Filter accounts holding a specific token (e.g., `ECH`). Returns accounts where the balance of this token is > 0.
+        *   `hasToken` (string, optional): Filter accounts holding a specific token (e.g., `MRY`). Returns accounts where the balance of this token is > 0.
         *   `isWitness` (string, optional, e.g. `true`): Filter for accounts that are registered witnesses (have a `witnessPublicKey`).
         *   `sortBy` (string, optional, default: `name`): Field to sort by (e.g., `name`, `totalVoteWeight`).
         *   `sortDirection` (string, optional, default: `asc`): Sort direction (`asc` or `desc`).
@@ -130,7 +130,9 @@ Handler: `src/modules/http/farms.ts`
 Handler: `src/modules/http/launchpad.ts`
 
 *   **GET `/`**
-    *   Description: List all launchpad projects.
+    *   Description: List all launchpad projects. Supports filtering by status.
+    *   Query Parameters:
+        *   `status` (string, optional): Filter by launchpad status (e.g., `UPCOMING`, `PRESALE_ACTIVE`).
     *   Response: `Launchpad[]` or `{ message: string }`
 
 *   **GET `/:launchpadId`**
@@ -153,6 +155,26 @@ Handler: `src/modules/http/launchpad.ts`
         *   `userId` (string): The user's account name.
     *   Response: `{ launchpadId: string, userId: string, totalAllocated: number, claimed: number, claimable: number }` or `{ message: string }`
 
+*   **GET `/:launchpadId/participants`**
+    *   Description: List all presale participants with pagination.
+    *   Path Parameters:
+        *   `launchpadId` (string): The ID of the launchpad.
+    *   Query Parameters:
+        *   `limit`, `offset` (see Common Query Parameters)
+    *   Response: `{ data: Participant[], total: number, limit: number, offset: number }` or `{ message: string }`
+
+*   **GET `/:launchpadId/whitelist`**
+    *   Description: Get the current presale whitelist and whether it is enabled.
+    *   Path Parameters:
+        *   `launchpadId` (string): The ID of the launchpad.
+    *   Response: `{ whitelistEnabled: boolean, whitelist: string[] }` or `{ message: string }`
+
+*   **GET `/:launchpadId/settlement-preview`**
+    *   Description: Preview token allocations for participants using current contributions and `pricePerToken`.
+    *   Path Parameters:
+        *   `launchpadId` (string): The ID of the launchpad.
+    *   Response: `{ data: { userId: string, contributed: string, tokensAllocatedPreview: string }[] }` or `{ message: string }`
+
 ## `/market` and `/markets`
 
 Handler: `src/modules/http/market.ts` (available under both `/market` and `/markets`)
@@ -171,8 +193,8 @@ Handler: `src/modules/http/market.ts` (available under both `/market` and `/mark
     *   Request Body:
         ```json
         {
-          "tokenIn": "ECH@echelon-node1",
-          "tokenOut": "STEEM@echelon-node1",
+          "tokenIn": "MRY@meeray-node1",
+          "tokenOut": "STEEM@meeray-node1",
           "amountIn": "100000000",
           "maxSlippagePercent": 2.0
         }
@@ -205,7 +227,7 @@ Handler: `src/modules/http/market.ts` (available under both `/market` and `/mark
 *   **GET `/pairs/:pairId`**
     *   Description: Get details of a specific trading pair.
     *   Path Parameters:
-        *   `pairId` (string): The ID of the trading pair (e.g., `ECH@echelon-node1-STEEM@echelon-node1`).
+        *   `pairId` (string): The ID of the trading pair (e.g., `MRY@meeray-node1-STEEM@meeray-node1`).
     *   Response: `TradingPair` object or `{ message: string }` if not found.
 
 ### Orders
@@ -270,8 +292,8 @@ Handler: `src/modules/http/market.ts` (available under both `/market` and `/mark
     *   Request Body:
         ```json
         {
-          "tokenIn": "ECH@echelon-node1",
-          "tokenOut": "STEEM@echelon-node1", 
+          "tokenIn": "MRY@meeray-node1",
+          "tokenOut": "STEEM@meeray-node1", 
           "amountIn": "1000000000",
           "maxSlippagePercent": 2.0
         }
@@ -450,7 +472,7 @@ Handler: `src/modules/http/pools.ts`
 *   **GET `/:poolId`**
     *   Description: Get details of a specific liquidity pool.
     *   Path Parameters:
-        *   `poolId` (string): The ID of the liquidity pool (e.g., `ECH-STM`).
+        *   `poolId` (string): The ID of the liquidity pool (e.g., `MRY-STM`).
     *   Response: `Pool` object or `{ message: string }` if not found.
 
 *   **GET `/token/:tokenSymbol`**
@@ -508,7 +530,7 @@ Handler: `src/modules/http/pools.ts`
         ```json
         {
           "fromTokenSymbol": "STEEM",
-          "toTokenSymbol": "ECH",
+          "toTokenSymbol": "MRY",
           "amountIn": 1,
           "slippage": 0.5
         }
@@ -541,7 +563,7 @@ Handler: `src/modules/http/tokens.ts`
 *   **GET `/:symbol`**
     *   Description: Get details of a specific token by its symbol.
     *   Path Parameters:
-        *   `symbol` (string): The token symbol (e.g., `ECH`).
+        *   `symbol` (string): The token symbol (e.g., `MRY`).
     *   Response: `Token` object or `{ message: string }` if not found.
 
 *   **GET `/issuer/:issuerName`**
@@ -589,3 +611,11 @@ Handler: `src/modules/http/witnesses.ts`
     *   Query Parameters:
         *   `limit`, `offset` (see Common Query Parameters)
     *   Response: `{ data: string[], total: number, limit: number, skip: number }` (Array of voter names) 
+
+*   **GET `/generate-keypair`**
+    *   Description: Generate a new witness key pair. Returns base58-encoded `pub` and `priv` keys.
+    *   Response:
+        ```json
+        { "pub": "...", "priv": "..." }
+        ```
+    *   Note: Handle the `priv` key securely on the client side.
