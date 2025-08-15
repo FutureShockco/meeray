@@ -20,7 +20,6 @@ class BlockProcessor {
         const lastProcessedSteemBlockBySidechain = chain.getLatestBlock()?.steemBlockNum || 0;
 
         if (blockNum !== lastProcessedSteemBlockBySidechain + 1) {
-            logger.warn(`Attempting to process Steem block ${blockNum} out of order. Expected: ${lastProcessedSteemBlockBySidechain + 1}. Skipping.`);
             return null;
         }
 
