@@ -571,16 +571,7 @@ export const p2p = {
 
         if (p2p.recovering) return;
 
-        logger.debug(`[P2P-DEBUG] handleNewBlock calling consensus.round(0) for block ${block._id}#${block.hash?.substr(0, 4) || 'no-hash'}`);
         consensus.round(0, block);
-    },
-
-    handleNewTransaction: (ws: EnhancedWebSocket, message: any): void => {
-        if (p2p.recovering) return;
-
-        const tx = message.d;
-        // Note: transaction validation would go here
-        // Simplified for this implementation
     },
 
     handleBlockConfRound: (ws: EnhancedWebSocket, message: any): void => {
@@ -611,44 +602,15 @@ export const p2p = {
         // Broadcast to other peers
         p2p.broadcastNotSent(message);
 
-        // Handle different types of confirmation messages
-        const block = message.d.b;
-        const round = message.d.r;
-        
-        // If this is just a hash (confirmation), process as confirmation only
-        if (block && Object.keys(block).length === 1 && block.hash) {
-            logger.debug(`[P2P-DEBUG] handleBlockConfRound processing hash-only confirmation for block ${block.hash.substr(0, 4)}`);
-            consensus.remoteRoundConfirm(message);
-        } 
-        // If this is a full block in round 0, process as new block (but check for duplicates)
-        else if (block && round === 0 && block._id && block.witness) {
-            // Check if this block is already being processed to avoid duplicates
-            for (let i = 0; i < consensus.possBlocks.length; i++) {
-                if (consensus.possBlocks[i].block.hash === block.hash) {
-                    logger.debug(`[P2P-DEDUP] Block ${block._id}#${block.hash.substr(0, 4)} already in consensus, skipping round 0 processing`);
-                    return;
-                }
+        // Process in consensus
+        consensus.round(0, message.d.b, (validationStep: number) => {
+            if (validationStep === 0) {
+                if (!consensus.queue) consensus.queue = [];
+                consensus.queue.push(message);
+            } else if (validationStep > 0) {
+                consensus.remoteRoundConfirm(message);
             }
-            if (consensus.validating.indexOf(block.hash) > -1) {
-                logger.debug(`[P2P-DEDUP] Block ${block._id}#${block.hash.substr(0, 4)} already being validated, skipping round 0 processing`);
-                return;
-            }
-            
-            logger.debug(`[P2P-DEBUG] handleBlockConfRound processing full block confirmation for block ${block._id}#${block.hash.substr(0, 4)}`);
-            consensus.round(0, block, (validationStep: number) => {
-                if (validationStep === 0) {
-                    if (!consensus.queue) consensus.queue = [];
-                    consensus.queue.push(message);
-                } else if (validationStep > 0) {
-                    consensus.remoteRoundConfirm(message);
-                }
-            });
-        }
-        // Handle other rounds (confirmations)
-        else {
-            logger.debug(`[P2P-DEBUG] handleBlockConfRound processing round ${round} confirmation`);
-            consensus.remoteRoundConfirm(message);
-        }
+        });
     },
 
     handleSteemSyncStatus: (ws: EnhancedWebSocket, message: any): void => {
