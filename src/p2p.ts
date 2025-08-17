@@ -258,6 +258,23 @@ export const p2p = {
                 return;
             }
 
+            // Prevent self-connection by checking if peer URL points to our own port
+            try {
+                const peerUrl = new URL(peer);
+                const peerHost = peerUrl.hostname;
+                const peerPort = parseInt(peerUrl.port) || 6001;
+                
+                // Check if trying to connect to self (localhost/127.0.0.1 + our port)
+                const isLocalhost = peerHost === 'localhost' || peerHost === '127.0.0.1' || peerHost === '::1';
+                if (isLocalhost && peerPort === p2p_port) {
+                    logger.debug(`[SELF-CONNECTION] Skipping connection to self: ${peer} (our port: ${p2p_port})`);
+                    return;
+                }
+            } catch (e) {
+                logger.debug(`[SELF-CONNECTION] Invalid peer URL: ${peer}`);
+                return;
+            }
+
             // Mark as connecting
             p2p.connectingPeers.add(peer);
 
@@ -593,22 +610,6 @@ export const p2p = {
 
         // Broadcast to other peers
         p2p.broadcastNotSent(message);
-
-        // Check if this block is already being processed to avoid duplicates
-        const block = message.d.b;
-        if (block && block.hash) {
-            // Check if block is already in consensus possBlocks or being validated
-            for (let i = 0; i < consensus.possBlocks.length; i++) {
-                if (consensus.possBlocks[i].block.hash === block.hash) {
-                    logger.debug(`[P2P-DEDUP] Block ${block._id}#${block.hash.substr(0, 4)} already in consensus, skipping handleBlockConfRound`);
-                    return;
-                }
-            }
-            if (consensus.validating.indexOf(block.hash) > -1) {
-                logger.debug(`[P2P-DEDUP] Block ${block._id}#${block.hash.substr(0, 4)} already being validated, skipping handleBlockConfRound`);
-                return;
-            }
-        }
 
         // Process in consensus
         logger.debug(`[P2P-DEBUG] handleBlockConfRound calling consensus.round(0) for block ${message.d.b?._id}#${message.d.b?.hash?.substr(0, 4) || 'no-hash'}`);
