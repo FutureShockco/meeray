@@ -554,6 +554,31 @@ export const p2p = {
 
         if (p2p.recovering) return;
 
+        // Check if this block has already been processed or is being processed
+        // This prevents duplicate processing that can trigger unnecessary collision windows
+        if (block.hash) {
+            // Check if block is already in consensus possBlocks
+            for (let i = 0; i < consensus.possBlocks.length; i++) {
+                if (consensus.possBlocks[i].block.hash === block.hash) {
+                    logger.debug(`[P2P-DEDUP] Block ${block._id}#${block.hash.substr(0, 4)} already in possBlocks, skipping`);
+                    return;
+                }
+            }
+            
+            // Check if block is currently being validated
+            if (consensus.validating.indexOf(block.hash) > -1) {
+                logger.debug(`[P2P-DEDUP] Block ${block._id}#${block.hash.substr(0, 4)} already being validated, skipping`);
+                return;
+            }
+            
+            // Check if this block is already in our chain (avoid processing our own blocks received back)
+            const currentHead = chain.getLatestBlock();
+            if (currentHead && currentHead.hash === block.hash) {
+                logger.debug(`[P2P-DEDUP] Block ${block._id}#${block.hash.substr(0, 4)} is current chain head, skipping`);
+                return;
+            }
+        }
+
         consensus.round(0, block);
     },
 
