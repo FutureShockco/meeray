@@ -80,7 +80,7 @@ const processSyncCollisionWindow = (height: number) => {
         // Log the losing blocks
         for (let i = 1; i < pendingBlocks.length; i++) {
             const losingBlock = pendingBlocks[i];
-            logger.info(`[SYNC-COLLISION-WINDOW] Rejected: Block ${height} by ${losingBlock.block?.witness || 'unknown'} (timestamp: ${losingBlock.block?.timestamp || 'unknown'})`);
+            logger.debug(`[SYNC-COLLISION-WINDOW] Rejected: Block ${height} by ${losingBlock.block?.witness || 'unknown'} (timestamp: ${losingBlock.block?.timestamp || 'unknown'})`);
         }
 
         // Process the winning block
@@ -218,7 +218,7 @@ export const consensus: Consensus = {
 
                         // If this isn't the winning block, remove it and wait for the winner
                         if (possBlock.block.hash !== winningBlock.block.hash) {
-                            logger.info(`[SYNC-COLLISION] Block ${possBlock.block._id} by ${possBlock.block.witness} lost collision. Winner: ${winningBlock.block.witness} (timestamp: ${winningBlock.block.timestamp})`);
+                            logger.debug(`[SYNC-COLLISION] Block ${possBlock.block._id} by ${possBlock.block.witness} lost collision. Winner: ${winningBlock.block.witness} (timestamp: ${winningBlock.block.timestamp})`);
 
                             // Remove losing blocks from consideration
                             let newPossBlocks = [];
