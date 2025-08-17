@@ -554,6 +554,7 @@ export const p2p = {
 
         if (p2p.recovering) return;
 
+        logger.debug(`[P2P-DEBUG] handleNewBlock calling consensus.round(0) for block ${block._id}#${block.hash?.substr(0, 4) || 'no-hash'}`);
         consensus.round(0, block);
     },
 
@@ -593,7 +594,24 @@ export const p2p = {
         // Broadcast to other peers
         p2p.broadcastNotSent(message);
 
+        // Check if this block is already being processed to avoid duplicates
+        const block = message.d.b;
+        if (block && block.hash) {
+            // Check if block is already in consensus possBlocks or being validated
+            for (let i = 0; i < consensus.possBlocks.length; i++) {
+                if (consensus.possBlocks[i].block.hash === block.hash) {
+                    logger.debug(`[P2P-DEDUP] Block ${block._id}#${block.hash.substr(0, 4)} already in consensus, skipping handleBlockConfRound`);
+                    return;
+                }
+            }
+            if (consensus.validating.indexOf(block.hash) > -1) {
+                logger.debug(`[P2P-DEDUP] Block ${block._id}#${block.hash.substr(0, 4)} already being validated, skipping handleBlockConfRound`);
+                return;
+            }
+        }
+
         // Process in consensus
+        logger.debug(`[P2P-DEBUG] handleBlockConfRound calling consensus.round(0) for block ${message.d.b?._id}#${message.d.b?.hash?.substr(0, 4) || 'no-hash'}`);
         consensus.round(0, message.d.b, (validationStep: number) => {
             if (validationStep === 0) {
                 if (!consensus.queue) consensus.queue = [];
