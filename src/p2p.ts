@@ -618,6 +618,24 @@ export const p2p = {
         // Broadcast to other peers
         p2p.broadcastNotSent(message);
 
+        // Check for block deduplication before processing in consensus
+        const block = message.d.b;
+        if (block && block.hash) {
+            // Check if block is already in consensus possBlocks
+            for (let i = 0; i < consensus.possBlocks.length; i++) {
+                if (consensus.possBlocks[i].block.hash === block.hash) {
+                    logger.debug(`[P2P-DEDUP-CONF] Block ${block._id}#${block.hash.substr(0, 4)} already in possBlocks, skipping conf round`);
+                    return;
+                }
+            }
+            
+            // Check if block is currently being validated
+            if (consensus.validating.indexOf(block.hash) > -1) {
+                logger.debug(`[P2P-DEDUP-CONF] Block ${block._id}#${block.hash.substr(0, 4)} already being validated, skipping conf round`);
+                return;
+            }
+        }
+
         // Process in consensus
         consensus.round(0, message.d.b, (validationStep: number) => {
             if (validationStep === 0) {
