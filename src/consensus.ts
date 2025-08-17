@@ -306,13 +306,13 @@ export const consensus: Consensus = {
 
         // COLLISION WINDOW - Use synchronized window only when needed (sync mode or multiple active mining witnesses)
         const activeWitnessCount = this.activeWitnesses().length;
-        // Only use collision window if in sync mode OR if there are multiple witnesses AND multiple connected peers
-        // For small networks with few peers, skip collision window even if multiple witnesses are configured
-        const connectedPeers = p2p && p2p.sockets ? p2p.sockets.filter(s => s.node_status).length : 0;
-        const needCollisionWindow = steem.isInSyncMode() || (activeWitnessCount > 1 && connectedPeers > 0);
+        // Only use collision window if in sync mode OR if there are multiple witnesses AND multiple active mining nodes
+        // For small networks with only one mining node, skip collision window even if multiple witnesses are configured
+        const activeMiningNodes = p2p && p2p.sockets ? p2p.sockets.filter(s => s.node_status && !s.node_status.observer).length + 1 : 1; // +1 for local node if mining
+        const needCollisionWindow = steem.isInSyncMode() || (activeWitnessCount > 1 && activeMiningNodes > 1);
         
         if (round === 0 && needCollisionWindow && block._id && block.witness && block.timestamp && block.hash) {
-            logger.debug(`[COLLISION-WINDOW] Using collision window for height ${block._id} (activeWitnesses: ${activeWitnessCount}, connectedPeers: ${connectedPeers}, syncMode: ${steem.isInSyncMode()})`);
+            logger.debug(`[COLLISION-WINDOW] Using collision window for height ${block._id} (activeWitnesses: ${activeWitnessCount}, activeMiningNodes: ${activeMiningNodes}, syncMode: ${steem.isInSyncMode()})`);
             const blockHeight = block._id;
             
             // Check if we already have a timer for this height
@@ -375,7 +375,7 @@ export const consensus: Consensus = {
 
         // Skip collision window for single witness in normal mode
         if (round === 0 && !needCollisionWindow) {
-            logger.debug(`[COLLISION-WINDOW] Skipping collision window for height ${block._id || 'unknown'} (activeWitnesses: ${activeWitnessCount}, connectedPeers: ${connectedPeers}, syncMode: ${steem.isInSyncMode()})`);
+            logger.debug(`[COLLISION-WINDOW] Skipping collision window for height ${block._id || 'unknown'} (activeWitnesses: ${activeWitnessCount}, activeMiningNodes: ${activeMiningNodes}, syncMode: ${steem.isInSyncMode()})`);
         }
 
         // Normal processing (non-sync mode or non-round-0)
