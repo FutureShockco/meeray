@@ -57,13 +57,18 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
     }
     
     if (!hasPrice && !hasMinAmountOut && !hasMaxSlippage) {
-      logger.warn('[hybrid-trade] Must specify either price, minAmountOut, or maxSlippagePercent.');
+      logger.warn('[hybrid-trade] Must specify either price, minAmountOut, or maxSlippagePercent. For market orders, maxSlippagePercent is recommended for better user experience.');
       return false;
     }
     
     if (hasMinAmountOut && hasMaxSlippage) {
       logger.warn('[hybrid-trade] Cannot specify both minAmountOut and maxSlippagePercent. Choose one slippage protection method.');
       return false;
+    }
+
+    // For market orders (no specific price), prefer maxSlippagePercent over minAmountOut
+    if (!hasPrice && hasMinAmountOut && !hasMaxSlippage) {
+      logger.info('[hybrid-trade] Using minAmountOut for market order. If AMM output is below this threshold, the trade will be routed to orderbook as a limit order for better price protection.');
     }
 
     if (hasPrice && toBigInt(data.price!) <= BigInt(0)) {
@@ -74,6 +79,18 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
     if (hasMinAmountOut && toBigInt(data.minAmountOut!) < BigInt(0)) {
       logger.warn('[hybrid-trade] minAmountOut cannot be negative.');
       return false;
+    }
+
+    // Validate that minAmountOut is reasonable (not more than 10x the input amount)
+    if (hasMinAmountOut) {
+      const amountIn = toBigInt(data.amountIn);
+      const minAmountOut = toBigInt(data.minAmountOut!);
+      
+      // For most tokens, output shouldn't be more than 10x input (adjust this multiplier as needed)
+      if (minAmountOut > amountIn * BigInt(10)) {
+        logger.warn(`[hybrid-trade] minAmountOut ${minAmountOut} is unreasonably high compared to input amount ${amountIn}. This suggests a precision or calculation error.`);
+        return false;
+      }
     }
 
     if (hasMaxSlippage && (data.maxSlippagePercent! < 0 || data.maxSlippagePercent! > 100)) {
@@ -149,18 +166,38 @@ export async function process(data: HybridTradeData, sender: string, transaction
     // Get optimal route if not provided
     let routes = data.routes;
     if (!routes || routes.length === 0) {
-      // Only auto-route for market orders (no specific price)
+      // Market order - try AMM first, fallback to orderbook if needed
       if (!data.price) {
         const quote = await liquidityAggregator.getBestQuote(data);
         if (!quote) {
           logger.warn('[hybrid-trade] No liquidity available for this trade. This should have been caught during validation.');
           return false;
         }
-        routes = quote.routes.map(r => ({
-          type: r.type,
-          allocation: r.allocation,
-          details: r.details
-        }));
+
+        // Check if AMM output meets minAmountOut requirement
+        if (data.minAmountOut && toBigInt(quote.amountOut) < toBigInt(data.minAmountOut)) {
+          // AMM output too low - use orderbook as limit order with calculated price
+          const calculatedPrice = (toBigInt(data.amountIn) * BigInt(1e8)) / toBigInt(data.minAmountOut); // Assuming 8 decimal precision
+          logger.info(`[hybrid-trade] AMM output ${quote.amountOut} below minAmountOut ${data.minAmountOut}. Routing to orderbook as limit order at calculated price ${calculatedPrice}`);
+          
+          routes = [{
+            type: 'ORDERBOOK',
+            allocation: 100,
+            details: {
+              pairId: `${data.tokenIn.split('@')[0]}-${data.tokenOut.split('@')[0]}`,
+              side: OrderSide.BUY,
+              orderType: OrderType.LIMIT,
+              price: calculatedPrice.toString()
+            }
+          }];
+        } else {
+          // AMM output meets requirements - use AMM route
+          routes = quote.routes.map(r => ({
+            type: r.type,
+            allocation: r.allocation,
+            details: r.details
+          }));
+        }
       } else {
         // For limit orders with specific price, default to orderbook only
         logger.debug('[hybrid-trade] Using orderbook route for limit order with specific price');
@@ -223,9 +260,9 @@ export async function process(data: HybridTradeData, sender: string, transaction
       return false;
     }
 
-    // Check slippage protection
+    // Check slippage protection (this should rarely happen now with smart routing)
     if (data.minAmountOut && totalAmountOut < toBigInt(data.minAmountOut)) {
-      logger.warn(`[hybrid-trade] Output amount ${totalAmountOut} less than minimum required ${data.minAmountOut}`);
+      logger.warn(`[hybrid-trade] Slippage protection triggered: Output amount ${totalAmountOut} is less than minimum required ${data.minAmountOut}. This suggests the orderbook route also couldn't meet your price requirements. Consider adjusting your minAmountOut or using maxSlippagePercent.`);
       // In a production system, you'd want to rollback here
       return false;
     }
