@@ -218,7 +218,6 @@ const transformUserLiquidityPositionData = (positionData: any, poolData?: any): 
         transformed.lpTokenBalance = formatTokenAmount(lpBalanceBigInt, 'LP_TOKEN');
         transformed.rawLpTokenBalance = lpBalanceBigInt.toString();
     }
-    console.log('lpTokenBalance', transformed);
     // --- Fee accounting fields ---
     if (positionData.feeGrowthEntryA !== undefined) {
         transformed.feeGrowthEntryA = positionData.feeGrowthEntryA.toString();
