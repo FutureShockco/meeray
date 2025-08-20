@@ -1,7 +1,7 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
-import { NFTUpdateMetadataData, NftInstance } from './nft-interfaces.js';
+import { NFTUpdateMetadataData, NFTTokenData } from './nft-interfaces.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: NFTUpdateMetadataData, sender: string): Promise<boolean> {
@@ -43,7 +43,7 @@ export async function validateTx(data: NFTUpdateMetadataData, sender: string): P
 
     // Check if NFT exists and sender is the owner
     const fullInstanceId = `${data.collectionSymbol}-${data.instanceId}`;
-    const nft = await cache.findOnePromise('nfts', { _id: fullInstanceId }) as NftInstance | null;
+    const nft = await cache.findOnePromise('nfts', { _id: fullInstanceId }) as NFTTokenData | null;
     
     if (!nft) {
       logger.warn(`[nft-update] NFT ${fullInstanceId} not found.`);
@@ -74,7 +74,7 @@ export async function process(data: NFTUpdateMetadataData, sender: string, id: s
     const fullInstanceId = `${data.collectionSymbol}-${data.instanceId}`;
     
     // Fetch NFT to confirm current owner again before proceeding
-    const nft = await cache.findOnePromise('nfts', { _id: fullInstanceId }) as NftInstance | null;
+    const nft = await cache.findOnePromise('nfts', { _id: fullInstanceId }) as NFTTokenData | null;
     if (!nft || nft.owner !== sender) {
       logger.error(`[nft-update] CRITICAL: NFT ${fullInstanceId} not found or sender ${sender} is not owner during processing.`);
       return false;
@@ -117,12 +117,7 @@ export async function process(data: NFTUpdateMetadataData, sender: string, id: s
       instanceId: data.instanceId,
       fullInstanceId,
       owner: sender,
-      updatedFields: updateFields,
-      previousData: {
-        properties: nft.properties,
-        uri: nft.uri,
-        coverUrl: nft.coverUrl
-      }
+      updatedFields: updateFields
     });
 
     return true;
