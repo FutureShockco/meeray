@@ -2,8 +2,38 @@ import settings from '../settings.js';
 import SteemApiClient from '../steem/apiClient.js';
 import { PrivateKey } from 'dsteem';
 import { mongo } from '../mongo.js';
+import config from '../config.js';
 const client = new SteemApiClient();
 
+
+type WithdrawStatus = 'pending' | 'processing' | 'done' | 'failed';
+interface WithdrawJobDoc {
+    _id?: any;
+    to: string;
+    amount: string;
+    symbol: string;
+    memo: string;
+    status: WithdrawStatus;
+    attempts: number;
+    lastError?: string;
+    createdAt: string;
+    updatedAt: string;
+    txId: string;
+}
+
+type DepositStatus = 'pending' | 'processing' | 'done' | 'failed';
+interface DepositJobDoc {
+    _id?: any;
+    to: string;
+    amount: string;
+    symbol: string;
+    status: DepositStatus;
+    attempts: number;
+    lastError?: string;
+    createdAt: string;
+    updatedAt: string;
+    txId: string;
+}
 
 async function transfer(to: string, amount: string, symbol: string, memo: string) {
     console.log(to, amount, symbol, memo);
@@ -30,22 +60,29 @@ async function transfer(to: string, amount: string, symbol: string, memo: string
     }
 }
 
+async function broadcastTokenMint(mintData: { symbol: string; to: string; amount: string }) {
+    const operation = ['custom_json', {
+        required_auths: [settings.steemBridgeAccount],
+        required_posting_auths: [],
+        id: config.chainId,
+        json: JSON.stringify({
+            contract: 'token_mint',
+            payload: mintData
+        })
+    }];
 
-
-// --- Async withdraw queue ---
-type WithdrawStatus = 'pending' | 'processing' | 'done' | 'failed';
-interface WithdrawJobDoc {
-    _id?: any;
-    to: string;
-    amount: string; // formatted decimal string for Steem layer
-    symbol: string; // e.g., TESTS or SBD
-    memo: string;
-    status: WithdrawStatus;
-    attempts: number;
-    lastError?: string;
-    createdAt: string;
-    updatedAt: string;
-    txId: string;
+    try {
+        console.log(`Broadcasting TOKEN_MINT for ${mintData.amount} ${mintData.symbol} to ${mintData.to}`);
+        const result = await client.sendOperations([operation], PrivateKey.fromString(settings.steemBridgeActiveKey));
+        console.log(`TOKEN_MINT broadcast successful: TX ID ${result.id}`);
+        return result;
+    } catch (error: any) {
+        console.error(`Error in broadcastTokenMint:`, error);
+        if (error?.data?.stack) {
+            console.error('dsteem error data:', error.data.stack);
+        }
+        throw error;
+    }
 }
 
 export async function enqueueWithdraw(to: string, amount: string, symbol: string, memo: string): Promise<void> {
@@ -65,6 +102,22 @@ export async function enqueueWithdraw(to: string, amount: string, symbol: string
     await db.collection<WithdrawJobDoc>('withdrawals').insertOne(doc as any);
 }
 
+export async function enqueueDeposit(mintData: { symbol: string; to: string; amount: string }): Promise<void> {
+    const db = mongo.getDb();
+    const now = new Date().toISOString();
+    const doc: DepositJobDoc = {
+        to: mintData.to,
+        amount: mintData.amount,
+        symbol: mintData.symbol,
+        status: 'pending',
+        attempts: 0,
+        createdAt: now,
+        updatedAt: now,
+        txId: ''
+    };
+    await db.collection<DepositJobDoc>('deposits').insertOne(doc as any);
+}
+
 let workerStarted = false;
 let isProcessing = false;
 export function startWorker(): void {
@@ -80,31 +133,68 @@ export function startWorker(): void {
         isProcessing = true;
         let delay = 800; // default idle delay
         try {
-            // reset stale processing jobs (stuck for > 60s)
+            // reset stale processing jobs (stuck for > 60s) - both withdrawals and deposits
             await db.collection('withdrawals').updateMany(
                 { status: 'processing', updatedAt: { $lt: new Date(Date.now() - 60000).toISOString() } },
                 { $set: { status: 'pending', updatedAt: new Date().toISOString() } }
             );
-            const job = await db.collection<WithdrawJobDoc>('withdrawals').findOneAndUpdate(
+            await db.collection('deposits').updateMany(
+                { status: 'processing', updatedAt: { $lt: new Date(Date.now() - 60000).toISOString() } },
+                { $set: { status: 'pending', updatedAt: new Date().toISOString() } }
+            );
+
+            // Process withdrawals first
+            const withdrawJob = await db.collection<WithdrawJobDoc>('withdrawals').findOneAndUpdate(
                 { status: 'pending' },
                 { $set: { status: 'processing', updatedAt: new Date().toISOString() } },
                 { returnDocument: 'after' as any, sort: { createdAt: 1 } }
             );
-            const maybeDoc: any = (job as any)?.value ?? job;
-            const doc: WithdrawJobDoc | null = (maybeDoc && (maybeDoc as any)._id) ? (maybeDoc as WithdrawJobDoc) : null;
-            if (doc) {
+            const withdrawDoc: any = (withdrawJob as any)?.value ?? withdrawJob;
+            const withdrawJobDoc: WithdrawJobDoc | null = (withdrawDoc && (withdrawDoc as any)._id) ? (withdrawDoc as WithdrawJobDoc) : null;
+
+            if (withdrawJobDoc) {
                 delay = 200; // have backlog, poll a bit faster
                 try {
-                    const tx = await transfer(doc.to, doc.amount, doc.symbol, doc.memo);
+                    const tx = await transfer(withdrawJobDoc.to, withdrawJobDoc.amount, withdrawJobDoc.symbol, withdrawJobDoc.memo);
                     await db.collection('withdrawals').updateOne(
-                        { _id: (doc as any)._id },
+                        { _id: (withdrawJobDoc as any)._id },
                         { $set: { status: 'done', updatedAt: new Date().toISOString(), txId: tx.id } }
                     );
                 } catch (err: any) {
                     await db.collection('withdrawals').updateOne(
-                        { _id: (doc as any)._id },
+                        { _id: (withdrawJobDoc as any)._id },
                         { $set: { status: 'failed', lastError: String(err?.message || err), updatedAt: new Date().toISOString() }, $inc: { attempts: 1 } }
                     );
+                }
+            } else {
+                // No withdrawals, check for deposits
+                const depositJob = await db.collection<DepositJobDoc>('deposits').findOneAndUpdate(
+                    { status: 'pending' },
+                    { $set: { status: 'processing', updatedAt: new Date().toISOString() } },
+                    { returnDocument: 'after' as any, sort: { createdAt: 1 } }
+                );
+                const depositDoc: any = (depositJob as any)?.value ?? depositJob;
+                const depositJobDoc: DepositJobDoc | null = (depositDoc && (depositDoc as any)._id) ? (depositDoc as DepositJobDoc) : null;
+
+                if (depositJobDoc) {
+                    delay = 200; // have backlog, poll a bit faster
+                    try {
+                        const mintData = {
+                            symbol: depositJobDoc.symbol,
+                            to: depositJobDoc.to,
+                            amount: depositJobDoc.amount
+                        };
+                        const tx = await broadcastTokenMint(mintData);
+                        await db.collection('deposits').updateOne(
+                            { _id: (depositJobDoc as any)._id },
+                            { $set: { status: 'done', updatedAt: new Date().toISOString(), txId: tx.id } }
+                        );
+                    } catch (err: any) {
+                        await db.collection('deposits').updateOne(
+                            { _id: (depositJobDoc as any)._id },
+                            { $set: { status: 'failed', lastError: String(err?.message || err), updatedAt: new Date().toISOString() }, $inc: { attempts: 1 } }
+                        );
+                    }
                 }
             }
         } catch {
@@ -114,8 +204,7 @@ export function startWorker(): void {
             setTimeout(loop, delay);
         }
     };
-
     setTimeout(loop, 200);
 }
 
-export const steemBridge = { transfer, enqueueWithdraw, startWorker };
+export const steemBridge = { transfer, enqueueWithdraw, enqueueDeposit, startWorker };

@@ -2,7 +2,7 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import config from '../../config.js';
-import transaction from '../../transaction.js';
+import chain from '../../chain.js';
 import { TokenTransferData } from './token-interfaces.js';
 import { toDbString, toBigInt, BigIntMath } from '../../utils/bigint.js';
 import { steemBridge } from '../../modules/steemBridge.js';
@@ -75,8 +75,17 @@ export async function process(data: TokenTransferData, sender: string, id: strin
         const token = await cache.findOnePromise('tokens', { _id: data.symbol });
         const decimals = typeof token?.precision === 'number' ? token.precision : parseInt(String(token?.precision || 0), 10);
         const formattedAmount = BigIntMath.formatWithDecimals(toBigInt(data.amount), isNaN(decimals) ? 8 : decimals);
-        // Enqueue withdraw to process asynchronously off the block path
-        await steemBridge.enqueueWithdraw(sender, formattedAmount, data.symbol, 'Withdraw from MeeRay');
+        
+        // Check if we should skip bridge operations (during replay)
+        const currentBlock = chain.getLatestBlock();
+        const currentBlockNum = currentBlock?._id || 0;
+        
+        if (settings.skipBridgeOperationsUntilBlock > 0 && currentBlockNum <= settings.skipBridgeOperationsUntilBlock) {
+            logger.info(`[token-withdraw] Skipping Steem bridge operation during replay for block ${currentBlockNum} (skip until: ${settings.skipBridgeOperationsUntilBlock})`);
+        } else {
+            // Enqueue withdraw to process asynchronously off the block path
+            await steemBridge.enqueueWithdraw(sender, formattedAmount, data.symbol, 'Withdraw from MeeRay');
+        }
 
         return true;
     } catch (error) {

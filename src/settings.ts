@@ -3,6 +3,10 @@
 export const steemBridgeEnabled: boolean = process.env.USE_STEEM_BRIDGE === 'true';
 export const steemBridgeAccount: string = process.env.STEEM_BRIDGE_ACCOUNT || '';
 export const steemBridgeActiveKey: string = process.env.STEEM_BRIDGE_ACTIVE_KEY || '';
+// Skip bridge operations (deposits/withdrawals to Steem) until this block number
+// Used during chain replay to avoid re-broadcasting already processed operations
+// Set to 0 to disable (normal operation)
+export const skipBridgeOperationsUntilBlock: number = process.env.SKIP_BRIDGE_OPERATIONS_UNTIL_BLOCK ? parseInt(process.env.SKIP_BRIDGE_OPERATIONS_UNTIL_BLOCK) : 0;
 
 export const steemAccount: string = process.env.STEEM_ACCOUNT || '';
 export const steemTokenSymbol: string = process.env.STEEM_TOKEN_SYMBOL || 'TESTS';
@@ -22,6 +26,7 @@ export default {
     steemBridgeEnabled,
     steemBridgeAccount,
     steemBridgeActiveKey,
+    skipBridgeOperationsUntilBlock,
     steemAccount,
     steemTokenSymbol,
     sbdTokenSymbol,
