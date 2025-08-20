@@ -52,9 +52,21 @@ export async function validateTx(data: FarmCreateData, sender: string): Promise<
             return false;
         }
 
-        const rewardTokenDoc = await cache.findOnePromise('tokens', { symbol: data.rewardToken.symbol /*, issuer: data.rewardToken.issuer */ });
-        if (!rewardTokenDoc) {
+        const rewardToken = await cache.findOnePromise('tokens', { symbol: data.rewardToken.symbol });
+        if (!rewardToken) {
             logger.warn(`[farm-create] Reward Token (${data.rewardToken.symbol}) not found.`);
+            return false;
+        }
+
+        // Validate that the sender is the issuer of the reward token
+        if (rewardToken.issuer !== sender) {
+            logger.warn(`[farm-create] Sender ${sender} is not the issuer of reward token ${data.rewardToken.symbol}. Token issuer: ${rewardToken.issuer}`);
+            return false;
+        }
+
+        // Validate that the reward token is mintable
+        if (!rewardToken.mintable) {
+            logger.warn(`[farm-create] Reward token ${data.rewardToken.symbol} is not mintable. Cannot create farm with non-mintable reward token.`);
             return false;
         }
 
@@ -175,12 +187,10 @@ export async function process(data: FarmCreateData, sender: string, id: string, 
             totalStaked: BigInt(0),
             status: 'active',
             createdAt: new Date().toISOString(),
-            // Track rewards remaining for capping claims
-            // Not in interface originally, but we can include as extra field
-            // @ts-ignore
-            rewardsRemaining: farmData.totalRewards,
-            // @ts-ignore
-            vaultAccount: vaultAccountName
+                         // Track rewards remaining for capping claims
+             // Not in interface originally, but we can include as extra field
+             // @ts-ignore
+             rewardsRemaining: farmData.totalRewards
         };
 
         const NUMERIC_FIELDS_FARM_EXT: Array<any> = [...NUMERIC_FIELDS_FARM, 'rewardsRemaining'];

@@ -9,6 +9,7 @@ import { Block } from './block.js';
 import { TokenData } from './transactions/token/token-interfaces.js';
 import { toDbString, setTokenDecimals } from './utils/bigint.js';
 import settings from './settings.js';
+import { FarmData } from './transactions/farm/farm-interfaces.js';
 
 const DB_NAME = process.env.MONGO_DB || 'meeray';
 const DB_URL = process.env.MONGO_URL || 'mongodb://localhost:27017';
@@ -340,6 +341,36 @@ export const mongo = {
         logger.info('Native token SBD inserted.');
 
 
+    },
+    insertNativeFarms: async (): Promise<void> => {
+        const currentDb = mongo.getDb();
+        const nativeFarms: FarmData[] = [
+            {
+                _id: 'FARM_MRY_MRY_MRY',
+                name: 'MeeRay Farm',
+                stakingToken: {
+                    symbol: 'MRY',
+                    issuer: 'MRY'
+                },
+                rewardToken: {
+                    symbol: 'MRY',
+                    issuer: 'MRY'
+                },
+                startTime: new Date().toISOString(),
+                endTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+                totalRewards: '1000000000000000000',
+                rewardsPerBlock: '1000000000000000000',
+                minStakeAmount: '0',
+                maxStakeAmount: '0',
+                totalStaked: '0',
+                status: 'active' as const,
+                createdAt: new Date().toISOString(),
+                lastUpdatedAt: new Date().toISOString(),
+                rewardsRemaining: '1000000000000000000'
+            }
+        ];
+        await currentDb.collection<FarmData>('farms').insertMany(nativeFarms);
+        logger.info('Native farms inserted.');
     },
 
     addMongoIndexes: async (): Promise<void> => {

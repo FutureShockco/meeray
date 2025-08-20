@@ -7,6 +7,7 @@ import { adjustBalance } from '../../utils/account.js';
 import { getTokenByIdentifier } from '../../utils/token.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { getHighestBid, releaseEscrowedFunds } from '../../utils/bid.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: CloseAuctionData, sender: string): Promise<boolean> {
   try {
@@ -242,6 +243,25 @@ export async function process(data: CloseAuctionData, sender: string, id: string
     }
 
     logger.debug(`[nft-close-auction] Auction ${data.listingId} successfully closed by ${sender}. Winner: ${winningBid.bidder}.`);
+
+    // Log event
+    await logTransactionEvent('nft_auction_closed', sender, {
+      listingId: data.listingId,
+      collectionId: listing.collectionId,
+      tokenId: listing.tokenId,
+      fullInstanceId,
+      seller: listing.seller,
+      winner: winningBid.bidder,
+      winningBidId: winningBid._id,
+      bidAmount: toDbString(bidAmount),
+      sellerProceeds: toDbString(sellerProceeds),
+      royaltyAmount: toDbString(royaltyAmount),
+      paymentTokenSymbol: listing.paymentToken.symbol,
+      paymentTokenIssuer: listing.paymentToken.issuer,
+      auctionEndTime: listing.auctionEndTime,
+      closedBy: sender,
+      closedAt: new Date().toISOString()
+    });
 
     return true;
 

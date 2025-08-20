@@ -30,6 +30,10 @@ export interface TokenTransferData {
   memo?: string;
 }
 
+export interface TokenBurnData {
+  symbol: string;
+  amount: string | bigint;
+}
 
 export interface TokenUpdateData {
   symbol: string;

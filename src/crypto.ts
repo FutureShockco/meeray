@@ -64,6 +64,7 @@ export function verifySignature(message: any, cb: (isValid: boolean) => void): v
  * @returns true if valid, false otherwise
  */
 export function isValidPubKey(key: string): boolean {
+    if(!key || typeof key !== 'string') return false;
     try {
         return secp256k1.publicKeyVerify(bs58.decode(key))
     } catch (error) {

@@ -2,6 +2,8 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { NFTUpdateCollectionData } from './nft-interfaces.js';
+import config from '../../config.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: NFTUpdateCollectionData, sender: string): Promise<boolean> {
   try {
@@ -138,7 +140,22 @@ export async function process(data: NFTUpdateCollectionData, sender: string, id:
     logger.debug(`[nft-update-collection] Collection ${data.symbol} successfully updated by ${sender}.`);
 
     // Log event
-    // event logging removed
+    await logTransactionEvent('nft_collection_updated', sender, {
+      symbol: data.symbol,
+      creator: sender,
+      updatedFields: updateFields,
+      previousData: {
+        name: collection.name,
+        description: collection.description,
+        logoUrl: collection.logoUrl,
+        websiteUrl: collection.websiteUrl,
+        baseCoverUrl: collection.baseCoverUrl,
+        mintable: collection.mintable,
+        burnable: collection.burnable,
+        transferable: collection.transferable,
+        creatorFee: collection.creatorFee
+      }
+    });
 
     return true;
   } catch (error) {

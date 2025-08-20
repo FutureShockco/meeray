@@ -2,6 +2,8 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { NftDelistPayload, NFTListingData } from './nft-market-interfaces.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
+import { toBigInt, toDbString } from '../../utils/bigint.js';
 
 export async function validateTx(data: NftDelistPayload, sender: string): Promise<boolean> {
   try {
@@ -54,7 +56,18 @@ export async function process(data: NftDelistPayload, sender: string, id: string
     }
 
     // Log event
-    // event logging removed
+    await logTransactionEvent('nft_delisted', sender, {
+      listingId: data.listingId,
+      seller: sender,
+      collectionId: listing.collectionId,
+      tokenId: listing.tokenId,
+      fullInstanceId: `${listing.collectionId}-${listing.tokenId}`,
+      price: toDbString(toBigInt(listing.price)),
+      paymentTokenSymbol: listing.paymentToken.symbol,
+      paymentTokenIssuer: listing.paymentToken.issuer,
+      listingType: listing.listingType,
+      cancelledAt: new Date().toISOString()
+    });
 
     logger.debug(`[nft-delist-item] Listing ${data.listingId} successfully delisted by ${sender}.`);
     return true;

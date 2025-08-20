@@ -104,7 +104,7 @@ interface CacheType extends CacheMainDataCollections {
     updateMany: (collection: string, query: Filter<BasicCacheDoc>, changes: UpdateFilter<BasicCacheDoc> | Partial<BasicCacheDoc>, cb: StandardCallback<any[]>) => void;
     insertOne: (collection: string, document: BasicCacheDoc, cb: StandardCallback<boolean>) => void;
     insertOnePromise: (collection: string, document: BasicCacheDoc) => Promise<boolean>;
-    addWitness: (witness: string, isRollback: boolean, cb: StandardCallback) => void;
+    addWitness: (witness: string, isRollback: boolean) => Promise<{ witness: string; wasNew: boolean }>;
     removeWitness: (witness: string, isRollback: boolean) => void;
     clear: () => void;
     writeToDisk: (rebuild: boolean, cb?: StandardCallback<any[]>) => void;
@@ -196,7 +196,9 @@ const cache: CacheType = {
         for (let i = 0; i < this.witnessChanges.length; i++) { // Iterate over array properly
             const change = this.witnessChanges[i];
             if (change[1] === 0) {
-                this.addWitness(change[0], true, () => { });
+                this.addWitness(change[0], true).catch(err => {
+                    logger.error(`Error adding witness during rollback: ${err}`);
+                });
             } else if (change[1] === 1) {
                 this.removeWitness(change[0], true);
             }
@@ -508,7 +510,7 @@ const cache: CacheType = {
         });
     },
 
-    addWitness: function (witness, isRollback, cb) {
+    addWitness: async function (witness, isRollback) {
         const wasNew = !this.witnesses[witness];
         if (wasNew) {
             this.witnesses[witness] = 1;
@@ -516,13 +518,13 @@ const cache: CacheType = {
         if (!isRollback) {
             this.witnessChanges.push([witness, 1]);
         }
-        this.findOne('accounts', { name: witness }, (err, data) => {
-            if (err) {
-                cb(err, null);
-            } else {
-                cb(null, { witness, wasNew });  // Return whether it was new
-            }
-        });
+        
+        try {
+            await this.findOnePromise('accounts', { name: witness });
+            return { witness, wasNew };  // Return whether it was new
+        } catch (err) {
+            throw err;
+        }
     },
 
     removeWitness: function (witness, isRollback) {

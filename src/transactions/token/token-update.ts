@@ -3,6 +3,7 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js'; // Shared validation module
 import { TokenUpdateData } from './token-interfaces.js'; // Import from new interfaces file
 import config from '../../config.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 // event logger removed
 
 export async function validateTx(data: TokenUpdateData, sender: string): Promise<boolean> {
@@ -14,8 +15,8 @@ export async function validateTx(data: TokenUpdateData, sender: string): Promise
 
     // Check if at least one updatable field is provided
     if (data.name === undefined && data.description === undefined && data.logoUrl === undefined && data.websiteUrl === undefined) {
-        logger.warn('[token-update] No updatable fields provided (name, description, logoUrl, websiteUrl).');
-        return false;
+      logger.warn('[token-update] No updatable fields provided (name, description, logoUrl, websiteUrl).');
+      return false;
     }
 
     if (!validate.string(data.symbol, 10, 3, config.tokenSymbolAllowedChars)) {
@@ -32,7 +33,7 @@ export async function validateTx(data: TokenUpdateData, sender: string): Promise
 
     if (data.description !== undefined) {
       // Assuming description can be longer, e.g., max 1000 characters. Min 1 if not empty string.
-      if (!validate.string(data.description, 1000, 0)) { 
+      if (!validate.string(data.description, 1000, 0)) {
         logger.warn('[token-update] Invalid new description length (must be 0-1000 characters).');
         return false;
       }
@@ -40,7 +41,7 @@ export async function validateTx(data: TokenUpdateData, sender: string): Promise
 
     if (data.logoUrl !== undefined) {
       // Basic URL format check (very simplified). Consider a more robust URL validator.
-      if (!validate.string(data.logoUrl, 2048, 10) || !data.logoUrl.startsWith('http')) { 
+      if (!validate.string(data.logoUrl, 2048, 10) || !data.logoUrl.startsWith('http')) {
         logger.warn('[token-update] Invalid new logoUrl format or length.');
         return false;
       }
@@ -72,46 +73,51 @@ export async function validateTx(data: TokenUpdateData, sender: string): Promise
 }
 
 export async function process(data: TokenUpdateData, sender: string, id: string): Promise<boolean> {
-    try {
-        const token = await cache.findOnePromise('tokens', { _id: data.symbol });
-        if (!token) {
-            logger.error(`[token-update:process] Token ${data.symbol} not found`);
-            return false;
-        }
-
-        if (token.issuer !== sender) {
-            logger.error(`[token-update:process] Only token issuer can update token. Sender: ${sender}, Issuer: ${token.issuer}`);
-            return false;
-        }
-
-        const updateData: any = {};
-        if (data.name !== undefined) updateData.name = data.name;
-        if (data.description !== undefined) updateData.description = data.description;
-        if (data.logoUrl !== undefined) updateData.logoUrl = data.logoUrl;
-        if (data.websiteUrl !== undefined) updateData.websiteUrl = data.websiteUrl;
-
-        if (Object.keys(updateData).length === 0) {
-            logger.warn(`[token-update:process] No fields to update for token ${data.symbol}`);
-            return false;
-        }
-
-        const updateSuccess = await cache.updateOnePromise(
-            'tokens',
-            { _id: data.symbol },
-            { $set: updateData }
-        );
-
-        if (!updateSuccess) {
-            logger.error(`[token-update:process] Failed to update token ${data.symbol}`);
-            return false;
-        }
-
-        // event logging removed
-
-        logger.info(`[token-update:process] Token ${data.symbol} updated successfully by ${sender}`);
-        return true;
-    } catch (error) {
-        logger.error(`[token-update:process] Error updating token ${data.symbol}: ${error}`);
-        return false;
+  try {
+    const token = await cache.findOnePromise('tokens', { _id: data.symbol });
+    if (!token) {
+      logger.error(`[token-update:process] Token ${data.symbol} not found`);
+      return false;
     }
+
+    if (token.issuer !== sender) {
+      logger.error(`[token-update:process] Only token issuer can update token. Sender: ${sender}, Issuer: ${token.issuer}`);
+      return false;
+    }
+
+    const updateData: any = {};
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.description !== undefined) updateData.description = data.description;
+    if (data.logoUrl !== undefined) updateData.logoUrl = data.logoUrl;
+    if (data.websiteUrl !== undefined) updateData.websiteUrl = data.websiteUrl;
+
+    if (Object.keys(updateData).length === 0) {
+      logger.warn(`[token-update:process] No fields to update for token ${data.symbol}`);
+      return false;
+    }
+
+    const updateSuccess = await cache.updateOnePromise(
+      'tokens',
+      { _id: data.symbol },
+      { $set: updateData }
+    );
+
+    if (!updateSuccess) {
+      logger.error(`[token-update:process] Failed to update token ${data.symbol}`);
+      return false;
+    }
+
+    // Log event
+    await logTransactionEvent('token_update', sender, {
+      symbol: data.symbol,
+      issuer: sender,
+      updatedFields: updateData
+    });
+
+    logger.info(`[token-update:process] Token ${data.symbol} updated successfully by ${sender}`);
+    return true;
+  } catch (error) {
+    logger.error(`[token-update:process] Error updating token ${data.symbol}: ${error}`);
+    return false;
+  }
 } 

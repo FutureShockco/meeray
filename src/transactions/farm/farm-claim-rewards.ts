@@ -5,6 +5,7 @@ import { FarmClaimRewardsData, FarmData, UserFarmPositionData } from './farm-int
 import { getAccount, adjustBalance } from '../../utils/account.js';
 import { toDbString, convertToString, toBigInt } from '../../utils/bigint.js';
 import config from '../../config.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: FarmClaimRewardsData, sender: string): Promise<boolean> {
   try {
@@ -139,6 +140,16 @@ export async function process(data: FarmClaimRewardsData, sender: string, id: st
 
     logger.debug(`[farm-claim-rewards] ${data.staker} claimed ${pendingRewards} rewards from farm ${data.farmId}.`);
 
+    // Log event
+    await logTransactionEvent('farm_rewards_claimed', data.staker, {
+      farmId: data.farmId,
+      staker: data.staker,
+      rewardAmount: toDbString(pendingRewards),
+      rewardToken: rewardSymbol,
+      elapsedMs: elapsedMs,
+      blocksElapsed: blocksElapsed,
+      stakedAmount: toDbString(stakedAmount)
+    });
 
     return true;
   } catch (error) {

@@ -4,6 +4,7 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import { adjustBalance } from '../../utils/account.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
 /**
  * Result returned by the MatchingEngine after processing an order.
@@ -310,7 +311,21 @@ class MatchingEngine {
           allUpdatesSuccessful = false;
           continue;
         }
-        
+
+        // Log trade execution event
+        await logTransactionEvent('market_order_filled', trade.buyerUserId, {
+          marketId: takerOrder.pairId,
+          orderId: takerOrder._id,
+          tradeId: trade._id,
+          side: takerOrder.side, // Use the taker order's side
+          price: toDbString(toBigInt(trade.price)),
+          quantity: toDbString(toBigInt(trade.quantity)),
+          buyerUserId: trade.buyerUserId,
+          sellerUserId: trade.sellerUserId,
+          baseAsset: pairDetails.baseAssetSymbol,
+          quoteAsset: pairDetails.quoteAssetSymbol
+        });
+
         const baseTokenIdentifier = `${pairDetails.baseAssetSymbol}@${pairDetails.baseAssetIssuer}`;
         const quoteTokenIdentifier = `${pairDetails.quoteAssetSymbol}@${pairDetails.quoteAssetIssuer}`;
         const tradePriceBigInt = toBigInt(trade.price);
@@ -328,6 +343,18 @@ class MatchingEngine {
         }
       }
     }
+
+    // Log order placement event
+    await logTransactionEvent('market_order_placed', takerOrder.userId, {
+      marketId: takerOrder.pairId,
+      orderId: takerOrder._id,
+      side: takerOrder.side,
+      type: takerOrder.type,
+      price: takerOrder.price ? toDbString(toBigInt(takerOrder.price)) : 'MARKET',
+      quantity: toDbString(toBigInt(takerOrder.quantity)),
+      baseAsset: pairDetails.baseAssetSymbol,
+      quoteAsset: pairDetails.quoteAssetSymbol
+    });
 
     for (const makerOrderId of matchOutput.removedMakerOrders) {
       await cache.updateOnePromise('orders', { _id: makerOrderId }, { $set: { status: OrderStatus.FILLED, updatedAt: new Date().toISOString() } });
@@ -420,6 +447,20 @@ class MatchingEngine {
         logger.error(`[MatchingEngine] CRITICAL: Order ${orderId} removed from book but FAILED to mark CANCELLED in DB.`);
         return false;
       }
+
+      // Log order cancellation event
+      await logTransactionEvent('market_order_cancelled', userId, {
+        marketId: pairId,
+        orderId: orderId,
+        side: orderToCancel.side,
+        type: orderToCancel.type,
+        price: orderToCancel.price ? toDbString(toBigInt(orderToCancel.price)) : 'MARKET',
+        quantity: toDbString(toBigInt(orderToCancel.quantity)),
+        filledQuantity: toDbString(toBigInt(orderToCancel.filledQuantity)),
+        baseAsset: orderToCancel.baseAssetSymbol,
+        quoteAsset: orderToCancel.quoteAssetSymbol
+      });
+
       logger.debug(`[MatchingEngine] Order ${orderId} removed from book and marked CANCELLED.`);
       return true;
     } else {

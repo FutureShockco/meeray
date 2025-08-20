@@ -6,6 +6,7 @@ import { TokenData } from './token-interfaces.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { adjustBalance } from '../../utils/account.js';
 import transaction from '../../transaction.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: TokenData, sender: string): Promise<boolean> {
   try {
@@ -97,8 +98,21 @@ export async function process(data: TokenData, sender: string, id: string): Prom
       );
     }
     await adjustBalance(sender, config.nativeTokenSymbol, BigInt(-config.tokenCreationFee));
-    await transaction.adjustWitnessWeight(sender, BigInt(config.tokenCreationFee), (success) => {});
+    await transaction.adjustWitnessWeight(sender, BigInt(config.tokenCreationFee), (success) => { });
     logger.info(`[token-create] Token ${tokenToStore._id} created successfully by ${sender}.`);
+
+    // Log event
+    await logTransactionEvent('token_create', sender, {
+      symbol: data.symbol,
+      name: data.name,
+      issuer: sender,
+      precision: effectivePrecision,
+      maxSupply: toDbString(toBigInt(data.maxSupply || '0')),
+      currentSupply: toDbString(initialSupply),
+      mintable: data.mintable === undefined ? true : data.mintable,
+      burnable: data.burnable === undefined ? true : data.burnable,
+      description: data.description || '',
+    });
     return true;
 
   } catch (error) {

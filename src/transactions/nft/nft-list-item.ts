@@ -6,7 +6,7 @@ import { NftInstance } from './nft-transfer.js'; // Assuming NftInstance is expo
 import { CachedNftCollectionForTransfer } from './nft-transfer.js'; // Assuming this is also suitable
 import config from '../../config.js';
 import { getTokenByIdentifier } from '../../utils/token.js';
-// event logger removed
+import { logTransactionEvent } from '../../utils/event-logger.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js'; // Import toBigInt and toDbString
 
 // Helper to generate a unique listing ID
@@ -189,6 +189,23 @@ export async function process(data: NftListPayload, sender: string, id: string):
 
     const listingTypeStr = data.listingType || 'FIXED_PRICE';
     logger.debug(`[nft-list-item] NFT ${data.collectionSymbol}-${data.instanceId} listed by ${sender} as ${listingTypeStr} for ${data.price} ${data.paymentTokenSymbol}. Listing ID: ${listingId}`);
+
+    // Log event
+    await logTransactionEvent('nft_listed', sender, {
+      listingId,
+      collectionSymbol: data.collectionSymbol,
+      instanceId: data.instanceId,
+      fullInstanceId: `${data.collectionSymbol}-${data.instanceId}`,
+      seller: sender,
+      price: toDbString(priceAsBigInt),
+      paymentTokenSymbol: data.paymentTokenSymbol,
+      paymentTokenIssuer: data.paymentTokenIssuer,
+      listingType: listingTypeStr,
+      reservePrice: data.reservePrice ? toDbString(toBigInt(data.reservePrice)) : undefined,
+      auctionEndTime: data.auctionEndTime,
+      allowBuyNow: data.allowBuyNow || false,
+      minimumBidIncrement: data.minimumBidIncrement ? toDbString(toBigInt(data.minimumBidIncrement)) : toDbString(toBigInt('100000'))
+    });
 
     return listingId; // Return the ID of the created listing
 

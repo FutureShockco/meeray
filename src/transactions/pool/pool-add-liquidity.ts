@@ -2,7 +2,8 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import { PoolAddLiquidityData, LiquidityPoolData, UserLiquidityPositionData } from './pool-interfaces.js';
 import { adjustBalance, getAccount } from '../../utils/account.js';
-import { convertToString, toBigInt } from '../../utils/bigint.js';
+import { convertToString, toBigInt, toDbString } from '../../utils/bigint.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 // event logger removed
 import { getLpTokenSymbol } from '../../utils/token.js';
 
@@ -227,11 +228,11 @@ export async function process(data: PoolAddLiquidityData, sender: string, id: st
         _id: userPositionId,
         provider: addLiquidityData.provider,
         poolId: addLiquidityData.poolId,
-        lpTokenBalance: lpTokensToMint,
-        feeGrowthEntryA: pool.feeGrowthGlobalA || BigInt(0),
-        feeGrowthEntryB: pool.feeGrowthGlobalB || BigInt(0),
-        unclaimedFeesA: BigInt(0),
-        unclaimedFeesB: BigInt(0),
+        lpTokenBalance: toDbString(lpTokensToMint),
+        feeGrowthEntryA: toDbString(pool.feeGrowthGlobalA || BigInt(0)),
+        feeGrowthEntryB: toDbString(pool.feeGrowthGlobalB || BigInt(0)),
+        unclaimedFeesA: toDbString(BigInt(0)),
+        unclaimedFeesB: toDbString(BigInt(0)),
         createdAt: new Date().toISOString(),
         lastUpdatedAt: new Date().toISOString()
       };
@@ -269,6 +270,14 @@ export async function process(data: PoolAddLiquidityData, sender: string, id: st
     }
 
     logger.debug(`[pool-add-liquidity] Provider ${addLiquidityData.provider} added liquidity to pool ${addLiquidityData.poolId}. Token A: ${addLiquidityData.tokenA_amount}, Token B: ${addLiquidityData.tokenB_amount}, LP tokens minted: ${lpTokensToMint}`);
+
+    // Log event
+    await logTransactionEvent('pool_liquidity_added', addLiquidityData.provider, {
+      poolId: addLiquidityData.poolId,
+      tokenAAmount: toDbString(BigInt(addLiquidityData.tokenA_amount)),
+      tokenBAmount: toDbString(BigInt(addLiquidityData.tokenB_amount)),
+      lpTokensMinted: toDbString(lpTokensToMint)
+    }, id);
 
     return true;
   } catch (error) {

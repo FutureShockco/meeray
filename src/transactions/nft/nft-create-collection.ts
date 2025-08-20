@@ -4,6 +4,7 @@ import validate from '../../validation/index.js';
 import { NFTCollectionCreateData } from './nft-interfaces.js';
 import config from '../../config.js';
 import { adjustBalance } from '../../utils/account.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: NFTCollectionCreateData, sender: string): Promise<boolean> {
   try {
@@ -202,6 +203,26 @@ export async function process(data: NFTCollectionCreateData, sender: string, id:
     }
 
     logger.debug(`[nft-create-collection] Collection ${data.symbol} created successfully by ${sender}.`);
+
+    // Log event
+    await logTransactionEvent('nft_collection_created', sender, {
+      symbol: data.symbol,
+      name: data.name,
+      creator: data.creator,
+      description: data.description || '',
+      maxSupply: maxSupplyForStorage,
+      mintable: data.mintable === undefined ? true : data.mintable,
+      burnable: data.burnable === undefined ? true : data.burnable,
+      transferable: data.transferable === undefined ? true : data.transferable,
+      royaltyBps: data.royaltyBps || data.creatorFee || 0,
+      logoUrl: data.logoUrl || '',
+      websiteUrl: data.websiteUrl || '',
+      baseCoverUrl: data.baseCoverUrl || '',
+      schema: data.schema || '',
+      metadata: data.metadata || {},
+      creationFee: config.nftCollectionCreationFee,
+      nativeTokenSymbol: config.nativeTokenSymbol
+    });
 
     return true;
   } catch (error) {

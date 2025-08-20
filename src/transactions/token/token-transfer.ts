@@ -3,8 +3,9 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import config from '../../config.js';
 import { TokenTransferData } from './token-interfaces.js';
-import { toBigInt } from '../../utils/bigint.js';
+import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { adjustBalance } from '../../utils/account.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
 const BURN_ACCOUNT_NAME = config.burnAccountName || 'null';
 
@@ -54,6 +55,15 @@ export async function process(data: TokenTransferData, sender: string): Promise<
         if (!debitOk) return false;
         const creditOk = await adjustBalance(data.to, data.symbol, toBigInt(data.amount));
         if (!creditOk) return false;
+
+        // Log event
+        await logTransactionEvent('token_transfer', sender, {
+            symbol: data.symbol,
+            from: sender,
+            to: data.to,
+            amount: toDbString(toBigInt(data.amount))
+        });
+
         return true;
     } catch (error) {
         logger.error(`[token-transfer:process] Error processing transfer: ${error}`);

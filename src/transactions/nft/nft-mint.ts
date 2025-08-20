@@ -5,6 +5,7 @@ import { NFTMintData, NFTCollectionCreateData } from './nft-interfaces.js';
 import { NftInstance } from './nft-transfer.js'; // Import NftInstance type
 // We need NFTCollectionCreateData to type the fetched collection document for checks
 import config from '../../config.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 // event logger removed
 
 // Define a more specific type for what we expect from the nftCollections table
@@ -162,7 +163,15 @@ export async function process(data: NFTMintData, sender: string, id: string): Pr
     logger.debug(`[nft-mint] NFT ${fullInstanceId} minted successfully by ${sender} for owner ${data.owner}.`);
 
     // Log event
-    // event logging removed
+    await logTransactionEvent('nft_mint', sender, {
+      collectionSymbol: data.collectionSymbol,
+      instanceId: actualInstanceId,
+      fullInstanceId,
+      owner: data.owner,
+      index: nftIndex,
+      coverUrl: data.coverUrl,
+      properties: data.properties
+    });
 
     return true;
 

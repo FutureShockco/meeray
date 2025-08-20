@@ -1,20 +1,11 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
+import validate from '../../validation/index.js';
+import { LaunchpadParticipatePresaleData, LaunchpadStatus } from './launchpad-interfaces.js';
 import { getAccount, adjustBalance } from '../../utils/account.js';
-import { LaunchpadData, LaunchpadStatus, PresaleDetails, LaunchpadParticipatePresaleData } from './launchpad-interfaces.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
-// Interfaces for participant data conversion
-interface LaunchpadParticipantDB {
-    userId: string;
-    quoteAmountContributed: string; 
-    tokensAllocated?: string;
-    claimed: boolean;
-}
-
-// --------------- TRANSACTION DATA INTERFACE ---------------
-
-// --------------- TRANSACTION LOGIC ---------------
 
 export async function validateTx(dataDb: LaunchpadParticipatePresaleData, sender: string): Promise<boolean> {
   const data = dataDb; // No conversion needed with single interface
@@ -129,6 +120,18 @@ export async function process(dataDb: LaunchpadParticipatePresaleData, sender: s
 
 
     logger.debug(`[launchpad-participate-presale] Participation processed for ${data.contributionAmount}.`);
+
+    // Log event
+    await logTransactionEvent('launchpad_participation', sender, {
+      launchpadId: data.launchpadId,
+      userId: data.userId,
+      contributionAmount: toDbString(toBigInt(data.contributionAmount)),
+      quoteAssetSymbol: presaleDetails.quoteAssetForPresaleSymbol,
+      quoteAssetIssuer: presaleDetails.quoteAssetForPresaleIssuer,
+      totalQuoteRaised: toDbString(newTotalRaised),
+      isNewParticipant: participantIndex === -1
+    });
+
     return true;
 
   } catch (error) {

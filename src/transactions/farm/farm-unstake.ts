@@ -5,6 +5,7 @@ import { FarmUnstakeData, FarmData, UserFarmPositionData } from './farm-interfac
 import { UserLiquidityPositionData } from '../pool/pool-interfaces.js';
 import { getAccount } from '../../utils/account.js';
 import { convertToBigInt, convertToString, toBigInt, toDbString } from '../../utils/bigint.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
 const NUMERIC_FIELDS: Array<keyof FarmUnstakeData> = ['lpTokenAmount'];
 
@@ -149,6 +150,14 @@ export async function process(data: FarmUnstakeData, sender: string, id: string,
 
     logger.debug(`[farm-unstake] Staker ${data.staker} unstaked ${data.lpTokenAmount} LP tokens from farm ${data.farmId} to pool ${poolIdForLp}.`);
 
+    // Log event
+    await logTransactionEvent('farm_unstake', data.staker, {
+      farmId: data.farmId,
+      staker: data.staker,
+      lpTokenAmount: toDbString(toBigInt(data.lpTokenAmount)),
+      poolId: poolIdForLp,
+      totalStaked: toDbString(newTotalStaked)
+    });
 
     return true;
   } catch (error) {

@@ -5,6 +5,7 @@ import { MarketCreatePairData, TradingPairData } from './market-interfaces.js';
 import { getAccount } from '../../utils/account.js';
 import { convertToBigInt, toDbString, toBigInt } from '../../utils/bigint.js';
 import config from '../../config.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
 const NUMERIC_FIELDS: Array<keyof MarketCreatePairData> = ['tickSize', 'lotSize', 'minNotional', 'minTradeAmount', 'maxTradeAmount'];
 
@@ -211,6 +212,23 @@ export async function process(data: MarketCreatePairData, sender: string, id: st
 
 
         logger.info(`[market-create-pair] Successfully created trading pair ${pairId} by ${sender}`);
+        
+        // Log event
+        await logTransactionEvent('market_pair_created', sender, {
+          pairId,
+          baseAssetSymbol: pairData.baseAssetSymbol,
+          baseAssetIssuer: baseIssuer,
+          quoteAssetSymbol: pairData.quoteAssetSymbol,
+          quoteAssetIssuer: quoteIssuer,
+          tickSize: toDbString(toBigInt(pairData.tickSize)),
+          lotSize: toDbString(toBigInt(pairData.lotSize)),
+          minNotional: toDbString(toBigInt(pairData.minNotional)),
+          minTradeAmount: pairData.minTradeAmount ? toDbString(toBigInt(pairData.minTradeAmount)) : '0',
+          maxTradeAmount: pairData.maxTradeAmount ? toDbString(toBigInt(pairData.maxTradeAmount)) : '0',
+          initialStatus: pairData.initialStatus || 'TRADING',
+          createdAt: new Date().toISOString()
+        });
+        
         return true;
 
     } catch (error) {

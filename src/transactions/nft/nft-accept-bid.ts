@@ -7,6 +7,7 @@ import { adjustBalance, getAccount } from '../../utils/account.js';
 import { getTokenByIdentifier } from '../../utils/token.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { releaseEscrowedFunds } from '../../utils/bid.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: NftAcceptBidData, sender: string): Promise<boolean> {
   try {
@@ -237,6 +238,22 @@ export async function process(data: NftAcceptBidData, sender: string, id: string
 
     logger.debug(`[nft-accept-bid] Bid ${data.bidId} successfully accepted by ${sender}.`);
 
+    // Log event
+    await logTransactionEvent('nft_bid_accepted', sender, {
+      bidId: data.bidId,
+      listingId: data.listingId,
+      collectionId: listing.collectionId,
+      tokenId: listing.tokenId,
+      fullInstanceId,
+      seller: listing.seller,
+      buyer: bid.bidder,
+      bidAmount: toDbString(bidAmount),
+      sellerProceeds: toDbString(sellerProceeds),
+      royaltyAmount: toDbString(royaltyAmount),
+      paymentTokenSymbol: listing.paymentToken.symbol,
+      paymentTokenIssuer: listing.paymentToken.issuer,
+      acceptedAt: new Date().toISOString()
+    });
 
     return true;
 

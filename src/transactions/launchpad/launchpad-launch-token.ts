@@ -3,6 +3,7 @@ import cache from '../../cache.js';
 // import validate from '../../validation/index.js'; // Assuming a validation library might be used
 import { getAccount, adjustBalance } from '../../utils/account.js'; // Assuming account utilities
 import crypto from 'crypto';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 import {
   TokenStandard,
   VestingType,
@@ -300,6 +301,24 @@ export async function process(launchData: LaunchpadLaunchTokenData, sender: stri
 
 
     logger.debug(`[launchpad-launch-token] Launch request for ${launchData.tokenSymbol} by ${sender} processed successfully. Launchpad ID: ${launchpadId}`);
+
+    // Log event
+    await logTransactionEvent('launchpad_created', sender, {
+      launchpadId,
+      projectId: launchpadProjectData.projectId,
+      tokenName: launchData.tokenName,
+      tokenSymbol: launchData.tokenSymbol,
+      tokenStandard: launchData.tokenStandard,
+      totalSupply: toDbString(totalSupplyBigInt),
+      tokenDecimals: tokenDecimalsNumber,
+      presaleDetails: launchData.presaleDetails ? {
+        pricePerToken: toDbString(toBigInt(launchData.presaleDetails.pricePerToken)),
+        hardCap: toDbString(toBigInt(launchData.presaleDetails.hardCap)),
+        softCap: launchData.presaleDetails.softCap ? toDbString(toBigInt(launchData.presaleDetails.softCap)) : undefined
+      } : undefined,
+      liquidityProvisionDetails: launchData.liquidityProvisionDetails
+    });
+
     return true;
 
   } catch (error) {

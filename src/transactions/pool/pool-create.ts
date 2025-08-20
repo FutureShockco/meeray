@@ -6,6 +6,9 @@ import config from '../../config.js';
 import { convertToBigInt, convertToString } from '../../utils/bigint.js';
 import { getLpTokenSymbol } from '../../utils/token.js';
 import chain from '../../chain.js';
+import { adjustBalance, getAccount, Account } from '../../utils/account.js';
+import { toBigInt, toDbString } from '../../utils/bigint.js';
+import { logTransactionEvent } from '../../utils/event-logger.js';
 
 const NUMERIC_FIELDS_POOL_CREATE: Array<keyof PoolCreateData> = [];
 const LIQUIDITY_POOL_NUMERIC_FIELDS: Array<keyof LiquidityPoolData> = ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens'];
@@ -153,8 +156,8 @@ export async function process(data: PoolCreateData, sender: string, id: string):
         name: `LP Token for ${tokenA_symbol}-${tokenB_symbol}`,
         issuer: 'null',
         precision: 18,
-        maxSupply: '1000000000000000000', // Large max supply
-        currentSupply: '0',
+        maxSupply: toDbString(BigInt(1000000000000000000)), // Large max supply
+        currentSupply: toDbString(BigInt(0)),
         mintable: false,
         burnable: false,
         description: `Liquidity provider token for pool ${poolId}`,
@@ -174,7 +177,16 @@ export async function process(data: PoolCreateData, sender: string, id: string):
     }
 
     // Log event using the new centralized logger
-    // event logging removed
+    await logTransactionEvent('pool_created', sender, {
+      poolId,
+      tokenA: tokenA_symbol,
+      tokenB: tokenB_symbol,
+      feeTier: chosenFeeTier,
+      initialLiquidity: {
+        tokenAAmount: '0',
+        tokenBAmount: '0'
+      }
+    }, id);
 
     return true;
   } catch (error) {
