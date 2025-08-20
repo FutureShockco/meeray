@@ -77,7 +77,7 @@ function generateRandomTokenData() {
     const name = `${adjective} ${noun}`;
     // Create symbol from initials, add random number, max 8 chars
     const symbol = `${adjective.substring(0, 1)}${noun.substring(0, 1)}${Math.floor(Math.random() * 1000)}`;
-    
+
     return {
         name,
         symbol: symbol.toUpperCase(),
@@ -132,7 +132,7 @@ function generateRandomPoolData() {
 function generateRandomPoolOperation() {
     // Generate random amounts between 1 and 1000 as whole numbers
     const amount = BigInt(Math.floor(Math.random() * 999) + 1);
-    
+
     return {
         amount: amount.toString(),
         minAmountOut: (amount * BigInt(99) / BigInt(100)).toString(), // 1% slippage
@@ -199,7 +199,7 @@ function generateRandomFarmData() {
 function generateRandomFarmOperation() {
     // Generate random amount between 1 and 1000 as whole numbers
     const amount = BigInt(Math.floor(Math.random() * 999) + 1);
-    
+
     return {
         amount: amount.toString()
     };
@@ -248,7 +248,7 @@ function generateRandomLaunchpadData() {
 function generateRandomLaunchpadOperation() {
     // Generate random investment amount between min and max
     const amount = BigInt(Math.floor(Math.random() * 999) + 1);
-    
+
     return {
         amount: amount.toString()
     };
@@ -261,7 +261,7 @@ async function getClient() {
     const CLIENT_OPTIONS = {};
     if (process.env.CHAIN_ID) CLIENT_OPTIONS.chainId = process.env.CHAIN_ID;
     if (process.env.ADDRESS_PREFIX) CLIENT_OPTIONS.addressPrefix = process.env.ADDRESS_PREFIX;
-    
+
     return {
         client: new Client(STEEM_API_URL, CLIENT_OPTIONS),
         sscId: SSC_ID
@@ -290,6 +290,28 @@ async function getRandomAccount() {
         return {
             username: selectedAccount.account_name,
             privateKey: PrivateKey.fromString(selectedAccount.private_keys.active)
+        };
+    } catch (err) {
+        console.error(`Error loading account data: ${err.message}`);
+        process.exit(1);
+    }
+}
+
+async function getMasterAccount() {
+    try {
+        let privateKeys;
+        try {
+            // Load private keys from external file that will be gitignored
+            const keysFile = fs.readFileSync(path.join(__dirname, 'keys.json'));
+            privateKeys = JSON.parse(keysFile);
+        } catch (err) {
+            console.error('Error loading keys.json file:', err);
+            process.exit(1);
+        }
+
+        return {
+            username: 'echelon-node1',
+            privateKey: PrivateKey.fromString(privateKeys[0])
         };
     } catch (err) {
         console.error(`Error loading account data: ${err.message}`);
@@ -354,6 +376,7 @@ module.exports = {
     getClient,
     getGlobalProperties,
     getRandomAccount,
+    getMasterAccount,
     generateRandomTokenData,
     generateRandomNFTCollectionData,
     generateRandomPoolData,

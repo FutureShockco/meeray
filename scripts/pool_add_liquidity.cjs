@@ -1,19 +1,23 @@
-const { getClient, getRandomAccount, generateRandomPoolOperation, sendCustomJson } = require('./helpers.cjs');
+const { getClient, getMasterAccount, generateRandomPoolOperation, sendCustomJson } = require('./helpers.cjs');
 
 async function main() {
     // Get client and random account
     const { client, sscId } = await getClient();
-    const { username, privateKey } = await getRandomAccount();
+    const { username, privateKey } = await getMasterAccount();
 
-    // IMPORTANT: Replace with an actual poolId from a created pool
-    const poolIdPlaceholder = `pool-${Date.now()}`; // This is just an example, use a real pool ID
 
     // Generate random amounts for both tokens
-    const tokenAOp = generateRandomPoolOperation();
-    const tokenBOp = generateRandomPoolOperation();
+    const tokenAOp = {
+        amount: "90000",
+        issuer: "echelon-node1"
+    }
+    const tokenBOp = {
+        amount: "587000",
+        issuer: "echelon-node1"
+    }
 
     const addLiquidityData = {
-        poolId: poolIdPlaceholder,
+        poolId: "TBD_TESTS_300",
         provider: username,
         tokenA_amount: tokenAOp.amount,
         tokenB_amount: tokenBOp.amount

@@ -58,7 +58,7 @@ export function toDbString(value: bigint): string {
  */
 export function formatTokenAmount(value: bigint, symbol: string): string {
     let decimals = 18
-    if (symbol !== 'LP_TOKEN') {
+    if (!symbol.startsWith('LP_')) {
         decimals = getTokenDecimals(symbol);
     }
     const str = value.toString().padStart(decimals + 1, '0');
@@ -78,7 +78,7 @@ export function formatTokenAmount(value: bigint, symbol: string): string {
  */
 export function parseTokenAmount(value: string, symbol: string): bigint {
     let decimals = 18
-    if (symbol !== 'LP_TOKEN') {
+    if (!symbol.startsWith('LP_')) {
         decimals = getTokenDecimals(symbol);
     }
     const [integerPart = '0', decimalPart = ''] = value.split('.');
