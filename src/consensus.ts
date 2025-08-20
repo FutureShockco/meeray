@@ -65,7 +65,9 @@ const processSyncCollisionWindow = (height: number) => {
         consensus.processBlockNormally(0, block, cb);
     } else {
         // Multiple blocks - apply deterministic resolution
-        logger.info(`[SYNC-COLLISION-WINDOW] Collision detected for height ${height} with ${pendingBlocks.length} blocks. Applying deterministic resolution.`);
+        if(!consensus.observer) {
+            logger.info(`[SYNC-COLLISION-WINDOW] Observer detected collision for height ${height} with ${pendingBlocks.length} blocks. Skipping deterministic resolution.`);
+        }
         
         // Sort by timestamp first, then by hash for deterministic ordering
         pendingBlocks.sort((a, b) => {
