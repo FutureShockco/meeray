@@ -76,6 +76,11 @@ nvm install 20.19.4
 npm install pm2 -g
 ```
 
+5. (Optional) Download and restore the latest backup from https://meeray.com/backups/
+```bash
+mongorestore --uri="mongodb://127.0.0.1:27017" --archive=meeray-latest.gz --gzip
+```
+
 ### Setup
 1. Clone the repository
 ```bash
