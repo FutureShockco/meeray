@@ -12,7 +12,8 @@
     "reset": "mongosh meeray --eval \"db.dropDatabase()\"",
     "reset-observer": "mongosh meeray_observer --eval \"db.dropDatabase()\"",
     "reset-producer": "mongosh meeray_producer --eval \"db.dropDatabase()\"",
-    "build": "rimraf dist && tsc"
+    "build": "rimraf dist && tsc",
+    "restore": "curl -o ./meeray-latest.gz https://meeray.com/backups/meeray-latest.gz && mongorestore --uri=mongodb://127.0.0.1:27017 --archive=./meeray-latest.gz --gzip"
   },
   "dependencies": {
     "bs58": "^6.0.0",
