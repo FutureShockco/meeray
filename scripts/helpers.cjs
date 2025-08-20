@@ -268,6 +268,11 @@ async function getClient() {
     };
 }
 
+async function getGlobalProperties(client) {
+    const result = await client.database.getDynamicGlobalProperties();
+    return result;
+}
+
 async function getRandomAccount() {
     try {
         const accountsFileContent = fs.readFileSync(ACCOUNTS_FILE_PATH, 'utf8');
@@ -347,6 +352,7 @@ async function transfer(client, from, to, amount, username, privateKey) {
 
 module.exports = {
     getClient,
+    getGlobalProperties,
     getRandomAccount,
     generateRandomTokenData,
     generateRandomNFTCollectionData,
