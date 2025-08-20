@@ -40,7 +40,8 @@ const config = {
   txExpirationTime: 3600000,
   witnessShufflePrecision: 8,
   memoryBlocks: 1000,
-  randomBytesLength: 32
+  randomBytesLength: 32,
+  allowedFeeTiers: [ 300 ] // 10, 50, 300, 1000 / 0.01%, 0.05%, 0.3%, 1%
 };
 
 // Block-number-based config history (hardforks)
@@ -54,7 +55,7 @@ const history: Record<number, Partial<typeof config>> = {
     witnesses: 10,
   },
   31480: {
-    witnesses: 2, 
+    witnesses: 2,
   },
 };
 

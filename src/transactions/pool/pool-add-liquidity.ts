@@ -1,13 +1,11 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
-import validate from '../../validation/index.js';
 import { PoolAddLiquidityData, LiquidityPoolData, UserLiquidityPositionData } from './pool-interfaces.js';
-import { adjustBalance, getAccount, Account } from '../../utils/account.js';
+import { adjustBalance, getAccount } from '../../utils/account.js';
 import { convertToString, toBigInt } from '../../utils/bigint.js';
 // event logger removed
 import { getLpTokenSymbol } from '../../utils/token.js';
 
-const NUMERIC_FIELDS: Array<keyof PoolAddLiquidityData> = ['tokenA_amount', 'tokenB_amount'];
 
 // Calculate LP tokens to mint based on provided liquidity
 function calculateLpTokensToMint(tokenA_amount: bigint, tokenB_amount: bigint, pool: LiquidityPoolData): bigint {
@@ -22,10 +20,10 @@ function calculateLpTokensToMint(tokenA_amount: bigint, tokenB_amount: bigint, p
   const poolTotalLpTokens = toBigInt(pool.totalLpTokens);
   const poolTokenAReserve = toBigInt(pool.tokenA_reserve);
   const poolTokenBReserve = toBigInt(pool.tokenB_reserve);
-  
+
   const ratioA = (tokenA_amount * poolTotalLpTokens) / poolTokenAReserve;
   const ratioB = (tokenB_amount * poolTotalLpTokens) / poolTokenBReserve;
-  
+
   // Use the minimum ratio to ensure proportional liquidity provision
   return ratioA < ratioB ? ratioA : ratioB;
 }
@@ -103,155 +101,155 @@ export async function validateTx(data: PoolAddLiquidityData, sender: string): Pr
 }
 
 export async function process(data: PoolAddLiquidityData, sender: string, id: string): Promise<boolean> {
-    try {
-        const addLiquidityData = data;
+  try {
+    const addLiquidityData = data;
 
-        const poolDB = await cache.findOnePromise('liquidityPools', { _id: addLiquidityData.poolId }) as LiquidityPoolData; // validateTx guarantees existence
+    const poolDB = await cache.findOnePromise('liquidityPools', { _id: addLiquidityData.poolId }) as LiquidityPoolData; // validateTx guarantees existence
 
-        // Ensure fee accounting fields are present and initialized as bigint
-        let feeGrowthGlobalA = toBigInt(poolDB.feeGrowthGlobalA || '0');
-        let feeGrowthGlobalB = toBigInt(poolDB.feeGrowthGlobalB || '0');
-        const pool = {
-            ...poolDB,
-            feeGrowthGlobalA,
-            feeGrowthGlobalB
-        };
+    // Ensure fee accounting fields are present and initialized as bigint
+    let feeGrowthGlobalA = toBigInt(poolDB.feeGrowthGlobalA || '0');
+    let feeGrowthGlobalB = toBigInt(poolDB.feeGrowthGlobalB || '0');
+    const pool = {
+      ...poolDB,
+      feeGrowthGlobalA,
+      feeGrowthGlobalB
+    };
 
-        // Debit tokens from the provider's account
-        const debitASuccess = await adjustBalance(addLiquidityData.provider, pool.tokenA_symbol, -toBigInt(addLiquidityData.tokenA_amount));
-        const debitBSuccess = await adjustBalance(addLiquidityData.provider, pool.tokenB_symbol, -toBigInt(addLiquidityData.tokenB_amount));
+    // Debit tokens from the provider's account
+    const debitASuccess = await adjustBalance(addLiquidityData.provider, pool.tokenA_symbol, -toBigInt(addLiquidityData.tokenA_amount));
+    const debitBSuccess = await adjustBalance(addLiquidityData.provider, pool.tokenB_symbol, -toBigInt(addLiquidityData.tokenB_amount));
 
-        if (!debitASuccess || !debitBSuccess) {
-            logger.error(`[pool-add-liquidity] Failed to debit tokens from ${addLiquidityData.provider}.`);
-            return false;
-        }
+    if (!debitASuccess || !debitBSuccess) {
+      logger.error(`[pool-add-liquidity] Failed to debit tokens from ${addLiquidityData.provider}.`);
+      return false;
+    }
 
-        const lpTokensToMint = calculateLpTokensToMint(toBigInt(addLiquidityData.tokenA_amount), toBigInt(addLiquidityData.tokenB_amount), pool);
-        if (lpTokensToMint <= BigInt(0)) {
-            logger.error('[pool-add-liquidity] CRITICAL: LP token calculation resulted in zero or negative amount.');
-            return false;
-        }
+    const lpTokensToMint = calculateLpTokensToMint(toBigInt(addLiquidityData.tokenA_amount), toBigInt(addLiquidityData.tokenB_amount), pool);
+    if (lpTokensToMint <= BigInt(0)) {
+      logger.error('[pool-add-liquidity] CRITICAL: LP token calculation resulted in zero or negative amount.');
+      return false;
+    }
 
-        // Update pool reserves and total LP tokens
-        const poolUpdateSuccess = await cache.updateOnePromise(
-            'liquidityPools',
-            { _id: addLiquidityData.poolId },
+    // Update pool reserves and total LP tokens
+    const poolUpdateSuccess = await cache.updateOnePromise(
+      'liquidityPools',
+      { _id: addLiquidityData.poolId },
+      {
+        $set: {
+          ...convertToString(
             {
-                $set: {
-                    ...convertToString(
-                        {
-                            tokenA_reserve: toBigInt(pool.tokenA_reserve) + toBigInt(addLiquidityData.tokenA_amount),
-                            tokenB_reserve: toBigInt(pool.tokenB_reserve) + toBigInt(addLiquidityData.tokenB_amount),
-                            totalLpTokens: toBigInt(pool.totalLpTokens) + lpTokensToMint,
-                            feeGrowthGlobalA: pool.feeGrowthGlobalA,
-                            feeGrowthGlobalB: pool.feeGrowthGlobalB
-                        },
-                        ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens', 'feeGrowthGlobalA', 'feeGrowthGlobalB']
-                    ),
-                    lastUpdatedAt: new Date().toISOString()
-                }
-            }
-        );
-
-        if (!poolUpdateSuccess) {
-            logger.error(`[pool-add-liquidity] Failed to update pool ${addLiquidityData.poolId}. Add liquidity aborted.`);
-            return false;
+              tokenA_reserve: toBigInt(pool.tokenA_reserve) + toBigInt(addLiquidityData.tokenA_amount),
+              tokenB_reserve: toBigInt(pool.tokenB_reserve) + toBigInt(addLiquidityData.tokenB_amount),
+              totalLpTokens: toBigInt(pool.totalLpTokens) + lpTokensToMint,
+              feeGrowthGlobalA: pool.feeGrowthGlobalA,
+              feeGrowthGlobalB: pool.feeGrowthGlobalB
+            },
+            ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens', 'feeGrowthGlobalA', 'feeGrowthGlobalB']
+          ),
+          lastUpdatedAt: new Date().toISOString()
         }
+      }
+    );
 
-        // Update or create user liquidity position with fee checkpoints
-        const userPositionId = `${addLiquidityData.provider}-${addLiquidityData.poolId}`;
-        const existingUserPosDB = await cache.findOnePromise('userLiquidityPositions', { _id: userPositionId }) as UserLiquidityPositionData | null;
-        const existingUserPos = existingUserPosDB ? {
-            ...existingUserPosDB,
-            lpTokenBalance: toBigInt(existingUserPosDB.lpTokenBalance),
-            feeGrowthEntryA: toBigInt(existingUserPosDB.feeGrowthEntryA || '0'),
-            feeGrowthEntryB: toBigInt(existingUserPosDB.feeGrowthEntryB || '0'),
-            unclaimedFeesA: toBigInt(existingUserPosDB.unclaimedFeesA || '0'),
-            unclaimedFeesB: toBigInt(existingUserPosDB.unclaimedFeesB || '0'),
-        } : null;
+    if (!poolUpdateSuccess) {
+      logger.error(`[pool-add-liquidity] Failed to update pool ${addLiquidityData.poolId}. Add liquidity aborted.`);
+      return false;
+    }
 
-        let userPosUpdateSuccess = false;
-        let newFeeGrowthEntryA = pool.feeGrowthGlobalA || BigInt(0);
-        let newFeeGrowthEntryB = pool.feeGrowthGlobalB || BigInt(0);
-        let newUnclaimedFeesA = BigInt(0);
-        let newUnclaimedFeesB = BigInt(0);
+    // Update or create user liquidity position with fee checkpoints
+    const userPositionId = `${addLiquidityData.provider}-${addLiquidityData.poolId}`;
+    const existingUserPosDB = await cache.findOnePromise('userLiquidityPositions', { _id: userPositionId }) as UserLiquidityPositionData | null;
+    const existingUserPos = existingUserPosDB ? {
+      ...existingUserPosDB,
+      lpTokenBalance: toBigInt(existingUserPosDB.lpTokenBalance),
+      feeGrowthEntryA: toBigInt(existingUserPosDB.feeGrowthEntryA || '0'),
+      feeGrowthEntryB: toBigInt(existingUserPosDB.feeGrowthEntryB || '0'),
+      unclaimedFeesA: toBigInt(existingUserPosDB.unclaimedFeesA || '0'),
+      unclaimedFeesB: toBigInt(existingUserPosDB.unclaimedFeesB || '0'),
+    } : null;
 
-        if (existingUserPos) {
-            // Calculate unclaimed fees before updating position
-            const deltaA = (pool.feeGrowthGlobalA || BigInt(0)) - (existingUserPos.feeGrowthEntryA || BigInt(0));
-            const deltaB = (pool.feeGrowthGlobalB || BigInt(0)) - (existingUserPos.feeGrowthEntryB || BigInt(0));
-            newUnclaimedFeesA = (existingUserPos.unclaimedFeesA || BigInt(0)) + (deltaA * existingUserPos.lpTokenBalance) / BigInt(1e18);
-            newUnclaimedFeesB = (existingUserPos.unclaimedFeesB || BigInt(0)) + (deltaB * existingUserPos.lpTokenBalance) / BigInt(1e18);
-            userPosUpdateSuccess = await cache.updateOnePromise(
-                'userLiquidityPositions',
-                { _id: userPositionId },
-                {
-                    $set: {
-                        ...convertToString(
-                            {
-                                lpTokenBalance: existingUserPos.lpTokenBalance + lpTokensToMint,
-                                feeGrowthEntryA: pool.feeGrowthGlobalA || BigInt(0),
-                                feeGrowthEntryB: pool.feeGrowthGlobalB || BigInt(0),
-                                unclaimedFeesA: newUnclaimedFeesA,
-                                unclaimedFeesB: newUnclaimedFeesB
-                            },
-                            ['lpTokenBalance', 'feeGrowthEntryA', 'feeGrowthEntryB', 'unclaimedFeesA', 'unclaimedFeesB']
-                        ),
-                        lastUpdatedAt: new Date().toISOString()
-                    }
-                }
-            );
-        } else {
-            const newUserPosition: UserLiquidityPositionData = {
-                _id: userPositionId,
-                provider: addLiquidityData.provider,
-                poolId: addLiquidityData.poolId,
-                lpTokenBalance: lpTokensToMint,
+    let userPosUpdateSuccess = false;
+    let newFeeGrowthEntryA = pool.feeGrowthGlobalA || BigInt(0);
+    let newFeeGrowthEntryB = pool.feeGrowthGlobalB || BigInt(0);
+    let newUnclaimedFeesA = BigInt(0);
+    let newUnclaimedFeesB = BigInt(0);
+
+    if (existingUserPos) {
+      // Calculate unclaimed fees before updating position
+      const deltaA = (pool.feeGrowthGlobalA || BigInt(0)) - (existingUserPos.feeGrowthEntryA || BigInt(0));
+      const deltaB = (pool.feeGrowthGlobalB || BigInt(0)) - (existingUserPos.feeGrowthEntryB || BigInt(0));
+      newUnclaimedFeesA = (existingUserPos.unclaimedFeesA || BigInt(0)) + (deltaA * existingUserPos.lpTokenBalance) / BigInt(1e18);
+      newUnclaimedFeesB = (existingUserPos.unclaimedFeesB || BigInt(0)) + (deltaB * existingUserPos.lpTokenBalance) / BigInt(1e18);
+      userPosUpdateSuccess = await cache.updateOnePromise(
+        'userLiquidityPositions',
+        { _id: userPositionId },
+        {
+          $set: {
+            ...convertToString(
+              {
+                lpTokenBalance: existingUserPos.lpTokenBalance + lpTokensToMint,
                 feeGrowthEntryA: pool.feeGrowthGlobalA || BigInt(0),
                 feeGrowthEntryB: pool.feeGrowthGlobalB || BigInt(0),
-                unclaimedFeesA: BigInt(0),
-                unclaimedFeesB: BigInt(0),
-                createdAt: new Date().toISOString(),
-                lastUpdatedAt: new Date().toISOString()
-            };
-            const newUserPositionDB = convertToString(newUserPosition, ['lpTokenBalance', 'feeGrowthEntryA', 'feeGrowthEntryB', 'unclaimedFeesA', 'unclaimedFeesB']);
-            userPosUpdateSuccess = await new Promise<boolean>((resolve) => {
-                cache.insertOne('userLiquidityPositions', newUserPositionDB, (err, success) => {
-                    if (err || !success) {
-                        logger.error(`[pool-add-liquidity] Failed to insert new user position ${userPositionId}: ${err || 'insert not successful'}`);
-                        resolve(false);
-                    } else {
-                        resolve(true);
-                    }
-                });
-            });
+                unclaimedFeesA: newUnclaimedFeesA,
+                unclaimedFeesB: newUnclaimedFeesB
+              },
+              ['lpTokenBalance', 'feeGrowthEntryA', 'feeGrowthEntryB', 'unclaimedFeesA', 'unclaimedFeesB']
+            ),
+            lastUpdatedAt: new Date().toISOString()
+          }
         }
-
-        if (!userPosUpdateSuccess) {
-            logger.error(`[pool-add-liquidity] CRITICAL: Failed to update user position.`);
-            return false;
-        }
-
-        // After updating userLiquidityPositions, ensure LP token exists before crediting
-        const lpTokenSymbol = getLpTokenSymbol(pool.tokenA_symbol, pool.tokenB_symbol);
-        const existingLpToken = await cache.findOnePromise('tokens', { _id: lpTokenSymbol });
-        if (!existingLpToken) {
-            logger.error(`[pool-add-liquidity] LP token ${lpTokenSymbol} does not exist for pool ${addLiquidityData.poolId}. This should be created during pool creation.`);
-            return false;
-        }
-
-        // After updating userLiquidityPositions, credit LP tokens to user account
-        const creditLPSuccess = await adjustBalance(addLiquidityData.provider, lpTokenSymbol, lpTokensToMint);
-        if (!creditLPSuccess) {
-            logger.error(`[pool-add-liquidity] Failed to credit LP tokens (${lpTokenSymbol}) to ${addLiquidityData.provider}.`);
-            return false;
-        }
-
-        logger.debug(`[pool-add-liquidity] Provider ${addLiquidityData.provider} added liquidity to pool ${addLiquidityData.poolId}. Token A: ${addLiquidityData.tokenA_amount}, Token B: ${addLiquidityData.tokenB_amount}, LP tokens minted: ${lpTokensToMint}`);
-
-        return true;
-    } catch (error) {
-        logger.error(`[pool-add-liquidity] Error processing add liquidity for pool ${data.poolId} by ${sender}: ${error}`);
-        return false;
+      );
+    } else {
+      const newUserPosition: UserLiquidityPositionData = {
+        _id: userPositionId,
+        provider: addLiquidityData.provider,
+        poolId: addLiquidityData.poolId,
+        lpTokenBalance: lpTokensToMint,
+        feeGrowthEntryA: pool.feeGrowthGlobalA || BigInt(0),
+        feeGrowthEntryB: pool.feeGrowthGlobalB || BigInt(0),
+        unclaimedFeesA: BigInt(0),
+        unclaimedFeesB: BigInt(0),
+        createdAt: new Date().toISOString(),
+        lastUpdatedAt: new Date().toISOString()
+      };
+      const newUserPositionDB = convertToString(newUserPosition, ['lpTokenBalance', 'feeGrowthEntryA', 'feeGrowthEntryB', 'unclaimedFeesA', 'unclaimedFeesB']);
+      userPosUpdateSuccess = await new Promise<boolean>((resolve) => {
+        cache.insertOne('userLiquidityPositions', newUserPositionDB, (err, success) => {
+          if (err || !success) {
+            logger.error(`[pool-add-liquidity] Failed to insert new user position ${userPositionId}: ${err || 'insert not successful'}`);
+            resolve(false);
+          } else {
+            resolve(true);
+          }
+        });
+      });
     }
+
+    if (!userPosUpdateSuccess) {
+      logger.error(`[pool-add-liquidity] CRITICAL: Failed to update user position.`);
+      return false;
+    }
+
+    // After updating userLiquidityPositions, ensure LP token exists before crediting
+    const lpTokenSymbol = getLpTokenSymbol(pool.tokenA_symbol, pool.tokenB_symbol);
+    const existingLpToken = await cache.findOnePromise('tokens', { _id: lpTokenSymbol });
+    if (!existingLpToken) {
+      logger.error(`[pool-add-liquidity] LP token ${lpTokenSymbol} does not exist for pool ${addLiquidityData.poolId}. This should be created during pool creation.`);
+      return false;
+    }
+
+    // After updating userLiquidityPositions, credit LP tokens to user account
+    const creditLPSuccess = await adjustBalance(addLiquidityData.provider, lpTokenSymbol, lpTokensToMint);
+    if (!creditLPSuccess) {
+      logger.error(`[pool-add-liquidity] Failed to credit LP tokens (${lpTokenSymbol}) to ${addLiquidityData.provider}.`);
+      return false;
+    }
+
+    logger.debug(`[pool-add-liquidity] Provider ${addLiquidityData.provider} added liquidity to pool ${addLiquidityData.poolId}. Token A: ${addLiquidityData.tokenA_amount}, Token B: ${addLiquidityData.tokenB_amount}, LP tokens minted: ${lpTokensToMint}`);
+
+    return true;
+  } catch (error) {
+    logger.error(`[pool-add-liquidity] Error processing add liquidity for pool ${data.poolId} by ${sender}: ${error}`);
+    return false;
+  }
 }
