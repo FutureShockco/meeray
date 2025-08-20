@@ -146,7 +146,7 @@ export async function process(data: PoolCreateData, sender: string, id: string):
       return false;
     }
     logger.debug(`[pool-create] Liquidity Pool ${poolId} (${tokenA_symbol}-${tokenB_symbol}, Fee: ${chosenFeeTier}bps) created by ${sender}. LP Token: ${lpTokenSymbol}`);
-    const tokenSymbol = getLpTokenSymbol(tokenA_symbol, tokenB_symbol);
+    const tokenSymbol = getLpTokenSymbol(tokenA_symbol, tokenB_symbol, chosenFeeTier);
     // Create LP token for this pool if it does not exist
     const existingLpToken = await cache.findOnePromise('tokens', { _id: tokenSymbol });
     if (!existingLpToken) {

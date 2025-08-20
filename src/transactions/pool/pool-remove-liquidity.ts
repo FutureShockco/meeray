@@ -107,7 +107,7 @@ export async function process(data: PoolRemoveLiquidityData, sender: string, tra
     }
 
     // After updating userLiquidityPositions, debit LP tokens from user account
-    const lpTokenSymbol = getLpTokenSymbol(pool.tokenA_symbol, pool.tokenB_symbol);
+    const lpTokenSymbol = getLpTokenSymbol(pool.tokenA_symbol, pool.tokenB_symbol, pool.feeTier);
     const debitLPSuccess = await adjustBalance(data.provider, lpTokenSymbol, -toBigInt(data.lpTokenAmount));
     if (!debitLPSuccess) {
         logger.error(`[pool-remove-liquidity] Failed to debit LP tokens (${lpTokenSymbol}) from ${data.provider}.`);
