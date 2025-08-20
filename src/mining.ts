@@ -12,7 +12,7 @@ import { hashAndSignBlock } from './crypto.js';
 
 export const mining = {
 
-    prepareBlock: (cb: (err: any, newBlock?: any) => void) => {
+    prepareBlock: async (cb: (err: any, newBlock?: any) => void) => {
         let previousBlock = chain.getLatestBlock();
         if (!previousBlock) {
             logger.error('[MINING:prepareBlock] Cannot get latest block from chain. Aborting.');
@@ -29,22 +29,24 @@ export const mining = {
 
         logger.trace(`prepareBlock: Mode: ${steem.isInSyncMode() ? 'SYNC' : 'NORMAL'}, TargetInterval: ${targetBlockInterval}ms`);
 
-        steem.processBlock(nextSteemBlockNum).then((transactions) => {
+        try {
+            // Wait for Steem block processing to complete - this is BLOCKING
+            const transactions = await steem.processBlock(nextSteemBlockNum);
+            
             if (!transactions) {
                 // Handle the case where the Steem block doesn't exist yet
                 if (steem.getBehindBlocks() <= 0) {
                     logger.trace(`prepareBlock: Steem block ${nextSteemBlockNum} not found, but caught up. Retrying.`);
-
                     // If we're at the head of Steem, wait a bit and let the caller retry
                     setTimeout(() => {
                         cb(true, null)
                     }, 1000)
-                    return; // Add explicit return to prevent further execution
+                    return;
                 }
 
                 logger.warn(`prepareBlock: Steem block ${nextSteemBlockNum} not found, behind by ${steem.getBehindBlocks()} blocks. Cannot prepare Echelon block.`);
                 cb(true, null)
-                return; // Add explicit return to prevent further execution
+                return;
             }
             logger.trace(`prepareBlock: Successfully processed Steem block ${nextSteemBlockNum}. Transactions found: ${transactions.transactions.length}`);
 
@@ -99,10 +101,10 @@ export const mining = {
             }
             logger.trace(`prepareBlock: Prepared block candidate for _id ${newBlock._id}: ${JSON.stringify(newBlock)}`);
             cb(null, newBlock)
-        }).catch((error) => {
+        } catch (error) {
             logger.error(`prepareBlock: Error processing Steem block ${nextSteemBlockNum}:`, error)
             cb(true, null)
-        })
+        }
     },
 
     canMineBlock: async (cb: (err: boolean | null, newBlock?: any) => void) => {
