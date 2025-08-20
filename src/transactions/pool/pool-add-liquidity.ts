@@ -6,14 +6,37 @@ import { convertToString, toBigInt } from '../../utils/bigint.js';
 // event logger removed
 import { getLpTokenSymbol } from '../../utils/token.js';
 
+// Integer square root function for BigInt
+function sqrt(value: bigint): bigint {
+  if (value < 0n) {
+    throw new Error('Cannot calculate square root of negative number');
+  }
+  if (value < 2n) {
+    return value;
+  }
+
+  // Binary search for square root
+  let x = value;
+  let y = (x + 1n) / 2n;
+  
+  while (y < x) {
+    x = y;
+    y = (x + value / x) / 2n;
+  }
+  
+  return x;
+}
 
 // Calculate LP tokens to mint based on provided liquidity
+// For initial liquidity: uses geometric mean (sqrt of product) for fair distribution
+// For subsequent liquidity: uses proportional minting based on existing reserves
 function calculateLpTokensToMint(tokenA_amount: bigint, tokenB_amount: bigint, pool: LiquidityPoolData): bigint {
   // Initial liquidity provision
   if (toBigInt(pool.totalLpTokens) === BigInt(0)) {
     // For first liquidity provision, mint LP tokens equal to geometric mean of provided amounts
-    // Simplified sqrt calculation: use the smaller of the two amounts as approximation
-    return tokenA_amount < tokenB_amount ? tokenA_amount : tokenB_amount;
+    // Use geometric mean for fair initial distribution
+    const product = tokenA_amount * tokenB_amount;
+    return sqrt(product);
   }
 
   // For subsequent liquidity provisions, mint proportional to existing reserves

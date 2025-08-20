@@ -57,11 +57,17 @@ export function toDbString(value: bigint): string {
  * @returns A properly formatted string with decimal places
  */
 export function formatTokenAmount(value: bigint, symbol: string): string {
-    const decimals = getTokenDecimals(symbol);
+    let decimals = 18
+    if (symbol !== 'LP_TOKEN') {
+        decimals = getTokenDecimals(symbol);
+    }
     const str = value.toString().padStart(decimals + 1, '0');
     const integerPart = str.slice(0, -decimals) || '0';
     const decimalPart = str.slice(-decimals);
-    return `${integerPart}.${decimalPart}`;
+    
+    // Trim trailing zeros for better readability
+    const trimmedDecimal = decimalPart.replace(/0+$/, '');
+    return trimmedDecimal ? `${integerPart}.${trimmedDecimal}` : integerPart;
 }
 
 /**
@@ -71,7 +77,10 @@ export function formatTokenAmount(value: bigint, symbol: string): string {
  * @returns A BigInt value
  */
 export function parseTokenAmount(value: string, symbol: string): bigint {
-    const decimals = getTokenDecimals(symbol);
+    let decimals = 18
+    if (symbol !== 'LP_TOKEN') {
+        decimals = getTokenDecimals(symbol);
+    }
     const [integerPart = '0', decimalPart = ''] = value.split('.');
     const paddedDecimal = decimalPart.padEnd(decimals, '0').slice(0, decimals);
     return BigInt(integerPart + paddedDecimal);

@@ -2,7 +2,7 @@ import express, { Request, Response, Router, RequestHandler } from 'express';
 import cache from '../../cache.js';
 import { mongo } from '../../mongo.js';
 import logger from '../../logger.js';
-import { toBigInt, toDbString as bigintToString, parseTokenAmount } from '../../utils/bigint.js';
+import { toBigInt, toDbString as bigintToString, parseTokenAmount, formatTokenAmount } from '../../utils/bigint.js';
 import { getTokenDecimals } from '../../utils/bigint.js';
 import { formatTokenAmountForResponse, formatTokenAmountSimple } from '../../utils/http.js';
 
@@ -215,9 +215,10 @@ const transformUserLiquidityPositionData = (positionData: any, poolData?: any): 
     if (transformed._id && transformed.id !== transformed._id) delete transformed._id;
     if (transformed.lpTokenBalance) {
         const lpBalanceBigInt = toBigInt(transformed.lpTokenBalance);
-        transformed.lpTokenBalance = lpBalanceBigInt.toString();
+        transformed.lpTokenBalance = formatTokenAmount(lpBalanceBigInt, 'LP_TOKEN');
         transformed.rawLpTokenBalance = lpBalanceBigInt.toString();
     }
+    console.log('lpTokenBalance', transformed);
     // --- Fee accounting fields ---
     if (positionData.feeGrowthEntryA !== undefined) {
         transformed.feeGrowthEntryA = positionData.feeGrowthEntryA.toString();
@@ -240,8 +241,8 @@ const transformUserLiquidityPositionData = (positionData: any, poolData?: any): 
         const unclaimedFeesB = toBigInt(positionData.unclaimedFeesB || '0');
         const feeGrowthGlobalA = toBigInt(poolData.feeGrowthGlobalA || '0');
         const feeGrowthGlobalB = toBigInt(poolData.feeGrowthGlobalB || '0');
-        transformed.claimableFeesA = (feeGrowthGlobalA - feeGrowthEntryA) * lpTokenBalance / BigInt(1e18) + unclaimedFeesA;
-        transformed.claimableFeesB = (feeGrowthGlobalB - feeGrowthEntryB) * lpTokenBalance / BigInt(1e18) + unclaimedFeesB;
+        transformed.claimableFeesA = ((feeGrowthGlobalA - feeGrowthEntryA) * lpTokenBalance / BigInt(1e18) + unclaimedFeesA).toString();
+        transformed.claimableFeesB = ((feeGrowthGlobalB - feeGrowthEntryB) * lpTokenBalance / BigInt(1e18) + unclaimedFeesB).toString();
     }
     return transformed;
 };
