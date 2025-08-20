@@ -111,13 +111,21 @@ export async function validateTx(data: PoolAddLiquidityData, sender: string): Pr
       const difference = actualB > expectedTokenBAmount ? actualB - expectedTokenBAmount : expectedTokenBAmount - actualB;
       const maxDifference = (expectedTokenBAmount * tolerance) / BigInt(10000);
 
-      if (difference > maxDifference) {
-        logger.warn(`[pool-add-liquidity] Token amounts do not match current pool ratio. Expected B: ${expectedTokenBAmount}, Got: ${addLiquidityData.tokenB_amount}. Pool A reserve: ${pool.tokenA_reserve}, B reserve: ${pool.tokenB_reserve}, A amount: ${addLiquidityData.tokenA_amount}`);
-        return false;
-      }
+          if (difference > maxDifference) {
+      logger.warn(`[pool-add-liquidity] Token amounts do not match current pool ratio. Expected B: ${expectedTokenBAmount}, Got: ${addLiquidityData.tokenB_amount}. Pool A reserve: ${pool.tokenA_reserve}, B reserve: ${pool.tokenB_reserve}, A amount: ${addLiquidityData.tokenA_amount}`);
+      return false;
     }
+  }
 
-    return true;
+  // Validate that the LP token exists for this pool
+  const lpTokenSymbol = getLpTokenSymbol(pool.tokenA_symbol, pool.tokenB_symbol, pool.feeTier);
+  const existingLpToken = await cache.findOnePromise('tokens', { _id: lpTokenSymbol });
+  if (!existingLpToken) {
+    logger.warn(`[pool-add-liquidity] LP token ${lpTokenSymbol} does not exist for pool ${addLiquidityData.poolId}. This suggests the pool was created before the LP token creation was fixed. Please contact support or recreate the pool.`);
+    return false;
+  }
+
+  return true;
   } catch (error) {
     logger.error(`[pool-add-liquidity] Error validating add liquidity data for pool ${data.poolId} by ${sender}: ${error}`);
     return false;
