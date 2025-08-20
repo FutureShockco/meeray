@@ -826,9 +826,7 @@ export const p2p = {
             if (nextBlock % 2) {
                 p2p.recover();
             }
-        } else {
-            logger.warn('Next block exceeds peer head block');
-        }
+        } 
     },
 
     refresh: (force: boolean = false): void => {
