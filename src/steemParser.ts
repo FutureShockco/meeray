@@ -200,9 +200,7 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                             txType = TransactionType.LAUNCHPAD_UPDATE_WHITELIST;
                             break;
 
-                        case 'market_create_pair':
-                            txType = TransactionType.MARKET_CREATE_PAIR;
-                            break;
+
                         case 'market_cancel_order':
                             txType = TransactionType.MARKET_CANCEL_ORDER;
                             break;

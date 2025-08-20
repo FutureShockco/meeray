@@ -10,7 +10,6 @@ export enum TransactionType {
   NFT_UPDATE_COLLECTION = 8,
 
   // Market Transactions
-  MARKET_CREATE_PAIR = 9,
   MARKET_CANCEL_ORDER = 10,
   
   // Market Trading (Hybrid AMM + Orderbook)
@@ -70,7 +69,6 @@ export const transactions: { [key: number]: string } = {
   [TransactionType.NFT_UPDATE_COLLECTION]: 'nft_update_collection',
   
   // Market Transactions
-  [TransactionType.MARKET_CREATE_PAIR]: 'market_create_pair',
   [TransactionType.MARKET_CANCEL_ORDER]: 'market_cancel_order',
 
   // Market Trading (Unified AMM + Orderbook)

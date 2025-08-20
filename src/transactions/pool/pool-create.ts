@@ -188,6 +188,71 @@ export async function process(data: PoolCreateData, sender: string, id: string):
       }
     }, id);
 
+    // Automatically create trading pair for this pool
+    try {
+      // Generate trading pair ID (same format as market system)
+      const pairId = `${tokenA_symbol}@${sender}-${tokenB_symbol}@${sender}`;
+      
+      // Set reasonable defaults for trading parameters (as BigInt first, then convert to DB strings)
+      const tickSize = BigInt(1000);           // 0.001 (adjustable based on token precision)
+      const lotSize = BigInt(1000 );         // 0.001 (adjustable based on token precision)
+      const minNotional = BigInt(1000);      // 0.001 (adjustable based on token   value)
+      const minTradeAmount = BigInt(1000);   // 0.001 (adjustable based on token value)
+      const maxTradeAmount = BigInt(1000000000000); // 1,000,000 (adjustable based on token value)
+      
+      // Create trading pair document
+      const tradingPairDB = {
+        _id: pairId,
+        baseAssetSymbol: tokenA_symbol,
+        baseAssetIssuer: sender,
+        quoteAssetSymbol: tokenB_symbol,
+        quoteAssetIssuer: sender,
+        tickSize: toDbString(tickSize),
+        lotSize: toDbString(lotSize),
+        minNotional: toDbString(minNotional),
+        status: 'TRADING',
+        minTradeAmount: toDbString(minTradeAmount),
+        maxTradeAmount: toDbString(maxTradeAmount),
+        createdAt: new Date().toISOString()
+      };
+
+      // Insert trading pair into database
+      const pairInsertSuccess = await new Promise<boolean>((resolve) => {
+        cache.insertOne('tradingPairs', tradingPairDB, (err, result) => {
+          if (err || !result) {
+            logger.warn(`[pool-create] Failed to create trading pair ${pairId}: ${err}`);
+            resolve(false);
+          } else {
+            logger.info(`[pool-create] Created trading pair ${pairId} for pool ${poolId}`);
+            resolve(true);
+          }
+        });
+      });
+
+      if (pairInsertSuccess) {
+        // Log trading pair creation event
+        await logTransactionEvent('market_pair_created', sender, {
+          pairId,
+          baseAssetSymbol: tokenA_symbol,
+          baseAssetIssuer: sender,
+          quoteAssetSymbol: tokenB_symbol,
+          quoteAssetIssuer: sender,
+          tickSize: toDbString(tickSize),
+          lotSize: toDbString(lotSize),
+          minNotional: toDbString(minNotional),
+          minTradeAmount: toDbString(minTradeAmount),
+          maxTradeAmount: toDbString(maxTradeAmount),
+          initialStatus: 'TRADING',
+          createdAt: new Date().toISOString(),
+          autoCreated: true,
+          poolId: poolId
+        });
+      }
+    } catch (error) {
+      // Log warning but don't fail pool creation
+      logger.warn(`[pool-create] Failed to create trading pair for pool ${poolId}: ${error}`);
+    }
+
     return true;
   } catch (error) {
     logger.error(`[pool-create] Error processing pool creation by ${sender}: ${error}`);

@@ -84,17 +84,8 @@ async function mintTokens(symbol, to, amount) {
 }
 
 // --- Market Operation Helpers --- //
-async function createMarketPair(baseSymbol, quoteSymbol) {
-  const payload = {
-    baseAsset: `${baseSymbol}@${username}`,
-    quoteAsset: `${quoteSymbol}@${username}`,
-    metadata: {
-      description: `${baseSymbol}/${quoteSymbol} trading pair`,
-      category: 'test'
-    }
-  };
-  return sendCustomJson('market_create_pair', payload);
-}
+// Note: Trading pairs are now automatically created when pools are created
+// No need for separate market_create_pair transactions
 
 // Note: The old orderbook system has been replaced with hybrid trading
 // Individual order placement is no longer available - use market_trade instead
@@ -145,19 +136,22 @@ async function runAdvancedMarketTest() {
     await mintTokens(baseSymbol, username, mintAmount);
     await mintTokens(quoteSymbol, username, mintAmount);
 
-    // 4. Create Trading Pair
-    console.log(`4. Creating trading pair ${baseSymbol}/${quoteSymbol}...`);
-    await createMarketPair(baseSymbol, quoteSymbol);
-    console.log(`Trading pair created with automatic issuer assignment (${username})`);
+    // 4. Create Pool (Trading pair will be automatically created)
+    console.log(`4. Creating liquidity pool ${baseSymbol}/${quoteSymbol}...`);
+    await sendCustomJson('pool_create', {
+      tokenA_symbol: baseSymbol,
+      tokenB_symbol: quoteSymbol,
+      feeTier: 30 // 0.3% fee tier
+    });
+    console.log(`Pool created - trading pair automatically created with issuer assignment (${username})`);
 
     // 5. Add some AMM liquidity first (this creates initial price discovery)
     console.log(`5. Adding AMM liquidity to establish price...`);
     await sendCustomJson('pool_add_liquidity', {
-      pairId: `${baseSymbol}-${quoteSymbol}`,
-      baseAmount: (1000 * Math.pow(10, tokenPrecision)).toString(), // 1000 ECH
-      quoteAmount: (1000 * Math.pow(10, tokenPrecision)).toString(), // 1000 USD (1:1 ratio)
-      minBaseAmount: (950 * Math.pow(10, tokenPrecision)).toString(),
-      minQuoteAmount: (950 * Math.pow(10, tokenPrecision)).toString()
+      poolId: `${baseSymbol}_${quoteSymbol}_30`, // Format: tokenA_tokenB_feeTier
+      provider: username,
+      tokenA_amount: (1000 * Math.pow(10, tokenPrecision)).toString(), // 1000 ECH
+      tokenB_amount: (1000 * Math.pow(10, tokenPrecision)).toString()  // 1000 USD (1:1 ratio)
     });
 
     // 6. Test hybrid trades (automatically routes through AMM + any orderbook liquidity)
@@ -180,7 +174,7 @@ async function runAdvancedMarketTest() {
 
     console.log('\n✅ Advanced market test completed successfully!');
     console.log('\nWhat happened:');
-    console.log('• Created ECH/USD trading pair with secure sender-based issuer assignment');
+    console.log('• Created ECH/USD liquidity pool with automatic trading pair creation');
     console.log('• Added AMM liquidity for price discovery');
     console.log('• Executed hybrid trades that automatically found best prices across:');
     console.log('  - AMM pool liquidity');
