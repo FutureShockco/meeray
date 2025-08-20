@@ -40,49 +40,31 @@ export async function updateWitnessVoteWeights(updateData: VoteWeightUpdate): Pr
       $set: { votedWitnesses: newVotedWitnesses } 
     });
     
-    // Update vote weights for remaining witnesses (if any)
-    if (newVotedWitnesses.length > 0) {
-      const adjustmentForRemaining = newVoteWeightPerWitness - oldVoteWeightPerWitness;
+    // Update vote weights for all affected witnesses
+    const allAffectedWitnesses = new Set([...oldVotedWitnesses, ...newVotedWitnesses]);
+    
+    for (const witnessName of allAffectedWitnesses) {
+      const witnessAccount = await cache.findOnePromise('accounts', { name: witnessName });
+      if (!witnessAccount) {
+        logger.error(`[witness-utils] Witness account ${witnessName} not found during vote weight adjustment`);
+        return false;
+      }
       
-      for (const witnessName of newVotedWitnesses) {
-        const witnessAccount = await cache.findOnePromise('accounts', { name: witnessName });
-        if (witnessAccount) {
-          const currentVoteWeightStr = witnessAccount.totalVoteWeight || toDbString(BigInt(0));
-          const newVoteWeightBigInt = toBigInt(currentVoteWeightStr) + adjustmentForRemaining;
-          await cache.updateOnePromise('accounts', { name: witnessName }, { 
-            $set: { totalVoteWeight: toDbString(newVoteWeightBigInt) } 
-          });
-        } else {
-          logger.error(`[witness-utils] Witness account ${witnessName} not found during vote weight adjustment`);
-          return false;
-        }
+      const currentVoteWeightStr = witnessAccount.totalVoteWeight || toDbString(BigInt(0));
+      let newVoteWeightBigInt: bigint;
+      
+      if (newVotedWitnesses.includes(witnessName)) {
+        // Witness is currently voted for - calculate new vote weight
+        newVoteWeightBigInt = newVoteWeightPerWitness;
+      } else {
+        // Witness is no longer voted for - remove their vote weight
+        newVoteWeightBigInt = BigInt(0);
       }
+      
+      await cache.updateOnePromise('accounts', { name: witnessName }, { 
+        $set: { totalVoteWeight: toDbString(newVoteWeightBigInt) } 
+      });
     }
-    
-    // Update target witness vote weight
-    const targetAccount = await cache.findOnePromise('accounts', { name: targetWitness });
-    if (!targetAccount) {
-      logger.error(`[witness-utils] Target witness account ${targetWitness} not found`);
-      return false;
-    }
-    
-    const currentTargetVoteWeightStr = targetAccount.totalVoteWeight || toDbString(BigInt(0));
-    let newTargetVoteWeightBigInt: bigint;
-    
-    if (isVote) {
-      // Adding vote - add the new vote weight
-      newTargetVoteWeightBigInt = toBigInt(currentTargetVoteWeightStr) + newVoteWeightPerWitness;
-    } else {
-      // Removing vote - subtract the old vote weight
-      newTargetVoteWeightBigInt = toBigInt(currentTargetVoteWeightStr) - oldVoteWeightPerWitness;
-      if (newTargetVoteWeightBigInt < BigInt(0)) {
-        newTargetVoteWeightBigInt = BigInt(0);
-      }
-    }
-    
-    await cache.updateOnePromise('accounts', { name: targetWitness }, { 
-      $set: { totalVoteWeight: toDbString(newTargetVoteWeightBigInt) } 
-    });
     
     return true;
   } catch (error: any) {
