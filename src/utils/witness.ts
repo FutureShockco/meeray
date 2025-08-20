@@ -41,7 +41,11 @@ export async function updateWitnessVoteWeights(updateData: VoteWeightUpdate): Pr
     });
     
     // Update vote weights for all affected witnesses
+    // This handles both witnesses that are no longer voted for (set to 0) 
+    // and witnesses that are currently voted for (set to newVoteWeightPerWitness)
     const allAffectedWitnesses = new Set([...oldVotedWitnesses, ...newVotedWitnesses]);
+    
+    logger.debug(`[witness-utils] Updating vote weights for ${allAffectedWitnesses.size} witnesses. Old: ${oldVotedWitnesses.length}, New: ${newVotedWitnesses.length}`);
     
     for (const witnessName of allAffectedWitnesses) {
       const witnessAccount = await cache.findOnePromise('accounts', { name: witnessName });
@@ -56,9 +60,11 @@ export async function updateWitnessVoteWeights(updateData: VoteWeightUpdate): Pr
       if (newVotedWitnesses.includes(witnessName)) {
         // Witness is currently voted for - calculate new vote weight
         newVoteWeightBigInt = newVoteWeightPerWitness;
+        logger.debug(`[witness-utils] Setting ${witnessName} vote weight to ${newVoteWeightBigInt} (currently voted)`);
       } else {
         // Witness is no longer voted for - remove their vote weight
         newVoteWeightBigInt = BigInt(0);
+        logger.debug(`[witness-utils] Setting ${witnessName} vote weight to 0 (no longer voted)`);
       }
       
       await cache.updateOnePromise('accounts', { name: witnessName }, { 

@@ -708,7 +708,7 @@ async function processRoutedSwap(data: PoolSwapData, sender: string, transaction
     // Log event - get pool data for the first hop to access feeTier and token symbols
     const firstPoolData = await cache.findOnePromise('liquidityPools', { _id: data.hops![0].poolId });
     await logTransactionEvent('pool_swap', sender, {
-        poolId: data.poolId,
+        poolId: data.hops![0].poolId, // Use the first hop's poolId instead of data.poolId
         tokenIn: data.hops![0].tokenIn_symbol,
         tokenOut: data.hops![data.hops!.length - 1].tokenOut_symbol,
         amountIn: toDbString(toBigInt(data.amountIn)),
@@ -716,7 +716,7 @@ async function processRoutedSwap(data: PoolSwapData, sender: string, transaction
         fee: toDbString(totalAmountOut * BigInt(10000) / toBigInt(data.amountIn)),
         feeTier: firstPoolData?.feeTier || 300,
         tokenA_symbol: firstPoolData?.tokenA_symbol || data.hops![0].tokenIn_symbol,
-        tokenB_symbol: firstPoolData?.tokenB_symbol || data.hops![data.hops!.length - 1].tokenOut_symbol
+        tokenB_symbol: firstPoolData?.tokenB_symbol || data.hops![0].tokenOut_symbol
     }, transactionId);
 
     return true;
