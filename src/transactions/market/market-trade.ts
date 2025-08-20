@@ -36,6 +36,41 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
       return false;
     }
 
+    // Validate token format: must include issuer (SYMBOL@ISSUER)
+    if (!data.tokenIn.includes('@')) {
+      logger.warn(`[hybrid-trade] Invalid tokenIn format. Expected format: SYMBOL@ISSUER (e.g., "LORD@echelon-node1"). Received: "${data.tokenIn}". Please specify the full token identifier including issuer.`);
+      return false;
+    }
+
+    if (!data.tokenOut.includes('@')) {
+      logger.warn(`[hybrid-trade] Invalid tokenOut format. Expected format: SYMBOL@ISSUER (e.g., "TBD@echelon-node1"). Received: "${data.tokenOut}". Please specify the full token identifier including issuer.`);
+      return false;
+    }
+
+    // Validate that tokens with the exact issuer exist
+    const [tokenInSymbol, tokenInIssuer] = data.tokenIn.split('@');
+    const [tokenOutSymbol, tokenOutIssuer] = data.tokenOut.split('@');
+
+    // Check if tokenIn exists with the specified issuer
+    const tokenInExists = await cache.findOnePromise('tokens', { 
+      symbol: tokenInSymbol, 
+      issuer: tokenInIssuer 
+    });
+    if (!tokenInExists) {
+      logger.warn(`[hybrid-trade] Token ${data.tokenIn} does not exist. Symbol "${tokenInSymbol}" with issuer "${tokenInIssuer}" not found in the system.`);
+      return false;
+    }
+
+    // Check if tokenOut exists with the specified issuer
+    const tokenOutExists = await cache.findOnePromise('tokens', { 
+      symbol: tokenOutSymbol, 
+      issuer: tokenOutIssuer 
+    });
+    if (!tokenOutExists) {
+      logger.warn(`[hybrid-trade] Token ${data.tokenOut} does not exist. Symbol "${tokenOutSymbol}" with issuer "${tokenOutIssuer}" not found in the system.`);
+      return false;
+    }
+
     if (data.tokenIn === data.tokenOut) {
       logger.warn('[hybrid-trade] Cannot trade the same token.');
       return false;
@@ -184,7 +219,7 @@ export async function process(data: HybridTradeData, sender: string, transaction
             type: 'ORDERBOOK',
             allocation: 100,
             details: {
-              pairId: `${data.tokenIn.split('@')[0]}-${data.tokenOut.split('@')[0]}`,
+              pairId: `${data.tokenIn.split('@')[0]}@${sender}-${data.tokenOut.split('@')[0]}@${sender}`,
               side: OrderSide.BUY,
               orderType: OrderType.LIMIT,
               price: calculatedPrice.toString()
@@ -205,7 +240,7 @@ export async function process(data: HybridTradeData, sender: string, transaction
           type: 'ORDERBOOK',
           allocation: 100,
           details: {
-            pairId: `${data.tokenIn.split('@')[0]}-${data.tokenOut.split('@')[0]}`, // Simplified pair ID generation
+            pairId: `${data.tokenIn.split('@')[0]}@${sender}-${data.tokenOut.split('@')[0]}@${sender}`,
             side: OrderSide.BUY, // Fixed - use enum value
             orderType: OrderType.LIMIT,
             price: data.price
@@ -352,8 +387,8 @@ async function executeOrderbookRoute(
       type: orderType,
       side: orderbookDetails.side,
       quantity: amountIn,
-      baseAssetSymbol: tradeData.tokenIn, // Simplified
-      quoteAssetSymbol: tradeData.tokenOut // Simplified
+      baseAssetSymbol: tradeData.tokenIn,
+      quoteAssetSymbol: tradeData.tokenOut
     };
 
     // Add price for limit orders
