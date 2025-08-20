@@ -2,8 +2,7 @@ import config from './config.js';
 import cache from './cache.js';
 import logger from './logger.js';
 import p2p from './p2p.js';
-import transaction from './transaction.js';
-import { toBigInt, toDbString } from './utils/bigint.js';
+import { toDbString } from './utils/bigint.js';
 import { adjustTokenSupply } from './utils/token.js';
 import { adjustBalance } from './utils/account.js';
 
@@ -13,7 +12,7 @@ export const witnessesModule = {
         let hash = block.hash;
         let rand = parseInt('0x' + hash.substr(hash.length - config.witnessShufflePrecision));
         if (!p2p.recovering) logger.debug('Generating schedule... NRNG: ' + rand);
-        let witnesses = witnessesModule.generateWitnesses(true, false, config.witnesses, 0);
+        let witnesses = witnessesModule.generateWitnesses(true, config.read(block._id).witnesses, 0);
         witnesses = witnesses.sort((a: any, b: any) => {
             if (a.name < b.name) return -1;
             if (a.name > b.name) return 1;
@@ -35,33 +34,33 @@ export const witnessesModule = {
             shuffle: shuffledWitnesses
         };
     },
-    witnessRewards: async (name: string, ts: number, cb: (dist: string) => void) => {
+    witnessRewards: async (name: string, block: any): Promise<string> => {
         const account = await cache.findOnePromise('accounts', { name: name })
-        const reward = BigInt(config.witnessReward || 0);
+        const reward = BigInt(config.read(block._id).witnessReward || 0);
         if (reward > BigInt(0)) {
             const rewardBigInt = BigInt(reward);
             logger.trace(`witnessRewards: Applying reward for ${name}: ${rewardBigInt.toString()}`);
             const adjusted = await adjustBalance(account!.name!, config.nativeTokenSymbol, rewardBigInt);
             if (!adjusted) {
                 logger.error(`witnessRewards: Failed to adjust balance for ${account!.name} when distributing rewards.`);
-                return cb('0');
+                return '0';
             }
-            adjustTokenSupply(config.nativeTokenSymbol, rewardBigInt).then((success) => {
+            try {
+                const success = await adjustTokenSupply(config.nativeTokenSymbol, rewardBigInt);
                 if (!success) {
                     logger.error(`witnessRewards: Failed to update token supply for ${config.nativeTokenSymbol}`);
                 }
                 logger.trace(`witnessRewards: Distributed reward (${rewardBigInt.toString()} smallest units) to witness ${name}`);
-                cb(toDbString(rewardBigInt));
-            }).catch((error) => {
+                return toDbString(rewardBigInt);
+            } catch (error) {
                 logger.error(`witnessRewards: Failed to update token supply for ${config.nativeTokenSymbol}: ${error}`);
-                cb('0');
-            });
+                return '0';
+            }
         } else {
-            cb('0');
+            return '0';
         }
-
     },
-    generateWitnesses: (withWitnessPub: boolean, withWs: boolean, limit: number, start: number) => {
+    generateWitnesses: (withWitnessPub: boolean, limit: number, start: number) => {
         let witnesses: any[] = [];
 
         let witnessAccSource = withWitnessPub ? cache.witnesses : cache.accounts;
@@ -89,11 +88,9 @@ export const witnessesModule = {
                 votedWitnesses: account.votedWitnesses,
                 totalVoteWeight: account.totalVoteWeight,
             };
-            if (withWs && account.json && account.json.node && typeof account.json.node.ws === 'string') {
-                witnessDetails.ws = account.json.node.ws;
-            }
+
             witnesses.push(witnessDetails);
         }
-        return witnesses;
+        return witnesses.slice(start, limit);
     },
 };

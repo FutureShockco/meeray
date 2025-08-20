@@ -105,27 +105,24 @@ export const mining = {
         })
     },
 
-    /**
-     * Check if this node can mine the next block.
-     */
-    canMineBlock: (cb: (err: boolean | null, newBlock?: any) => void) => {
+    canMineBlock: async (cb: (err: boolean | null, newBlock?: any) => void) => {
         if (chain.shuttingDown) {
             logger.warn('canMineBlock: Chain shutting down, aborting.');
             cb(true, null); return;
         }
-        mining.prepareBlock((err, newBlock) => {
+        mining.prepareBlock(async (err, newBlock) => {
             logger.trace(`canMineBlock: prepareBlock result - err: ${err}, newBlock._id: ${newBlock?._id}`);
             if (newBlock === null || newBlock === undefined) {
                 cb(true, null); return;
             }
-            isValidNewBlock(newBlock, false, false, function (isValid: boolean) {
-                logger.trace(`canMineBlock: isValidNewBlock for _id ${newBlock._id} result: ${isValid}`);
-                if (!isValid) {
-                    cb(true, newBlock); return;
-                }
-                cb(null, newBlock);
-            });
+            const isValid = await isValidNewBlock(newBlock, false, false);
+            logger.trace(`canMineBlock: isValidNewBlock for _id ${newBlock._id} result: ${isValid}`);
+            if (!isValid) {
+                cb(true, newBlock); return;
+            }
+            cb(null, newBlock);
         });
+
     },
 
     mineBlock: (cb: (err: boolean | null, newBlock?: any) => void) => {

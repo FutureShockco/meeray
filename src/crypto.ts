@@ -82,28 +82,25 @@ export function isValidPubKey(key: string): boolean {
 export async function isValidSignature(
     user: string,
     hash: string,
-    sign: string,
-    cb: (valid: any) => void
-) {
-    cache.findOne('accounts', { name: user }, async function (err, account) {
-        if (err) throw err
-        if (!account) {
-            cb(false); return
-        } else if (chain.restoredBlocks && chain.getLatestBlock()._id < chain.restoredBlocks && process.env.REBUILD_NO_VERIFY === '1')
-            // no verify rebuild mode, only use if you trust the contents of blocks.zip
-            return cb(account)
+    sign: string
+): Promise<any> {
+    const account = await cache.findOnePromise('accounts', { name: user });
+    if (!account) {
+        return false;
+    } else if (chain.restoredBlocks && chain.getLatestBlock()._id < chain.restoredBlocks && process.env.REBUILD_NO_VERIFY === '1') {
+        // no verify rebuild mode, only use if you trust the contents of blocks.zip
+        return account;
+    }
 
-        try {
-            let bufferHash = Buffer.from(hash, 'hex')
-            let b58sign = bs58.decode(sign)
-            let b58pub = bs58.decode(account.witnessPublicKey)
-            if (secp256k1.ecdsaVerify(b58sign, bufferHash, b58pub)) {
-                cb(account)
-                return
-            }
-        } catch (e) { }
-        cb(false)
-    })
+    try {
+        let bufferHash = Buffer.from(hash, 'hex')
+        let b58sign = bs58.decode(sign)
+        let b58pub = bs58.decode(account.witnessPublicKey)
+        if (secp256k1.ecdsaVerify(b58sign, bufferHash, b58pub)) {
+            return account;
+        }
+    } catch (e) { }
+    return false;
 }
 
 export function getNewKeyPair() {

@@ -2,8 +2,6 @@ import { Block, isValidNewBlock } from './block.js';
 import config from './config.js';
 import { blocks } from './blockStore.js';
 import logger from './logger.js';
-import baseX from 'base-x';
-// @ts-ignore
 import series from 'run-series';
 import transaction from './transaction.js';
 import { Transaction } from './transactions/index.js';
@@ -18,7 +16,6 @@ import settings from './settings.js';
 import mongo from './mongo.js';
 import steem from './steem.js';
 import { upsertAccountsReferencedInTx } from './account.js';
-import _ from 'lodash';
 
 // Add constants for block-based broadcasting
 const SYNC_MODE_BROADCAST_INTERVAL_BLOCKS = 3; // Broadcast every 3 blocks in sync mode
@@ -181,7 +178,7 @@ export const chain = {
                             const witnessLagThreshold = config.steemBlockMaxDelay || (config.steemBlockDelay || 10);
 
                             const activeWitnessAccounts = chain.schedule?.active_witnesses || config.witnesses || [];
-                            const minWitnessesLaggingForEntryFactor = activeWitnessAccounts.length > 0 ? Math.max(1, Math.ceil(activeWitnessAccounts.length *  0.3)) : 0;
+                            const minWitnessesLaggingForEntryFactor = activeWitnessAccounts.length > 0 ? Math.max(1, Math.ceil(activeWitnessAccounts.length * 0.3)) : 0;
 
                             const isLocallyCritical = localSteemDelayCorrected > criticalLocalDelayThreshold;
                             const isNetworkMedianLagHigh = networkOverall.medianBehind > networkMedianEntryThreshold;
@@ -402,62 +399,61 @@ export const chain = {
     },
     validateAndAddBlock: async (block: any, revalidate: boolean, cb: (err: any, newBlock: any) => void) => {
         if (chain.shuttingDown) return
-        
+
         // Add recovery context to logging
         const recoveryMode = p2p.recovering ? ' [RECOVERY]' : '';
         logger.trace(`validateAndAddBlock${recoveryMode}: Processing Block ID: ${block?._id}, Witness: ${block?.witness}, Timestamp: ${block?.timestamp}`);
-        
-        isValidNewBlock(block, revalidate, false, function (isValid: boolean) {
-            logger.trace(`validateAndAddBlock${recoveryMode}: isValidNewBlock for Block ID: ${block?._id} returned: ${isValid}`);
-            if (!isValid) {
-                logger.warn(`validateAndAddBlock${recoveryMode}: Block ID: ${block?._id} failed isValidNewBlock. Witness: ${block?.witness}`);
-                return cb("Block failed basic validation", null);
+
+        const isValid = await isValidNewBlock(block, revalidate, false);
+        logger.trace(`validateAndAddBlock${recoveryMode}: isValidNewBlock for Block ID: ${block?._id} returned: ${isValid}`);
+        if (!isValid) {
+            logger.warn(`validateAndAddBlock${recoveryMode}: Block ID: ${block?._id} failed isValidNewBlock. Witness: ${block?.witness}`);
+            return cb("Block failed basic validation", null);
+        }
+        logger.trace(`validateAndAddBlock: Block ID: ${block?._id} passed isValidNewBlock. Witness: ${block?.witness}`); // Changed from console.log
+        // straight execution
+        chain.executeBlockTransactions(block, false, function (successfullyExecutedTxs: any[], distributed: string) {
+            logger.trace(`validateAndAddBlock: executeBlockTransactions for Block ID: ${block?._id} completed. Valid Txs: ${successfullyExecutedTxs?.length}/${block?.txs?.length}, Distributed: ${distributed}`);
+
+            // if any transaction failed execution, reject the block
+            if (block.txs.length !== successfullyExecutedTxs.length) {
+                logger.error(`validateAndAddBlock: Not all transactions in Block ID: ${block?._id} executed successfully. Expected: ${block.txs.length}, Executed: ${successfullyExecutedTxs.length}. Rejecting block.`);
+                // Roll back any in-memory cache mutations captured during tx executions
+                try { cache.rollback(); } catch (e) { logger.error('validateAndAddBlock: Error during cache rollback after tx failure:', e); }
+                cb("Not all transactions executed successfully", null); // Signal block error
+                return;
             }
-            logger.trace(`validateAndAddBlock: Block ID: ${block?._id} passed isValidNewBlock. Witness: ${block?.witness}`); // Changed from console.log
-            // straight execution
-            chain.executeBlockTransactions(block, false, function (successfullyExecutedTxs: any[], distributed: string) {
-                logger.trace(`validateAndAddBlock: executeBlockTransactions for Block ID: ${block?._id} completed. Valid Txs: ${successfullyExecutedTxs?.length}/${block?.txs?.length}, Distributed: ${distributed}`);
 
-                // if any transaction failed execution, reject the block
-                if (block.txs.length !== successfullyExecutedTxs.length) {
-                    logger.error(`validateAndAddBlock: Not all transactions in Block ID: ${block?._id} executed successfully. Expected: ${block.txs.length}, Executed: ${successfullyExecutedTxs.length}. Rejecting block.`);
-                    // Roll back any in-memory cache mutations captured during tx executions
-                    try { cache.rollback(); } catch (e) { logger.error('validateAndAddBlock: Error during cache rollback after tx failure:', e); }
-                    cb("Not all transactions executed successfully", null); // Signal block error
-                    return;
-                }
+            // All transactions executed successfully if we reach here.
 
-                // All transactions executed successfully if we reach here.
+            // error if distributed computed amounts are different than the reported one
+            let blockDist = block.dist || "0";
+            if (blockDist !== distributed) {
+                logger.error(`validateAndAddBlock: Wrong dist amount for Block ID: ${block?._id}. Expected: ${blockDist}, Got: ${distributed}. Rejecting block.`);
+                try { cache.rollback(); } catch (e) { logger.error('validateAndAddBlock: Error during cache rollback after dist mismatch:', e); }
+                cb("Wrong distribution amount", null); // Signal block error
+                return;
+            }
 
-                // error if distributed computed amounts are different than the reported one
-                let blockDist = block.dist || "0";
-                if (blockDist !== distributed) {
-                    logger.error(`validateAndAddBlock: Wrong dist amount for Block ID: ${block?._id}. Expected: ${blockDist}, Got: ${distributed}. Rejecting block.`);
-                    try { cache.rollback(); } catch (e) { logger.error('validateAndAddBlock: Error during cache rollback after dist mismatch:', e); }
-                    cb("Wrong distribution amount", null); // Signal block error
-                    return;
-                }
+            // Now that the block is fully validated and all txs are good:
+            chain.addRecentTxsInBlock(successfullyExecutedTxs); // Use successfullyExecutedTxs
+            transaction.removeFromPool(successfullyExecutedTxs); // Use successfullyExecutedTxs
 
-                // Now that the block is fully validated and all txs are good:
-                chain.addRecentTxsInBlock(successfullyExecutedTxs); // Use successfullyExecutedTxs
-                transaction.removeFromPool(successfullyExecutedTxs); // Use successfullyExecutedTxs
+            chain.addBlock(block, function () {
+                // and broadcast to peers (if not replaying)
+                if (!p2p.recovering)
+                    p2p.broadcastBlock(block)
 
-                chain.addBlock(block, function () {
-                    // and broadcast to peers (if not replaying)
-                    if (!p2p.recovering)
-                        p2p.broadcastBlock(block)
+                // process notifications and witness stats (non blocking)
+                if (settings.useNotification)
+                    notifications.processBlock(block)
 
-                    // process notifications and witness stats (non blocking)
-                    if (settings.useNotification)
-                        notifications.processBlock(block)
+                // emit event to confirm new transactions in the http api
+                if (!p2p.recovering)
+                    for (let i = 0; i < block.txs.length; i++)
+                        transaction.eventConfirmation.emit(block.txs[i].hash)
 
-                    // emit event to confirm new transactions in the http api
-                    if (!p2p.recovering)
-                        for (let i = 0; i < block.txs.length; i++)
-                            transaction.eventConfirmation.emit(block.txs[i].hash)
-
-                    cb(null, block)
-                })
+                cb(null, block)
             })
         });
     },
@@ -507,7 +503,7 @@ export const chain = {
         }
         executions.push((callback: (err: any, result: any) => void) => chain.applyHardfork(block, callback));
 
-        series(executions, function (err: any, results: any) {
+        series(executions, async function (err: any, results: any) {
             let string = 'executed'
             if (revalidate) string = 'validated & ' + string
             if (err) {
@@ -524,10 +520,9 @@ export const chain = {
                 }
             }
             // add rewards for the witness who mined this block
-            witnessesModule.witnessRewards(block.witness, block.timestamp, function (dist: string) {
-                distributedInBlock = BigInt(distributedInBlock) + BigInt(dist);
-                cb(executedSuccesfully, distributedInBlock.toString());
-            });
+            const dist = await witnessesModule.witnessRewards(block.witness, block);
+            distributedInBlock = BigInt(distributedInBlock) + BigInt(dist);
+            cb(executedSuccesfully, distributedInBlock.toString());
         });
     },
 };

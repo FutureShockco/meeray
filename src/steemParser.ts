@@ -200,7 +200,6 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                             txType = TransactionType.LAUNCHPAD_UPDATE_WHITELIST;
                             break;
 
-                        // Market Transactions
                         case 'market_create_pair':
                             txType = TransactionType.MARKET_CREATE_PAIR;
                             break;
@@ -208,7 +207,6 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                             txType = TransactionType.MARKET_CANCEL_ORDER;
                             break;
 
-                        // Market Trading (Unified AMM + Orderbook)
                         case 'market_trade':
                             txType = TransactionType.MARKET_TRADE;
                             break;

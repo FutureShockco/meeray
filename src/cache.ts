@@ -306,7 +306,6 @@ const cache: CacheType = {
             // Add to changes array for writeToDisk to eventually process (if this is part of a transaction block)
             // However, direct DB modification bypasses the usual change tracking for rollback of in-memory state.
             // For simplicity here, this method directly modifies DB and in-memory state.
-            // A more complex implementation would queue a delete operation for writeToDisk.
             if (result.deletedCount && result.deletedCount > 0) {
                 // For now, we don't add to this.changes for deletions, as writeToDisk mainly handles inserts/updates.
                 // If deletion needs to be part of the batching/rollback system, this needs more thought.
@@ -343,7 +342,6 @@ const cache: CacheType = {
             const liveCollection = (this[collectionName] as CacheCollectionStore);
             const copyCollection = (this.copy[copyCollectionName] as CacheCollectionStore);
 
-            // Ensure chain.getLatestBlock() is checked for null/undefined before accessing _id
             const latestBlock = chain.getLatestBlock();
             if (copyCollection && !copyCollection[docId] &&
                 (!chain.restoredBlocks || (latestBlock && latestBlock._id >= chain.restoredBlocks))) {
@@ -557,11 +555,10 @@ const cache: CacheType = {
             if (cb) cb(err);
             return;
         }
-        const currentDb = db; // db is confirmed to be non-null here
+        const currentDb = db;
 
         const bulkOpsByCollection: { [collectionName: string]: any[] } = {};
 
-        // Helper to initialize bulkOps for a collection
         const ensureBulkOpsForCollection = (collectionName: string) => {
             if (!bulkOpsByCollection[collectionName]) {
                 bulkOpsByCollection[collectionName] = [];
@@ -588,14 +585,11 @@ const cache: CacheType = {
 
             if (changeOp.query && changeOp.changes && Object.keys(changeOp.changes).length > 0) {
                 ensureBulkOpsForCollection(collection);
-                // The `changeOp.changes` should already be in the correct MongoDB update operator format
-                // e.g., { $set: { field: value }, $inc: { counter: 1 } }
-                // The `changeOp.query` is the filter document.
                 bulkOpsByCollection[collection].push({
                     updateOne: {
                         filter: changeOp.query,
                         update: changeOp.changes,
-                        upsert: true // Keep upsert:true, was used with replaceOne and generally safe for updateOne
+                        upsert: true
                     }
                 });
             } else {
@@ -615,8 +609,7 @@ const cache: CacheType = {
         }
 
         // 4. Handle other specific updates (txHistory, witnessesStats, state)
-        // These are not easily batched with the above, keep them as separate ops for now,
-        // or convert them to bulkWrite if they consistently target the same collections and can be structured as bulk ops.
+        // These are not easily batched with the above, we keep them as separate ops for now,
         let singleOpExecutions: AsyncDbFunction[] = [];
 
         if (process.env.WITNESS_STATS === '1' && witnessesStats && typeof witnessesStats.getWriteOps === 'function') {
@@ -661,13 +654,11 @@ const cache: CacheType = {
 
         const allOpsDoneCallback = (err?: Error | null, results?: any[]) => {
             if (!err) {
-                if (!rebuild) { // Original JS only cleared non-rebuild, specific items for rebuild in processRebuildOps
+                if (!rebuild) {
                     this.clear();
                 } else {
-                    // For rebuild, specific clear happens in processRebuildOps
                     this.rebuild.inserts = [];
                     this.rebuild.changes = [];
-                    // witnessChanges are cleared in processRebuildOps
                 }
             } else {
                 logger.error('cacheWriter: Batch failed. Cache not cleared (or partially cleared for rebuild).', err);
@@ -760,7 +751,6 @@ const cache: CacheType = {
         }
     },
 
-    // Warmup only implements 'accounts' as 'contents' is not in the target collection structure
     warmup: async function (collection: string, maxDoc: number): Promise<void> {
         if (!db) {
             logger.error(`cacheWarmUp: Database not initialized for ${collection}.`);
@@ -790,7 +780,7 @@ const cache: CacheType = {
                 }
                 break;
             case 'tokens':
-                options.sort = { totalVoteWeight: -1, name: -1 };
+                options.sort = { symbol: -1 };
                 try {
                     const tokensDocs = await db.collection<BasicCacheDoc>(collection).find({}, options).toArray();
                     for (let i = 0; i < tokensDocs.length; i++) {
@@ -805,16 +795,12 @@ const cache: CacheType = {
                     throw err;
                 }
                 break;
-            // 'contents' logic from JS is omitted as it's not in the target collection set.
             default:
                 logger.warn(`cacheWarmUp: Collection type '${collection}' not implemented for warmup in this configuration.`);
-                // Original JS would reject, returning resolve to not break Promise.all if used elsewhere
                 return Promise.resolve();
         }
     },
-
     warmupWitnesses: async function (): Promise<number> {
-
         try {
             const accs = await mongo.getDb().collection('accounts').find({
                 $and: [

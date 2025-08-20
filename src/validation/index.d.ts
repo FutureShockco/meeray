@@ -26,4 +26,6 @@ export interface ValidateModule {
 
 declare const validate: ValidateModule;
 
+
+
 export default validate; 

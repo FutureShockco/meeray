@@ -81,96 +81,96 @@ export function calculateHashForBlock(
         return '';
     }
 }
-// isValidHashAndSignature
-export function isValidHashAndSignature(newBlock: any, cb: (valid: boolean) => void) {
+
+export async function isValidHashAndSignature(newBlock: any): Promise<boolean> {
     let theoreticalHash = calculateHashForBlock(newBlock, true)
     if (theoreticalHash !== newBlock.hash) {
         logger.debug(`Hash types: received = ${typeof (newBlock.hash)}, calculated = ${typeof theoreticalHash}`);
         logger.error(`invalid hash: calculated = ${theoreticalHash}, received = ${newBlock.hash}`);
         // Log the full newBlock object when there's a hash mismatch
         logger.error(`[isValidHashAndSignature] Mismatch detected. Received newBlock object: ${JSON.stringify(newBlock, null, 2)}`);
-        cb(false); return
+        return false;
     }
 
-    // finally, verify the signature of the miner
-    isValidSignature(newBlock.witness, newBlock.hash, newBlock.signature, function (valid) {
-        if (!valid) {
-            logger.error('invalid miner signature')
-            cb(false); return
-        }
-        cb(true)
-    })
+    const valid = await isValidSignature(newBlock.witness, newBlock.hash, newBlock.signature);
+    if (!valid) {
+        logger.error('invalid miner signature')
+        return false;
+    }
+    return true;
 }
 
-// isValidBlockTxs
-export function isValidBlockTxs(newBlock: any, cb: (valid: boolean) => void) {
-    // Revalidate transactions in order
-    chain.executeBlockTransactions(newBlock, true, function (validTxs, dist) {
-        cache.rollback()
-        if (validTxs.length !== newBlock.txs.length) {
-            logger.error('invalid block transaction')
-            cb(false); return
-        }
-        let blockDist = newBlock.dist || 0
-        if (blockDist !== dist) {
-            logger.error('Wrong dist amount', blockDist, dist)
-            return cb(false)
-        }
+export function isValidBlockTxs(newBlock: any): Promise<boolean> {
+    return new Promise((resolve) => {
+        chain.executeBlockTransactions(newBlock, true, function (validTxs, dist) {
+            cache.rollback()
+            if (validTxs.length !== newBlock.txs.length) {
+                logger.error('invalid block transaction')
+                resolve(false);
+                return;
+            }
+            let blockDist = newBlock.dist || 0
+            if (blockDist !== dist) {
+                logger.error('Wrong dist amount', blockDist, dist)
+                resolve(false);
+                return;
+            }
 
-        cb(true)
-    })
+            resolve(true);
+        })
+    });
 }
 
-export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boolean, verifyTxValidity: boolean, cb: (isValid: boolean) => void) {
-    if (!newBlock) return cb(false);
+export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boolean, verifyTxValidity: boolean): Promise<boolean> {
+    if (!newBlock) return false;
     if (!newBlock._id || typeof newBlock._id !== 'number') {
         logger.error('invalid block _id');
-        return cb(false);
+        return false;
     }
     if (!newBlock.phash || typeof newBlock.phash !== 'string') {
         logger.error('invalid block phash');
-        return cb(false);
+        return false;
     }
     if (!newBlock.timestamp || typeof newBlock.timestamp !== 'number') {
         logger.error('invalid block timestamp');
-        return cb(false);
+        return false;
     }
     if (!newBlock.txs || typeof newBlock.txs !== 'object' || !Array.isArray(newBlock.txs)) {
         logger.error('invalid block txs');
-        return cb(false);
+        return false;
     }
     if (newBlock.txs.length > config.maxTxPerBlock) {
         logger.error('invalid block too many txs');
-        return cb(false);
+        return false;
     }
     if (!newBlock.witness || typeof newBlock.witness !== 'string') {
         logger.error('invalid block witness');
-        return cb(false);
+        return false;
     }
     if (verifyHashAndSignature && (!newBlock.hash || typeof newBlock.hash !== 'string')) {
         logger.error('invalid block hash');
-        return cb(false);
+        return false;
     }
     if (verifyHashAndSignature && (!newBlock.signature || typeof newBlock.signature !== 'string')) {
         logger.error('invalid block signature');
-        return cb(false);
+        return false;
     }
     if (newBlock.missedBy && typeof newBlock.missedBy !== 'string') {
         logger.error('invalid block missedBy');
-        return cb(false);
+        return false;
     }
 
     // Check block timestamp is not too far in the future
     const maxDrift = config.maxDrift || 30000;
     if (newBlock.timestamp > Date.now() + maxDrift) {
         logger.error('block timestamp too far in the future');
-        return cb(false);
+        return false;
     }
     // verify that its indeed the next block
     const previousBlock = chain.getLatestBlock();
     if (previousBlock._id + 1 !== newBlock._id) {
         logger.error('invalid index')
-        cb(false); return
+        return false;
     }
     
     // Enhanced phash validation with sync mode reconciliation
@@ -211,7 +211,7 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
         
         // Always reject phash mismatches to maintain consensus integrity
         logger.error('invalid phash')
-        cb(false); return
+        return false;
     }
     
     // check that the witness is scheduled
@@ -231,7 +231,7 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
     }
     if (witnessPriority === 0) {
         logger.error('unauthorized witness');
-        return cb(false);
+        return false;
     }
     const blockTime = newBlock.sync ? config.syncBlockTime : config.blockTime;
     // Check block is not too early for backup (skip during recovery/replay)
@@ -248,7 +248,7 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
         
         if (!isRecovering && !isHistoricalBlock && !isReplayMode) {
             logger.error('block too early for witness with priority #' + witnessPriority);
-            return cb(false);
+            return false;
         } else {
             logger.info(`[RECOVERY] Allowing block timing validation bypass for block ${newBlock._id} with witness priority #${witnessPriority} (recovering=${isRecovering}, historical=${isHistoricalBlock}, rebuild=${isReplayMode})`);
         }
@@ -256,29 +256,27 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
     
     if (!verifyTxValidity) {
         if (!verifyHashAndSignature) {
-            cb(true); return
+            return true;
         }
-        isValidHashAndSignature(newBlock, function (isValid) {
-            if (!isValid) {
-                logger.error(`invalid hash: ${newBlock.hash}`);
-                cb(false); return
-            }
-            cb(true)
-        })
-    } else
-        isValidBlockTxs(newBlock, function (isValid) {
-            if (!isValid) {
-                cb(false); return
-            }
-            if (!verifyHashAndSignature) {
-                cb(true); return
-            }
-            isValidHashAndSignature(newBlock, function (isValid) {
-                if (!isValid) {
-                    cb(false); return
-                }
-                cb(true)
-            })
-        })
+        const isValid = await isValidHashAndSignature(newBlock);
+        if (!isValid) {
+            logger.error(`invalid hash: ${newBlock.hash}`);
+            return false;
+        }
+        return true;
+    } else {
+        const isTxsValid = await isValidBlockTxs(newBlock);
+        if (!isTxsValid) {
+            return false;
+        }
+        if (!verifyHashAndSignature) {
+            return true;
+        }
+        const isValid = await isValidHashAndSignature(newBlock);
+        if (!isValid) {
+            return false;
+        }
+        return true;
+    }
 }
 

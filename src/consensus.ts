@@ -379,7 +379,7 @@ export const consensus: Consensus = {
         this.processBlockNormally(round, block, cb);
     },
     
-    processBlockNormally: function (round: number, block: any, cb?: (result: number) => void) {
+    processBlockNormally: async function (round: number, block: any, cb?: (result: number) => void) {
         if (round === 0) {
             for (let i = 0; i < this.possBlocks.length; i++)
                 if (this.possBlocks[i].block.hash === block.hash) {
@@ -403,36 +403,35 @@ export const consensus: Consensus = {
             for (let r = 0; r < config.consensusRounds; r++)
                 possBlock[r] = [];
             logger.debug('New poss block ' + block._id + '/' + block.witness + '/' + block.hash.substr(0, 4));
-            isValidNewBlock(block, true, true, (isValid: boolean) => {
-                this.validating.splice(this.validating.indexOf(possBlock.block.hash), 1);
-                if (!isValid) {
-                    logger.error('Received invalid new block from ' + block.witness, block.hash);
-                    if (cb) cb(-1);
-                } else {
-                    logger.debug('Precommitting block ' + block._id + '#' + block.hash.substr(0, 4));
+            const isValid = await isValidNewBlock(block, true, true);
+            this.validating.splice(this.validating.indexOf(possBlock.block.hash), 1);
+            if (!isValid) {
+                logger.error('Received invalid new block from ' + block.witness, block.hash);
+                if (cb) cb(-1);
+            } else {
+                logger.debug('Precommitting block ' + block._id + '#' + block.hash.substr(0, 4));
 
-                    this.possBlocks.push(possBlock);
+                this.possBlocks.push(possBlock);
 
-                    for (let i = 0; i < this.possBlocks.length; i++)
-                        if (block.hash === this.possBlocks[i].block.hash && this.possBlocks[i][0].indexOf(process.env.STEEM_ACCOUNT) === -1) {
-                            possBlock[0].push(process.env.STEEM_ACCOUNT);
-                        }
-                    for (let i = 0; i < this.queue.length; i++) {
-                        if (this.queue[i].d.b.hash === possBlock.block.hash) {
-                            this.remoteRoundConfirm(this.queue[i]);
-                            this.queue.splice(i, 1);
-                            i--;
-                            continue;
-                        }
-                        if (this.queue[i].d.ts + 2 * config.blockTime < new Date().getTime()) {
-                            this.queue.splice(i, 1);
-                            i--;
-                        }
+                for (let i = 0; i < this.possBlocks.length; i++)
+                    if (block.hash === this.possBlocks[i].block.hash && this.possBlocks[i][0].indexOf(process.env.STEEM_ACCOUNT) === -1) {
+                        possBlock[0].push(process.env.STEEM_ACCOUNT);
                     }
-                    this.endRound(round, block);
-                    if (cb) cb(1);
+                for (let i = 0; i < this.queue.length; i++) {
+                    if (this.queue[i].d.b.hash === possBlock.block.hash) {
+                        this.remoteRoundConfirm(this.queue[i]);
+                        this.queue.splice(i, 1);
+                        i--;
+                        continue;
+                    }
+                    if (this.queue[i].d.ts + 2 * config.blockTime < new Date().getTime()) {
+                        this.queue.splice(i, 1);
+                        i--;
+                    }
                 }
-            });
+                this.endRound(round, block);
+                if (cb) cb(1);
+            }
         } else {
             for (let b = 0; b < this.possBlocks.length; b++)
                 if (this.possBlocks[b].block.hash === block.hash && this.possBlocks[b][round].indexOf(process.env.STEEM_ACCOUNT) === -1) {
