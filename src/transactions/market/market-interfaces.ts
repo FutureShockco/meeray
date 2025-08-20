@@ -255,6 +255,7 @@ export interface LiquiditySource {
   bidDepth?: string | bigint;        // Available liquidity on bid side
   askDepth?: string | bigint;        // Available liquidity on ask side
   feeTier?: number;                  // Fee in basis points
+  hasLiquidity?: boolean;            // Whether this source has actual liquidity to trade against
 }
 
 // Quote response for hybrid trades

@@ -108,6 +108,31 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
           return false;
         }
       }
+    } else {
+      // No routes provided - check if liquidity exists for auto-routing
+      // Only check for market orders (no specific price) since limit orders default to orderbook
+      if (!data.price) {
+        const sources = await liquidityAggregator.getLiquiditySources(data.tokenIn, data.tokenOut);
+        if (sources.length === 0) {
+          logger.warn(`[hybrid-trade] No liquidity sources found for ${data.tokenIn}/${data.tokenOut}. Cannot auto-route trade.`);
+          return false;
+        }
+        
+        // Check if any source has actual liquidity
+        const hasLiquidity = sources.some(source => {
+          if (source.type === 'AMM') {
+            return source.hasLiquidity;
+          } else if (source.type === 'ORDERBOOK') {
+            return (toBigInt(source.bidDepth || '0') > 0n) || (toBigInt(source.askDepth || '0') > 0n);
+          }
+          return false;
+        });
+        
+        if (!hasLiquidity) {
+          logger.warn(`[hybrid-trade] No liquidity available for ${data.tokenIn}/${data.tokenOut}. Pools exist but have no liquidity, and orderbook has no orders.`);
+          return false;
+        }
+      }
     }
 
     return true;
@@ -128,7 +153,7 @@ export async function process(data: HybridTradeData, sender: string, transaction
       if (!data.price) {
         const quote = await liquidityAggregator.getBestQuote(data);
         if (!quote) {
-          logger.warn('[hybrid-trade] No liquidity available for this trade.');
+          logger.warn('[hybrid-trade] No liquidity available for this trade. This should have been caught during validation.');
           return false;
         }
         routes = quote.routes.map(r => ({

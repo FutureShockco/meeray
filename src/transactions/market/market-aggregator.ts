@@ -46,17 +46,18 @@ export class LiquidityAggregator {
       }) as LiquidityPoolData[];
       
       for (const pool of poolsData || []) {
-        if (toBigInt(pool.tokenA_reserve) > 0n && toBigInt(pool.tokenB_reserve) > 0n) {
-          pools.push({
-            type: 'AMM',
-            id: pool._id,
-            tokenA: pool.tokenA_symbol,
-            tokenB: pool.tokenB_symbol,
-            reserveA: pool.tokenA_reserve,
-            reserveB: pool.tokenB_reserve,
-            feeTier: pool.feeTier
-          });
-        }
+        // Include pools even with 0 reserves for routing purposes
+        // They can still be used for price discovery and routing
+        pools.push({
+          type: 'AMM',
+          id: pool._id,
+          tokenA: pool.tokenA_symbol,
+          tokenB: pool.tokenB_symbol,
+          reserveA: pool.tokenA_reserve,
+          reserveB: pool.tokenB_reserve,
+          feeTier: pool.feeTier,
+          hasLiquidity: toBigInt(pool.tokenA_reserve) > 0n && toBigInt(pool.tokenB_reserve) > 0n
+        });
       }
       
       logger.debug(`[LiquidityAggregator] Found ${pools.length} AMM pools`);
@@ -164,6 +165,12 @@ export class LiquidityAggregator {
    * Get quote from AMM pool
    */
   private async getAMMQuote(source: LiquiditySource, tradeData: HybridTradeData): Promise<any | null> {
+    // Check if pool has liquidity
+    if (!source.hasLiquidity) {
+      logger.debug(`[LiquidityAggregator] Pool ${source.id} has no liquidity yet`);
+      return null;
+    }
+    
     // Implement AMM quote calculation (similar to existing pool swap logic)
     const amountIn = toBigInt(tradeData.amountIn);
     
@@ -171,6 +178,12 @@ export class LiquidityAggregator {
     const tokenInIsA = source.tokenA === tradeData.tokenIn;
     const reserveIn = tokenInIsA ? toBigInt(source.reserveA!) : toBigInt(source.reserveB!);
     const reserveOut = tokenInIsA ? toBigInt(source.reserveB!) : toBigInt(source.reserveA!);
+    
+    // Additional safety check for reserves
+    if (reserveIn <= 0n || reserveOut <= 0n) {
+      logger.debug(`[LiquidityAggregator] Pool ${source.id} has insufficient reserves: ${reserveIn}/${reserveOut}`);
+      return null;
+    }
     
     // Calculate output using constant product formula with fees
     const feeTier = source.feeTier || 300; // Default 0.3%
