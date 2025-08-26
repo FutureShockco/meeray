@@ -148,7 +148,8 @@ const processBlock = async (blockNum: number): Promise<SteemBlockResult | null> 
         logger.debug('Skipping Steem block processing - node not ready to receive transactions yet');
         return null;
     }
-    while (true) {
+
+    for (let retries = 0; retries < 5; retries++) {
         const result = await blockProcessor.processBlock(blockNum);
         if (result !== null) {
             return result;
@@ -157,9 +158,15 @@ const processBlock = async (blockNum: number): Promise<SteemBlockResult | null> 
             logger.debug('Node entered recovery mode during block processing, aborting.');
             return null;
         }
-        logger.warn(`Block ${blockNum} could not be processed, retrying in 1000ms...`);
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        if (retries < 4) {
+            logger.warn(`Block ${blockNum} could not be processed, retrying in 1000ms... (${retries + 1}/5)`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        } else {
+            logger.error(`Block ${blockNum} failed after 5 attempts, skipping to prevent blocking mining.`);
+            return null;
+        }
     }
+    return null;
 };
 
 const isOnSteemBlock = async (block: Block): Promise<boolean> => {
