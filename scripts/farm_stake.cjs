@@ -1,20 +1,33 @@
-const { getClient, getRandomAccount, generateRandomFarmOperation, sendCustomJson } = require('./helpers.cjs');
+const { getClient, getMasterAccount, sendCustomJson } = require('./helpers.cjs');
+const fs = require('fs');
+const path = require('path');
 
 async function main() {
-    // Get client and random account
+    // Get client and master account
     const { client, sscId } = await getClient();
-    const { username, privateKey } = await getRandomAccount();
+    const { username, privateKey } = await getMasterAccount();
 
-    // IMPORTANT: Replace with an actual farmId from a created farm
-    const farmIdPlaceholder = `farm-${Date.now()}`; // This is just an example, use a real farm ID
+    // Read the last created farm ID from file
+    const farmIdFilePath = path.join(__dirname, 'lastFarmId.txt');
+    let farmId = null;
 
-    // Generate random staking amount
-    const { amount: stakingAmount } = generateRandomFarmOperation();
+    try {
+        if (fs.existsSync(farmIdFilePath)) {
+            farmId = fs.readFileSync(farmIdFilePath, 'utf8').trim();
+            console.log(`Using last created farm ID: ${farmId}`);
+        } else {
+            console.error('No lastFarmId.txt found. Please run farm_create.cjs first.');
+            return;
+        }
+    } catch (error) {
+        console.error(`Error reading lastFarmId.txt: ${error.message}`);
+        return;
+    }
 
     const farmStakeData = {
-        farmId: farmIdPlaceholder,
+        farmId: farmId,
         staker: username,
-        lpTokenAmount: stakingAmount
+        lpTokenAmount: "100000" // Fixed staking amount
     };
 
     console.log(`Staking in farm with account ${username}:`);

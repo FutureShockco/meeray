@@ -40,13 +40,15 @@ function loadAccount(accountName, filePath) {
 }
 
 try {
-  const primaryAcc = loadAccount(ACCOUNT_NAME, ACCOUNTS_FILE_PATH);
-  primaryPrivateKey = primaryAcc.privateKey;
-  primaryUsername = primaryAcc.username;
+  // Use master account (echelon-node1) instead of accounts from file
+  const keysFile = fs.readFileSync(path.join(__dirname, 'keys.json'));
+  const privateKeys = JSON.parse(keysFile);
 
-  const secondaryAcc = loadAccount(ACCOUNT_B_NAME, ACCOUNTS_FILE_PATH);
-  secondaryPrivateKey = secondaryAcc.privateKey;
-  secondaryUsername = secondaryAcc.username;
+  primaryPrivateKey = PrivateKey.fromString(privateKeys[0]); // Use first key (echelon-node1)
+  primaryUsername = 'echelon-node1'; // Master account name
+
+  secondaryPrivateKey = PrivateKey.fromString(privateKeys[1]); // Use second key for secondary operations
+  secondaryUsername = 'echelon-node2'; // Secondary account name
 
 } catch (e) {
     process.exit(1);

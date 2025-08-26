@@ -1,19 +1,50 @@
-const { getClient, getRandomAccount, sendCustomJson } = require('./helpers.cjs');
+const { getClient, getMasterAccount, sendCustomJson } = require('./helpers.cjs');
+const fs = require('fs');
+const path = require('path');
 
 async function main() {
-    // Get client and random account
+    // Get client and master account
     const { client, sscId } = await getClient();
-    const { username, privateKey } = await getRandomAccount();
+    const { username, privateKey } = await getMasterAccount();
 
-    // For this example, we'll transfer to a specific account from .env
-    const NFT_RECEIVER = process.env.TEST_ACCOUNT_B_NAME || 'echelon-edison';
+    // Read the last created NFT collection symbol and instance ID from files
+    const symbolFilePath = path.join(__dirname, 'lastNFTCollectionSymbol.txt');
+    const instanceIdFilePath = path.join(__dirname, 'lastNFTInstanceId.txt');
 
-    // IMPORTANT: Replace with an actual instanceId of an NFT owned by the sender
-    const instanceIdToTransfer = `artbk-${Date.now()}`; // This is just an example, use a real NFT ID
+    let collectionSymbol = "TESTNFT"; // Default fallback
+    let instanceId = null;
+
+    try {
+        if (fs.existsSync(symbolFilePath)) {
+            collectionSymbol = fs.readFileSync(symbolFilePath, 'utf8').trim();
+            console.log(`Using last created NFT collection symbol: ${collectionSymbol}`);
+        } else {
+            console.log(`No lastNFTCollectionSymbol.txt found, using default symbol: ${collectionSymbol}`);
+        }
+    } catch (error) {
+        console.error(`Error reading lastNFTCollectionSymbol.txt: ${error.message}`);
+        console.log(`Using default symbol: ${collectionSymbol}`);
+    }
+
+    try {
+        if (fs.existsSync(instanceIdFilePath)) {
+            instanceId = fs.readFileSync(instanceIdFilePath, 'utf8').trim();
+            console.log(`Using last created NFT instance ID: ${instanceId}`);
+        } else {
+            console.error('No lastNFTInstanceId.txt found. Please run nft_mint.cjs first.');
+            return;
+        }
+    } catch (error) {
+        console.error(`Error reading lastNFTInstanceId.txt: ${error.message}`);
+        return;
+    }
+
+    // For this example, we'll transfer to a different account (echelon-node2)
+    const NFT_RECEIVER = 'echelon-node2';
 
     const transferData = {
-        collectionSymbol: "ARTBK", // Should match an existing collection
-        instanceId: instanceIdToTransfer,
+        collectionSymbol: collectionSymbol,
+        instanceId: instanceId,
         to: NFT_RECEIVER,
         memo: `NFT transfer from ${username} to ${NFT_RECEIVER}`
     };

@@ -1,20 +1,14 @@
-const { getClient, getRandomAccount, generateRandomPoolOperation, sendCustomJson } = require('./helpers.cjs');
+const { getClient, getMasterAccount, sendCustomJson } = require('./helpers.cjs');
 
 async function main() {
-    // Get client and random account
+    // Get client and master account
     const { client, sscId } = await getClient();
-    const { username, privateKey } = await getRandomAccount();
-
-    // IMPORTANT: Replace with an actual poolId and ensure account has LP tokens for this pool
-    const poolIdPlaceholder = `pool-${Date.now()}`; // This is just an example, use a real pool ID
-
-    // Generate random LP token amount
-    const { amount: lpTokenAmount } = generateRandomPoolOperation();
+    const { username, privateKey } = await getMasterAccount();
 
     const removeLiquidityData = {
-        poolId: poolIdPlaceholder,
+        poolId: "TBD_TESTS_300",
         provider: username,
-        lpTokenAmount // Amount of LP tokens to burn/redeem
+        lpTokenAmount: "10000" // Amount of LP tokens to burn/redeem
     };
 
     console.log(`Removing liquidity from pool with account ${username}:`);

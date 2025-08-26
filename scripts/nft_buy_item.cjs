@@ -1,15 +1,35 @@
-const { getClient, getRandomAccount, sendCustomJson } = require('./helpers.cjs');
+const { getClient, sendCustomJson } = require('./helpers.cjs');
+const fs = require('fs');
+const path = require('path');
 
 async function main() {
-    // Get client and random account
+    // Get client - we'll use a different account to buy the NFT
     const { client, sscId } = await getClient();
-    const { username, privateKey } = await getRandomAccount();
 
-    // IMPORTANT: Replace with an actual listingId of an NFT for sale
-    const listingIdToBuy = `listing-${Date.now()}`; // This is just an example, use a real listing ID
+    // Use echelon-node2 account to buy the NFT (different from the lister)
+    const username = 'echelon-node2';
+    const keys = require('./keys.json');
+    const privateKey = keys[1]; // Use second key for echelon-node2
+
+    // Read the last created NFT listing ID from file
+    const listingIdFilePath = path.join(__dirname, 'lastNFTListingId.txt');
+    let listingId = null;
+
+    try {
+        if (fs.existsSync(listingIdFilePath)) {
+            listingId = fs.readFileSync(listingIdFilePath, 'utf8').trim();
+            console.log(`Using last created NFT listing ID: ${listingId}`);
+        } else {
+            console.error('No lastNFTListingId.txt found. Please run nft_list_item.cjs first.');
+            return;
+        }
+    } catch (error) {
+        console.error(`Error reading lastNFTListingId.txt: ${error.message}`);
+        return;
+    }
 
     const buyItemData = {
-        listingId: listingIdToBuy
+        listingId: listingId
     };
 
     console.log(`Buying NFT with account ${username}:`);

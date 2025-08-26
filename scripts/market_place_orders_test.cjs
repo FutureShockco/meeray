@@ -58,22 +58,24 @@ async function main() {
             console.log(`\nExample hybrid trade ${i + 1}/${hybridTrades.length}:`);
             console.log(JSON.stringify(tradeData, null, 2));
 
-            // Uncomment to actually execute the trades:
-            /*
-            await sendCustomJson(
-                client,
-                sscId,
-                'market_trade',
-                tradeData,
-                username,
-                privateKey
-            );
+            // Execute the actual hybrid trades
+            try {
+                await sendCustomJson(
+                    client,
+                    sscId,
+                    'market_trade',
+                    tradeData,
+                    username,
+                    privateKey
+                );
 
-            console.log(`Hybrid trade ${i + 1} executed successfully!`);
-            
-            // Small delay between trades
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            */
+                console.log(`✅ Hybrid trade ${i + 1} executed successfully!`);
+
+                // Small delay between trades
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            } catch (error) {
+                console.log(`⚠️  Hybrid trade ${i + 1} failed:`, error.message);
+            }
         }
 
         console.log('\n✅ Hybrid trading examples prepared!');

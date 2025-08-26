@@ -1,9 +1,11 @@
-const { getClient, getRandomAccount, generateRandomNFTCollectionData, sendCustomJson } = require('./helpers.cjs');
+const { getClient, getMasterAccount, generateRandomNFTCollectionData, sendCustomJson } = require('./helpers.cjs');
+const fs = require('fs');
+const path = require('path');
 
 async function main() {
-    // Get client and random account
+    // Get client and master account
     const { client, sscId } = await getClient();
-    const { username, privateKey } = await getRandomAccount();
+    const { username, privateKey } = await getMasterAccount();
 
     // Generate random NFT collection data
     const collectionData = generateRandomNFTCollectionData();
@@ -14,17 +16,18 @@ async function main() {
     collectionData.burnable = true;
     collectionData.transferable = true;
     collectionData.creatorFee = Math.floor(Math.random() * 10); // 0-10%
-    collectionData.schema = JSON.stringify({
-        type: "object",
-        properties: {
-            edition: { type: "integer" },
-            artist: { type: "string" },
-            attributes: { 
-                type: "object",
-                properties: collectionData.metadata.properties
-            }
-        }
-    });
+
+    // Ensure maxSupply is a string, not a number
+    collectionData.maxSupply = collectionData.maxSupply.toString();
+
+    // Add optional fields that were generated but not explicitly set
+    collectionData.description = collectionData.description || `${collectionData.name} - A unique digital collectibles series`;
+    collectionData.logoUrl = collectionData.logoUrl || `https://example.com/nft/${collectionData.symbol.toLowerCase()}.png`;
+    collectionData.websiteUrl = collectionData.websiteUrl || `https://example.com/nft/${collectionData.symbol.toLowerCase()}`;
+
+    // Remove properties field - it should go in schema if needed
+    delete collectionData.properties;
+    delete collectionData.metadata;
 
     console.log(`Creating NFT collection with account ${username}:`);
     console.log(JSON.stringify(collectionData, null, 2));
@@ -38,8 +41,19 @@ async function main() {
             username,
             privateKey
         );
+
+        console.log(`✅ NFT collection "${collectionData.symbol}" created successfully!`);
+
+        // Write the collection symbol to lastNFTCollectionSymbol.txt after successful creation
+        const symbolFilePath = path.join(__dirname, 'lastNFTCollectionSymbol.txt');
+        fs.writeFileSync(symbolFilePath, collectionData.symbol);
+        console.log(`NFT collection symbol "${collectionData.symbol}" written to lastNFTCollectionSymbol.txt`);
+
     } catch (error) {
-        console.error('NFT collection creation failed.');
+        console.error(`❌ NFT collection creation failed: ${error.message}`);
+        console.error('Collection data:', JSON.stringify(collectionData, null, 2));
+        // Don't write to file if creation failed
+        process.exit(1);
     }
 }
 

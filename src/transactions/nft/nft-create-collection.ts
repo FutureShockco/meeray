@@ -127,8 +127,8 @@ export async function validateTx(data: NFTCollectionCreateData, sender: string):
       logger.warn(`[nft-create-collection] Creator account ${sender} not found.`);
       return false;
     }
-
-    if (BigInt(creatorAccount.balance[config.nativeTokenSymbol]) < BigInt(config.nftCollectionCreationFee)) {
+    
+    if (BigInt(creatorAccount.balances[config.nativeTokenSymbol]) < BigInt(config.nftCollectionCreationFee)) {
       logger.warn(`[nft-create-collection] Sender account ${sender} does not have enough balance to create an NFT collection.`);
       return false;
     }

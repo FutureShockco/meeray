@@ -1,17 +1,33 @@
-const { getClient, getRandomAccount, sendCustomJson } = require('./helpers.cjs');
+const { getClient, getMasterAccount, sendCustomJson } = require('./helpers.cjs');
+const fs = require('fs');
+const path = require('path');
 
 async function main() {
-    // Get client and random account
+    // Get client and master account
     const { client, sscId } = await getClient();
-    const { username, privateKey } = await getRandomAccount();
+    const { username, privateKey } = await getMasterAccount();
 
-    // IMPORTANT: Replace with an actual launchpadId and ensure the user participated
-    const launchpadIdPlaceholder = `launchpad-${Date.now()}`; // This is just an example, use a real launchpad ID
+    // Read the last created launchpad ID from file
+    const launchpadIdFilePath = path.join(__dirname, 'lastLaunchpadId.txt');
+    let launchpadId = null;
+
+    try {
+        if (fs.existsSync(launchpadIdFilePath)) {
+            launchpadId = fs.readFileSync(launchpadIdFilePath, 'utf8').trim();
+            console.log(`Using last created launchpad ID: ${launchpadId}`);
+        } else {
+            console.error('No lastLaunchpadId.txt found. Please run launchpad_launch_token.cjs first.');
+            return;
+        }
+    } catch (error) {
+        console.error(`Error reading lastLaunchpadId.txt: ${error.message}`);
+        return;
+    }
 
     const claimData = {
         userId: username,
-        launchpadId: launchpadIdPlaceholder,
-        allocationType: "PRESALE_INVESTORS" // Example: could be other types like "AIRDROP", "TEAM_VESTING", etc.
+        launchpadId: launchpadId,
+        allocationType: "PRESALE_INVESTORS" // Claiming as presale investor
     };
 
     console.log(`Claiming launchpad tokens with account ${username}:`);

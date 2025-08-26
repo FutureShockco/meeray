@@ -1,17 +1,48 @@
-const { getClient, getRandomAccount, sendCustomJson } = require('./helpers.cjs');
+const { getClient, getMasterAccount, sendCustomJson } = require('./helpers.cjs');
+const fs = require('fs');
+const path = require('path');
 
 async function main() {
-    // Get client and random account
+    // Get client and master account
     const { client, sscId } = await getClient();
-    const { username, privateKey } = await getRandomAccount();
+    const { username, privateKey } = await getMasterAccount();
 
-    // IMPORTANT: Replace with an actual instanceId of an NFT owned by the account
-    const instanceIdToUpdate = `artbk-${Date.now()}`; // This is just an example, use a real NFT ID
+    // Read the last created NFT collection symbol and instance ID from files
+    const symbolFilePath = path.join(__dirname, 'lastNFTCollectionSymbol.txt');
+    const instanceIdFilePath = path.join(__dirname, 'lastNFTInstanceId.txt');
+
+    let collectionSymbol = "TESTNFT"; // Default fallback
+    let instanceId = null;
+
+    try {
+        if (fs.existsSync(symbolFilePath)) {
+            collectionSymbol = fs.readFileSync(symbolFilePath, 'utf8').trim();
+            console.log(`Using last created NFT collection symbol: ${collectionSymbol}`);
+        } else {
+            console.log(`No lastNFTCollectionSymbol.txt found, using default symbol: ${collectionSymbol}`);
+        }
+    } catch (error) {
+        console.error(`Error reading lastNFTCollectionSymbol.txt: ${error.message}`);
+        console.log(`Using default symbol: ${collectionSymbol}`);
+    }
+
+    try {
+        if (fs.existsSync(instanceIdFilePath)) {
+            instanceId = fs.readFileSync(instanceIdFilePath, 'utf8').trim();
+            console.log(`Using last created NFT instance ID: ${instanceId}`);
+        } else {
+            console.error('No lastNFTInstanceId.txt found. Please run nft_mint.cjs first.');
+            return;
+        }
+    } catch (error) {
+        console.error(`Error reading lastNFTInstanceId.txt: ${error.message}`);
+        return;
+    }
 
     const updateMetadataData = {
-        collectionSymbol: "ARTBK", // Should match an existing collection
-        instanceId: instanceIdToUpdate,
-        properties: { 
+        collectionSymbol: collectionSymbol,
+        instanceId: instanceId,
+        properties: {
             artist: username,
             edition: Math.floor(Math.random() * 1000) + 1,
             attributes: {
@@ -21,7 +52,7 @@ async function main() {
                 luck: Math.floor(Math.random() * 100)
             }
         },
-        uri: `https://example.com/nft/artbk/${Date.now()}_updated.json`
+        uri: `https://example.com/nft/${collectionSymbol.toLowerCase()}/${Date.now()}_updated.json`
     };
 
     console.log(`Updating NFT metadata with account ${username}:`);

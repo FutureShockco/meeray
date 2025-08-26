@@ -1,9 +1,11 @@
-const { getClient, getRandomAccount, generateRandomLaunchpadData, sendCustomJson } = require('./helpers.cjs');
+const { getClient, getMasterAccount, generateRandomLaunchpadData, sendCustomJson } = require('./helpers.cjs');
+const fs = require('fs');
+const path = require('path');
 
 async function main() {
-    // Get client and random account
+    // Get client and master account
     const { client, sscId } = await getClient();
-    const { username, privateKey } = await getRandomAccount();
+    const { username, privateKey } = await getMasterAccount();
 
     // Generate random launchpad data
     const launchData = generateRandomLaunchpadData();
@@ -41,6 +43,14 @@ async function main() {
             username,
             privateKey
         );
+
+        // Write the launchpad ID to lastLaunchpadId.txt after successful launch
+        // The launchpad ID format is typically userId-tokenSymbol
+        const launchpadId = `${username}-${launchData.tokenSymbol}`;
+        const launchpadIdFilePath = path.join(__dirname, 'lastLaunchpadId.txt');
+        fs.writeFileSync(launchpadIdFilePath, launchpadId);
+        console.log(`Launchpad ID "${launchpadId}" written to lastLaunchpadId.txt`);
+
     } catch (error) {
         console.error('Token launch failed.');
     }

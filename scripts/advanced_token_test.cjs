@@ -20,25 +20,19 @@ if (process.env.ADDRESS_PREFIX) {
   CLIENT_OPTIONS.addressPrefix = process.env.ADDRESS_PREFIX;
 }
 
+// Use master account (echelon-node1) instead of random account
 let privateKeyString;
 let username;
 
 try {
-  const accountsFileContent = fs.readFileSync(ACCOUNTS_FILE_PATH, 'utf8');
-  const accounts = JSON.parse(accountsFileContent);
-  const randomIndex = Math.floor(Math.random() * accounts.length);
-  const selectedAccount = accounts[randomIndex];
+  // Load private keys from keys.json (contains master account keys)
+  const keysFile = fs.readFileSync(path.join(__dirname, 'keys.json'));
+  const privateKeys = JSON.parse(keysFile);
 
-  if (!selectedAccount) {
-    throw new Error(`Account "${selectedAccount.account_name}" not found in ${ACCOUNTS_FILE_PATH}`);
-  }
-  if (!selectedAccount.private_keys || !selectedAccount.private_keys.active) {
-    throw new Error(`Active key for account "${selectedAccount.account_name}" not found in ${ACCOUNTS_FILE_PATH}`);
-  }
-  privateKeyString = selectedAccount.private_keys.active;
-  username = selectedAccount.account_name;
+  privateKeyString = privateKeys[0]; // Use first key (echelon-node1)
+  username = 'echelon-node1'; // Master account name
 } catch (err) {
-  console.error(`Error loading or parsing ${ACCOUNTS_FILE_PATH}:`, err.message);
+  console.error('Error loading keys.json file:', err);
   process.exit(1);
 }
 
