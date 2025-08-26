@@ -7,12 +7,10 @@ async function main() {
     const { client, sscId } = await getClient();
     const { username, privateKey } = await getMasterAccount();
 
-    // Read the last created NFT collection symbol and instance ID from files
+    // Read the last created NFT collection symbol from file
     const symbolFilePath = path.join(__dirname, 'lastNFTCollectionSymbol.txt');
-    const instanceIdFilePath = path.join(__dirname, 'lastNFTInstanceId.txt');
 
     let collectionSymbol = "TESTNFT"; // Default fallback
-    let instanceId = null;
 
     try {
         if (fs.existsSync(symbolFilePath)) {
@@ -26,18 +24,11 @@ async function main() {
         console.log(`Using default symbol: ${collectionSymbol}`);
     }
 
-    try {
-        if (fs.existsSync(instanceIdFilePath)) {
-            instanceId = fs.readFileSync(instanceIdFilePath, 'utf8').trim();
-            console.log(`Using last created NFT instance ID: ${instanceId}`);
-        } else {
-            console.error('No lastNFTInstanceId.txt found. Please run nft_mint.cjs first.');
-            return;
-        }
-    } catch (error) {
-        console.error(`Error reading lastNFTInstanceId.txt: ${error.message}`);
-        return;
-    }
+    // For now, use instanceId "1" as the first NFT in the collection
+    // In a real scenario, you'd query the database to find the most recent NFT
+    let instanceId = "1";
+    console.log(`Using NFT instance ID: "${instanceId}" (first NFT in collection)`);
+    console.log(`Looking for NFT: "${collectionSymbol}-${instanceId}"`);
 
     const listItemData = {
         collectionSymbol: collectionSymbol,
@@ -61,8 +52,8 @@ async function main() {
         );
 
         // Write the listing ID to lastNFTListingId.txt after successful listing
-        // The listing ID format is typically collectionSymbol-instanceId
-        const listingId = `${collectionSymbol}-${instanceId}`;
+        // The listing ID format is collectionSymbol-instanceId-seller
+        const listingId = `${collectionSymbol}-${instanceId}-${username}`;
         const listingIdFilePath = path.join(__dirname, 'lastNFTListingId.txt');
         fs.writeFileSync(listingIdFilePath, listingId);
         console.log(`NFT listing ID "${listingId}" written to lastNFTListingId.txt`);

@@ -53,10 +53,10 @@ async function main() {
     await transferTokens(lastSymbol, "echelon-node2");
     
     // Also mint some default tokens for testing
-    await transferTokens("TESTS", "echelon-node3");
-    await transferTokens("TBD", "echelon-node3");
-    await transferTokens("TESTS", "echelon-node2");
-    await transferTokens("TBD", "echelon-node2");
+    // await transferTokens("TESTS", "echelon-node3");
+    // await transferTokens("TBD", "echelon-node3");
+    // await transferTokens("TESTS", "echelon-node2");
+    // await transferTokens("TBD", "echelon-node2");
 }
 
 main().catch(err => {

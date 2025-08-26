@@ -22,6 +22,12 @@ src/logs/output.log.3.gz
 scripts/start.bat
 dist/
 scripts/accounts_steem.json
+
+scripts/lastTokenSymbol.txt
+scripts/lastNFTCollectionSymbol.txt
+scripts/lastNFTListingId.txt
+scripts/lastNFTInstanceId.txt
+scripts/lastLaunchpadId.txt
 .env
 .cursor/
 config/p2p_node_id.json

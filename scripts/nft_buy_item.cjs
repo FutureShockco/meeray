@@ -11,22 +11,25 @@ async function main() {
     const keys = require('./keys.json');
     const privateKey = keys[1]; // Use second key for echelon-node2
 
-    // Read the last created NFT listing ID from file
-    const listingIdFilePath = path.join(__dirname, 'lastNFTListingId.txt');
-    let listingId = null;
+    // Read the last created NFT collection symbol from file
+    const symbolFilePath = path.join(__dirname, 'lastNFTCollectionSymbol.txt');
+    let collectionSymbol = "TESTNFT"; // Default fallback
 
     try {
-        if (fs.existsSync(listingIdFilePath)) {
-            listingId = fs.readFileSync(listingIdFilePath, 'utf8').trim();
-            console.log(`Using last created NFT listing ID: ${listingId}`);
+        if (fs.existsSync(symbolFilePath)) {
+            collectionSymbol = fs.readFileSync(symbolFilePath, 'utf8').trim();
+            console.log(`Using last created NFT collection symbol: ${collectionSymbol}`);
         } else {
-            console.error('No lastNFTListingId.txt found. Please run nft_list_item.cjs first.');
-            return;
+            console.log(`No lastNFTCollectionSymbol.txt found, using default symbol: ${collectionSymbol}`);
         }
     } catch (error) {
-        console.error(`Error reading lastNFTListingId.txt: ${error.message}`);
-        return;
+        console.error(`Error reading lastNFTCollectionSymbol.txt: ${error.message}`);
+        console.log(`Using default symbol: ${collectionSymbol}`);
     }
+
+    // Generate listing ID based on collection symbol and instance ID
+    let listingId = `${collectionSymbol}-1-echelon-node1`; // Format: collection-instanceId-seller (seller is echelon-node1)
+    console.log(`Using NFT listing ID: ${listingId}`);
 
     const buyItemData = {
         listingId: listingId

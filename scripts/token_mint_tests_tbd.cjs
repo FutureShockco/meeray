@@ -31,26 +31,14 @@ async function mintTokens(symbol, to) {
 }
 
 async function main() {
-    // Read the last created token symbol from file
-    const symbolFilePath = path.join(__dirname, 'lastTokenSymbol.txt');
-    let lastSymbol = "TESTS"; // Default fallback
     
-    try {
-        if (fs.existsSync(symbolFilePath)) {
-            lastSymbol = fs.readFileSync(symbolFilePath, 'utf8').trim();
-            console.log(`Using last created token symbol: ${lastSymbol}`);
-        } else {
-            console.log(`No lastTokenSymbol.txt found, using default symbol: ${lastSymbol}`);
-        }
-    } catch (error) {
-        console.error(`Error reading lastTokenSymbol.txt: ${error.message}`);
-        console.log(`Using default symbol: ${lastSymbol}`);
-    }
-    
-    // Mint tokens using the last created symbol
-    await mintTokens(lastSymbol, "echelon-node1");
-    await mintTokens(lastSymbol, "echelon-node2");
-
+    // Also mint some default tokens for testing
+    await mintTokens("TESTS", "echelon-node1");
+    await mintTokens("TBD", "echelon-node1");
+    await mintTokens("TESTS", "echelon-node2");
+    await mintTokens("TBD", "echelon-node2");
+    await mintTokens("TESTS", "echelon-node1");
+    await mintTokens("TBD", "echelon-node1");
 }
 
 main().catch(err => {

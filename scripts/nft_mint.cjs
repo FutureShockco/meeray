@@ -28,11 +28,9 @@ async function main() {
         console.log(`Using default symbol: ${collectionSymbol}`);
     }
 
-    const instanceId = `${collectionSymbol.toLowerCase()}-${Date.now()}`;
-
     const mintData = {
         collectionSymbol: collectionSymbol,
-        instanceId: instanceId,
+        // Don't provide instanceId - let it auto-generate
         owner: username, // Mint to the master account so we can transfer it later
         properties: {
             edition: Math.floor(Math.random() * 1000) + 1,
@@ -61,11 +59,7 @@ async function main() {
         );
 
         console.log(`✅ NFT minted successfully!`);
-
-        // Write the instance ID to lastNFTInstanceId.txt after successful minting
-        const instanceIdFilePath = path.join(__dirname, 'lastNFTInstanceId.txt');
-        fs.writeFileSync(instanceIdFilePath, instanceId);
-        console.log(`NFT instance ID "${instanceId}" written to lastNFTInstanceId.txt`);
+        console.log(`NFT will be available for listing with auto-generated instanceId`);
 
     } catch (error) {
         console.error(`❌ NFT minting failed: ${error.message}`);
@@ -111,11 +105,7 @@ async function main() {
                 );
 
                 console.log(`✅ NFT minted successfully after creating collection!`);
-
-                // Write the instance ID to lastNFTInstanceId.txt after successful minting
-                const instanceIdFilePath = path.join(__dirname, 'lastNFTInstanceId.txt');
-                fs.writeFileSync(instanceIdFilePath, instanceId);
-                console.log(`NFT instance ID "${instanceId}" written to lastNFTInstanceId.txt`);
+                console.log(`NFT will be available for listing with auto-generated instanceId`);
 
             } catch (createError) {
                 console.error(`❌ Failed to create collection or mint NFT: ${createError.message}`);

@@ -372,6 +372,12 @@ async function transfer(client, from, to, amount, username, privateKey) {
     }
 }
 
+function generatePoolId(tokenA_symbol, tokenB_symbol, feeTier) {
+    // Ensure canonical order to prevent duplicate pools (e.g., A-B vs B-A)
+    const [token1, token2] = [tokenA_symbol, tokenB_symbol].sort();
+    return `${token1}_${token2}_${feeTier}`;
+  }
+
 module.exports = {
     getClient,
     getGlobalProperties,
@@ -388,5 +394,6 @@ module.exports = {
     generateRandomLaunchpadData,
     generateRandomLaunchpadOperation,
     sendCustomJson,
-    transfer
+    transfer,
+    generatePoolId
 }; 
