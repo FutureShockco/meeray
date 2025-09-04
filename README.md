@@ -81,6 +81,30 @@ npm install pm2 -g
 mongorestore --uri="mongodb://127.0.0.1:27017" --archive=meeray-latest.gz --gzip
 ```
 
+6. (Optional) Create a logrotate config for MongoDB (rotate logs daily, keep 14 days, compress, and create a new log file for each day)
+```bash
+sudo nano /etc/logrotate.d/mongodb
+```
+Paste the following content into the file:
+```bash
+/var/log/mongodb/mongod.log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 640 mongodb adm
+    sharedscripts
+    postrotate
+        if pgrep mongod > /dev/null; then
+            kill -USR1 $(pidof mongod)
+        fi
+    endscript
+}
+
+```
+
 ### Setup
 1. Clone the repository
 ```bash
