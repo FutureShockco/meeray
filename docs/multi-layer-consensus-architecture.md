@@ -41,12 +41,9 @@ Custom Apps  → App-Specific Layers          → Configurable Witnesses (3s blo
 - **Processing specialization**: Different witness sets optimized for different application types
 - **Load distribution**: Not all witnesses need to process all transaction types
 
-**NOT from different block times** (which would break Steem synchronization)
-
 ### 1. Main Consensus Layer (Required)
 - **Purpose**: Core blockchain operations (transfers, DeFi, high-value transactions)
 - **Participation**: **Mandatory** for all witnesses
-- **Block Time**: 3 seconds (synchronized to Steem block processing)
 - **Security**: Maximum (all witnesses participate)
 - **Handles**:
   - Token transfers and core operations
@@ -58,7 +55,6 @@ Custom Apps  → App-Specific Layers          → Configurable Witnesses (3s blo
 ### 2. CMS Consensus Layer (Optional)
 - **Purpose**: Content management and publishing
 - **Participation**: **Opt-in** for witnesses
-- **Block Time**: 3 seconds (same as main - Steem synchronized)
 - **Security**: Medium (subset of witnesses)
 - **Handles**:
   - Blog posts and articles
@@ -70,7 +66,6 @@ Custom Apps  → App-Specific Layers          → Configurable Witnesses (3s blo
 ### 3. Gaming Consensus Layer (Optional)
 - **Purpose**: Real-time gaming and interactive applications
 - **Participation**: **Opt-in** for specialized gaming witnesses
-- **Block Time**: 3 seconds (same as main - Steem synchronized)
 - **Security**: Gaming-optimized (fewer witnesses, faster processing)
 - **Handles**:
   - Player actions and movements
@@ -82,7 +77,6 @@ Custom Apps  → App-Specific Layers          → Configurable Witnesses (3s blo
 ### 4. Custom Application Layers
 - **Purpose**: Future application-specific needs
 - **Participation**: **Configurable** opt-in system
-- **Block Time**: 3 seconds (all layers synchronized to Steem)
 - **Security**: **Flexible** based on witness participation requirements
 
 ## Witness Configuration System
@@ -93,7 +87,7 @@ interface WitnessConfig {
   pub: string;                    // Witness public key (current)
   consensusLayers: {
     main: true,                   // Required: always participate
-    cms?: boolean,                // Optional: content management
+    cms?: string[],                // Optional: content management
     gaming?: string[],            // Optional: specific game IDs
     custom?: string[]             // Optional: custom app layers
   };
@@ -316,11 +310,9 @@ prizes: {
 - 🔲 CMS consensus layer implementation
 - 🔲 Witness opt-in system for CMS
 - 🔲 Content-specific transaction types
-- 🔲 CMS-optimized block timing
 
 ### Phase 3: Gaming Layer
 - 🔲 Gaming consensus layer framework
-- 🔲 Sub-second block time support
 - 🔲 Game-specific transaction types
 - 🔲 Real-time state management
 
