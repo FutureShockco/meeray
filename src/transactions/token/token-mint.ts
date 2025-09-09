@@ -4,7 +4,7 @@ import validate from '../../validation/index.js';
 import { TokenMintData } from './token-interfaces.js';
 import config from '../../config.js';
 import { toDbString, toBigInt } from '../../utils/bigint.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
+import { logEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: TokenMintData, sender: string): Promise<boolean> {
   try {
@@ -95,7 +95,7 @@ export async function process(data: TokenMintData, sender: string, id: string): 
     logger.info(`[token-mint:process] Minted ${data.amount.toString()} of ${data.symbol} to ${data.to} by ${sender}. New supply: ${newSupply.toString()}.`);
 
     // Log event
-    await logTransactionEvent('token_mint', sender, {
+    await logEvent('token', 'mint', sender, {
       symbol: data.symbol,
       to: data.to,
       amount: toDbString(toBigInt(data.amount)),

@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 // import validate from '../../validation/index.js'; // Assuming a validation library might be used
 import { getAccount, adjustBalance } from '../../utils/account.js'; // Assuming account utilities
 import crypto from 'crypto';
-import { logTransactionEvent } from '../../utils/event-logger.js';
+import { logEvent } from '../../utils/event-logger.js';
 import {
   TokenStandard,
   VestingType,
@@ -303,7 +303,7 @@ export async function process(launchData: LaunchpadLaunchTokenData, sender: stri
     logger.debug(`[launchpad-launch-token] Launch request for ${launchData.tokenSymbol} by ${sender} processed successfully. Launchpad ID: ${launchpadId}`);
 
     // Log event
-    await logTransactionEvent('launchpad_created', sender, {
+    await logEvent('launchpad', 'created', sender, {
       launchpadId,
       projectId: launchpadProjectData.projectId,
       tokenName: launchData.tokenName,

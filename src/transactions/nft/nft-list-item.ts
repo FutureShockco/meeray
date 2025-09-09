@@ -6,7 +6,7 @@ import { NftInstance } from './nft-transfer.js'; // Assuming NftInstance is expo
 import { CachedNftCollectionForTransfer } from './nft-transfer.js'; // Assuming this is also suitable
 import config from '../../config.js';
 import { getTokenByIdentifier } from '../../utils/token.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
+import { logEvent } from '../../utils/event-logger.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js'; // Import toBigInt and toDbString
 
 // Helper to generate a unique listing ID
@@ -150,8 +150,8 @@ export async function process(data: NftListPayload, sender: string, id: string):
 
     const listingDocument: NFTListingData = {
       _id: listingId,
-      collectionId: data.collectionSymbol,
-      tokenId: data.instanceId,
+      collectionId: data.collectionSymbol, // Store collectionSymbol as collectionId for consistency
+      tokenId: data.instanceId, // Store instanceId as tokenId for consistency
       seller: sender,
       price: toDbString(priceAsBigInt),
       paymentToken: {
@@ -191,7 +191,7 @@ export async function process(data: NftListPayload, sender: string, id: string):
     logger.debug(`[nft-list-item] NFT ${data.collectionSymbol}-${data.instanceId} listed by ${sender} as ${listingTypeStr} for ${data.price} ${data.paymentTokenSymbol}. Listing ID: ${listingId}`);
 
     // Log event
-    await logTransactionEvent('nft_listed', sender, {
+    await logEvent('nft', 'listed', sender, {
       listingId,
       collectionSymbol: data.collectionSymbol,
       instanceId: data.instanceId,

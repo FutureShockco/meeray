@@ -5,7 +5,7 @@ import { PoolSwapData, LiquidityPoolData, PoolSwapResult } from './pool-interfac
 import { adjustBalance, getAccount, Account } from '../../utils/account.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 import mongo from '../../mongo.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
+import { logEvent } from '../../utils/event-logger.js';
 
 // const SWAP_FEE_RATE = 0.003; // 0.3% swap fee - This constant is not used in the BigInt logic below which uses 997/1000 factor
 
@@ -483,7 +483,7 @@ async function processSingleHopSwap(data: PoolSwapData, sender: string, transact
     logger.info(`[pool-swap] Successful single-hop swap by ${sender} in pool ${data.poolId}: ${data.amountIn} ${tokenIn_symbol} -> ${amountOut} ${tokenOut_symbol}`);
 
     // Log event
-    await logTransactionEvent('pool_swap', sender, {
+    await logEvent('defi', 'swap', sender, {
       poolId: data.poolId,
       tokenIn: tokenIn_symbol,
       tokenOut: tokenOut_symbol,
@@ -580,7 +580,7 @@ async function processSingleHopSwapWithResult(data: PoolSwapData, sender: string
         logger.info(`[pool-swap] Successful single-hop swap by ${sender} in pool ${data.poolId}: ${data.amountIn} ${tokenIn_symbol} -> ${amountOut} ${tokenOut_symbol}`);
 
         // Log event
-        await logTransactionEvent('pool_swap', sender, {
+        await logEvent('defi', 'swap', sender, {
             poolId: data.poolId,
             tokenIn: tokenIn_symbol,
             tokenOut: tokenOut_symbol,
@@ -707,7 +707,7 @@ async function processRoutedSwap(data: PoolSwapData, sender: string, transaction
 
     // Log event - get pool data for the first hop to access feeTier and token symbols
     const firstPoolData = await cache.findOnePromise('liquidityPools', { _id: data.hops![0].poolId });
-    await logTransactionEvent('pool_swap', sender, {
+    await logEvent('defi', 'swap', sender, {
         poolId: data.hops![0].poolId, // Use the first hop's poolId instead of data.poolId
         tokenIn: data.hops![0].tokenIn_symbol,
         tokenOut: data.hops![data.hops!.length - 1].tokenOut_symbol,

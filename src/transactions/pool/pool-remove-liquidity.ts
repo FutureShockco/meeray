@@ -4,7 +4,7 @@ import validate from '../../validation/index.js';
 import { PoolRemoveLiquidityData, LiquidityPoolData, UserLiquidityPositionData } from './pool-interfaces.js';
 import { adjustBalance, getAccount } from '../../utils/account.js';
 import { BigIntMath, toDbString, toBigInt, convertToBigInt, convertToString } from '../../utils/bigint.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
+import { logEvent } from '../../utils/event-logger.js';
 import { getLpTokenSymbol } from '../../utils/token.js';
 
 // minTokenA_amount and minTokenB_amount are for client-side slippage, not direct processing here if only lpTokenAmount is used.
@@ -130,7 +130,7 @@ export async function process(data: PoolRemoveLiquidityData, sender: string, tra
     logger.debug(`[pool-remove-liquidity] ${data.provider} removed liquidity from pool ${data.poolId} by burning ${data.lpTokenAmount} LP tokens. Received ${tokenAAmountToReturn} ${pool.tokenA_symbol} and ${tokenBAmountToReturn} ${pool.tokenB_symbol}.`);
 
     // Log event
-    await logTransactionEvent('pool_liquidity_removed', data.provider, {
+    await logEvent('defi', 'liquidity_removed', data.provider, {
       poolId: data.poolId,
       tokenAAmount: toDbString(tokenAAmountToReturn),
       tokenBAmount: toDbString(tokenBAmountToReturn),

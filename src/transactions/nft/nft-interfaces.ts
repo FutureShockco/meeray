@@ -5,7 +5,7 @@ export interface NFTCollectionCreateData {
     name: string;             // Collection name (e.g., "CryptoPunks")
     description?: string;     // Collection description
     maxSupply?: string | bigint;      // Maximum number of NFTs that can be minted
-    royaltyBps?: number;     // Royalty percentage in basis points (e.g., 250 = 2.5%)
+    royaltyBps?: number;     // Royalty in basis points (e.g., 250 = 2.5%, max 2500 = 25%)
     creator: string;         // Creator's address
     mintable?: boolean;      // Can new NFTs be minted after initial setup?
     burnable?: boolean;      // Can NFTs from this collection be burned? (default true)
@@ -14,7 +14,6 @@ export interface NFTCollectionCreateData {
     logoUrl?: string;        // Logo URL for the collection (max 2048 chars, must be valid URL)
     websiteUrl?: string;     // Website URL for the collection (max 2048 chars, must be valid URL)
     baseCoverUrl?: string;   // Base cover URL for NFTs in this collection (max 2048 chars, must be valid URL)
-    creatorFee?: number;     // Royalty percentage (e.g., 5 for 5%). Min 0, Max 25 (for 25%). Optional, defaults to 0.
     metadata?: {
         imageUrl?: string;
         externalUrl?: string;
@@ -132,8 +131,7 @@ export interface NFTUpdateCollectionData {
     mintable?: boolean;       // Update mintable status
     burnable?: boolean;       // Update burnable status
     transferable?: boolean;   // Update transferable status
-    creatorFee?: number;      // Update creator fee (0-25)
-    royaltyBps?: number;      // Update royalty in basis points (0-2500)
+    royaltyBps?: number;      // Update royalty in basis points (0-2500 = 0-25%)
     metadata?: {
         imageUrl?: string;
         externalUrl?: string;

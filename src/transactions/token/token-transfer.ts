@@ -5,7 +5,7 @@ import config from '../../config.js';
 import { TokenTransferData } from './token-interfaces.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { adjustBalance } from '../../utils/account.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
+import { logEvent } from '../../utils/event-logger.js';
 
 const BURN_ACCOUNT_NAME = config.burnAccountName || 'null';
 
@@ -57,7 +57,7 @@ export async function process(data: TokenTransferData, sender: string): Promise<
         if (!creditOk) return false;
 
         // Log event
-        await logTransactionEvent('token_transfer', sender, {
+        await logEvent('token', 'transfer', sender, {
             symbol: data.symbol,
             from: sender,
             to: data.to,

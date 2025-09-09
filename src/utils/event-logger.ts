@@ -21,7 +21,9 @@ const MARKET_EVENT_TYPES = new Set([
  */
 export interface EventDocument {
     _id: string;
-    type: string;
+    category: string;      // High-level category: 'nft', 'token', 'defi', 'launchpad', 'market'
+    action: string;        // Specific action: 'mint', 'transfer', 'swap', 'listed', etc.
+    type: string;          // Legacy field: category_action (for backward compatibility)
     timestamp: string;
     actor: string;
     data: any; // Should ideally be a more specific type, including marketId for market events
@@ -29,18 +31,20 @@ export interface EventDocument {
 }
 
 /**
- * Centralized function to log a transaction event and publish it to Kafka.
+ * Centralized function to log a transaction event with two-level structure and publish it to Kafka.
  *
- * @param eventType - The type of the event (e.g., 'tokenCreate', 'nftMint', 'TRADE_EXECUTED').
- * @param actor - The user or system entity that initiated the event.
- * @param eventData - The specific data associated with the event. For market events, should contain 'marketId'.
- * @param originalTransactionId - Optional: The ID of the blockchain transaction that this event relates to.
+ * @param category - High-level category ('nft', 'token', 'defi', 'launchpad', 'market') OR legacy eventType string
+ * @param action - Specific action ('mint', 'transfer', 'swap', 'listed') OR actor if using legacy format
+ * @param eventDataOrActor - Event data if using new format, OR actor if using legacy format
+ * @param originalTransactionIdOrEventData - TransactionId if new format, OR eventData if legacy format
+ * @param legacyTransactionId - TransactionId if using legacy format (5th parameter)
  */
 export async function logTransactionEvent(
-    eventType: string,
-    actor: string,
-    eventData: any, // Consider defining a more specific type that includes marketId based on eventType
-    originalTransactionId?: string
+    category: string,
+    action: string,
+    eventDataOrActor: any,
+    originalTransactionIdOrEventData?: string | any,
+    legacyTransactionId?: string
 ): Promise<void> {
     // Initialize Kafka producer (it will only run once)
     // We do this here to ensure it's ready before the first event might be sent.
@@ -55,39 +59,80 @@ export async function logTransactionEvent(
     }
 
     try {
+        // Determine if this is new format (category + action) or legacy format (eventType)
+        let finalCategory: string;
+        let finalAction: string;
+        let finalActor: string;
+        let finalEventData: any;
+        let finalTransactionId: string | undefined;
+        
+        // Detect legacy format: if action looks like an account name and eventDataOrActor is event data
+        const isLegacyFormat = action.length >= 3 && action.length <= 16 && 
+                              typeof eventDataOrActor === 'object' &&
+                              !originalTransactionIdOrEventData?.startsWith?.('token') &&
+                              !originalTransactionIdOrEventData?.startsWith?.('nft');
+        
+        if (isLegacyFormat) {
+            // Legacy format: logTransactionEvent('nft_mint', 'user123', {...data}, 'tx123')
+            const legacyEventType = category;
+            finalActor = action;
+            finalEventData = eventDataOrActor;
+            finalTransactionId = typeof originalTransactionIdOrEventData === 'string' ? originalTransactionIdOrEventData : legacyTransactionId;
+            
+            // Parse legacy event type into category + action
+            const parts = legacyEventType.split('_');
+            if (parts.length >= 2) {
+                finalCategory = parts[0];
+                finalAction = parts.slice(1).join('_');
+            } else {
+                finalCategory = 'unknown';
+                finalAction = legacyEventType;
+            }
+        } else {
+            // New format: logTransactionEvent('nft', 'mint', 'user123', {...data}, 'tx123')
+            finalCategory = category;
+            finalAction = action;
+            finalActor = eventDataOrActor;
+            finalEventData = originalTransactionIdOrEventData && typeof originalTransactionIdOrEventData === 'object' ? 
+                           originalTransactionIdOrEventData : {};
+            finalTransactionId = typeof originalTransactionIdOrEventData === 'string' ? originalTransactionIdOrEventData : legacyTransactionId;
+        }
+
         const eventDocument: EventDocument = {
-            _id: new ObjectId().toHexString(), // Use imported ObjectId
-            type: eventType,
+            _id: new ObjectId().toHexString(),
+            category: finalCategory,
+            action: finalAction,
+            type: `${finalCategory}_${finalAction}`, // Legacy compatibility
             timestamp: new Date().toISOString(),
-            actor: actor,
-            data: eventData,
+            actor: finalActor,
+            data: finalEventData,
         };
 
-        if (originalTransactionId) {
-            eventDocument.transactionId = originalTransactionId;
+        if (finalTransactionId) {
+            eventDocument.transactionId = finalTransactionId;
         }
 
         await new Promise<void>((resolve, reject) => { // Changed to reject for clarity on promise handling
             cache.insertOne('events', eventDocument, (err, result) => {
                 if (err || !result) {
-                    logger.error(`[event-logger] CRITICAL: Failed to log event type '${eventType}' for actor '${actor}': ${err || 'no result'}. Data: ${JSON.stringify(eventData)}`);
+                    logger.error(`[event-logger] CRITICAL: Failed to log event ${finalCategory}_${finalAction} for actor '${finalActor}': ${err || 'no result'}. Data: ${JSON.stringify(finalEventData)}`);
                     // We might still want to try sending to Kafka or handle this more gracefully
                     reject(err || new Error('Failed to log event to cache'));
                     return;
                 }
 
-                logger.debug(`[event-logger] Event logged to cache: Type: ${eventType}, Actor: ${actor}, EventID: ${eventDocument._id}`);
+                logger.debug(`[event-logger] Event logged to cache: Category: ${finalCategory}, Action: ${finalAction}, Actor: ${finalActor}, EventID: ${eventDocument._id}`);
 
                 let kafkaTopic = KAFKA_NOTIFICATIONS_TOPIC;
                 let kafkaKey: string | undefined = eventDocument._id; // Default key
 
-                if (MARKET_EVENT_TYPES.has(eventType)) {
-                    if (eventData && typeof eventData.marketId === 'string' && eventData.marketId.length > 0) {
+                if (MARKET_EVENT_TYPES.has(eventDocument.type)) {
+                    if (finalEventData && typeof finalEventData.marketId === 'string' && finalEventData.marketId.length > 0) {
                         kafkaTopic = KAFKA_MARKET_EVENTS_TOPIC;
-                        kafkaKey = eventData.marketId;
-                        logger.debug(`[event-logger] Identified market event '${eventType}' for market '${kafkaKey}'. Routing to topic '${kafkaTopic}'.`);
+                        kafkaKey = finalEventData.marketId;
+                        logger.debug(`[event-logger] Identified market event '${eventDocument.type}' for market '${kafkaKey}'. Routing to topic '${kafkaTopic}'.`);
                     } else {
-                        logger.warn(`[event-logger] Market event type '${eventType}' logged, but 'marketId' was missing or invalid in eventData. Falling back to default topic '${kafkaTopic}' and key '${kafkaKey}'. Data: ${JSON.stringify(eventData)}`);
+                        logger.warn(`[event-logger] Market event type '${eventDocument.type}' logged, but 'marketId' was missing or invalid in eventData. Falling back to default topic '${kafkaTopic}' and key '${kafkaKey}'. Data: ${JSON.stringify(finalEventData)}`);
                         // Optionally, could send to a specific "problem_market_events" topic or handle differently
                     }
                 }
@@ -107,7 +152,26 @@ export async function logTransactionEvent(
             });
         });
     } catch (error) {
-        logger.error(`[event-logger] Unexpected error in logTransactionEvent for type '${eventType}': ${error instanceof Error ? error.message : String(error)}`);
+        logger.error(`[event-logger] Unexpected error in logTransactionEvent: ${error instanceof Error ? error.message : String(error)}`);
         // If this outer catch is hit, the event wasn't logged to cache or sent to Kafka.
     }
+}
+
+/**
+ * Modern helper function for logging events with the new two-level structure.
+ * 
+ * @param category - High-level category: 'nft', 'token', 'defi', 'launchpad', 'market'
+ * @param action - Specific action: 'mint', 'transfer', 'swap', 'listed', etc.
+ * @param actor - The user or system entity that initiated the event
+ * @param eventData - The specific data associated with the event
+ * @param transactionId - Optional: The ID of the blockchain transaction
+ */
+export async function logEvent(
+    category: string,
+    action: string,
+    actor: string,
+    eventData: any,
+    transactionId?: string
+): Promise<void> {
+    return logTransactionEvent(category, action, actor, eventData, transactionId);
 } 

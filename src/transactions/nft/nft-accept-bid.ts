@@ -7,258 +7,121 @@ import { adjustBalance, getAccount } from '../../utils/account.js';
 import { getTokenByIdentifier } from '../../utils/token.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { releaseEscrowedFunds } from '../../utils/bid.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
+import { logEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: NftAcceptBidData, sender: string): Promise<boolean> {
   try {
-    if (!data.bidId || !data.listingId) {
-      logger.warn('[nft-accept-bid] Invalid data: Missing required fields (bidId, listingId).');
+    if (!data.bidId || !data.listingId || !validate.string(data.bidId, 256, 3) || !validate.string(data.listingId, 256, 3)) {
+      logger.warn('[nft-accept-bid] Invalid bidId or listingId.');
       return false;
     }
 
-    if (!validate.string(data.bidId, 256, 3)) {
-      logger.warn(`[nft-accept-bid] Invalid bidId format or length: ${data.bidId}.`);
-      return false;
-    }
-
-    if (!validate.string(data.listingId, 256, 3)) {
-      logger.warn(`[nft-accept-bid] Invalid listingId format or length: ${data.listingId}.`);
-      return false;
-    }
-
-    // Validate listing exists and sender is the seller
     const listing = await cache.findOnePromise('nftListings', { _id: data.listingId }) as NFTListingData | null;
-    if (!listing) {
-      logger.warn(`[nft-accept-bid] Listing ${data.listingId} not found.`);
+    if (!listing || listing.seller !== sender || listing.status !== 'active') {
+      logger.warn('[nft-accept-bid] Invalid listing or not seller.');
       return false;
     }
 
-    if (listing.seller !== sender) {
-      logger.warn(`[nft-accept-bid] Sender ${sender} is not the seller of listing ${data.listingId}. Seller: ${listing.seller}.`);
-      return false;
-    }
-
-    if (listing.status !== 'active') {
-      logger.warn(`[nft-accept-bid] Listing ${data.listingId} is not active. Status: ${listing.status}.`);
-      return false;
-    }
-
-    // Validate bid exists and is active
     const bid = await cache.findOnePromise('nftBids', { _id: data.bidId }) as NftBid | null;
-    if (!bid) {
-      logger.warn(`[nft-accept-bid] Bid ${data.bidId} not found.`);
+    if (!bid || bid.listingId !== data.listingId || (bid.status !== 'ACTIVE' && bid.status !== 'WINNING')) {
+      logger.warn('[nft-accept-bid] Invalid bid.');
       return false;
     }
 
-    if (bid.listingId !== data.listingId) {
-      logger.warn(`[nft-accept-bid] Bid ${data.bidId} does not belong to listing ${data.listingId}.`);
-      return false;
-    }
-
-    if (bid.status !== 'ACTIVE' && bid.status !== 'WINNING') {
-      logger.warn(`[nft-accept-bid] Bid ${data.bidId} is not active. Status: ${bid.status}.`);
-      return false;
-    }
-
-    // Check if auction has ended (if applicable)
+    // Check auction end time
     if ((listing.listingType === 'AUCTION' || listing.listingType === 'RESERVE_AUCTION') && listing.auctionEndTime) {
-      const endTime = new Date(listing.auctionEndTime);
-      if (new Date() < endTime) {
-        logger.warn(`[nft-accept-bid] Cannot accept bid before auction ends. Auction ends at: ${listing.auctionEndTime}.`);
+      if (new Date() < new Date(listing.auctionEndTime)) {
+        logger.warn('[nft-accept-bid] Cannot accept bid before auction ends.');
         return false;
       }
     }
 
-    // Validate reserve price is met (for reserve auctions)
+    // Check reserve price
     if (listing.listingType === 'RESERVE_AUCTION' && listing.reservePrice) {
-      const bidAmount = toBigInt(bid.bidAmount);
-      const reservePrice = toBigInt(listing.reservePrice);
-      if (bidAmount < reservePrice) {
-        logger.warn(`[nft-accept-bid] Bid amount ${bidAmount} does not meet reserve price ${reservePrice}.`);
+      if (toBigInt(bid.bidAmount) < toBigInt(listing.reservePrice)) {
+        logger.warn('[nft-accept-bid] Bid does not meet reserve price.');
         return false;
       }
     }
 
-    // Validate NFT still exists and is owned by seller
+    // Validate NFT and collection
     const fullInstanceId = `${listing.collectionId}-${listing.tokenId}`;
     const nft = await cache.findOnePromise('nfts', { _id: fullInstanceId }) as NftInstance | null;
-    if (!nft) {
-      logger.warn(`[nft-accept-bid] NFT ${fullInstanceId} not found.`);
+    if (!nft || nft.owner !== listing.seller) {
+      logger.warn('[nft-accept-bid] NFT not found or owner mismatch.');
       return false;
     }
 
-    if (nft.owner !== listing.seller) {
-      logger.warn(`[nft-accept-bid] NFT ${fullInstanceId} owner (${nft.owner}) does not match listing seller (${listing.seller}).`);
-      return false;
-    }
-
-    // Validate collection allows transfers
     const collection = await cache.findOnePromise('nftCollections', { _id: listing.collectionId }) as CachedNftCollectionForTransfer | null;
-    if (!collection) {
-      logger.warn(`[nft-accept-bid] Collection ${listing.collectionId} not found.`);
-      return false;
-    }
-
-    if (collection.transferable === false) {
-      logger.warn(`[nft-accept-bid] Collection ${listing.collectionId} is not transferable.`);
+    if (!collection || collection.transferable === false) {
+      logger.warn('[nft-accept-bid] Collection not transferable.');
       return false;
     }
 
     return true;
   } catch (error) {
-    logger.error(`[nft-accept-bid] Error validating accept bid for ${data.bidId}: ${error}`);
+    logger.error(`[nft-accept-bid] Error validating: ${error}`);
     return false;
   }
 }
 
 export async function process(data: NftAcceptBidData, sender: string, id: string): Promise<boolean> {
   try {
-    // Re-fetch data for processing
     const listing = await cache.findOnePromise('nftListings', { _id: data.listingId }) as NFTListingData;
     const bid = await cache.findOnePromise('nftBids', { _id: data.bidId }) as NftBid;
-
-    const collection = await cache.findOnePromise('nftCollections', { _id: listing.collectionId }) as (CachedNftCollectionForTransfer & { creatorFee?: number });
-    if (collection.transferable === false) {
-      logger.error(`[nft-accept-bid] CRITICAL: Collection ${listing.collectionId} not transferable.`);
-      return false;
-    }
-
+    const collection = await cache.findOnePromise('nftCollections', { _id: listing.collectionId }) as (CachedNftCollectionForTransfer & { royaltyBps?: number });
     const paymentToken = (await getTokenByIdentifier(listing.paymentToken.symbol, listing.paymentToken.issuer))!;
 
     const paymentTokenIdentifier = `${paymentToken.symbol}${paymentToken.issuer ? '@' + paymentToken.issuer : ''}`;
-    const creatorFeePercent = toBigInt(collection.creatorFee || 0);
-
-    // Calculate payments
     const bidAmount = toBigInt(bid.bidAmount);
-    const royaltyAmount = (bidAmount * creatorFeePercent) / BigInt(100);
+    const royaltyAmount = (bidAmount * toBigInt(collection.royaltyBps || 0)) / BigInt(10000); // basis points to percentage
     const sellerProceeds = bidAmount - royaltyAmount;
 
-    logger.debug(`[nft-accept-bid] Processing bid acceptance: Bid=${bidAmount}, Royalty=${royaltyAmount}, SellerGets=${sellerProceeds}`);
-
-    // 1. Release escrowed funds from bidder and distribute payments
-    // The funds are already escrowed, so we need to redirect them rather than deduct again
-
-    // 2. Pay seller their proceeds (funds come from escrow)
-    if (!await adjustBalance(listing.seller, paymentTokenIdentifier, sellerProceeds)) {
-      logger.error(`[nft-accept-bid] Failed to pay seller ${listing.seller} proceeds of ${sellerProceeds}.`);
-      return false;
-    }
-
-    // 3. Pay royalty to creator (if applicable)
+    // Execute payments
+    if (!await adjustBalance(listing.seller, paymentTokenIdentifier, sellerProceeds)) return false;
     if (royaltyAmount > 0n && collection.creator && collection.creator !== listing.seller) {
-      if (!await adjustBalance(collection.creator, paymentTokenIdentifier, royaltyAmount)) {
-        logger.error(`[nft-accept-bid] Failed to pay royalty ${royaltyAmount} to creator ${collection.creator}.`);
-        return false;
-      }
-      logger.debug(`[nft-accept-bid] Royalty of ${royaltyAmount} paid to creator ${collection.creator}.`);
+      if (!await adjustBalance(collection.creator, paymentTokenIdentifier, royaltyAmount)) return false;
     }
 
-    // 4. The remaining difference between bid amount and payments stays as "platform fee" or gets handled elsewhere
-    // For now, we'll account for the full bid amount as spent from escrow
-    const totalPaid = sellerProceeds + royaltyAmount;
-    const remaining = bidAmount - totalPaid;
-    if (remaining > 0n) {
-      // This could go to platform fees, or back to the bidder, depending on your business model
-      logger.debug(`[nft-accept-bid] Remaining amount after payments: ${remaining}`);
-    }
-
-    // 5. Transfer NFT ownership
+    // Transfer NFT
     const fullInstanceId = `${listing.collectionId}-${listing.tokenId}`;
-    const updateNftOwnerSuccess = await cache.updateOnePromise(
-      'nfts',
-      { _id: fullInstanceId, owner: listing.seller },
-      { $set: { owner: bid.bidder, lastTransferredAt: new Date().toISOString() } }
-    );
-
-    if (!updateNftOwnerSuccess) {
-      logger.error(`[nft-accept-bid] CRITICAL: Failed to update NFT ${fullInstanceId} owner to ${bid.bidder}.`);
+    if (!await cache.updateOnePromise('nfts', { _id: fullInstanceId, owner: listing.seller },
+      { $set: { owner: bid.bidder, lastTransferredAt: new Date().toISOString() } })) {
       return false;
     }
 
-    logger.debug(`[nft-accept-bid] NFT ${fullInstanceId} ownership transferred from ${listing.seller} to ${bid.bidder}.`);
+    // Update listing and bid
+    await cache.updateOnePromise('nftListings', { _id: data.listingId }, {
+      $set: { status: 'sold', buyer: bid.bidder, soldAt: new Date().toISOString(), 
+              finalPrice: toDbString(bidAmount), royaltyPaid: toDbString(royaltyAmount), acceptedBidId: data.bidId }
+    });
+    await cache.updateOnePromise('nftBids', { _id: data.bidId }, {
+      $set: { status: 'WON', acceptedAt: new Date().toISOString() }
+    });
 
-    // 6. Update listing status
-    const updateListingSuccess = await cache.updateOnePromise(
-      'nftListings',
-      { _id: data.listingId },
-      {
-        $set: {
-          status: 'sold',
-          buyer: bid.bidder,
-          soldAt: new Date().toISOString(),
-          finalPrice: toDbString(bidAmount),
-          royaltyPaid: toDbString(royaltyAmount),
-          acceptedBidId: data.bidId
-        }
-      }
-    );
-
-    if (!updateListingSuccess) {
-      logger.error(`[nft-accept-bid] CRITICAL: Failed to update listing ${data.listingId} status.`);
-    }
-
-    // 7. Update accepted bid status
-    const updateBidSuccess = await cache.updateOnePromise(
-      'nftBids',
-      { _id: data.bidId },
-      {
-        $set: {
-          status: 'WON',
-          acceptedAt: new Date().toISOString()
-        }
-      }
-    );
-
-    if (!updateBidSuccess) {
-      logger.error(`[nft-accept-bid] CRITICAL: Failed to update bid ${data.bidId} status.`);
-    }
-
-    // 8. Update all other bids for this listing to LOST status and release their escrow
+    // Release other bids
     const otherBids = await cache.findPromise('nftBids', {
-      listingId: data.listingId,
-      _id: { $ne: data.bidId },
-      status: { $in: ['ACTIVE', 'WINNING', 'OUTBID'] }
+      listingId: data.listingId, _id: { $ne: data.bidId }, status: { $in: ['ACTIVE', 'WINNING', 'OUTBID'] }
     }) as NftBid[] | null;
 
-    if (otherBids && otherBids.length > 0) {
+    if (otherBids?.length) {
       for (const otherBid of otherBids) {
-        // Release escrow for losing bids
-        const escrowAmount = toBigInt(otherBid.escrowedAmount);
-        await releaseEscrowedFunds(otherBid.bidder, escrowAmount, paymentTokenIdentifier);
-        
-        // Update bid status
-        await cache.updateOnePromise(
-          'nftBids',
-          { _id: otherBid._id },
-          { $set: { status: 'LOST' } }
-        );
+        await releaseEscrowedFunds(otherBid.bidder, toBigInt(otherBid.escrowedAmount), paymentTokenIdentifier);
+        await cache.updateOnePromise('nftBids', { _id: otherBid._id }, { $set: { status: 'LOST' } });
       }
-      logger.debug(`[nft-accept-bid] Released escrow for ${otherBids.length} losing bids.`);
     }
 
-    logger.debug(`[nft-accept-bid] Bid ${data.bidId} successfully accepted by ${sender}.`);
-
     // Log event
-    await logTransactionEvent('nft_bid_accepted', sender, {
-      bidId: data.bidId,
-      listingId: data.listingId,
-      collectionId: listing.collectionId,
-      tokenId: listing.tokenId,
-      fullInstanceId,
-      seller: listing.seller,
-      buyer: bid.bidder,
-      bidAmount: toDbString(bidAmount),
-      sellerProceeds: toDbString(sellerProceeds),
-      royaltyAmount: toDbString(royaltyAmount),
-      paymentTokenSymbol: listing.paymentToken.symbol,
-      paymentTokenIssuer: listing.paymentToken.issuer,
+    await logEvent('nft', 'bid_accepted', sender, {
+      bidId: data.bidId, listingId: data.listingId, collectionId: listing.collectionId, tokenId: listing.tokenId, fullInstanceId,
+      seller: listing.seller, buyer: bid.bidder, bidAmount: toDbString(bidAmount), sellerProceeds: toDbString(sellerProceeds),
+      royaltyAmount: toDbString(royaltyAmount), paymentTokenSymbol: listing.paymentToken.symbol, paymentTokenIssuer: listing.paymentToken.issuer,
       acceptedAt: new Date().toISOString()
     });
 
     return true;
-
   } catch (error) {
-    logger.error(`[nft-accept-bid] Error processing bid acceptance for ${data.bidId}: ${error}`);
+    logger.error(`[nft-accept-bid] Error processing: ${error}`);
     return false;
   }
 }

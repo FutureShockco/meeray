@@ -4,7 +4,7 @@ import validate from '../../validation/index.js';
 import { LaunchpadClaimTokensData, LaunchpadStatus, TokenDistributionRecipient } from './launchpad-interfaces.js';
 import { getAccount, adjustBalance } from '../../utils/account.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
+import { logEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: LaunchpadClaimTokensData, sender: string): Promise<boolean> {
   logger.debug(`[launchpad-claim-tokens] Validating claim from ${sender} for launchpad ${data.launchpadId}, type ${data.allocationType}: ${JSON.stringify(data)}`);
@@ -156,7 +156,7 @@ export async function process(data: LaunchpadClaimTokensData, sender: string): P
     logger.debug(`[launchpad-claim-tokens] Claim by ${sender} for ${tokensToClaim} of ${launchpad.mainTokenId} from ${data.launchpadId} processed.`);
 
     // Log event
-    await logTransactionEvent('launchpad_tokens_claimed', sender, {
+    await logEvent('launchpad', 'tokens_claimed', sender, {
       launchpadId: data.launchpadId,
       userId: data.userId,
       allocationType: data.allocationType,

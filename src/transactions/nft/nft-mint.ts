@@ -5,7 +5,7 @@ import { NFTMintData, NFTCollectionCreateData } from './nft-interfaces.js';
 import { NftInstance } from './nft-transfer.js'; // Import NftInstance type
 // We need NFTCollectionCreateData to type the fetched collection document for checks
 import config from '../../config.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
+import { logEvent } from '../../utils/event-logger.js';
 // event logger removed
 
 // Define a more specific type for what we expect from the nftCollections table
@@ -106,12 +106,12 @@ export async function process(data: NFTMintData, sender: string, id: string): Pr
   try {
     const collection = await cache.findOnePromise('nftCollections', { _id: data.collectionSymbol }) as CachedNftCollection;
 
-    // Use the next sequential index as instanceId
-    const actualInstanceId = collection.nextIndex.toString();
+    // Use sequential token ID (1, 2, 3...) within collection
+    const tokenId = collection.nextIndex.toString(); // Sequential: "1", "2", "3"...
     const nftIndex = collection.nextIndex;
-    // Required fields validated in validateTx
-
-    const fullInstanceId = `${data.collectionSymbol}-${actualInstanceId}`;
+    
+    // Create globally unique NFT ID: COLLECTION-TOKENID
+    const fullInstanceId = `${data.collectionSymbol}-${tokenId}`;  // e.g., "PUNKS-1", "CATS-1"
 
     // Check if NFT with this ID already exists (shouldn't happen with sequential indexing, but safety check)
     const existingNft = await cache.findOnePromise('nfts', { _id: fullInstanceId });
@@ -122,11 +122,11 @@ export async function process(data: NFTMintData, sender: string, id: string): Pr
 
     // Create the NFT instance
     const nftInstance: any = {
-      _id: fullInstanceId,
-      collectionSymbol: data.collectionSymbol as string,
-      instanceId: actualInstanceId as string,
-      owner: data.owner as string,
-      index: nftIndex as number,
+      _id: fullInstanceId,                    // "PUNKS-1", "CATS-1" (globally unique)
+      collectionSymbol: data.collectionSymbol, // "PUNKS", "CATS"
+      tokenId: tokenId,                       // "1", "2", "3" (sequential within collection)
+      owner: data.owner,
+      index: nftIndex,                        // Numeric index for ordering
     };
     if (data.coverUrl) nftInstance.coverUrl = data.coverUrl as string;
     if (data.properties) nftInstance.properties = data.properties;
@@ -163,9 +163,9 @@ export async function process(data: NFTMintData, sender: string, id: string): Pr
     logger.debug(`[nft-mint] NFT ${fullInstanceId} minted successfully by ${sender} for owner ${data.owner}.`);
 
     // Log event
-    await logTransactionEvent('nft_mint', sender, {
+    await logEvent('nft', 'mint', sender, {
       collectionSymbol: data.collectionSymbol,
-      instanceId: actualInstanceId,
+      tokenId: tokenId,
       fullInstanceId,
       owner: data.owner,
       index: nftIndex,

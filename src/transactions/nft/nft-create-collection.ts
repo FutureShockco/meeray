@@ -4,7 +4,7 @@ import validate from '../../validation/index.js';
 import { NFTCollectionCreateData } from './nft-interfaces.js';
 import config from '../../config.js';
 import { adjustBalance } from '../../utils/account.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
+import { logEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: NFTCollectionCreateData, sender: string): Promise<boolean> {
   try {
@@ -49,68 +49,51 @@ export async function validateTx(data: NFTCollectionCreateData, sender: string):
       }
     }
 
-    if (data.royaltyBps !== undefined) {
-      if (!validate.integer(data.royaltyBps, true, false, 2500, 0)) { // Must be integer, non-negative, max 25% = 2500 basis points
-        logger.warn(`[nft-create-collection] Invalid royaltyBps: ${data.royaltyBps}. Must be an integer between 0 and 2500 (inclusive).`);
-        return false;
-      }
+    // Validate royalty (basis points only)
+    if (data.royaltyBps !== undefined && !validate.integer(data.royaltyBps, true, false, 2500, 0)) {
+      logger.warn(`[nft-create-collection] Invalid royaltyBps: ${data.royaltyBps}. Must be 0-2500 basis points (0-25%).`);
+      return false;
     }
 
-    // Validate creatorFee (legacy field, similar to royaltyBps but in percentage)
-    if (data.creatorFee !== undefined) {
-      if (!validate.integer(data.creatorFee, true, false, 25, 0)) { // Must be integer, non-negative, max 25
-        logger.warn(`[nft-create-collection] Invalid creatorFee: ${data.creatorFee}. Must be an integer between 0 and 25 (inclusive).`);
-        return false;
-      }
-    }
-
+    // Validate boolean fields
     if (data.mintable !== undefined && !validate.boolean(data.mintable)) {
-      logger.warn('[nft-create-collection] Invalid mintable flag. Must be boolean.');
+      logger.warn('[nft-create-collection] Invalid mintable flag.');
       return false;
     }
-
     if (data.burnable !== undefined && !validate.boolean(data.burnable)) {
-      logger.warn('[nft-create-collection] Invalid burnable flag. Must be boolean.');
+      logger.warn('[nft-create-collection] Invalid burnable flag.');
       return false;
     }
-
     if (data.transferable !== undefined && typeof data.transferable !== 'boolean') {
-      logger.warn('[nft-create-collection] Invalid transferable flag. Must be boolean.');
+      logger.warn('[nft-create-collection] Invalid transferable flag.');
       return false;
     }
 
+    // Validate string fields
     if (data.schema !== undefined && typeof data.schema !== 'string') {
-      logger.warn('[nft-create-collection] Schema, if provided, must be a string (e.g., JSON schema).');
+      logger.warn('[nft-create-collection] Schema must be a string.');
       return false;
     }
-
     if (data.description !== undefined && !validate.string(data.description, 1000, 0)) {
-      logger.warn('[nft-create-collection] Invalid description length (must be 0-1000 chars).');
+      logger.warn('[nft-create-collection] Invalid description length.');
       return false;
     }
 
+    // Validate URLs
+    const urlFields = ['logoUrl', 'websiteUrl', 'baseCoverUrl'];
+    for (const field of urlFields) {
+      const url = data[field as keyof typeof data] as string;
+      if (url !== undefined && (!validate.string(url, 2048, 10) || !url.startsWith('http'))) {
+        logger.warn(`[nft-create-collection] Invalid ${field}.`);
+        return false;
+      }
+    }
     if (data.metadata?.imageUrl !== undefined && (!validate.string(data.metadata.imageUrl, 2048, 10) || !data.metadata.imageUrl.startsWith('http'))) {
-      logger.warn('[nft-create-collection] Invalid imageUrl: incorrect format, or length (10-2048 chars).');
+      logger.warn('[nft-create-collection] Invalid metadata imageUrl.');
       return false;
     }
-
     if (data.metadata?.externalUrl !== undefined && (!validate.string(data.metadata.externalUrl, 2048, 10) || !data.metadata.externalUrl.startsWith('http'))) {
-      logger.warn('[nft-create-collection] Invalid externalUrl: incorrect format, or length (10-2048 chars).');
-      return false;
-    }
-
-    if (data.logoUrl !== undefined && (!validate.string(data.logoUrl, 2048, 10) || !data.logoUrl.startsWith('http'))) {
-      logger.warn('[nft-create-collection] Invalid logoUrl: incorrect format, or length (10-2048 chars).');
-      return false;
-    }
-
-    if (data.websiteUrl !== undefined && (!validate.string(data.websiteUrl, 2048, 10) || !data.websiteUrl.startsWith('http'))) {
-      logger.warn('[nft-create-collection] Invalid websiteUrl: incorrect format, or length (10-2048 chars).');
-      return false;
-    }
-
-    if (data.baseCoverUrl !== undefined && (!validate.string(data.baseCoverUrl, 2048, 10) || !data.baseCoverUrl.startsWith('http'))) {
-      logger.warn('[nft-create-collection] Invalid baseCoverUrl: incorrect format, or length (10-2048 chars).');
+      logger.warn('[nft-create-collection] Invalid metadata externalUrl.');
       return false;
     }
 
@@ -172,7 +155,7 @@ export async function process(data: NFTCollectionCreateData, sender: string, id:
       mintable: data.mintable === undefined ? true : data.mintable,
       burnable: data.burnable === undefined ? true : data.burnable,
       transferable: data.transferable === undefined ? true : data.transferable,
-      royaltyBps: data.royaltyBps || data.creatorFee || 0, // Use royaltyBps or fallback to creatorFee
+      royaltyBps: data.royaltyBps || 0, // Store only royaltyBps (basis points)
       logoUrl: data.logoUrl || '',
       websiteUrl: data.websiteUrl || '',
       baseCoverUrl: data.baseCoverUrl || '',
@@ -205,7 +188,7 @@ export async function process(data: NFTCollectionCreateData, sender: string, id:
     logger.debug(`[nft-create-collection] Collection ${data.symbol} created successfully by ${sender}.`);
 
     // Log event
-    await logTransactionEvent('nft_collection_created', sender, {
+    await logEvent('nft', 'collection_created', sender, {
       symbol: data.symbol,
       name: data.name,
       creator: data.creator,
@@ -214,7 +197,7 @@ export async function process(data: NFTCollectionCreateData, sender: string, id:
       mintable: data.mintable === undefined ? true : data.mintable,
       burnable: data.burnable === undefined ? true : data.burnable,
       transferable: data.transferable === undefined ? true : data.transferable,
-      royaltyBps: data.royaltyBps || data.creatorFee || 0,
+      royaltyBps: data.royaltyBps || 0, // Store only royaltyBps (basis points)
       logoUrl: data.logoUrl || '',
       websiteUrl: data.websiteUrl || '',
       baseCoverUrl: data.baseCoverUrl || '',

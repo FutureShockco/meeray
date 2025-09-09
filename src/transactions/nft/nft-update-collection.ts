@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { NFTUpdateCollectionData } from './nft-interfaces.js';
 import config from '../../config.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
+import { logEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: NFTUpdateCollectionData, sender: string): Promise<boolean> {
   try {
@@ -48,10 +48,10 @@ export async function validateTx(data: NFTUpdateCollectionData, sender: string):
       return false;
     }
 
-    // Validate creatorFee if provided
-    if (data.creatorFee !== undefined) {
-      if (!validate.integer(data.creatorFee, true, false, 25, 0)) {
-        logger.warn(`[nft-update-collection] Invalid creatorFee: ${data.creatorFee}. Must be an integer between 0 and 25 (inclusive).`);
+    // Validate royaltyBps if provided
+    if (data.royaltyBps !== undefined) {
+      if (!validate.integer(data.royaltyBps, true, false, 2500, 0)) {
+        logger.warn(`[nft-update-collection] Invalid royaltyBps: ${data.royaltyBps}. Must be 0-2500 basis points (0-25%).`);
         return false;
       }
     }
@@ -121,8 +121,8 @@ export async function process(data: NFTUpdateCollectionData, sender: string, id:
       updateFields.transferable = data.transferable;
     }
 
-    if (data.creatorFee !== undefined) {
-      updateFields.creatorFee = data.creatorFee;
+    if (data.royaltyBps !== undefined) {
+      updateFields.royaltyBps = data.royaltyBps;
     }
 
     // Update the collection
@@ -140,7 +140,7 @@ export async function process(data: NFTUpdateCollectionData, sender: string, id:
     logger.debug(`[nft-update-collection] Collection ${data.symbol} successfully updated by ${sender}.`);
 
     // Log event
-    await logTransactionEvent('nft_collection_updated', sender, {
+    await logEvent('nft', 'collection_updated', sender, {
       symbol: data.symbol,
       creator: sender,
       updatedFields: updateFields,

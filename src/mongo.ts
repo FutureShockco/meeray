@@ -417,13 +417,18 @@ export const mongo = {
             await nftListingsCollection.createIndex({ seller: 1, status: 1 }); // For finding active listings by a seller
             logger.debug('[DB Indexes] Finished creating indexes for nftListings collection.');
 
-            // Events
+            // Events collection - Enhanced with two-level structure indexes
             logger.debug('[DB Indexes] Creating indexes for events collection...');
             const eventsCollection = currentDb.collection('events');
             await eventsCollection.createIndex({ _id: 1 });
-            await eventsCollection.createIndex({ type: 1 });
+            await eventsCollection.createIndex({ type: 1 }); // Legacy support
+            await eventsCollection.createIndex({ category: 1 }); // NEW: Category index
+            await eventsCollection.createIndex({ action: 1 }); // NEW: Action index
+            await eventsCollection.createIndex({ category: 1, action: 1 }); // NEW: Compound index for fast category+action queries
             await eventsCollection.createIndex({ actor: 1 });
             await eventsCollection.createIndex({ timestamp: 1 });
+            await eventsCollection.createIndex({ category: 1, timestamp: 1 }); // NEW: Time-series by category
+            await eventsCollection.createIndex({ transactionId: 1 }); // NEW: Transaction linking
             await eventsCollection.createIndex({ "data.collectionSymbol": 1 }, { sparse: true });
             await eventsCollection.createIndex({ "data.instanceId": 1 }, { sparse: true });
             await eventsCollection.createIndex({ "data.listingId": 1 }, { sparse: true });

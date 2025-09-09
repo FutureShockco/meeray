@@ -4,7 +4,7 @@ import validate from '../../validation/index.js';
 import { LaunchpadParticipatePresaleData, LaunchpadStatus } from './launchpad-interfaces.js';
 import { getAccount, adjustBalance } from '../../utils/account.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
+import { logEvent } from '../../utils/event-logger.js';
 
 
 export async function validateTx(dataDb: LaunchpadParticipatePresaleData, sender: string): Promise<boolean> {
@@ -122,7 +122,7 @@ export async function process(dataDb: LaunchpadParticipatePresaleData, sender: s
     logger.debug(`[launchpad-participate-presale] Participation processed for ${data.contributionAmount}.`);
 
     // Log event
-    await logTransactionEvent('launchpad_participation', sender, {
+    await logEvent('launchpad', 'participation', sender, {
       launchpadId: data.launchpadId,
       userId: data.userId,
       contributionAmount: toDbString(toBigInt(data.contributionAmount)),

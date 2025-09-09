@@ -8,7 +8,7 @@ import { getLpTokenSymbol } from '../../utils/token.js';
 import chain from '../../chain.js';
 import { adjustBalance, getAccount, Account } from '../../utils/account.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
+import { logEvent } from '../../utils/event-logger.js';
 
 const NUMERIC_FIELDS_POOL_CREATE: Array<keyof PoolCreateData> = [];
 const LIQUIDITY_POOL_NUMERIC_FIELDS: Array<keyof LiquidityPoolData> = ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens'];
@@ -177,7 +177,7 @@ export async function process(data: PoolCreateData, sender: string, id: string):
     }
 
     // Log event using the new centralized logger
-    await logTransactionEvent('pool_created', sender, {
+    await logEvent('defi', 'pool_created', sender, {
       poolId,
       tokenA: tokenA_symbol,
       tokenB: tokenB_symbol,
@@ -231,7 +231,7 @@ export async function process(data: PoolCreateData, sender: string, id: string):
 
       if (pairInsertSuccess) {
         // Log trading pair creation event
-        await logTransactionEvent('market_pair_created', sender, {
+        await logEvent('market', 'pair_created', sender, {
           pairId,
           baseAssetSymbol: tokenA_symbol,
           baseAssetIssuer: sender,

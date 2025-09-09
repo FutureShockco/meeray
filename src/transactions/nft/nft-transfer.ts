@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import config from '../../config.js'; // For BURN_ACCOUNT_NAME eventually
 import { NFTTransferData, NFTCollectionCreateData } from './nft-interfaces.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
+import { logEvent } from '../../utils/event-logger.js';
 
 const BURN_ACCOUNT_NAME = 'null';
 
@@ -12,19 +12,19 @@ export interface CachedNftCollectionForTransfer extends NFTCollectionCreateData 
 }
 
 export interface NftInstance {
-    _id: string;
-    collectionSymbol: string;
-    instanceId: string;
-    owner: string;
-    index?: number;        // Sequential index within the collection (1, 2, 3, etc.)
-    coverUrl?: string;     // Individual cover URL for this NFT (max 2048 chars, must be valid URL)
-    properties?: Record<string, any>; // Optional instance-specific properties
+    _id: string;           // Full NFT ID: "COLLECTION-TOKENID" (e.g., "PUNKS-1")
+    collectionSymbol: string; // Collection symbol: "PUNKS", "CATS"
+    tokenId: string;       // Token ID within collection: "1", "2", "3"
+    owner: string;         // Current owner
+    index?: number;        // Numeric index for ordering (1, 2, 3, etc.)
+    coverUrl?: string;     // Individual cover URL for this NFT
+    properties?: Record<string, any>; // Optional NFT-specific properties
 }
 
 export async function validateTx(data: NFTTransferData, sender: string): Promise<boolean> {
   try {
     if (!data.collectionSymbol || !data.instanceId || !data.to) {
-      logger.warn('[nft-transfer/burn] Invalid data: Missing required fields (collectionSymbol, instanceId, to).');
+      logger.warn('[nft-transfer/burn] Invalid data: Missing required fields (collectionSymbol, tokenId, to).');
       return false;
     }
 
@@ -144,7 +144,7 @@ export async function process(data: NFTTransferData, sender: string, id: string)
       logger.debug(`[nft-burn] NFT ${fullInstanceId} successfully burnt by ${sender}. Memo: ${data.memo || 'N/A'}`);
       
       // Log burn event
-      await logTransactionEvent('nft_burn', sender, {
+      await logEvent('nft', 'burn', sender, {
         collectionSymbol: data.collectionSymbol,
         instanceId: data.instanceId,
         fullInstanceId,
@@ -169,7 +169,7 @@ export async function process(data: NFTTransferData, sender: string, id: string)
       logger.debug(`[nft-transfer] NFT ${fullInstanceId} successfully transferred from ${sender} to ${data.to}. Memo: ${data.memo || 'N/A'}`);
       
       // Log transfer event
-      await logTransactionEvent('nft_transfer', sender, {
+      await logEvent('nft', 'transfer', sender, {
         collectionSymbol: data.collectionSymbol,
         instanceId: data.instanceId,
         fullInstanceId,

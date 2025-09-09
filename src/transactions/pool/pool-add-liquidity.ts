@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import { PoolAddLiquidityData, LiquidityPoolData, UserLiquidityPositionData } from './pool-interfaces.js';
 import { adjustBalance, getAccount } from '../../utils/account.js';
 import { convertToString, toBigInt, toDbString } from '../../utils/bigint.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
+import { logEvent } from '../../utils/event-logger.js';
 // event logger removed
 import { getLpTokenSymbol } from '../../utils/token.js';
 
@@ -280,7 +280,7 @@ export async function process(data: PoolAddLiquidityData, sender: string, id: st
     logger.debug(`[pool-add-liquidity] Provider ${addLiquidityData.provider} added liquidity to pool ${addLiquidityData.poolId}. Token A: ${addLiquidityData.tokenA_amount}, Token B: ${addLiquidityData.tokenB_amount}, LP tokens minted: ${lpTokensToMint}`);
 
     // Log event
-    await logTransactionEvent('pool_liquidity_added', addLiquidityData.provider, {
+    await logEvent('defi', 'liquidity_added', addLiquidityData.provider, {
       poolId: addLiquidityData.poolId,
       tokenAAmount: toDbString(BigInt(addLiquidityData.tokenA_amount)),
       tokenBAmount: toDbString(BigInt(addLiquidityData.tokenB_amount)),

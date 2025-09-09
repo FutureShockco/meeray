@@ -2,7 +2,7 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { NftDelistPayload, NFTListingData } from './nft-market-interfaces.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
+import { logEvent } from '../../utils/event-logger.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 
 export async function validateTx(data: NftDelistPayload, sender: string): Promise<boolean> {
@@ -56,7 +56,7 @@ export async function process(data: NftDelistPayload, sender: string, id: string
     }
 
     // Log event
-    await logTransactionEvent('nft_delisted', sender, {
+    await logEvent('nft', 'delisted', sender, {
       listingId: data.listingId,
       seller: sender,
       collectionId: listing.collectionId,

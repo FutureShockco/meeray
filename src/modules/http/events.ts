@@ -16,6 +16,18 @@ router.get('/', (async (req: Request, res: Response) => {
         
         const query: any = {};
         
+        // Support new category + action structure with multiple values
+        if (req.query.category) {
+            const categories = Array.isArray(req.query.category) ? req.query.category : [req.query.category];
+            query.category = categories.length === 1 ? categories[0] : { $in: categories };
+        }
+        
+        if (req.query.action) {
+            const actions = Array.isArray(req.query.action) ? req.query.action : [req.query.action];
+            query.action = actions.length === 1 ? actions[0] : { $in: actions };
+        }
+        
+        // Legacy support for type field
         if (req.query.type) {
             query.type = req.query.type;
         }
@@ -80,6 +92,78 @@ router.get('/types', (async (req: Request, res: Response) => {
         });
     } catch (err) {
         logger.error('Error fetching event types:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+}) as RequestHandler);
+
+// New endpoint: Get all categories and actions
+router.get('/categories', (async (req: Request, res: Response) => {
+    try {
+        const events = await cache.findPromise('events', {});
+        if (!events) {
+            return res.json({ success: true, categories: [], actions: [], categoryActions: {} });
+        }
+
+        const categories = [...new Set(events.map(event => event.category).filter(Boolean))];
+        const actions = [...new Set(events.map(event => event.action).filter(Boolean))];
+        
+        // Group actions by category
+        const categoryActions: Record<string, string[]> = {};
+        events.forEach(event => {
+            if (event.category && event.action) {
+                if (!categoryActions[event.category]) {
+                    categoryActions[event.category] = [];
+                }
+                if (!categoryActions[event.category].includes(event.action)) {
+                    categoryActions[event.category].push(event.action);
+                }
+            }
+        });
+        
+        res.json({
+            success: true,
+            categories,
+            actions,
+            categoryActions
+        });
+    } catch (err) {
+        logger.error('Error fetching event categories:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+}) as RequestHandler);
+
+// New endpoint: Get event statistics by category
+router.get('/stats', (async (req: Request, res: Response) => {
+    try {
+        const events = await cache.findPromise('events', {});
+        if (!events) {
+            return res.json({ success: true, stats: {} });
+        }
+
+        const stats: Record<string, { total: number, actions: Record<string, number> }> = {};
+        
+        events.forEach(event => {
+            if (event.category) {
+                if (!stats[event.category]) {
+                    stats[event.category] = { total: 0, actions: {} };
+                }
+                stats[event.category].total++;
+                
+                if (event.action) {
+                    if (!stats[event.category].actions[event.action]) {
+                        stats[event.category].actions[event.action] = 0;
+                    }
+                    stats[event.category].actions[event.action]++;
+                }
+            }
+        });
+        
+        res.json({
+            success: true,
+            stats
+        });
+    } catch (err) {
+        logger.error('Error fetching event statistics:', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 }) as RequestHandler);

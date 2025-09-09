@@ -29,5 +29,5 @@ export function getNftCoverUrl(nft: NftInstance, collectionBaseCoverUrl?: string
  * @returns The display name (e.g., "My Collection #1")
  */
 export function getNftDisplayName(nft: NftInstance, collectionName: string): string {
-  return `${collectionName} #${nft.index || nft.instanceId}`;
+  return `${collectionName} #${nft.index || nft.tokenId}`;
 } 

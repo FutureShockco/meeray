@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js'; // Shared validation module
 import { TokenUpdateData } from './token-interfaces.js'; // Import from new interfaces file
 import config from '../../config.js';
-import { logTransactionEvent } from '../../utils/event-logger.js';
+import { logEvent } from '../../utils/event-logger.js';
 // event logger removed
 
 export async function validateTx(data: TokenUpdateData, sender: string): Promise<boolean> {
@@ -108,7 +108,7 @@ export async function process(data: TokenUpdateData, sender: string, id: string)
     }
 
     // Log event
-    await logTransactionEvent('token_update', sender, {
+    await logEvent('token', 'update', sender, {
       symbol: data.symbol,
       issuer: sender,
       updatedFields: updateData
