@@ -482,9 +482,10 @@ EMERGENCY SCENARIOS
 │   └── Continue operating with available peers
 ├── Steem Bridge Failure
 │   ├── Switch to backup RPC endpoints
-│   ├── Queue bridge operations for retry
-│   ├── Alert operators for manual intervention
-│   └── Continue sidechain operations
+│   ├── Circuit breaker with exponential backoff retries
+│   ├── Keep retrying to process next Steem block (1-5s intervals)
+│   ├── **HALT sidechain block mining** until Steem connectivity restored
+│   └── Alert operators for manual intervention
 ├── Consensus Failure
 │   ├── Detect missing blocks or forks
 │   ├── Request blocks from peers
