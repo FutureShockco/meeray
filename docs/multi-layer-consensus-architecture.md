@@ -293,7 +293,7 @@ entryFee: {
 }
 
 // Use of tournament entry ticket (custom layer)  
-prizes: {
+gameLogic: {
   layer: "hariraid",
   action: "use_tournament_ticket"
 }
