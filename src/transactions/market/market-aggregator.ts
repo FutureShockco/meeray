@@ -55,7 +55,7 @@ export class LiquidityAggregator {
           tokenB: pool.tokenB_symbol,
           reserveA: pool.tokenA_reserve,
           reserveB: pool.tokenB_reserve,
-          feeTier: pool.feeTier,
+          feeTier: 300, // Fixed 0.3% fee
           hasLiquidity: toBigInt(pool.tokenA_reserve) > 0n && toBigInt(pool.tokenB_reserve) > 0n
         });
       }
@@ -186,7 +186,7 @@ export class LiquidityAggregator {
     }
     
     // Calculate output using constant product formula with fees
-    const feeTier = source.feeTier || 300; // Default 0.3%
+    const feeTier = 300; // Fixed 0.3% fee
     const amountInWithFee = amountIn * BigInt(10000 - feeTier);
     const numerator = amountInWithFee * reserveOut;
     const denominator = (reserveIn * BigInt(10000)) + amountInWithFee;

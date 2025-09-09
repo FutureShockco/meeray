@@ -34,7 +34,7 @@ router.get('/sources/:tokenA/:tokenB', (async (req: Request, res: Response) => {
         reserveB: source.reserveB?.toString(),
         reserveAFormatted: formatAmount(toBigInt(source.reserveA!)),
         reserveBFormatted: formatAmount(toBigInt(source.reserveB!)),
-        feeTier: source.feeTier
+        feeTier: 300 // Fixed 0.3% fee
       }),
       ...(source.type === 'ORDERBOOK' && {
         bestBid: source.bestBid?.toString(),

@@ -118,7 +118,7 @@ export async function validateTx(data: PoolAddLiquidityData, sender: string): Pr
   }
 
   // Validate that the LP token exists for this pool
-  const lpTokenSymbol = getLpTokenSymbol(pool.tokenA_symbol, pool.tokenB_symbol, pool.feeTier);
+  const lpTokenSymbol = getLpTokenSymbol(pool.tokenA_symbol, pool.tokenB_symbol);
   const existingLpToken = await cache.findOnePromise('tokens', { _id: lpTokenSymbol });
   if (!existingLpToken) {
     logger.warn(`[pool-add-liquidity] LP token ${lpTokenSymbol} does not exist for pool ${addLiquidityData.poolId}. This suggests the pool was created before the LP token creation was fixed. Please contact support or recreate the pool.`);
@@ -263,7 +263,7 @@ export async function process(data: PoolAddLiquidityData, sender: string, id: st
     }
 
     // After updating userLiquidityPositions, ensure LP token exists before crediting
-    const lpTokenSymbol = getLpTokenSymbol(pool.tokenA_symbol, pool.tokenB_symbol, pool.feeTier);
+    const lpTokenSymbol = getLpTokenSymbol(pool.tokenA_symbol, pool.tokenB_symbol);
     const existingLpToken = await cache.findOnePromise('tokens', { _id: lpTokenSymbol });
     if (!existingLpToken) {
       logger.error(`[pool-add-liquidity] LP token ${lpTokenSymbol} does not exist for pool ${addLiquidityData.poolId}. This should be created during pool creation.`);

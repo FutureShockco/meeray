@@ -33,7 +33,7 @@ interface Pool {
     tokenA_reserve: string;
     tokenB_symbol: string;
     tokenB_reserve: string;
-    feeTier: number;
+    // Note: Fee is always 0.3% (300 basis points) - no longer stored per pool
 }
 
 /**
@@ -46,16 +46,15 @@ interface Pool {
 function getOutputAmountBigInt(
     inputAmount: bigint,
     inputReserve: bigint,
-    outputReserve: bigint,
-    feeTier: number
+    outputReserve: bigint
 ): bigint {
     if (inputAmount <= 0n || inputReserve <= 0n || outputReserve <= 0n) {
         return 0n;
     }
 
-    // Use the same calculation method as the HTTP API
-    // Fee tiers are in basis points: 10 = 0.01%, 50 = 0.05%, 300 = 0.3%, 1000 = 1%
-    const feeMultiplier = BigInt(10000) - BigInt(feeTier); // e.g., 10000 - 300 = 9700 for 0.3% fee
+    // Use fixed 0.3% fee tier (300 basis points)
+    const feeTier = 300;
+    const feeMultiplier = BigInt(10000) - BigInt(feeTier); // 10000 - 300 = 9700 for 0.3% fee
     const feeDivisor = BigInt(10000);
 
     const amountInAfterFee = (inputAmount * feeMultiplier) / feeDivisor; // Use BigInt division like HTTP API
@@ -99,7 +98,7 @@ async function findBestTradeRoute(
         tokenA_reserve: p.tokenA_reserve,
         tokenB_symbol: p.tokenB_symbol,
         tokenB_reserve: p.tokenB_reserve,
-        feeTier: p.feeTier || 300
+        feeTier: 300 // Fixed 0.3% fee
     }));
 
     const routes: TradeRoute[] = [];
@@ -129,7 +128,7 @@ async function findBestTradeRoute(
             if (tokenInReserve <= 0n || tokenOutReserve <= 0n) continue;
             if (currentPath.length > 0 && currentPath[currentPath.length - 1].tokenIn === nextTokenSymbol) continue;
 
-            const amountOutFromHop = getOutputAmountBigInt(currentAmountIn, tokenInReserve, tokenOutReserve, pool.feeTier);
+            const amountOutFromHop = getOutputAmountBigInt(currentAmountIn, tokenInReserve, tokenOutReserve);
             if (amountOutFromHop <= 0n) continue;
 
             const priceImpact = calculatePriceImpact(currentAmountIn, tokenInReserve);
@@ -276,7 +275,7 @@ async function validateRoutedSwap(data: PoolSwapData, sender: string, traderAcco
         const reserveIn = tokenInIsA ? toBigInt(poolFromDb.tokenA_reserve) : toBigInt(poolFromDb.tokenB_reserve);
         const reserveOut = tokenInIsA ? toBigInt(poolFromDb.tokenB_reserve) : toBigInt(poolFromDb.tokenA_reserve);
 
-        const amountOut = getOutputAmountBigInt(toBigInt(currentAmountIn), reserveIn, reserveOut, poolFromDb.feeTier);
+        const amountOut = getOutputAmountBigInt(toBigInt(currentAmountIn), reserveIn, reserveOut);
 
         // Check if actual calculation meets minimum (same as execution)
         if (hop.minAmountOut && amountOut < toBigInt(hop.minAmountOut)) {
@@ -339,7 +338,7 @@ async function validateAutoRouteSwap(data: PoolSwapData, sender: string, traderA
         const reserveOut = tokenInIsA ? toBigInt(poolFromDb.tokenB_reserve) : toBigInt(poolFromDb.tokenA_reserve);
 
         // Calculate output amount using the same formula as HTTP API
-        const amountOut = getOutputAmountBigInt(currentAmountIn, reserveIn, reserveOut, poolFromDb.feeTier);
+        const amountOut = getOutputAmountBigInt(currentAmountIn, reserveIn, reserveOut);
 
         // Calculate minimum for this hop (same as execution)
         const expectedOutput = toBigInt(hop.amountOut);
@@ -417,11 +416,11 @@ async function processSingleHopSwap(data: PoolSwapData, sender: string, transact
     const reserveOut = tokenInIsA ? toBigInt(poolFromDb.tokenB_reserve) : toBigInt(poolFromDb.tokenA_reserve);
 
     // Calculate output amount using constant product formula (same as HTTP API)
-    const amountOut = getOutputAmountBigInt(toBigInt(data.amountIn), reserveIn, reserveOut, poolFromDb.feeTier);
+    const amountOut = getOutputAmountBigInt(toBigInt(data.amountIn), reserveIn, reserveOut);
 
     // Calculate fee amount and update feeGrowthGlobal
     const feeDivisor = BigInt(10000);
-    const feeAmount = (toBigInt(data.amountIn) * BigInt(poolFromDb.feeTier)) / feeDivisor;
+    const feeAmount = (toBigInt(data.amountIn) * BigInt(300)) / feeDivisor; // Fixed 0.3% fee
     const totalLpTokens = toBigInt(poolFromDb.totalLpTokens);
     let newFeeGrowthGlobalA = toBigInt(poolFromDb.feeGrowthGlobalA || '0');
     let newFeeGrowthGlobalB = toBigInt(poolFromDb.feeGrowthGlobalB || '0');
@@ -490,7 +489,7 @@ async function processSingleHopSwap(data: PoolSwapData, sender: string, transact
       amountIn: toDbString(toBigInt(data.amountIn)),
       amountOut: toDbString(amountOut),
       fee: toDbString(feeAmount),
-      feeTier: poolFromDb.feeTier,
+      feeTier: 300, // Fixed 0.3% fee
       tokenA_symbol: poolFromDb.tokenA_symbol,
       tokenB_symbol: poolFromDb.tokenB_symbol
     }, transactionId);
@@ -518,11 +517,11 @@ async function processSingleHopSwapWithResult(data: PoolSwapData, sender: string
         const reserveOut = tokenInIsA ? toBigInt(poolFromDb.tokenB_reserve) : toBigInt(poolFromDb.tokenA_reserve);
 
         // Calculate output amount using constant product formula (same as HTTP API)
-        const amountOut = getOutputAmountBigInt(toBigInt(data.amountIn), reserveIn, reserveOut, poolFromDb.feeTier);
+        const amountOut = getOutputAmountBigInt(toBigInt(data.amountIn), reserveIn, reserveOut);
 
         // Calculate fee amount and update feeGrowthGlobal
         const feeDivisor = BigInt(10000);
-        const feeAmount = (toBigInt(data.amountIn) * BigInt(poolFromDb.feeTier)) / feeDivisor;
+        const feeAmount = (toBigInt(data.amountIn) * BigInt(300)) / feeDivisor; // Fixed 0.3% fee
         const totalLpTokens = toBigInt(poolFromDb.totalLpTokens);
         let newFeeGrowthGlobalA = toBigInt(poolFromDb.feeGrowthGlobalA || '0');
         let newFeeGrowthGlobalB = toBigInt(poolFromDb.feeGrowthGlobalB || '0');
@@ -587,7 +586,7 @@ async function processSingleHopSwapWithResult(data: PoolSwapData, sender: string
             amountIn: toDbString(toBigInt(data.amountIn)),
             amountOut: toDbString(amountOut),
             fee: toDbString(feeAmount),
-            feeTier: poolFromDb.feeTier,
+            feeTier: 300, // Fixed 0.3% fee
             tokenA_symbol: poolFromDb.tokenA_symbol,
             tokenB_symbol: poolFromDb.tokenB_symbol
         }, transactionId);
@@ -618,11 +617,11 @@ async function processRoutedSwap(data: PoolSwapData, sender: string, transaction
         const reserveOut = tokenInIsA ? toBigInt(poolFromDb.tokenB_reserve) : toBigInt(poolFromDb.tokenA_reserve);
 
         // Calculate output amount for this hop (same as HTTP API)
-        const amountOut = getOutputAmountBigInt(currentAmountIn, reserveIn, reserveOut, poolFromDb.feeTier);
+        const amountOut = getOutputAmountBigInt(currentAmountIn, reserveIn, reserveOut);
 
         // Calculate fee amount and update feeGrowthGlobal
         const feeDivisor = BigInt(10000);
-        const feeAmount = (currentAmountIn * BigInt(poolFromDb.feeTier)) / feeDivisor;
+        const feeAmount = (currentAmountIn * BigInt(300)) / feeDivisor; // Fixed 0.3% fee
         const totalLpTokens = toBigInt(poolFromDb.totalLpTokens);
         let newFeeGrowthGlobalA = toBigInt(poolFromDb.feeGrowthGlobalA || '0');
         let newFeeGrowthGlobalB = toBigInt(poolFromDb.feeGrowthGlobalB || '0');
@@ -714,7 +713,7 @@ async function processRoutedSwap(data: PoolSwapData, sender: string, transaction
         amountIn: toDbString(toBigInt(data.amountIn)),
         amountOut: toDbString(totalAmountOut),
         fee: toDbString(totalAmountOut * BigInt(10000) / toBigInt(data.amountIn)),
-        feeTier: firstPoolData?.feeTier || 300,
+        feeTier: 300, // Fixed 0.3% fee
         tokenA_symbol: firstPoolData?.tokenA_symbol || data.hops![0].tokenIn_symbol,
         tokenB_symbol: firstPoolData?.tokenB_symbol || data.hops![0].tokenOut_symbol
     }, transactionId);

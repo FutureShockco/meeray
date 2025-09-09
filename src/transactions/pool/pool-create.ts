@@ -13,16 +13,16 @@ import { logEvent } from '../../utils/event-logger.js';
 const NUMERIC_FIELDS_POOL_CREATE: Array<keyof PoolCreateData> = [];
 const LIQUIDITY_POOL_NUMERIC_FIELDS: Array<keyof LiquidityPoolData> = ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens'];
 
-function generatePoolId(tokenA_symbol: string, tokenB_symbol: string, feeTier: number): string {
+function generatePoolId(tokenA_symbol: string, tokenB_symbol: string): string {
   // Ensure canonical order to prevent duplicate pools (e.g., A-B vs B-A)
   const [token1, token2] = [tokenA_symbol, tokenB_symbol].sort();
-  return `${token1}_${token2}_${feeTier}`;
+  return `${token1}_${token2}`;
 }
 
-function generateLpTokenSymbol(tokenA_symbol: string, tokenB_symbol: string, feeTier: number): string {
+function generateLpTokenSymbol(tokenA_symbol: string, tokenB_symbol: string): string {
   // Make LP token symbols shorter and more predictable
   const [token1, token2] = [tokenA_symbol, tokenB_symbol].sort();
-  return `LP_${token1}_${token2}_${feeTier}`;
+  return `LP_${token1}_${token2}`;
 }
 
 export async function validateTx(data: PoolCreateData, sender: string): Promise<boolean> {
@@ -48,19 +48,7 @@ export async function validateTx(data: PoolCreateData, sender: string): Promise<
       return false;
     }
 
-    let chosenFeeTier: number;
-    const block = chain.getLatestBlock();
-    const allowedFeeTiers = config.read(block._id).allowedFeeTiers;
-    if (data.feeTier === undefined) {
-      chosenFeeTier = allowedFeeTiers[0];
-      logger.debug(`[pool-create] No feeTier provided, using default: ${chosenFeeTier} bps.`);
-    } else {
-      chosenFeeTier = data.feeTier;
-      if (!allowedFeeTiers.includes(chosenFeeTier)) {
-        logger.warn(`[pool-create] Invalid feeTier: ${chosenFeeTier}. Allowed tiers: ${allowedFeeTiers.join(', ')}.`);
-        return false;
-      }
-    }
+    // Fee is fixed at 0.3% (300 basis points) - no configuration needed
 
     // Check if tokens exist
     const tokenAExists = await cache.findOnePromise('tokens', { _id: data.tokenA_symbol });
@@ -75,10 +63,10 @@ export async function validateTx(data: PoolCreateData, sender: string): Promise<
     }
 
     // Check for pool uniqueness
-    const poolId = generatePoolId(data.tokenA_symbol, data.tokenB_symbol, chosenFeeTier);
+    const poolId = generatePoolId(data.tokenA_symbol, data.tokenB_symbol);
     const existingPool = await cache.findOnePromise('liquidityPools', { _id: poolId });
     if (existingPool) {
-      logger.warn(`[pool-create] Liquidity pool with ID ${poolId} (tokens + fee tier ${chosenFeeTier}) already exists.`);
+      logger.warn(`[pool-create] Liquidity pool with ID ${poolId} already exists.`);
       return false;
     }
 
@@ -98,16 +86,11 @@ export async function validateTx(data: PoolCreateData, sender: string): Promise<
 
 export async function process(data: PoolCreateData, sender: string, id: string): Promise<boolean> {
   try {
-    const block = chain.getLatestBlock();
-    const allowedFeeTiers = config.read(block._id).allowedFeeTiers;
+    // Fee is fixed at 0.3% (300 basis points) - no configuration needed
     const createData = convertToBigInt<PoolCreateData>(data, NUMERIC_FIELDS_POOL_CREATE);
-    let chosenFeeTier = createData.feeTier;
-    if (chosenFeeTier === undefined) {
-      chosenFeeTier = allowedFeeTiers[0];
-    }
 
-    const poolId = generatePoolId(createData.tokenA_symbol, createData.tokenB_symbol, chosenFeeTier);
-    const lpTokenSymbol = generateLpTokenSymbol(createData.tokenA_symbol, createData.tokenB_symbol, chosenFeeTier);
+    const poolId = generatePoolId(createData.tokenA_symbol, createData.tokenB_symbol);
+    const lpTokenSymbol = generateLpTokenSymbol(createData.tokenA_symbol, createData.tokenB_symbol);
 
     let tokenA_symbol = createData.tokenA_symbol;
     let tokenB_symbol = createData.tokenB_symbol;
@@ -124,7 +107,6 @@ export async function process(data: PoolCreateData, sender: string, id: string):
       tokenB_symbol: tokenB_symbol,
       tokenB_reserve: BigInt(0),
       totalLpTokens: BigInt(0),
-      feeTier: chosenFeeTier,
       createdAt: new Date().toISOString(),
       status: 'ACTIVE'
     };
@@ -145,8 +127,8 @@ export async function process(data: PoolCreateData, sender: string, id: string):
     if (!createSuccess) {
       return false;
     }
-    logger.debug(`[pool-create] Liquidity Pool ${poolId} (${tokenA_symbol}-${tokenB_symbol}, Fee: ${chosenFeeTier}bps) created by ${sender}. LP Token: ${lpTokenSymbol}`);
-    const tokenSymbol = getLpTokenSymbol(tokenA_symbol, tokenB_symbol, chosenFeeTier);
+    logger.debug(`[pool-create] Liquidity Pool ${poolId} (${tokenA_symbol}-${tokenB_symbol}, Fee: 0.3%) created by ${sender}. LP Token: ${lpTokenSymbol}`);
+    const tokenSymbol = getLpTokenSymbol(tokenA_symbol, tokenB_symbol);
     // Create LP token for this pool if it does not exist
     const existingLpToken = await cache.findOnePromise('tokens', { _id: tokenSymbol });
     if (!existingLpToken) {
@@ -177,16 +159,16 @@ export async function process(data: PoolCreateData, sender: string, id: string):
     }
 
     // Log event using the new centralized logger
-    await logEvent('defi', 'pool_created', sender, {
-      poolId,
-      tokenA: tokenA_symbol,
-      tokenB: tokenB_symbol,
-      feeTier: chosenFeeTier,
-      initialLiquidity: {
-        tokenAAmount: '0',
-        tokenBAmount: '0'
-      }
-    }, id);
+        await logEvent('defi', 'pool_created', sender, {
+          poolId,
+          tokenA: tokenA_symbol,
+          tokenB: tokenB_symbol,
+          feeTier: 300, // Fixed 0.3% fee for logging compatibility
+          initialLiquidity: {
+            tokenAAmount: '0',
+            tokenBAmount: '0'
+          }
+        }, id);
 
     // Automatically create trading pair for this pool
     try {

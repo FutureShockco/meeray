@@ -40,9 +40,9 @@ export async function getTokenByIdentifier(symbol: string, issuer?: string): Pro
 }
 
 
-export function getLpTokenSymbol(tokenA_symbol: string, tokenB_symbol: string, feeTier: number): string {
+export function getLpTokenSymbol(tokenA_symbol: string, tokenB_symbol: string): string {
     const [token1, token2] = [tokenA_symbol, tokenB_symbol].sort();
-    return `LP_${token1}_${token2}_${feeTier}`;
+    return `LP_${token1}_${token2}`;
 } 
 
 export async function adjustTokenSupply(tokenIdentifier: string, amount: bigint): Promise<boolean> {

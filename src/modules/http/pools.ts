@@ -116,7 +116,7 @@ async function findAllTradeRoutesBigInt(
         _id: p._id.toString(), // ensure _id is string
         tokenA_reserve: p.tokenA_reserve as string,
         tokenB_reserve: p.tokenB_reserve as string,
-        feeRateBasisPoints: BigInt(p.feeTier || 300), // Use feeTier from pool data
+        feeRateBasisPoints: BigInt(300), // Fixed 0.3% fee
     }));
 
     const routes: TradeRoute[] = [];
@@ -295,7 +295,7 @@ router.get('/', (async (req: Request, res: Response) => {
             const events = eventsByPool[poolIdStr] || [];
             for (const event of events) {
                 const e = event.data;
-                const feeTier = BigInt(e.feeTier || 300);
+                const feeTier = BigInt(300); // Fixed 0.3% fee tier
                 const feeDivisor = BigInt(10000);
                 const amountIn = toBigInt(e.amountIn);
                 const tokenIn = e.tokenIn_symbol;
@@ -311,7 +311,7 @@ router.get('/', (async (req: Request, res: Response) => {
             const events24h = events24hByPool[poolIdStr] || [];
             for (const event of events24h) {
                 const e = event.data;
-                const feeTier = BigInt(e.feeTier || 300);
+                const feeTier = BigInt(300); // Fixed 0.3% fee tier
                 const feeDivisor = BigInt(10000);
                 const amountIn = toBigInt(e.amountIn);
                 const tokenIn = e.tokenIn_symbol;
@@ -635,7 +635,7 @@ router.get('/:poolId/analytics', (async (req: Request, res: Response) => {
             let totalVolumeA = 0n, totalVolumeB = 0n, totalFeesA = 0n, totalFeesB = 0n;
             for (const event of events) {
                 const e = event.data;
-                const feeTier = BigInt(e.feeTier || 300);
+                const feeTier = BigInt(300); // Fixed 0.3% fee tier
                 const feeDivisor = BigInt(10000);
                 const amountIn = toBigInt(e.amountIn);
                 const tokenIn = e.tokenIn_symbol;
@@ -719,7 +719,7 @@ router.get('/:poolId/analytics', (async (req: Request, res: Response) => {
             const createdAt = new Date(event.timestamp).getTime();
             const bucketIdx = Math.floor((createdAt - startTime.getTime()) / bucketMs);
             if (bucketIdx < 0 || bucketIdx >= buckets.length) continue;
-            const feeTier = BigInt(e.feeTier || 300);
+            const feeTier = BigInt(300); // Fixed 0.3% fee
             const feeDivisor = BigInt(10000);
             const amountIn = toBigInt(e.amountIn);
             const tokenIn = e.tokenIn_symbol;

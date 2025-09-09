@@ -10,7 +10,7 @@ export interface PoolSwapResult {
 export interface PoolCreateData {
   tokenA_symbol: string;      // Symbol of the first token in the pair
   tokenB_symbol: string;      // Symbol of the second token in the pair
-  feeTier?: number;           // Fee tier in basis points (e.g., 10 = 0.01%, 50 = 0.05%, 300 = 0.3%, 1000 = 1%)
+  // Fee tier is now fixed at 0.3% (300 basis points) - no longer configurable
 }
 
 export interface PoolAddLiquidityData {
@@ -49,16 +49,16 @@ export interface PoolSwapData {
 
 // Represents a liquidity pool in the cache/database
 export interface LiquidityPoolData {
-  _id: string;                // Pool identifier (usually tokenA_symbol-tokenB_symbol)
+  _id: string;                // Pool identifier (tokenA_symbol-tokenB_symbol)
   tokenA_symbol: string;     // Symbol of token A
   tokenA_reserve: string | bigint;    // Current balance of token A in the pool
   tokenB_symbol: string;     // Symbol of token B
   tokenB_reserve: string | bigint;    // Current balance of token B in the pool
   totalLpTokens: string | bigint;     // Total amount of LP tokens issued for this pool
-  feeTier: number;          // Fee tier in basis points (e.g., 10 = 0.01%, 50 = 0.05%, 300 = 0.3%, 1000 = 1%)
   createdAt: string;        // ISO date string
   lastTradeAt?: string;     // ISO date string of last trade
   status: string;           // Pool status (e.g., 'active', 'paused')
+  // Note: Fee is fixed at 0.3% (300 basis points) - no longer stored per pool
 
   // Fee accounting fields
   feeGrowthGlobalA?: string | bigint; // Cumulative fee per LP token for token A (scaled by 1e18)
