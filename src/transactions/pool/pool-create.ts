@@ -5,8 +5,6 @@ import { PoolCreateData, LiquidityPoolData } from './pool-interfaces.js';
 import config from '../../config.js';
 import { convertToBigInt, convertToString } from '../../utils/bigint.js';
 import { getLpTokenSymbol } from '../../utils/token.js';
-import chain from '../../chain.js';
-import { adjustBalance, getAccount, Account } from '../../utils/account.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
 

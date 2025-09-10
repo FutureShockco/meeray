@@ -1,14 +1,8 @@
-export enum TokenStandard {
-  NATIVE = 'NATIVE',
-  WRAPPED_NATIVE_LIKE = 'WRAPPED_NATIVE_LIKE',
-}
-
 export enum VestingType {
   NONE = 'NONE',
   LINEAR_MONTHLY = 'LINEAR_MONTHLY',
   LINEAR_DAILY = 'LINEAR_DAILY',
-  CLIFF = 'CLIFF',
-  CUSTOM = 'CUSTOM',
+  CLIFF = 'CLIFF'
 }
 
 export interface VestingSchedule {
@@ -73,14 +67,14 @@ export interface LaunchpadLaunchTokenData {
   userId: string;
   tokenName: string;
   tokenSymbol: string;
-  tokenStandard: TokenStandard;
+  totalSupply: string | bigint;
+  tokenDecimals?: number; // defaults to 18
+  
+  // Optional basic info (can also be set via LaunchpadUpdateMetadataData)
   tokenDescription?: string;
-  tokenLogoUrl?: string;
   projectWebsite?: string;
-  projectSocials?: { [platform: string]: string };
-  tokenomics: Tokenomics;
-  presaleDetails?: PresaleDetails;
-  liquidityProvisionDetails?: LiquidityProvisionDetails;
+  
+  // Fee payment (required)
   launchFeeTokenSymbol: string;
   launchFeeTokenIssuer?: string;
 }
@@ -107,7 +101,6 @@ export interface TokenData {
   _id: string;
   name: string;
   symbol: string;
-  standard: TokenStandard;
   decimals: number;
   totalSupply: number;
   maxSupply?: number;
@@ -127,13 +120,17 @@ export interface LaunchpadData {
   tokenToLaunch: {
     name: string;
     symbol: string;
-    standard: TokenStandard;
     decimals: number;
     totalSupply: string | bigint;
   };
-  tokenomicsSnapshot: Tokenomics;
+  tokenomicsSnapshot?: Tokenomics; // Optional - can be configured later
   presaleDetailsSnapshot?: PresaleDetails;
   liquidityProvisionDetailsSnapshot?: LiquidityProvisionDetails;
+  airdropRecipients?: Array<{
+    username: string;
+    amount: string | bigint;
+    claimed: boolean;
+  }>;
   launchedByUserId: string;
   createdAt: string;
   updatedAt: string;
@@ -170,4 +167,53 @@ export interface LaunchpadClaimTokensData {
   userId: string;
   launchpadId: string;
   allocationType: TokenDistributionRecipient;
+}
+
+// Additional configuration transactions
+export interface LaunchpadConfigurePresaleData {
+  userId: string;
+  launchpadId: string;
+  presaleDetails: PresaleDetails;
+}
+
+export interface LaunchpadConfigureTokenomicsData {
+  userId: string;
+  launchpadId: string;
+  tokenomics: Tokenomics;
+}
+
+export interface LaunchpadConfigureLiquidityData {
+  userId: string;
+  launchpadId: string;
+  liquidityProvisionDetails: LiquidityProvisionDetails;
+}
+
+export interface LaunchpadUpdateMetadataData {
+  userId: string;
+  launchpadId: string;
+  tokenDescription?: string;
+  tokenLogoUrl?: string;
+  projectSocials?: { [platform: string]: string };
+}
+
+export interface AirdropRecipient {
+  username: string;
+  amount: string | bigint;
+}
+
+export interface LaunchpadConfigureAirdropData {
+  userId: string;
+  launchpadId: string;
+  recipients: AirdropRecipient[];
+}
+
+export interface VestingState {
+  userId: string;
+  launchpadId: string;
+  allocationType: TokenDistributionRecipient;
+  totalAllocated: string | bigint;
+  totalClaimed: string | bigint;
+  vestingStartTimestamp: string; // Steem block timestamp when vesting started
+  lastClaimedTimestamp?: string;
+  isFullyClaimed: boolean;
 }

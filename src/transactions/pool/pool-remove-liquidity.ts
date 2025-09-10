@@ -2,13 +2,10 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { PoolRemoveLiquidityData, LiquidityPoolData, UserLiquidityPositionData } from './pool-interfaces.js';
-import { adjustBalance, getAccount } from '../../utils/account.js';
-import { BigIntMath, toDbString, toBigInt, convertToBigInt, convertToString } from '../../utils/bigint.js';
+import { adjustBalance } from '../../utils/account.js';
+import { toDbString, toBigInt } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
 import { getLpTokenSymbol } from '../../utils/token.js';
-
-// minTokenA_amount and minTokenB_amount are for client-side slippage, not direct processing here if only lpTokenAmount is used.
-const NUMERIC_FIELDS_REMOVE_LIQ: Array<keyof PoolRemoveLiquidityData> = ['lpTokenAmount']; 
 
 export async function validateTx(data: PoolRemoveLiquidityData, sender: string): Promise<boolean> {
   try {
