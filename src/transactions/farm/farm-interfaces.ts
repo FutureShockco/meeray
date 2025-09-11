@@ -17,6 +17,7 @@ export interface FarmCreateData {
   rewardsPerBlock: string | bigint;   // Rewards distributed per block
   minStakeAmount?: string | bigint;   // Minimum amount that can be staked
   maxStakeAmount?: string | bigint;   // Maximum amount that can be staked per user
+  weight?: number;            // Farm weight for native reward distribution (default: 1)
 }
 
 export interface FarmStakeData {
@@ -54,9 +55,13 @@ export interface FarmData {
   totalStaked: string | bigint;      // Total amount of staking tokens deposited
   minStakeAmount: string | bigint;   // Minimum amount that can be staked
   maxStakeAmount: string | bigint;   // Maximum amount that can be staked per user
+  weight: number;           // Farm weight for native reward distribution
+  isNativeFarm: boolean;    // True if this farm gets native MRY rewards from the global pool
+  isActive?: boolean;       // Farm active status (default: true)
   status: 'active' | 'ended' | 'cancelled';
   createdAt: string;
   lastUpdatedAt?: string;
+  lastRewardUpdate?: string; // Last time rewards were updated
   // Optional fields for runtime accounting
   rewardsRemaining?: string | bigint;
   vaultAccount?: string;

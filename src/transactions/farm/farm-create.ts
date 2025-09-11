@@ -52,6 +52,14 @@ export async function validateTx(data: FarmCreateData, sender: string): Promise<
             return false;
         }
 
+        // Validate weight (optional, default to 1 for native farms, 0 for custom farms)
+        if (data.weight !== undefined) {
+            if (!validate.integer(data.weight, true, false, 1000, 0)) {
+                logger.warn(`[farm-create] Invalid weight: ${data.weight}. Must be between 0-1000.`);
+                return false;
+            }
+        }
+
         const rewardToken = await cache.findOnePromise('tokens', { symbol: data.rewardToken.symbol });
         if (!rewardToken) {
             logger.warn(`[farm-create] Reward Token (${data.rewardToken.symbol}) not found.`);
@@ -173,6 +181,13 @@ export async function process(data: FarmCreateData, sender: string, id: string, 
         const newVaultBal = currentVaultBal + BigInt(farmData.totalRewards);
         await cache.updateOnePromise('accounts', { name: vaultAccountName }, { $set: { [vaultBalanceKey]: toDbString(newVaultBal) } });
 
+        // Determine if this is a native farm (rewards in MRY from system)
+        const isNativeFarm = farmData.rewardToken.symbol === config.nativeTokenSymbol && 
+                            farmData.rewardToken.issuer === config.masterName;
+        
+        // Set default weight based on farm type
+        const farmWeight = farmData.weight !== undefined ? farmData.weight : (isNativeFarm ? 1 : 0);
+
         const farmDocument: FarmData = {
             _id: farmId,
             name: farmData.name,
@@ -185,6 +200,9 @@ export async function process(data: FarmCreateData, sender: string, id: string, 
             minStakeAmount: farmData.minStakeAmount === undefined ? BigInt(0) : farmData.minStakeAmount,
             maxStakeAmount: farmData.maxStakeAmount === undefined ? BigInt(0) : farmData.maxStakeAmount,
             totalStaked: BigInt(0),
+            weight: farmWeight,
+            isNativeFarm: isNativeFarm,
+            isActive: true,
             status: 'active',
             createdAt: new Date().toISOString(),
                          // Track rewards remaining for capping claims
