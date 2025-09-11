@@ -117,6 +117,27 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                         case 'nft_buy_item':
                             txType = TransactionType.NFT_BUY_ITEM;
                             break;
+                        case 'nft_accept_bid':
+                            txType = TransactionType.NFT_ACCEPT_BID;
+                            break;
+                        case 'nft_close_auction':
+                            txType = TransactionType.NFT_CLOSE_AUCTION;
+                            break;
+                        case 'nft_batch_operations':
+                            txType = TransactionType.NFT_BATCH_OPERATIONS;
+                            break;
+                        case 'nft_cancel_bid':
+                            txType = TransactionType.NFT_CANCEL_BID;
+                            break;
+                        case 'nft_make_offer':
+                            txType = TransactionType.NFT_MAKE_OFFER;
+                            break;
+                        case 'nft_accept_offer':
+                            txType = TransactionType.NFT_ACCEPT_OFFER;
+                            break;
+                        case 'nft_cancel_offer':
+                            txType = TransactionType.NFT_CANCEL_OFFER;
+                            break;
 
                         // Farm Transactions
                         case 'farm_create':

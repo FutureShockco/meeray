@@ -134,6 +134,58 @@ export interface NftBatchPayload {
   atomic?: boolean;               // If true, all operations must succeed or all fail
 }
 
+// Cancel bid transaction payload
+export interface NftCancelBidData {
+  bidId: string;                  // Which bid to cancel
+  listingId: string;              // Validation - ensure bidder owns bid
+}
+
+// Offer interfaces (for unlisted NFTs or collection offers)
+export interface NftOffer {
+  _id: string;                    // offerId: hash(target, offerBy, timestamp)
+  targetType: 'NFT' | 'COLLECTION' | 'TRAIT';
+  targetId: string;               // NFT instance ID, collection symbol, or trait combination
+  offerBy: string;                // Who made the offer
+  offerAmount: string | bigint;   // Offer amount
+  paymentToken: {
+    symbol: string;
+    issuer?: string;
+  };
+  status: 'ACTIVE' | 'ACCEPTED' | 'EXPIRED' | 'CANCELLED';
+  expiresAt?: string;             // When offer expires
+  createdAt: string;              // When offer was made
+  escrowedAmount: string | bigint; // Amount locked in offerBy's account
+  traits?: {                      // For trait-based offers
+    [key: string]: string;
+  };
+  floorPrice?: string | bigint;   // For collection offers - minimum floor
+}
+
+// Make offer transaction payload
+export interface NftMakeOfferData {
+  targetType: 'NFT' | 'COLLECTION' | 'TRAIT';
+  targetId: string;               // NFT instance ID or collection symbol
+  offerAmount: string;            // Offer amount
+  paymentTokenSymbol: string;     // Token for payment
+  paymentTokenIssuer?: string;    // Required if not native token
+  expiresAt?: string;             // Optional expiration
+  traits?: {                      // For trait-based offers
+    [key: string]: string;
+  };
+  floorPrice?: string;            // For collection offers
+}
+
+// Accept offer transaction payload
+export interface NftAcceptOfferData {
+  offerId: string;                // Which offer to accept
+  nftInstanceId?: string;         // Required for collection/trait offers
+}
+
+// Cancel offer transaction payload
+export interface NftCancelOfferData {
+  offerId: string;                // Which offer to cancel
+}
+
 // Event interfaces for market activities could also be defined here later.
 // export interface NftItemListedEvent { ... }
 // export interface NftItemSoldEvent { ... }

@@ -1081,4 +1081,855 @@ router.get('/user/:username/winning', (async (req: Request, res: Response) => {
     }
 }) as RequestHandler);
 
+// ===== COLLECTION ANALYTICS ENDPOINTS =====
+
+// GET /nfts/collections/:symbol/analytics - Get detailed analytics for a collection
+router.get('/collections/:symbol/analytics', (async (req: Request, res: Response) => {
+    const { symbol } = req.params;
+    const days = parseInt(req.query.days as string) || 7; // Default 7 days
+
+    try {
+        // Verify collection exists
+        const collection = await cache.findOnePromise('nftCollections', { _id: symbol });
+        if (!collection) {
+            return res.status(404).json({ message: `Collection ${symbol} not found.` });
+        }
+
+        const cutoffDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+        // Get total NFTs in collection
+        const totalNfts = await mongo.getDb().collection('nfts').countDocuments({ collectionSymbol: symbol });
+
+        // Get total listed
+        const totalListed = await mongo.getDb().collection('nftListings').countDocuments({ 
+            collectionSymbol: symbol, 
+            status: 'ACTIVE' 
+        });
+
+        // Get owners count
+        const ownersData = await mongo.getDb().collection('nfts').aggregate([
+            { $match: { collectionSymbol: symbol } },
+            { $group: { _id: '$owner' } },
+            { $count: 'totalOwners' }
+        ]).toArray();
+        const totalOwners = ownersData[0]?.totalOwners || 0;
+
+        // Get floor price (lowest active listing)
+        const floorPriceData = await mongo.getDb().collection('nftListings').aggregate([
+            { 
+                $match: { 
+                    collectionSymbol: symbol, 
+                    status: 'ACTIVE',
+                    listingType: { $in: ['FIXED_PRICE', 'AUCTION'] }
+                } 
+            },
+            { $sort: { price: 1 } },
+            { $limit: 1 },
+            { $project: { price: 1, paymentTokenSymbol: 1 } }
+        ]).toArray();
+        const floorPrice = floorPriceData[0] || null;
+
+        // Get sales data for the period
+        const salesData = await mongo.getDb().collection('transactions').aggregate([
+            {
+                $match: {
+                    type: 6, // NFT_BUY_ITEM
+                    'data.collectionSymbol': symbol,
+                    ts: { $gte: cutoffDate.getTime() / 1000 }
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    totalSales: { $sum: 1 },
+                    totalVolume: { $sum: { $toDecimal: '$data.price' } },
+                    avgPrice: { $avg: { $toDecimal: '$data.price' } }
+                }
+            }
+        ]).toArray();
+
+        const sales = salesData[0] || { totalSales: 0, totalVolume: 0, avgPrice: 0 };
+
+        // Get daily sales breakdown
+        const dailySales = await mongo.getDb().collection('transactions').aggregate([
+            {
+                $match: {
+                    type: 6, // NFT_BUY_ITEM
+                    'data.collectionSymbol': symbol,
+                    ts: { $gte: cutoffDate.getTime() / 1000 }
+                }
+            },
+            {
+                $group: {
+                    _id: {
+                        $dateToString: {
+                            format: "%Y-%m-%d",
+                            date: { $toDate: { $multiply: ['$ts', 1000] } }
+                        }
+                    },
+                    sales: { $sum: 1 },
+                    volume: { $sum: { $toDecimal: '$data.price' } }
+                }
+            },
+            { $sort: { _id: 1 } }
+        ]).toArray();
+
+        // Get top traders
+        const topTraders = await mongo.getDb().collection('transactions').aggregate([
+            {
+                $match: {
+                    type: 6, // NFT_BUY_ITEM
+                    'data.collectionSymbol': symbol,
+                    ts: { $gte: cutoffDate.getTime() / 1000 }
+                }
+            },
+            {
+                $group: {
+                    _id: '$data.buyer',
+                    purchases: { $sum: 1 },
+                    totalSpent: { $sum: { $toDecimal: '$data.price' } }
+                }
+            },
+            { $sort: { totalSpent: -1 } },
+            { $limit: 10 }
+        ]).toArray();
+
+        res.json({
+            collection: {
+                symbol,
+                name: collection.name,
+                creator: collection.creator
+            },
+            stats: {
+                totalNfts,
+                totalListed,
+                totalOwners,
+                listedPercentage: totalNfts > 0 ? ((totalListed / totalNfts) * 100).toFixed(2) : '0',
+                floorPrice: floorPrice ? {
+                    price: floorPrice.price,
+                    token: floorPrice.paymentTokenSymbol
+                } : null
+            },
+            analytics: {
+                period: `${days} days`,
+                totalSales: sales.totalSales,
+                totalVolume: sales.totalVolume ? sales.totalVolume.toString() : '0',
+                averagePrice: sales.avgPrice ? sales.avgPrice.toString() : '0',
+                dailySales: dailySales.map(day => ({
+                    date: day._id,
+                    sales: day.sales,
+                    volume: day.volume ? day.volume.toString() : '0'
+                })),
+                topTraders: topTraders.map(trader => ({
+                    buyer: trader._id,
+                    purchases: trader.purchases,
+                    totalSpent: trader.totalSpent ? trader.totalSpent.toString() : '0'
+                }))
+            }
+        });
+
+    } catch (error: any) {
+        logger.error(`Error fetching analytics for collection ${symbol}:`, error);
+        res.status(500).json({ message: 'Error fetching collection analytics', error: error.message });
+    }
+}) as RequestHandler);
+
+// GET /nfts/collections/trending - Get trending collections
+router.get('/collections/trending', (async (req: Request, res: Response) => {
+    const { limit, skip } = getPagination(req);
+    const days = parseInt(req.query.days as string) || 7;
+
+    try {
+        const cutoffDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+        // Get collections with most sales volume in the period
+        const trendingData = await mongo.getDb().collection('transactions').aggregate([
+            {
+                $match: {
+                    type: 6, // NFT_BUY_ITEM
+                    ts: { $gte: cutoffDate.getTime() / 1000 }
+                }
+            },
+            {
+                $group: {
+                    _id: '$data.collectionSymbol',
+                    totalSales: { $sum: 1 },
+                    totalVolume: { $sum: { $toDecimal: '$data.price' } },
+                    avgPrice: { $avg: { $toDecimal: '$data.price' } },
+                    uniqueBuyers: { $addToSet: '$data.buyer' }
+                }
+            },
+            {
+                $project: {
+                    collectionSymbol: '$_id',
+                    totalSales: 1,
+                    totalVolume: 1,
+                    avgPrice: 1,
+                    uniqueBuyers: { $size: '$uniqueBuyers' }
+                }
+            },
+            { $sort: { totalVolume: -1 } },
+            { $skip: skip },
+            { $limit: limit }
+        ]).toArray();
+
+        // Enhance with collection details
+        const collectionSymbols = trendingData.map(item => item.collectionSymbol);
+        const collections = await cache.findPromise('nftCollections', { _id: { $in: collectionSymbols } });
+
+        const enhancedTrending = trendingData.map(trend => {
+            const collection = collections?.find(c => c._id === trend.collectionSymbol);
+            return {
+                ...trend,
+                collection: collection ? transformNftCollectionData(collection) : null,
+                totalVolume: trend.totalVolume ? trend.totalVolume.toString() : '0',
+                avgPrice: trend.avgPrice ? trend.avgPrice.toString() : '0'
+            };
+        });
+
+        const total = await mongo.getDb().collection('transactions').aggregate([
+            {
+                $match: {
+                    type: 6,
+                    ts: { $gte: cutoffDate.getTime() / 1000 }
+                }
+            },
+            { $group: { _id: '$data.collectionSymbol' } },
+            { $count: 'total' }
+        ]).toArray();
+
+        res.json({
+            data: enhancedTrending,
+            total: total[0]?.total || 0,
+            period: `${days} days`,
+            limit,
+            skip
+        });
+
+    } catch (error: any) {
+        logger.error('Error fetching trending collections:', error);
+        res.status(500).json({ message: 'Error fetching trending collections', error: error.message });
+    }
+}) as RequestHandler);
+
+// ===== SEARCH AND DISCOVERY ENDPOINTS =====
+
+// GET /nfts/search - Search NFTs and collections
+router.get('/search', (async (req: Request, res: Response) => {
+    const { limit, skip } = getPagination(req);
+    const searchTerm = req.query.q as string;
+    const searchType = req.query.type as string || 'all'; // 'nfts', 'collections', 'all'
+
+    if (!searchTerm) {
+        return res.status(400).json({ message: 'Search term (q) is required' });
+    }
+
+    try {
+        const results: any = {};
+
+        // Search collections
+        if (searchType === 'collections' || searchType === 'all') {
+            const collectionQuery: any = {
+                $or: [
+                    { name: { $regex: searchTerm, $options: 'i' } }, // Name
+                    { creator: { $regex: searchTerm, $options: 'i' } }, // Creator
+                    { description: { $regex: searchTerm, $options: 'i' } } // Description
+                ]
+            };
+
+            // Add symbol search separately to avoid _id regex issues
+            if (searchTerm.length > 0) {
+                collectionQuery.$or.push({ _id: { $regex: `^${searchTerm}`, $options: 'i' } });
+            }
+
+            const collectionsFromDB = await cache.findPromise('nftCollections', collectionQuery, {
+                limit: searchType === 'collections' ? limit : 10,
+                skip: searchType === 'collections' ? skip : 0,
+                sort: { createdAt: -1 }
+            });
+
+            results.collections = {
+                data: collectionsFromDB ? collectionsFromDB.map(transformNftCollectionData) : [],
+                total: await mongo.getDb().collection('nftCollections').countDocuments(collectionQuery)
+            };
+        }
+
+        // Search NFTs
+        if (searchType === 'nfts' || searchType === 'all') {
+            const nftQuery: any = {
+                $or: [
+                    { collectionSymbol: { $regex: searchTerm, $options: 'i' } }, // Collection
+                    { owner: { $regex: searchTerm, $options: 'i' } }, // Owner
+                    { 'metadata.name': { $regex: searchTerm, $options: 'i' } }, // Metadata name
+                    { 'metadata.description': { $regex: searchTerm, $options: 'i' } } // Metadata description
+                ]
+            };
+
+            // Add NFT ID search separately to avoid _id regex issues
+            if (searchTerm.length > 0) {
+                nftQuery.$or.push({ _id: { $regex: `^${searchTerm}`, $options: 'i' } });
+            }
+
+            const nftsFromDB = await cache.findPromise('nfts', nftQuery, {
+                limit: searchType === 'nfts' ? limit : 10,
+                skip: searchType === 'nfts' ? skip : 0,
+                sort: { createdAt: -1 }
+            });
+
+            results.nfts = {
+                data: nftsFromDB ? nftsFromDB.map(transformNftInstanceData) : [],
+                total: await mongo.getDb().collection('nfts').countDocuments(nftQuery)
+            };
+        }
+
+        // Search active listings
+        if (searchType === 'listings' || searchType === 'all') {
+            const listingQuery = {
+                status: 'ACTIVE',
+                $or: [
+                    { collectionSymbol: { $regex: searchTerm, $options: 'i' } },
+                    { seller: { $regex: searchTerm, $options: 'i' } }
+                ]
+            };
+
+            const listingsFromDB = await cache.findPromise('nftListings', listingQuery, {
+                limit: searchType === 'listings' ? limit : 5,
+                skip: searchType === 'listings' ? skip : 0,
+                sort: { createdAt: -1 }
+            });
+
+            results.listings = {
+                data: listingsFromDB ? listingsFromDB.map(transformNftListingData) : [],
+                total: await mongo.getDb().collection('nftListings').countDocuments(listingQuery)
+            };
+        }
+
+        res.json({
+            searchTerm,
+            searchType,
+            results,
+            limit,
+            skip
+        });
+
+    } catch (error: any) {
+        logger.error('Error performing NFT search:', error);
+        res.status(500).json({ message: 'Error performing search', error: error.message });
+    }
+}) as RequestHandler);
+
+// ===== USER ACTIVITY ENDPOINTS =====
+
+// GET /nfts/user/:username/activity - Get user's NFT activity (purchases, sales, listings, bids)
+router.get('/user/:username/activity', (async (req: Request, res: Response) => {
+    const { username } = req.params;
+    const { limit, skip } = getPagination(req);
+    const activityType = req.query.type as string; // 'purchases', 'sales', 'listings', 'bids', 'all'
+
+    try {
+        const activities: any[] = [];
+
+        // Get purchases (NFT_BUY_ITEM where user is buyer)
+        if (!activityType || activityType === 'purchases' || activityType === 'all') {
+            const purchases = await mongo.getDb().collection('transactions').find({
+                type: 6, // NFT_BUY_ITEM
+                'data.buyer': username
+            }).sort({ ts: -1 }).limit(activityType === 'purchases' ? limit : 20).toArray();
+
+            purchases.forEach(tx => {
+                activities.push({
+                    type: 'purchase',
+                    timestamp: tx.ts,
+                    transactionId: tx._id,
+                    nftId: `${tx.data.collectionSymbol}-${tx.data.instanceId}`,
+                    collectionSymbol: tx.data.collectionSymbol,
+                    price: tx.data.price,
+                    paymentToken: tx.data.paymentTokenSymbol,
+                    from: tx.data.seller,
+                    to: tx.data.buyer
+                });
+            });
+        }
+
+        // Get sales (NFT_BUY_ITEM where user is seller)
+        if (!activityType || activityType === 'sales' || activityType === 'all') {
+            const sales = await mongo.getDb().collection('transactions').find({
+                type: 6, // NFT_BUY_ITEM
+                'data.seller': username
+            }).sort({ ts: -1 }).limit(activityType === 'sales' ? limit : 20).toArray();
+
+            sales.forEach(tx => {
+                activities.push({
+                    type: 'sale',
+                    timestamp: tx.ts,
+                    transactionId: tx._id,
+                    nftId: `${tx.data.collectionSymbol}-${tx.data.instanceId}`,
+                    collectionSymbol: tx.data.collectionSymbol,
+                    price: tx.data.price,
+                    paymentToken: tx.data.paymentTokenSymbol,
+                    from: tx.data.seller,
+                    to: tx.data.buyer
+                });
+            });
+        }
+
+        // Get listings (NFT_LIST_ITEM)
+        if (!activityType || activityType === 'listings' || activityType === 'all') {
+            const listings = await mongo.getDb().collection('transactions').find({
+                type: 4, // NFT_LIST_ITEM
+                'data.seller': username
+            }).sort({ ts: -1 }).limit(activityType === 'listings' ? limit : 20).toArray();
+
+            listings.forEach(tx => {
+                activities.push({
+                    type: 'listing',
+                    timestamp: tx.ts,
+                    transactionId: tx._id,
+                    nftId: `${tx.data.collectionSymbol}-${tx.data.instanceId}`,
+                    collectionSymbol: tx.data.collectionSymbol,
+                    price: tx.data.price,
+                    paymentToken: tx.data.paymentTokenSymbol,
+                    listingType: tx.data.listingType,
+                    seller: tx.data.seller
+                });
+            });
+        }
+
+        // Get transfers (NFT_TRANSFER)
+        if (!activityType || activityType === 'transfers' || activityType === 'all') {
+            const transfers = await mongo.getDb().collection('transactions').find({
+                type: 3, // NFT_TRANSFER
+                $or: [
+                    { 'data.from': username },
+                    { 'data.to': username }
+                ]
+            }).sort({ ts: -1 }).limit(activityType === 'transfers' ? limit : 20).toArray();
+
+            transfers.forEach(tx => {
+                activities.push({
+                    type: tx.data.from === username ? 'transfer_out' : 'transfer_in',
+                    timestamp: tx.ts,
+                    transactionId: tx._id,
+                    nftId: `${tx.data.collectionSymbol}-${tx.data.instanceId}`,
+                    collectionSymbol: tx.data.collectionSymbol,
+                    from: tx.data.from,
+                    to: tx.data.to
+                });
+            });
+        }
+
+        // Get mints (NFT_MINT)
+        if (!activityType || activityType === 'mints' || activityType === 'all') {
+            const mints = await mongo.getDb().collection('transactions').find({
+                type: 2, // NFT_MINT
+                'data.to': username
+            }).sort({ ts: -1 }).limit(activityType === 'mints' ? limit : 20).toArray();
+
+            mints.forEach(tx => {
+                activities.push({
+                    type: 'mint',
+                    timestamp: tx.ts,
+                    transactionId: tx._id,
+                    nftId: `${tx.data.collectionSymbol}-${tx.data.instanceId}`,
+                    collectionSymbol: tx.data.collectionSymbol,
+                    to: tx.data.to
+                });
+            });
+        }
+
+        // Sort all activities by timestamp and apply pagination
+        activities.sort((a, b) => b.timestamp - a.timestamp);
+        const paginatedActivities = activities.slice(skip, skip + limit);
+
+        res.json({
+            username,
+            activityType: activityType || 'all',
+            data: paginatedActivities,
+            total: activities.length,
+            limit,
+            skip
+        });
+
+    } catch (error: any) {
+        logger.error(`Error fetching user activity for ${username}:`, error);
+        res.status(500).json({ message: 'Error fetching user activity', error: error.message });
+    }
+}) as RequestHandler);
+
+// GET /nfts/user/:username/stats - Get user's NFT statistics
+router.get('/user/:username/stats', (async (req: Request, res: Response) => {
+    const { username } = req.params;
+    const days = parseInt(req.query.days as string) || 30; // Default 30 days
+
+    try {
+        const cutoffDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+        // Get owned NFTs count
+        const ownedNfts = await mongo.getDb().collection('nfts').countDocuments({ owner: username });
+
+        // Get active listings count
+        const activeListings = await mongo.getDb().collection('nftListings').countDocuments({ 
+            seller: username, 
+            status: 'ACTIVE' 
+        });
+
+        // Get sales stats (as seller)
+        const salesStats = await mongo.getDb().collection('transactions').aggregate([
+            {
+                $match: {
+                    type: 6, // NFT_BUY_ITEM
+                    'data.seller': username,
+                    ts: { $gte: cutoffDate.getTime() / 1000 }
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    totalSales: { $sum: 1 },
+                    totalEarned: { $sum: { $toDecimal: '$data.price' } },
+                    avgSalePrice: { $avg: { $toDecimal: '$data.price' } }
+                }
+            }
+        ]).toArray();
+
+        // Get purchase stats (as buyer)
+        const purchaseStats = await mongo.getDb().collection('transactions').aggregate([
+            {
+                $match: {
+                    type: 6, // NFT_BUY_ITEM
+                    'data.buyer': username,
+                    ts: { $gte: cutoffDate.getTime() / 1000 }
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    totalPurchases: { $sum: 1 },
+                    totalSpent: { $sum: { $toDecimal: '$data.price' } },
+                    avgPurchasePrice: { $avg: { $toDecimal: '$data.price' } }
+                }
+            }
+        ]).toArray();
+
+        // Get collections owned
+        const collectionsOwned = await mongo.getDb().collection('nfts').aggregate([
+            { $match: { owner: username } },
+            { $group: { _id: '$collectionSymbol', count: { $sum: 1 } } },
+            { $sort: { count: -1 } }
+        ]).toArray();
+
+        const sales = salesStats[0] || { totalSales: 0, totalEarned: 0, avgSalePrice: 0 };
+        const purchases = purchaseStats[0] || { totalPurchases: 0, totalSpent: 0, avgPurchasePrice: 0 };
+
+        res.json({
+            username,
+            period: `${days} days`,
+            portfolio: {
+                ownedNfts,
+                activeListings,
+                collectionsOwned: collectionsOwned.length,
+                topCollections: collectionsOwned.slice(0, 5)
+            },
+            trading: {
+                sales: {
+                    total: sales.totalSales,
+                    volume: sales.totalEarned ? sales.totalEarned.toString() : '0',
+                    averagePrice: sales.avgSalePrice ? sales.avgSalePrice.toString() : '0'
+                },
+                purchases: {
+                    total: purchases.totalPurchases,
+                    volume: purchases.totalSpent ? purchases.totalSpent.toString() : '0',
+                    averagePrice: purchases.avgPurchasePrice ? purchases.avgPurchasePrice.toString() : '0'
+                },
+                netVolume: sales.totalEarned && purchases.totalSpent ? 
+                    (sales.totalEarned - purchases.totalSpent).toString() : '0'
+            }
+        });
+
+    } catch (error: any) {
+        logger.error(`Error fetching user stats for ${username}:`, error);
+        res.status(500).json({ message: 'Error fetching user statistics', error: error.message });
+    }
+}) as RequestHandler);
+
+// ===== OFFER ENDPOINTS =====
+
+// GET /nfts/offers - Get all offers with filtering
+router.get('/offers', (async (req: Request, res: Response) => {
+    const { limit, skip } = getPagination(req);
+
+    try {
+        const query: any = {};
+
+        // Filter by status
+        if (req.query.status) {
+            query.status = req.query.status;
+        } else {
+            query.status = 'ACTIVE'; // Default to active offers
+        }
+
+        // Filter by target type
+        if (req.query.targetType) {
+            query.targetType = req.query.targetType;
+        }
+
+        // Filter by offerer
+        if (req.query.offerer) {
+            query.offerer = req.query.offerer;
+        }
+
+        // Filter by target (NFT ID, collection symbol, etc.)
+        if (req.query.target) {
+            query.target = req.query.target;
+        }
+
+        // Filter by offer amount range
+        if (req.query.minOffer) {
+            query.offerAmount = { $gte: req.query.minOffer };
+        }
+        if (req.query.maxOffer) {
+            if (!query.offerAmount) query.offerAmount = {};
+            query.offerAmount.$lte = req.query.maxOffer;
+        }
+
+        // Sort options (default newest first)
+        const sortField = req.query.sortBy as string || 'createdAt';
+        const sortDirection = req.query.sortDirection === 'asc' ? 1 : -1;
+        const sort: any = {};
+        sort[sortField] = sortDirection;
+
+        const offersFromDB = await cache.findPromise('nftOffers', query, {
+            limit,
+            skip,
+            sort
+        });
+
+        const total = await mongo.getDb().collection('nftOffers').countDocuments(query);
+
+        if (!offersFromDB || offersFromDB.length === 0) {
+            return res.status(200).json({ data: [], total: 0, limit, skip });
+        }
+
+        res.json({
+            data: offersFromDB,
+            total,
+            limit,
+            skip
+        });
+    } catch (error: any) {
+        logger.error('Error fetching NFT offers:', error);
+        res.status(500).json({ message: 'Error fetching NFT offers', error: error.message });
+    }
+}) as RequestHandler);
+
+// GET /nfts/offers/nft/:nftId - Get offers for a specific NFT
+router.get('/offers/nft/:nftId', (async (req: Request, res: Response) => {
+    const { nftId } = req.params;
+    const { limit, skip } = getPagination(req);
+
+    try {
+        const query = {
+            targetType: 'NFT',
+            target: nftId,
+            status: 'ACTIVE'
+        };
+
+        const offersFromDB = await cache.findPromise('nftOffers', query, {
+            limit,
+            skip,
+            sort: { offerAmount: -1, createdAt: -1 } // Highest offers first
+        });
+
+        const total = await mongo.getDb().collection('nftOffers').countDocuments(query);
+
+        res.json({
+            nftId,
+            data: offersFromDB || [],
+            total,
+            limit,
+            skip
+        });
+    } catch (error: any) {
+        logger.error(`Error fetching offers for NFT ${nftId}:`, error);
+        res.status(500).json({ message: 'Error fetching NFT offers', error: error.message });
+    }
+}) as RequestHandler);
+
+// GET /nfts/offers/collection/:symbol - Get offers for a collection
+router.get('/offers/collection/:symbol', (async (req: Request, res: Response) => {
+    const { symbol } = req.params;
+    const { limit, skip } = getPagination(req);
+
+    try {
+        const query = {
+            targetType: 'COLLECTION',
+            target: symbol,
+            status: 'ACTIVE'
+        };
+
+        const offersFromDB = await cache.findPromise('nftOffers', query, {
+            limit,
+            skip,
+            sort: { offerAmount: -1, createdAt: -1 } // Highest offers first
+        });
+
+        const total = await mongo.getDb().collection('nftOffers').countDocuments(query);
+
+        res.json({
+            collectionSymbol: symbol,
+            data: offersFromDB || [],
+            total,
+            limit,
+            skip
+        });
+    } catch (error: any) {
+        logger.error(`Error fetching offers for collection ${symbol}:`, error);
+        res.status(500).json({ message: 'Error fetching collection offers', error: error.message });
+    }
+}) as RequestHandler);
+
+// GET /nfts/offers/user/:username - Get offers made by a user
+router.get('/offers/user/:username', (async (req: Request, res: Response) => {
+    const { username } = req.params;
+    const { limit, skip } = getPagination(req);
+
+    try {
+        const query: any = { offerer: username };
+
+        // Filter by status
+        if (req.query.status) {
+            query.status = req.query.status;
+        }
+
+        const offersFromDB = await cache.findPromise('nftOffers', query, {
+            limit,
+            skip,
+            sort: { createdAt: -1 } // Newest first
+        });
+
+        const total = await mongo.getDb().collection('nftOffers').countDocuments(query);
+
+        res.json({
+            username,
+            data: offersFromDB || [],
+            total,
+            limit,
+            skip
+        });
+    } catch (error: any) {
+        logger.error(`Error fetching offers for user ${username}:`, error);
+        res.status(500).json({ message: 'Error fetching user offers', error: error.message });
+    }
+}) as RequestHandler);
+
+// GET /nfts/offers/:offerId - Get specific offer details
+router.get('/offers/:offerId', (async (req: Request, res: Response) => {
+    const { offerId } = req.params;
+
+    try {
+        const offer = await cache.findOnePromise('nftOffers', { _id: offerId });
+
+        if (!offer) {
+            return res.status(404).json({ message: `Offer with ID ${offerId} not found.` });
+        }
+
+        res.json(offer);
+    } catch (error: any) {
+        logger.error(`Error fetching offer ${offerId}:`, error);
+        res.status(500).json({ message: 'Error fetching offer', error: error.message });
+    }
+}) as RequestHandler);
+
+// ===== GLOBAL MARKETPLACE STATS =====
+
+// GET /nfts/marketplace/stats - Get overall marketplace statistics
+router.get('/marketplace/stats', (async (req: Request, res: Response) => {
+    const days = parseInt(req.query.days as string) || 7;
+
+    try {
+        const cutoffDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+        // Get total collections
+        const totalCollections = await mongo.getDb().collection('nftCollections').countDocuments();
+
+        // Get total NFTs
+        const totalNfts = await mongo.getDb().collection('nfts').countDocuments();
+
+        // Get total owners
+        const totalOwnersData = await mongo.getDb().collection('nfts').aggregate([
+            { $group: { _id: '$owner' } },
+            { $count: 'totalOwners' }
+        ]).toArray();
+        const totalOwners = totalOwnersData[0]?.totalOwners || 0;
+
+        // Get active listings
+        const activeListings = await mongo.getDb().collection('nftListings').countDocuments({ status: 'ACTIVE' });
+
+        // Get sales stats for the period
+        const salesStats = await mongo.getDb().collection('transactions').aggregate([
+            {
+                $match: {
+                    type: 6, // NFT_BUY_ITEM
+                    ts: { $gte: cutoffDate.getTime() / 1000 }
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    totalSales: { $sum: 1 },
+                    totalVolume: { $sum: { $toDecimal: '$data.price' } },
+                    avgPrice: { $avg: { $toDecimal: '$data.price' } },
+                    uniqueBuyers: { $addToSet: '$data.buyer' },
+                    uniqueSellers: { $addToSet: '$data.seller' }
+                }
+            },
+            {
+                $project: {
+                    totalSales: 1,
+                    totalVolume: 1,
+                    avgPrice: 1,
+                    uniqueBuyers: { $size: '$uniqueBuyers' },
+                    uniqueSellers: { $size: '$uniqueSellers' }
+                }
+            }
+        ]).toArray();
+
+        const sales = salesStats[0] || { 
+            totalSales: 0, 
+            totalVolume: 0, 
+            avgPrice: 0, 
+            uniqueBuyers: 0, 
+            uniqueSellers: 0 
+        };
+
+        // Get active bids and offers
+        const activeBids = await mongo.getDb().collection('nftBids').countDocuments({ status: 'ACTIVE' });
+        const activeOffers = await mongo.getDb().collection('nftOffers').countDocuments({ status: 'ACTIVE' });
+
+        res.json({
+            period: `${days} days`,
+            overview: {
+                totalCollections,
+                totalNfts,
+                totalOwners,
+                activeListings,
+                activeBids,
+                activeOffers,
+                listingRate: totalNfts > 0 ? ((activeListings / totalNfts) * 100).toFixed(2) : '0'
+            },
+            trading: {
+                totalSales: sales.totalSales,
+                totalVolume: sales.totalVolume ? sales.totalVolume.toString() : '0',
+                averagePrice: sales.avgPrice ? sales.avgPrice.toString() : '0',
+                uniqueBuyers: sales.uniqueBuyers,
+                uniqueSellers: sales.uniqueSellers
+            }
+        });
+
+    } catch (error: any) {
+        logger.error('Error fetching marketplace stats:', error);
+        res.status(500).json({ message: 'Error fetching marketplace statistics', error: error.message });
+    }
+}) as RequestHandler);
+
 export default router; 

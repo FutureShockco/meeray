@@ -20,42 +20,48 @@ export enum TransactionType {
   FARM_STAKE = 13,
   FARM_UNSTAKE = 14,
   FARM_CLAIM_REWARDS = 15,
-  FARM_UPDATE_WEIGHT = 39,
+  FARM_UPDATE_WEIGHT = 16,
 
   // Pool Transactions
-  POOL_CREATE = 16,
-  POOL_ADD_LIQUIDITY = 17,
-  POOL_REMOVE_LIQUIDITY = 18,
-  POOL_SWAP = 19,
+  POOL_CREATE = 17,
+  POOL_ADD_LIQUIDITY = 18,
+  POOL_REMOVE_LIQUIDITY = 19,
+  POOL_SWAP = 20,
 
   // Token Transactions
-  TOKEN_CREATE = 20,
-  TOKEN_MINT = 21,
-  TOKEN_TRANSFER = 22,
-  TOKEN_UPDATE = 23,
-  TOKEN_WITHDRAW = 38,
+  TOKEN_CREATE = 21,
+  TOKEN_MINT = 22,
+  TOKEN_TRANSFER = 23,
+  TOKEN_UPDATE = 24,
+  TOKEN_WITHDRAW = 25,
   
   // Witness Transactions
-  WITNESS_REGISTER = 24,
-  WITNESS_VOTE = 25,
-  WITNESS_UNVOTE = 26,
+  WITNESS_REGISTER = 26,
+  WITNESS_VOTE = 27,
+  WITNESS_UNVOTE = 28,
 
   // Launchpad Transactions
-  LAUNCHPAD_LAUNCH_TOKEN = 27,
-  LAUNCHPAD_PARTICIPATE_PRESALE = 28,
-  LAUNCHPAD_CLAIM_TOKENS = 29,
+  LAUNCHPAD_LAUNCH_TOKEN = 29,
+  LAUNCHPAD_PARTICIPATE_PRESALE = 30,
+  LAUNCHPAD_CLAIM_TOKENS = 31,
 
   // NEW NFT Auction/Bidding Transactions
-  NFT_ACCEPT_BID = 30,
-  NFT_CLOSE_AUCTION = 31,
-  NFT_BATCH_OPERATIONS = 32,
+  NFT_ACCEPT_BID = 32,
+  NFT_CLOSE_AUCTION = 33,
+  NFT_BATCH_OPERATIONS = 34,
 
   // Launchpad Lifecycle (Extended)
-  LAUNCHPAD_UPDATE_STATUS = 33,
-  LAUNCHPAD_FINALIZE_PRESALE = 34,
-  LAUNCHPAD_SET_MAIN_TOKEN = 35,
-  LAUNCHPAD_REFUND_PRESALE = 36,
-  LAUNCHPAD_UPDATE_WHITELIST = 37
+  LAUNCHPAD_UPDATE_STATUS = 35,
+  LAUNCHPAD_FINALIZE_PRESALE = 36,
+  LAUNCHPAD_SET_MAIN_TOKEN = 37,
+  LAUNCHPAD_REFUND_PRESALE = 38,
+  LAUNCHPAD_UPDATE_WHITELIST = 39,
+
+  // NEW NFT Marketplace Transactions
+  NFT_CANCEL_BID = 40,
+  NFT_MAKE_OFFER = 41,
+  NFT_ACCEPT_OFFER = 42,
+  NFT_CANCEL_OFFER = 43
 }
 
 export const transactions: { [key: number]: string } = {
@@ -115,5 +121,11 @@ export const transactions: { [key: number]: string } = {
   [TransactionType.LAUNCHPAD_FINALIZE_PRESALE]: 'launchpad_finalize_presale',
   [TransactionType.LAUNCHPAD_SET_MAIN_TOKEN]: 'launchpad_set_main_token',
   [TransactionType.LAUNCHPAD_REFUND_PRESALE]: 'launchpad_refund_presale',
-  [TransactionType.LAUNCHPAD_UPDATE_WHITELIST]: 'launchpad_update_whitelist'
+  [TransactionType.LAUNCHPAD_UPDATE_WHITELIST]: 'launchpad_update_whitelist',
+
+  // NEW NFT Marketplace Transactions
+  [TransactionType.NFT_CANCEL_BID]: 'nft_cancel_bid',
+  [TransactionType.NFT_MAKE_OFFER]: 'nft_make_offer',
+  [TransactionType.NFT_ACCEPT_OFFER]: 'nft_accept_offer',
+  [TransactionType.NFT_CANCEL_OFFER]: 'nft_cancel_offer'
 }; 
