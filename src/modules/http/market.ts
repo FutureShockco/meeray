@@ -30,20 +30,20 @@ router.get('/sources/:tokenA/:tokenB', (async (req: Request, res: Response) => {
       tokenA: source.tokenA,
       tokenB: source.tokenB,
       ...(source.type === 'AMM' && {
-        reserveA: source.reserveA?.toString(),
-        reserveB: source.reserveB?.toString(),
-        reserveAFormatted: formatAmount(toBigInt(source.reserveA!)),
-        reserveBFormatted: formatAmount(toBigInt(source.reserveB!))
+        reserveA: formatAmount(toBigInt(source.reserveA!)),
+        reserveB: formatAmount(toBigInt(source.reserveB!)),
+        rawReserveA: source.reserveA?.toString(),
+        rawReserveB: source.reserveB?.toString()
       }),
       ...(source.type === 'ORDERBOOK' && {
-        bestBid: source.bestBid?.toString(),
-        bestAsk: source.bestAsk?.toString(),
-        bestBidFormatted: formatAmount(toBigInt(source.bestBid!)),
-        bestAskFormatted: formatAmount(toBigInt(source.bestAsk!)),
-        bidDepth: source.bidDepth?.toString(),
-        askDepth: source.askDepth?.toString(),
-        bidDepthFormatted: formatAmount(toBigInt(source.bidDepth!)),
-        askDepthFormatted: formatAmount(toBigInt(source.askDepth!))
+        bestBid: formatAmount(toBigInt(source.bestBid!)),
+        bestAsk: formatAmount(toBigInt(source.bestAsk!)),
+        rawBestBid: source.bestBid?.toString(),
+        rawBestAsk: source.bestAsk?.toString(),
+        bidDepth: formatAmount(toBigInt(source.bidDepth!)),
+        askDepth: formatAmount(toBigInt(source.askDepth!)),
+        rawBidDepth: source.bidDepth?.toString(),
+        rawAskDepth: source.askDepth?.toString()
       })
     }));
     
@@ -109,11 +109,14 @@ router.post('/quote', (async (req: Request, res: Response) => {
     // Add formatted amounts and additional info
     const enhancedQuote = {
       ...quote,
-      amountInFormatted: formatAmount(toBigInt(quote.amountIn)),
+      amountIn: formatAmount(toBigInt(quote.amountIn)),
+      rawAmountIn: quote.amountIn,
       routes: quote.routes.map(route => ({
         ...route,
-        amountInFormatted: formatAmount(toBigInt(route.amountIn)),
-        amountOutFormatted: formatAmount(toBigInt(route.amountOut)),
+        amountIn: formatAmount(toBigInt(route.amountIn)),
+        amountOut: formatAmount(toBigInt(route.amountOut)),
+        rawAmountIn: route.amountIn,
+        rawAmountOut: route.amountOut,
         details: route.details
       })),
       estimatedGas: '0.001', // Placeholder
@@ -182,8 +185,8 @@ router.post('/compare', (async (req: Request, res: Response) => {
     res.json({
       tokenIn,
       tokenOut,
-      amountIn,
-      amountInFormatted: formatAmount(toBigInt(amountIn)),
+      amountIn: formatAmount(toBigInt(amountIn)),
+      rawAmountIn: amountIn,
       comparison,
       timestamp: new Date().toISOString()
     });
@@ -262,15 +265,15 @@ router.get('/stats/:pairId', (async (req: Request, res: Response) => {
     const oneDayAgo = now - (24 * 60 * 60 * 1000);
     const recentTrades = trades.filter(trade => trade.timestamp > oneDayAgo);
     
-    const volume24h = recentTrades.reduce((sum, trade) => sum + trade.volume, 0);
+    const volume24h = recentTrades.reduce((sum, trade) => sum + Number(toBigInt(trade.volume || 0)), 0);
     const tradeCount24h = recentTrades.length;
     
     // Get price statistics
     let priceChange24h = 0;
     let priceChange24hPercent = 0;
     if (recentTrades.length > 0) {
-      const latestPrice = recentTrades[0]?.price || 0;
-      const oldestPrice = recentTrades[recentTrades.length - 1]?.price || 0;
+      const latestPrice = Number(toBigInt(recentTrades[0]?.price || 0));
+      const oldestPrice = Number(toBigInt(recentTrades[recentTrades.length - 1]?.price || 0));
       if (oldestPrice > 0) {
         priceChange24h = latestPrice - oldestPrice;
         priceChange24hPercent = (priceChange24h / oldestPrice) * 100;
@@ -286,27 +289,41 @@ router.get('/stats/:pairId', (async (req: Request, res: Response) => {
     
     // Calculate spread
     const highestBid = buyOrders.length > 0 ? 
-      Math.max(...buyOrders.map(order => order.price)) : 0;
+      Math.max(...buyOrders.map(order => Number(toBigInt(order.price || 0)))) : 0;
     const lowestAsk = sellOrders.length > 0 ? 
-      Math.min(...sellOrders.map(order => order.price)) : 0;
+      Math.min(...sellOrders.map(order => Number(toBigInt(order.price || 0)))) : 0;
     const spread = lowestAsk > 0 && highestBid > 0 ? lowestAsk - highestBid : 0;
     const spreadPercent = highestBid > 0 ? (spread / highestBid) * 100 : 0;
     
     res.json({
       pairId,
       pair,
-      volume24h,
+      volume24h: formatAmount(BigInt(Math.round(volume24h * 1e8))),
+      rawVolume24h: volume24h.toString(),
       tradeCount24h,
-      priceChange24h,
+      priceChange24h: formatAmount(BigInt(Math.round(priceChange24h * 1e8))),
+      rawPriceChange24h: priceChange24h.toString(),
       priceChange24hPercent,
-      currentPrice: recentTrades[0]?.price || 0,
-      highestBid,
-      lowestAsk,
-      spread,
+      currentPrice: recentTrades[0] ? formatAmount(toBigInt(recentTrades[0].price || 0)) : '0.00000000',
+      rawCurrentPrice: recentTrades[0] ? toBigInt(recentTrades[0].price || 0).toString() : '0',
+      highestBid: formatAmount(BigInt(Math.round(highestBid * 1e8))),
+      rawHighestBid: Math.round(highestBid * 1e8).toString(),
+      lowestAsk: formatAmount(BigInt(Math.round(lowestAsk * 1e8))),
+      rawLowestAsk: Math.round(lowestAsk * 1e8).toString(),
+      spread: formatAmount(BigInt(Math.round(spread * 1e8))),
+      rawSpread: Math.round(spread * 1e8).toString(),
       spreadPercent,
       buyOrderCount: buyOrders.length,
       sellOrderCount: sellOrders.length,
-      recentTrades: trades.slice(0, 10)
+      recentTrades: trades.slice(0, 10).map(trade => ({
+        ...trade,
+        price: formatAmount(toBigInt(trade.price || 0)),
+        rawPrice: toBigInt(trade.price || 0).toString(),
+        quantity: formatAmount(toBigInt(trade.quantity || 0)),
+        rawQuantity: toBigInt(trade.quantity || 0).toString(),
+        volume: trade.volume ? formatAmount(toBigInt(trade.volume)) : '0.00000000',
+        rawVolume: trade.volume ? toBigInt(trade.volume).toString() : '0'
+      }))
     });
   } catch (error: any) {
     logger.error('Error fetching pair stats:', error);
@@ -341,39 +358,60 @@ router.get('/orderbook/:pairId', (async (req: Request, res: Response) => {
     // Separate buy and sell orders
     const buyOrders = orders
       .filter(order => order.side === 'buy')
-      .sort((a, b) => b.price - a.price) // Highest price first
+      .sort((a, b) => Number(toBigInt(b.price || 0)) - Number(toBigInt(a.price || 0))) // Highest price first
       .slice(0, Number(depth));
     
     const sellOrders = orders
       .filter(order => order.side === 'sell')
-      .sort((a, b) => a.price - b.price) // Lowest price first
+      .sort((a, b) => Number(toBigInt(a.price || 0)) - Number(toBigInt(b.price || 0))) // Lowest price first
       .slice(0, Number(depth));
     
     // Format orderbook data
-    const bids = buyOrders.map(order => ({
-      price: order.price,
-      quantity: order.remainingQuantity || order.quantity,
-      total: order.price * (order.remainingQuantity || order.quantity)
-    }));
-    
-    const asks = sellOrders.map(order => ({
-      price: order.price,
-      quantity: order.remainingQuantity || order.quantity,
-      total: order.price * (order.remainingQuantity || order.quantity)
-    }));
-    
-    // Calculate spread
-    const highestBid = bids.length > 0 ? bids[0].price : 0;
-    const lowestAsk = asks.length > 0 ? asks[0].price : 0;
+    const bids = buyOrders.map(order => {
+      const price = formatAmount(toBigInt(order.price || 0));
+      const quantity = formatAmount(toBigInt(order.remainingQuantity || order.quantity));
+      const rawPrice = toBigInt(order.price || 0).toString();
+      const rawQuantity = toBigInt(order.remainingQuantity || order.quantity).toString();
+      const total = formatAmount(BigInt(Math.round((Number(price) * Number(quantity)) * 1e8)));
+      const rawTotal = Math.round((Number(toBigInt(order.price || 0)) * Number(toBigInt(order.remainingQuantity || order.quantity))) / 1e8 * 1e8).toString();
+      return {
+        price,
+        rawPrice,
+        quantity,
+        rawQuantity,
+        total,
+        rawTotal
+      };
+    });
+
+    const asks = sellOrders.map(order => {
+      const price = formatAmount(toBigInt(order.price || 0));
+      const quantity = formatAmount(toBigInt(order.remainingQuantity || order.quantity));
+      const rawPrice = toBigInt(order.price || 0).toString();
+      const rawQuantity = toBigInt(order.remainingQuantity || order.quantity).toString();
+      const total = formatAmount(BigInt(Math.round((Number(price) * Number(quantity)) * 1e8)));
+      const rawTotal = Math.round((Number(toBigInt(order.price || 0)) * Number(toBigInt(order.remainingQuantity || order.quantity))) / 1e8 * 1e8).toString();
+      return {
+        price,
+        rawPrice,
+        quantity,
+        rawQuantity,
+        total,
+        rawTotal
+      };
+    });    // Calculate spread
+    const highestBid = bids.length > 0 ? Number(bids[0].price) : 0;
+    const lowestAsk = asks.length > 0 ? Number(asks[0].price) : 0;
     const spread = lowestAsk > 0 && highestBid > 0 ? lowestAsk - highestBid : 0;
     const spreadPercent = highestBid > 0 ? (spread / highestBid) * 100 : 0;
-    
+
     res.json({
       pairId,
       timestamp: Date.now(),
       bids,
       asks,
-      spread,
+      spread: formatAmount(BigInt(Math.round(spread * 1e8))),
+      rawSpread: Math.round(spread * 1e8).toString(),
       spreadPercent,
       depth: {
         bids: bids.length,
@@ -427,9 +465,12 @@ router.get('/trades/:pairId', (async (req: Request, res: Response) => {
     const formattedTrades = trades.map(trade => ({
       id: trade._id || trade.id,
       timestamp: trade.timestamp,
-      price: toBigInt(trade.price).toString(),
-      quantity: toBigInt(trade.quantity).toString(),
-      volume: trade.volume ? toBigInt(trade.volume).toString() : (toBigInt(trade.price) * toBigInt(trade.quantity)).toString(),
+      price: formatAmount(toBigInt(trade.price)),
+      rawPrice: toBigInt(trade.price).toString(),
+      quantity: formatAmount(toBigInt(trade.quantity)),
+      rawQuantity: toBigInt(trade.quantity).toString(),
+      volume: trade.volume ? formatAmount(toBigInt(trade.volume)) : formatAmount(toBigInt(trade.price) * toBigInt(trade.quantity)),
+      rawVolume: trade.volume ? toBigInt(trade.volume).toString() : (toBigInt(trade.price) * toBigInt(trade.quantity)).toString(),
       side: trade.side || 'unknown', // 'buy' or 'sell'
       type: trade.type || 'market', // 'market', 'limit', etc.
       source: trade.source || 'unknown' // 'amm', 'orderbook', 'hybrid'
@@ -438,20 +479,31 @@ router.get('/trades/:pairId', (async (req: Request, res: Response) => {
     // Calculate summary statistics
     const volume24h = formattedTrades
       .filter(trade => trade.timestamp > Date.now() - (24 * 60 * 60 * 1000))
-      .reduce((sum, trade) => sum + trade.volume, 0);
-    
+      .reduce((sum, trade) => sum + Number(trade.rawVolume), 0);
+
     const priceRange = formattedTrades.length > 0 ? {
-      high: Math.max(...formattedTrades.map(t => t.price)),
-      low: Math.min(...formattedTrades.map(t => t.price)),
-      latest: formattedTrades[0]?.price || 0
-    } : { high: 0, low: 0, latest: 0 };
-    
+      high: Math.max(...formattedTrades.map(t => Number(t.rawPrice))),
+      low: Math.min(...formattedTrades.map(t => Number(t.rawPrice))),
+      latest: formattedTrades[0] ? Number(formattedTrades[0].rawPrice) : 0,
+      highFormatted: formatAmount(BigInt(Math.max(...formattedTrades.map(t => Number(t.rawPrice))))),
+      lowFormatted: formatAmount(BigInt(Math.min(...formattedTrades.map(t => Number(t.rawPrice))))),
+      latestFormatted: formattedTrades[0] ? formattedTrades[0].price : '0.00000000'
+    } : { 
+      high: 0, 
+      low: 0, 
+      latest: 0,
+      highFormatted: '0.00000000',
+      lowFormatted: '0.00000000',
+      latestFormatted: '0.00000000'
+    };
+
     res.json({
       pairId,
       trades: formattedTrades,
       summary: {
         count: formattedTrades.length,
-        volume24h,
+        volume24h: formatAmount(BigInt(Math.round(volume24h))),
+        rawVolume24h: Math.round(volume24h).toString(),
         priceRange,
         timestamp: Date.now()
       },
@@ -601,7 +653,17 @@ router.get('/orders/pair/:pairId', (async (req: Request, res: Response) => {
 router.get('/orders/user/:userId', (async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
-    const orders = await cache.findPromise('orders', { userId });
+    const { status } = req.query;
+    
+    // Build filter - by default exclude cancelled and rejected orders
+    const filter: any = { userId };
+    if (status) {
+      filter.status = status;
+    } else {
+      filter.status = { $nin: ['cancelled', 'rejected'] };
+    }
+    
+    const orders = await cache.findPromise('orders', filter);
     
     res.json({
       userId,
@@ -635,6 +697,9 @@ router.get('/orders/:userId', (async (req: Request, res: Response) => {
     
     if (status) {
       filter.status = status;
+    } else {
+      // By default, exclude cancelled and rejected orders
+      filter.status = { $nin: ['cancelled', 'rejected'] };
     }
     
     if (side) {
@@ -653,10 +718,14 @@ router.get('/orders/:userId', (async (req: Request, res: Response) => {
       pairId: order.pairId,
       side: order.side,
       type: order.type,
-      price: order.price ? toBigInt(order.price).toString() : null,
-      quantity: toBigInt(order.quantity).toString(),
-      remainingQuantity: order.remainingQuantity ? toBigInt(order.remainingQuantity).toString() : '0',
-      filledQuantity: order.filledQuantity ? toBigInt(order.filledQuantity).toString() : '0',
+      price: order.price ? formatAmount(toBigInt(order.price)) : null,
+      rawPrice: order.price ? toBigInt(order.price).toString() : null,
+      quantity: formatAmount(toBigInt(order.quantity)),
+      rawQuantity: toBigInt(order.quantity).toString(),
+      remainingQuantity: formatAmount(toBigInt(order.remainingQuantity || 0)),
+      rawRemainingQuantity: toBigInt(order.remainingQuantity || 0).toString(),
+      filledQuantity: formatAmount(toBigInt(order.filledQuantity || 0)),
+      rawFilledQuantity: toBigInt(order.filledQuantity || 0).toString(),
       status: order.status,
       timestamp: order.timestamp,
       lastUpdateTime: order.lastUpdateTime

@@ -6,6 +6,7 @@ import { adjustBalance, getAccount, Account } from '../../utils/account.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 import mongo from '../../mongo.js';
 import { logEvent } from '../../utils/event-logger.js';
+import crypto from 'crypto';
 
 // const SWAP_FEE_RATE = 0.003; // 0.3% swap fee - This constant is not used in the BigInt logic below which uses 997/1000 factor
 
@@ -368,6 +369,84 @@ async function validateAutoRouteSwap(data: PoolSwapData, sender: string, traderA
     return true;
 }
 
+// Helper function to find trading pair ID regardless of token order
+async function findTradingPairId(tokenA: string, tokenB: string): Promise<string | null> {
+  // Try both orders: tokenA-tokenB and tokenB-tokenA
+  let pairId = `${tokenA}-${tokenB}`;
+  let tradingPair = await cache.findOnePromise('tradingPairs', { _id: pairId });
+  
+  if (!tradingPair) {
+    pairId = `${tokenB}-${tokenA}`;
+    tradingPair = await cache.findOnePromise('tradingPairs', { _id: pairId });
+  }
+  
+  return tradingPair ? pairId : null;
+}
+
+// Helper function to record pool swaps as market trades
+async function recordPoolSwapTrade(params: {
+  poolId: string;
+  tokenIn: string;
+  tokenOut: string;
+  amountIn: bigint;
+  amountOut: bigint;
+  sender: string;
+  transactionId: string;
+}): Promise<void> {
+  try {
+    // Find the correct trading pair ID regardless of token order
+    const pairId = await findTradingPairId(params.tokenIn, params.tokenOut);
+    if (!pairId) {
+      logger.debug(`[pool-swap] No trading pair found for ${params.tokenIn}-${params.tokenOut}, skipping trade record`);
+      return;
+    }
+    
+    // Calculate price (price = amountIn / amountOut, scaled appropriately)
+    const price = params.amountOut > 0n ? (params.amountIn * BigInt(1e8)) / params.amountOut : 0n;
+    
+    // Create trade record matching the orderbook trade format
+    const tradeRecord = {
+      _id: crypto.randomBytes(12).toString('hex'),
+      pairId: pairId,
+      baseAssetSymbol: params.tokenOut,
+      quoteAssetSymbol: params.tokenIn,
+      makerOrderId: null, // Pool swaps don't have maker orders
+      takerOrderId: null, // Pool swaps don't have taker orders
+      buyerUserId: params.sender, // User is buying tokenOut with tokenIn
+      sellerUserId: 'POOL', // Pool is the seller
+      price: price.toString(),
+      quantity: params.amountOut.toString(),
+      volume: (price * params.amountOut / BigInt(1e8)).toString(), // volume = price * quantity
+      timestamp: Date.now(),
+      side: 'buy', // User is buying
+      type: 'market', // Pool swaps are market orders
+      source: 'pool', // Mark as pool source
+      isMakerBuyer: false,
+      feeAmount: '0', // Fees are handled in the pool swap
+      feeCurrency: params.tokenIn,
+      makerFee: '0',
+      takerFee: '0',
+      total: params.amountIn.toString()
+    };
+
+    // Save to trades collection
+    await new Promise<void>((resolve, reject) => {
+      cache.insertOne('trades', tradeRecord, (err, result) => {
+        if (err || !result) {
+          logger.error(`[pool-swap] Failed to record trade: ${err}`);
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+
+    logger.debug(`[pool-swap] Recorded trade: ${params.amountIn} ${params.tokenIn} -> ${params.amountOut} ${params.tokenOut} via pool ${params.poolId}`);
+  } catch (error) {
+    logger.error(`[pool-swap] Error recording trade: ${error}`);
+  }
+}
+
 export async function process(data: PoolSwapData, sender: string, transactionId: string): Promise<boolean> {
     // Determine the type of swap and process accordingly
     if (data.hops && data.hops.length > 0) {
@@ -479,6 +558,17 @@ async function processSingleHopSwap(data: PoolSwapData, sender: string, transact
 
     logger.info(`[pool-swap] Successful single-hop swap by ${sender} in pool ${data.poolId}: ${data.amountIn} ${tokenIn_symbol} -> ${amountOut} ${tokenOut_symbol}`);
 
+    // Record the swap as a market trade
+    await recordPoolSwapTrade({
+      poolId: data.poolId!,
+      tokenIn: tokenIn_symbol,
+      tokenOut: tokenOut_symbol,
+      amountIn: toBigInt(data.amountIn),
+      amountOut: amountOut,
+      sender: sender,
+      transactionId: transactionId
+    });
+
     // Log event
     await logEvent('defi', 'swap', sender, {
       poolId: data.poolId,
@@ -574,6 +664,17 @@ async function processSingleHopSwapWithResult(data: PoolSwapData, sender: string
         }
 
         logger.info(`[pool-swap] Successful single-hop swap by ${sender} in pool ${data.poolId}: ${data.amountIn} ${tokenIn_symbol} -> ${amountOut} ${tokenOut_symbol}`);
+
+        // Record the swap as a market trade
+        await recordPoolSwapTrade({
+          poolId: data.poolId!,
+          tokenIn: tokenIn_symbol,
+          tokenOut: tokenOut_symbol,
+          amountIn: toBigInt(data.amountIn),
+          amountOut: amountOut,
+          sender: sender,
+          transactionId: transactionId
+        });
 
         // Log event
         await logEvent('defi', 'swap', sender, {
@@ -699,6 +800,17 @@ async function processRoutedSwap(data: PoolSwapData, sender: string, transaction
     }
 
     logger.info(`[pool-swap] Successful multi-hop swap by ${sender}: ${data.amountIn} ${data.hops![0].tokenIn_symbol} -> ${totalAmountOut} ${data.hops![data.hops!.length - 1].tokenOut_symbol} through ${data.hops!.length} hops`);
+
+    // Record the multi-hop swap as a market trade (overall trade from first token to last token)
+    await recordPoolSwapTrade({
+      poolId: data.hops![0].poolId, // Use first hop's pool ID
+      tokenIn: data.hops![0].tokenIn_symbol,
+      tokenOut: data.hops![data.hops!.length - 1].tokenOut_symbol,
+      amountIn: toBigInt(data.amountIn),
+      amountOut: totalAmountOut,
+      sender: sender,
+      transactionId: transactionId
+    });
 
     // Log event - get pool data for the first hop to access token symbols
     const firstPoolData = await cache.findOnePromise('liquidityPools', { _id: data.hops![0].poolId });

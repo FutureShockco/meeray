@@ -5,6 +5,7 @@ import { HybridTradeData, HybridTradeResult, HybridRoute } from './market-interf
 import { liquidityAggregator } from './market-aggregator.js';
 import { getAccount, adjustBalance } from '../../utils/account.js';
 import { toBigInt } from '../../utils/bigint.js';
+import crypto from 'crypto';
 
 // Import transaction processors for different route types
 import * as poolSwap from '../pool/pool-swap.js';
@@ -98,16 +99,18 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
       return false;
     }
 
-    // Validate that minAmountOut is reasonable (not more than 10x the input amount)
+    // Log info for very unusual minAmountOut ratios but allow all transactions
+    // Token decimals can vary from 0 to 18, creating legitimate ratios up to 10^18
     if (hasMinAmountOut) {
       const amountIn = toBigInt(data.amountIn);
       const minAmountOut = toBigInt(data.minAmountOut!);
       
-      // For most tokens, output shouldn't be more than 10x input (adjust this multiplier as needed)
-      if (minAmountOut > amountIn * BigInt(10)) {
-        logger.warn(`[hybrid-trade] minAmountOut ${minAmountOut} is unreasonably high compared to input amount ${amountIn}. This suggests a precision or calculation error.`);
-        return false;
+      // Only warn for extremely unusual ratios (more than 10^20 to catch obvious errors)
+      if (minAmountOut > amountIn * BigInt(10) ** BigInt(20)) {
+        logger.warn(`[hybrid-trade] minAmountOut ${minAmountOut} is unusually high compared to input amount ${amountIn}. Please verify this is correct.`);
       }
+      
+      // Always allow the transaction - different token decimals can create huge legitimate ratios
     }
 
     if (hasMaxSlippage && (data.maxSlippagePercent! < 0 || data.maxSlippagePercent! > 100)) {
@@ -197,12 +200,22 @@ export async function process(data: HybridTradeData, sender: string, transaction
           const calculatedPrice = (toBigInt(data.amountIn) * BigInt(1e8)) / toBigInt(data.minAmountOut); // Assuming 8 decimal precision
           logger.info(`[hybrid-trade] AMM output ${quote.amountOut} below minAmountOut ${data.minAmountOut}. Routing to orderbook as limit order at calculated price ${calculatedPrice}`);
           
+          // Find the correct trading pair ID regardless of token order
+          const pairId = await findTradingPairId(data.tokenIn, data.tokenOut);
+          if (!pairId) {
+            logger.error(`[hybrid-trade] No trading pair found for ${data.tokenIn} and ${data.tokenOut}`);
+            return false;
+          }
+          
+          // Determine the correct order side
+          const orderSide = await determineOrderSide(data.tokenIn, data.tokenOut, pairId);
+          
           routes = [{
             type: 'ORDERBOOK',
             allocation: 100,
             details: {
-              pairId: `${data.tokenIn}-${data.tokenOut}`,
-              side: OrderSide.BUY,
+              pairId: pairId,
+              side: orderSide,
               orderType: OrderType.LIMIT,
               price: calculatedPrice.toString()
             }
@@ -218,12 +231,23 @@ export async function process(data: HybridTradeData, sender: string, transaction
       } else {
         // For limit orders with specific price, default to orderbook only
         logger.debug('[hybrid-trade] Using orderbook route for limit order with specific price');
+        
+        // Find the correct trading pair ID regardless of token order
+        const pairId = await findTradingPairId(data.tokenIn, data.tokenOut);
+        if (!pairId) {
+          logger.error(`[hybrid-trade] No trading pair found for ${data.tokenIn} and ${data.tokenOut}`);
+          return false;
+        }
+        
+        // Determine the correct order side
+        const orderSide = await determineOrderSide(data.tokenIn, data.tokenOut, pairId);
+        
         routes = [{
           type: 'ORDERBOOK',
           allocation: 100,
           details: {
-            pairId: `${data.tokenIn}-${data.tokenOut}`,
-            side: OrderSide.BUY, // Fixed - use enum value
+            pairId: pairId,
+            side: orderSide,
             orderType: OrderType.LIMIT,
             price: data.price
           }
@@ -358,6 +382,17 @@ async function executeAMMRoute(
       return { success: false, amountOut: BigInt(0), error: swapResult.error || 'AMM swap execution failed' };
     }
 
+    // Record the AMM trade in the trades collection for market statistics
+    await recordAMMTrade({
+      poolId: ammDetails.poolId,
+      tokenIn: tradeData.tokenIn,
+      tokenOut: tradeData.tokenOut,
+      amountIn: amountIn,
+      amountOut: swapResult.amountOut,
+      sender: sender,
+      transactionId: transactionId
+    });
+
     // Return the actual output amount from the swap
     return { success: true, amountOut: swapResult.amountOut };
   } catch (error) {
@@ -378,8 +413,8 @@ async function executeOrderbookRoute(
   try {
     const orderbookDetails = route.details as any; // OrderbookRouteDetails
     
-    // Determine order type based on whether price is specified
-    const orderType = tradeData.price ? OrderType.LIMIT : OrderType.MARKET;
+    // Determine order type based on whether price is specified in tradeData OR route details
+    const orderType = (tradeData.price || orderbookDetails.price) ? OrderType.LIMIT : OrderType.MARKET;
     
     // Create order (limit or market)
     const orderData: any = {
@@ -392,9 +427,9 @@ async function executeOrderbookRoute(
       quoteAssetSymbol: tradeData.tokenOut
     };
 
-    // Add price for limit orders
-    if (orderType === OrderType.LIMIT && tradeData.price) {
-      orderData.price = tradeData.price;
+    // Add price for limit orders (from tradeData or route details)
+    if (orderType === OrderType.LIMIT) {
+      orderData.price = tradeData.price || orderbookDetails.price;
     }
 
     const createdOrder = createOrder(orderData);
@@ -419,5 +454,117 @@ async function executeOrderbookRoute(
     return { success: true, amountOut: totalOutput };
   } catch (error) {
     return { success: false, amountOut: BigInt(0), error: `Orderbook route error: ${error}` };
+  }
+}
+
+/**
+ * Determine the correct order side based on trading pair and token direction
+ */
+async function determineOrderSide(tokenIn: string, tokenOut: string, pairId: string): Promise<OrderSide> {
+  // Get the trading pair to know which is base and which is quote
+  const pair = await cache.findOnePromise('tradingPairs', { _id: pairId });
+  if (!pair) {
+    throw new Error(`Trading pair ${pairId} not found`);
+  }
+  
+  const baseAsset = pair.baseAssetSymbol;
+  const quoteAsset = pair.quoteAssetSymbol;
+  
+  // If we're buying the base asset (tokenOut = base), it's a BUY
+  // If we're selling the base asset (tokenIn = base), it's a SELL
+  if (tokenOut === baseAsset) {
+    return OrderSide.BUY;  // Buying base with quote
+  } else if (tokenIn === baseAsset) {
+    return OrderSide.SELL; // Selling base for quote
+  } else {
+    throw new Error(`Invalid trade direction for pair ${pairId}: ${tokenIn} → ${tokenOut}`);
+  }
+}
+
+/**
+ * Find the correct trading pair ID regardless of token order
+ */
+async function findTradingPairId(tokenA: string, tokenB: string): Promise<string | null> {
+  // Try both possible combinations
+  const pairId1 = `${tokenA}-${tokenB}`;
+  const pairId2 = `${tokenB}-${tokenA}`;
+  
+  // Check if either pair exists
+  const pair1 = await cache.findOnePromise('tradingPairs', { _id: pairId1 });
+  if (pair1) {
+    return pairId1;
+  }
+  
+  const pair2 = await cache.findOnePromise('tradingPairs', { _id: pairId2 });
+  if (pair2) {
+    return pairId2;
+  }
+  
+  return null;
+}
+
+/**
+ * Record AMM trade in the trades collection for market statistics
+ */
+async function recordAMMTrade(params: {
+  poolId: string;
+  tokenIn: string;
+  tokenOut: string;
+  amountIn: bigint;
+  amountOut: bigint;
+  sender: string;
+  transactionId: string;
+}): Promise<void> {
+  try {
+    // Find the correct trading pair ID regardless of token order
+    const pairId = await findTradingPairId(params.tokenIn, params.tokenOut);
+    if (!pairId) {
+      logger.warn(`[recordAMMTrade] No trading pair found for ${params.tokenIn}-${params.tokenOut}, skipping trade record`);
+      return;
+    }
+    
+    // Calculate price (price = amountIn / amountOut, scaled appropriately)
+    const price = params.amountOut > 0n ? (params.amountIn * BigInt(1e8)) / params.amountOut : 0n;
+    
+    // Create trade record matching the orderbook trade format
+    const tradeRecord = {
+      _id: crypto.randomBytes(12).toString('hex'),
+      pairId: pairId,
+      baseAssetSymbol: params.tokenOut,
+      quoteAssetSymbol: params.tokenIn,
+      makerOrderId: null, // AMM trades don't have maker orders
+      takerOrderId: null, // AMM trades don't have taker orders
+      buyerUserId: params.sender, // User is buying tokenOut with tokenIn
+      sellerUserId: 'AMM', // AMM is the seller
+      price: price.toString(),
+      quantity: params.amountOut.toString(),
+      volume: (price * params.amountOut / BigInt(1e8)).toString(), // volume = price * quantity
+      timestamp: Date.now(),
+      side: 'buy', // User is buying
+      type: 'market', // AMM trades are market orders
+      source: 'amm', // Mark as AMM source
+      isMakerBuyer: false,
+      feeAmount: '0', // Fees are handled in the pool swap
+      feeCurrency: params.tokenIn,
+      makerFee: '0',
+      takerFee: '0',
+      total: params.amountIn.toString()
+    };
+
+    // Save to trades collection
+    await new Promise<void>((resolve, reject) => {
+      cache.insertOne('trades', tradeRecord, (err, result) => {
+        if (err || !result) {
+          logger.error(`[recordAMMTrade] Failed to record AMM trade: ${err}`);
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+
+    logger.debug(`[recordAMMTrade] Recorded AMM trade: ${params.amountIn} ${params.tokenIn} -> ${params.amountOut} ${params.tokenOut} via pool ${params.poolId}`);
+  } catch (error) {
+    logger.error(`[recordAMMTrade] Error recording AMM trade: ${error}`);
   }
 }
