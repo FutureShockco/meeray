@@ -153,7 +153,7 @@ Returns a list of all liquidity pools with formatted token reserves.
 {
   "data": [
     {
-      "id": "MRY_STEEM_300",
+      "id": "MRY_STEEM",
       "tokenA_symbol": "MRY",
       "tokenA_reserve": "1000.000",
       "rawTokenA_reserve": "1000000000",
@@ -162,7 +162,6 @@ Returns a list of all liquidity pools with formatted token reserves.
       "rawTokenB_reserve": "500000000",
       "totalLpTokens": "707106781",
       "rawTotalLpTokens": "707106781",
-      "feeTier": 300,
       "aprA": 0.1523,
       "aprB": 0.1489,
       "fees24hA": "123456",
@@ -202,7 +201,7 @@ Returns the best swap route between two tokens.
   "bestRoute": {
     "hops": [
       {
-        "poolId": "MRY_STEEM_300",
+        "poolId": "MRY_STEEM",
         "tokenIn": "MRY",
         "tokenOut": "STEEM",
         "amountIn": "100000000",
@@ -241,7 +240,7 @@ Returns details for a specific liquidity pool.
 **Response:**
 ```json
 {
-  "id": "MRY_STEEM_300",
+  "id": "MRY_STEEM",
   "tokenA_symbol": "MRY",
   "tokenA_reserve": "1000.000",
   "rawTokenA_reserve": "1000000000",
@@ -250,7 +249,6 @@ Returns details for a specific liquidity pool.
   "rawTokenB_reserve": "500000000",
   "totalLpTokens": "707106781",
   "rawTotalLpTokens": "707106781",
-  "feeTier": 300,
   "aprA": 0.1523,
   "aprB": 0.1489,
   "createdAt": "2025-01-18T12:00:00.000Z",
@@ -264,7 +262,7 @@ Returns aggregate or time-series analytics for a pool including APR.
 **Aggregate Response:**
 ```json
 {
-  "poolId": "MRY_STEEM_300",
+  "poolId": "MRY_STEEM",
   "period": "day",
   "from": "2025-01-17T12:00:00.000Z",
   "to": "2025-01-18T12:00:00.000Z",
@@ -342,7 +340,7 @@ Returns a list of all farming pools with formatted amounts.
   "data": [
     {
       "id": "farm123",
-      "stakingTokenSymbol": "LP_MRY_STEEM_300",
+      "stakingTokenSymbol": "LP_MRY_STEEM",
       "rewardTokenSymbol": "MRY",
       "totalStaked": "1000.000",
       "rawTotalStaked": "1000000000",
@@ -467,7 +465,7 @@ Returns a list of blockchain events with optional filtering and pagination.
 - `type` (optional): Filter by event type (e.g., "pool_created", "pool_swap", "token_transfer")
 - `actor` (optional): Filter by actor/participant (e.g., "alice", "bob")
 - `transactionId` (optional): Filter by specific transaction ID
-- `poolId` (optional): Filter by specific pool ID (e.g., "MRY_STEEM_300")
+- `poolId` (optional): Filter by specific pool ID (e.g., "MRY_STEEM")
 - `startTime` (optional): Filter events from this timestamp (ISO date string)
 - `endTime` (optional): Filter events until this timestamp (ISO date string)
 - `sortDirection` (optional): "asc" or "desc" (default: "desc")
@@ -486,10 +484,9 @@ Returns a list of blockchain events with optional filtering and pagination.
       "transactionId": "tx456",
       "timestamp": "2025-01-18T12:00:00.000Z",
       "data": {
-        "poolId": "MRY_STEEM_300",
+        "poolId": "MRY_STEEM",
         "tokenA": "MRY",
         "tokenB": "STEEM",
-        "feeTier": 300,
         "initialLiquidity": {
           "tokenAAmount": "1000.000",
           "rawTokenAAmount": "1000000000",
@@ -505,7 +502,7 @@ Returns a list of blockchain events with optional filtering and pagination.
       "transactionId": "tx457",
       "timestamp": "2025-01-18T12:05:00.000Z",
       "data": {
-        "poolId": "MRY_STEEM_300",
+        "poolId": "MRY_STEEM",
         "tokenIn": "MRY",
         "tokenOut": "STEEM",
         "amountIn": "100.000",
@@ -523,7 +520,7 @@ Returns a list of blockchain events with optional filtering and pagination.
       "transactionId": "tx458",
       "timestamp": "2025-01-18T12:10:00.000Z",
       "data": {
-        "poolId": "MRY_STEEM_300",
+        "poolId": "MRY_STEEM",
         "tokenAAmount": "200.000",
         "rawTokenAAmount": "200000000",
         "tokenBAmount": "100.000",
@@ -539,7 +536,7 @@ Returns a list of blockchain events with optional filtering and pagination.
       "transactionId": "tx459",
       "timestamp": "2025-01-18T12:15:00.000Z",
       "data": {
-        "poolId": "MRY_STEEM_300",
+        "poolId": "MRY_STEEM",
         "tokenAAmount": "50.000",
         "rawTokenAAmount": "50000000",
         "tokenBAmount": "25.000",
@@ -601,7 +598,7 @@ Returns details for a specific event.
     "transactionId": "tx456",
     "timestamp": "2025-01-18T12:00:00.000Z",
     "data": {
-      "poolId": "MRY_STEEM_300",
+      "poolId": "MRY_STEEM",
       "tokenIn": "MRY",
       "tokenOut": "STEEM",
       "amountIn": "100.000",
@@ -646,17 +643,17 @@ Returns details for a specific event.
 
 6. **Get all events for a specific pool:**
    ```
-   GET /events?poolId=MRY_STEEM_300
+   GET /events?poolId=MRY_STEEM
    ```
 
 7. **Get pool events for a specific user:**
    ```
-   GET /events?poolId=MRY_STEEM_300&actor=alice
+   GET /events?poolId=MRY_STEEM&actor=alice
    ```
 
 8. **Get recent pool swaps only:**
    ```
-   GET /events?poolId=MRY_STEEM_300&type=pool_swap&limit=20
+   GET /events?poolId=MRY_STEEM&type=pool_swap&limit=20
    ```
 
 ### Witnesses

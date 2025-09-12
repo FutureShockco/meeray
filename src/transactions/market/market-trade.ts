@@ -16,13 +16,8 @@ const NUMERIC_FIELDS_HYBRID_TRADE: Array<keyof HybridTradeData> = ['amountIn', '
 
 export async function validateTx(data: HybridTradeData, sender: string): Promise<boolean> {
   try {
-    if (!data.trader || !data.tokenIn || !data.tokenOut || data.amountIn === undefined) {
-      logger.warn('[hybrid-trade] Invalid data: Missing required fields (trader, tokenIn, tokenOut, amountIn).');
-      return false;
-    }
-
-    if (sender !== data.trader) {
-      logger.warn('[hybrid-trade] Sender must be the trader.');
+    if (!data.tokenIn || !data.tokenOut || data.amountIn === undefined) {
+      logger.warn('[hybrid-trade] Invalid data: Missing required fields (tokenIn, tokenOut, amountIn).');
       return false;
     }
 
@@ -36,38 +31,25 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
       return false;
     }
 
-    // Validate token format: must include issuer (SYMBOL@ISSUER)
-    if (!data.tokenIn.includes('@')) {
-      logger.warn(`[hybrid-trade] Invalid tokenIn format. Expected format: SYMBOL@ISSUER (e.g., "LORD@echelon-node1"). Received: "${data.tokenIn}". Please specify the full token identifier including issuer.`);
-      return false;
-    }
+    // Validate tokens by symbol only (issuer optional/ignored)
+    const tokenInSymbol = data.tokenIn;
+    const tokenOutSymbol = data.tokenOut;
 
-    if (!data.tokenOut.includes('@')) {
-      logger.warn(`[hybrid-trade] Invalid tokenOut format. Expected format: SYMBOL@ISSUER (e.g., "TBD@echelon-node1"). Received: "${data.tokenOut}". Please specify the full token identifier including issuer.`);
-      return false;
-    }
-
-    // Validate that tokens with the exact issuer exist
-    const [tokenInSymbol, tokenInIssuer] = data.tokenIn.split('@');
-    const [tokenOutSymbol, tokenOutIssuer] = data.tokenOut.split('@');
-
-    // Check if tokenIn exists with the specified issuer
-    const tokenInExists = await cache.findOnePromise('tokens', { 
-      symbol: tokenInSymbol, 
-      issuer: tokenInIssuer 
+    // Check if tokenIn exists by symbol
+    const tokenInExists = await cache.findOnePromise('tokens', {
+      symbol: tokenInSymbol
     });
     if (!tokenInExists) {
-      logger.warn(`[hybrid-trade] Token ${data.tokenIn} does not exist. Symbol "${tokenInSymbol}" with issuer "${tokenInIssuer}" not found in the system.`);
+      logger.warn(`[hybrid-trade] Token ${data.tokenIn} does not exist. Symbol "${tokenInSymbol}" not found in the system.`);
       return false;
     }
 
-    // Check if tokenOut exists with the specified issuer
-    const tokenOutExists = await cache.findOnePromise('tokens', { 
-      symbol: tokenOutSymbol, 
-      issuer: tokenOutIssuer 
+    // Check if tokenOut exists by symbol
+    const tokenOutExists = await cache.findOnePromise('tokens', {
+      symbol: tokenOutSymbol
     });
     if (!tokenOutExists) {
-      logger.warn(`[hybrid-trade] Token ${data.tokenOut} does not exist. Symbol "${tokenOutSymbol}" with issuer "${tokenOutIssuer}" not found in the system.`);
+      logger.warn(`[hybrid-trade] Token ${data.tokenOut} does not exist. Symbol "${tokenOutSymbol}" not found in the system.`);
       return false;
     }
 
@@ -133,14 +115,14 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
       return false;
     }
 
-    // Check trader's balance
-    const traderAccount = await getAccount(data.trader);
-    if (!traderAccount) {
-      logger.warn(`[hybrid-trade] Trader account ${data.trader} not found.`);
+    // Check sender's balance
+    const senderAccount = await getAccount(sender);
+    if (!senderAccount) {
+      logger.warn(`[hybrid-trade] Sender account ${sender} not found.`);
       return false;
     }
 
-    const tokenInBalance = toBigInt(traderAccount.balances[data.tokenIn] || '0');
+    const tokenInBalance = toBigInt(senderAccount.balances[data.tokenIn] || '0');
     if (tokenInBalance < toBigInt(data.amountIn)) {
       logger.warn(`[hybrid-trade] Insufficient balance for ${data.tokenIn}. Required: ${data.amountIn}, Available: ${tokenInBalance}`);
       return false;
@@ -219,7 +201,7 @@ export async function process(data: HybridTradeData, sender: string, transaction
             type: 'ORDERBOOK',
             allocation: 100,
             details: {
-              pairId: `${data.tokenIn.split('@')[0]}@${sender}-${data.tokenOut.split('@')[0]}@${sender}`,
+              pairId: `${data.tokenIn}-${data.tokenOut}`,
               side: OrderSide.BUY,
               orderType: OrderType.LIMIT,
               price: calculatedPrice.toString()
@@ -240,7 +222,7 @@ export async function process(data: HybridTradeData, sender: string, transaction
           type: 'ORDERBOOK',
           allocation: 100,
           details: {
-            pairId: `${data.tokenIn.split('@')[0]}@${sender}-${data.tokenOut.split('@')[0]}@${sender}`,
+            pairId: `${data.tokenIn}-${data.tokenOut}`,
             side: OrderSide.BUY, // Fixed - use enum value
             orderType: OrderType.LIMIT,
             price: data.price
@@ -296,10 +278,30 @@ export async function process(data: HybridTradeData, sender: string, transaction
     }
 
     // Check slippage protection (this should rarely happen now with smart routing)
-    if (data.minAmountOut && totalAmountOut < toBigInt(data.minAmountOut)) {
-      logger.warn(`[hybrid-trade] Slippage protection triggered: Output amount ${totalAmountOut} is less than minimum required ${data.minAmountOut}. This suggests the orderbook route also couldn't meet your price requirements. Consider adjusting your minAmountOut or using maxSlippagePercent.`);
-      // In a production system, you'd want to rollback here
-      return false;
+    if (data.minAmountOut) {
+      const minOut = toBigInt(data.minAmountOut);
+      // Determine if the final route is a limit order (not just if the original request had price)
+      let finalRouteIsLimitOrder = false;
+      if (routes.length === 1 && routes[0].type === 'ORDERBOOK') {
+        const details = routes[0].details as any;
+        finalRouteIsLimitOrder = details.orderType === OrderType.LIMIT;
+      }
+      const hadImmediateFill = totalAmountOut > BigInt(0);
+
+      // If the final route is a limit order and there were no immediate fills,
+      // don't treat the lack of immediate output as a slippage failure — the order was posted
+      // to the book and may fill later. Only enforce minAmountOut when either the route is
+      // not a limit order (e.g., market order routed through AMM/orderbook) or when
+      // there were immediate fills to compare against.
+      if (!finalRouteIsLimitOrder || hadImmediateFill) {
+        if (totalAmountOut < minOut) {
+          logger.warn(`[hybrid-trade] Slippage protection triggered: Output amount ${totalAmountOut} is less than minimum required ${data.minAmountOut}. This suggests the orderbook route also couldn't meet your price requirements. Consider adjusting your minAmountOut or using maxSlippagePercent.`);
+          // In a production system, you'd want to rollback here
+          return false;
+        }
+      } else {
+        logger.info('[hybrid-trade] Limit order placed with no immediate fills; minAmountOut check deferred until fills occur.');
+      }
     }
 
     // Calculate actual price impact
@@ -334,7 +336,6 @@ async function executeAMMRoute(
     
     // Create pool swap data
     const swapData = {
-      trader: sender,
       tokenIn_symbol: tradeData.tokenIn,
       tokenOut_symbol: tradeData.tokenOut,
       amountIn: amountIn.toString(),

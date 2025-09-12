@@ -161,7 +161,6 @@ export async function process(data: PoolCreateData, sender: string, id: string):
           poolId,
           tokenA: tokenA_symbol,
           tokenB: tokenB_symbol,
-          feeTier: 300, // Fixed 0.3% fee for logging compatibility
           initialLiquidity: {
             tokenAAmount: '0',
             tokenBAmount: '0'
@@ -171,7 +170,7 @@ export async function process(data: PoolCreateData, sender: string, id: string):
     // Automatically create trading pair for this pool
     try {
       // Generate trading pair ID (same format as market system)
-      const pairId = `${tokenA_symbol}@${sender}-${tokenB_symbol}@${sender}`;
+      const pairId = `${tokenA_symbol}-${tokenB_symbol}`;
       
       // Set reasonable defaults for trading parameters (as BigInt first, then convert to DB strings)
       const tickSize = BigInt(1000);           // 0.001 (adjustable based on token precision)
@@ -184,9 +183,7 @@ export async function process(data: PoolCreateData, sender: string, id: string):
       const tradingPairDB = {
         _id: pairId,
         baseAssetSymbol: tokenA_symbol,
-        baseAssetIssuer: sender,
         quoteAssetSymbol: tokenB_symbol,
-        quoteAssetIssuer: sender,
         tickSize: toDbString(tickSize),
         lotSize: toDbString(lotSize),
         minNotional: toDbString(minNotional),
@@ -214,9 +211,7 @@ export async function process(data: PoolCreateData, sender: string, id: string):
         await logEvent('market', 'pair_created', sender, {
           pairId,
           baseAssetSymbol: tokenA_symbol,
-          baseAssetIssuer: sender,
           quoteAssetSymbol: tokenB_symbol,
-          quoteAssetIssuer: sender,
           tickSize: toDbString(tickSize),
           lotSize: toDbString(lotSize),
           minNotional: toDbString(minNotional),

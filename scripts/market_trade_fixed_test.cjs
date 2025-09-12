@@ -27,9 +27,8 @@ async function main() {
         // Test the fix: Market order that should now work correctly
         console.log('=== TEST: Market Order with Fixed Output Tracking ===');
         const fixedTradeData = {
-            trader: username,
-            tokenIn: 'STEEM@echelon-node1',      // Swapping STEEM for ECH  
-            tokenOut: 'ECH@echelon-node1',       // Should get ECH back
+            tokenIn: 'STEEM',      // Swapping STEEM for ECH  
+            tokenOut: 'ECH',       // Should get ECH back
             amountIn: '5000',                    // 5000 STEEM (no decimal places)
             maxSlippagePercent: 10.0             // 10% slippage tolerance
         };

@@ -88,13 +88,10 @@ async function mintTokens(symbol, to, amount) {
 }
 
 // --- Pool Operation Helpers --- //
-async function createPool(tokenA_symbol, tokenB_symbol, feeTier = 30) {
+async function createPool(tokenA_symbol, tokenB_symbol) {
   const payload = {
     tokenA_symbol,
-    tokenA_issuer: username, // Issuer is the current user
     tokenB_symbol,
-    tokenB_issuer: username, // Issuer is the current user
-    feeTier,
   };
   return sendCustomJson('pool_create', payload);
 }
@@ -111,7 +108,6 @@ async function addLiquidity(poolId, tokenA_amount, tokenB_amount) {
 
 async function swapTokens(poolId, tokenInSymbol, tokenOutSymbol, amountIn, minAmountOut) {
   const payload = {
-    trader: username,
     poolId,
     tokenInSymbol,
     tokenInIssuer: username,
@@ -134,7 +130,6 @@ async function runAdvancedPoolTest() {
   const tokenInitialSupply = '500000';
   const mintAmount = 10000; // Amount of each token to mint for liquidity/swap
 
-  const feeTier = 30; // 0.3%
   const liquidityA = 1000;
   const liquidityB = 500;
   const swapAmountInA = 100;
@@ -162,8 +157,8 @@ async function runAdvancedPoolTest() {
     // 5. Create Pool
     // Assuming poolId will be tokenA_symbol:tokenB_symbol (this might need adjustment based on actual chain response)
     const expectedPoolId = `${tokenASymbol}:${tokenBSymbol}`;
-    console.log(`Creating pool for ${tokenASymbol} and ${tokenBSymbol} with fee tier ${feeTier}...`);
-    await createPool(tokenASymbol, tokenBSymbol, feeTier);
+    console.log(`Creating pool for ${tokenASymbol} and ${tokenBSymbol}...`);
+    await createPool(tokenASymbol, tokenBSymbol);
     console.log(`Pool creation initiated for ${expectedPoolId}. Assuming successful creation for next steps.`);
     // Note: In a real scenario, you might query the chain to confirm poolId or get it from the creation TX result.
 

@@ -295,11 +295,10 @@ router.get('/', (async (req: Request, res: Response) => {
             const events = eventsByPool[poolIdStr] || [];
             for (const event of events) {
                 const e = event.data;
-                const feeTier = BigInt(300); // Fixed 0.3% fee tier
                 const feeDivisor = BigInt(10000);
                 const amountIn = toBigInt(e.amountIn);
                 const tokenIn = e.tokenIn_symbol;
-                const feeAmount = (amountIn * feeTier) / feeDivisor;
+                const feeAmount = (amountIn * BigInt(300)) / feeDivisor; // Fixed 0.3% fee
                 if (tokenIn === e.tokenA_symbol || tokenIn === e.tokenIn_symbol) {
                     totalFeesA += feeAmount;
                 } else {
@@ -311,11 +310,10 @@ router.get('/', (async (req: Request, res: Response) => {
             const events24h = events24hByPool[poolIdStr] || [];
             for (const event of events24h) {
                 const e = event.data;
-                const feeTier = BigInt(300); // Fixed 0.3% fee tier
                 const feeDivisor = BigInt(10000);
                 const amountIn = toBigInt(e.amountIn);
                 const tokenIn = e.tokenIn_symbol;
-                const feeAmount = (amountIn * feeTier) / feeDivisor;
+                const feeAmount = (amountIn * BigInt(300)) / feeDivisor; // Fixed 0.3% fee
                 if (tokenIn === e.tokenA_symbol || tokenIn === e.tokenIn_symbol) {
                     fees24hA += feeAmount;
                 } else {
@@ -635,12 +633,11 @@ router.get('/:poolId/analytics', (async (req: Request, res: Response) => {
             let totalVolumeA = 0n, totalVolumeB = 0n, totalFeesA = 0n, totalFeesB = 0n;
             for (const event of events) {
                 const e = event.data;
-                const feeTier = BigInt(300); // Fixed 0.3% fee tier
                 const feeDivisor = BigInt(10000);
                 const amountIn = toBigInt(e.amountIn);
                 const tokenIn = e.tokenIn_symbol;
-                // Fee is always taken from amountIn
-                const feeAmount = (amountIn * feeTier) / feeDivisor;
+                // Fee is always taken from amountIn (fixed 0.3% fee)
+                const feeAmount = (amountIn * BigInt(300)) / feeDivisor;
                 if (tokenIn === e.tokenA_symbol || tokenIn === e.tokenIn_symbol) {
                     totalVolumeA += amountIn;
                     totalFeesA += feeAmount;
@@ -719,11 +716,10 @@ router.get('/:poolId/analytics', (async (req: Request, res: Response) => {
             const createdAt = new Date(event.timestamp).getTime();
             const bucketIdx = Math.floor((createdAt - startTime.getTime()) / bucketMs);
             if (bucketIdx < 0 || bucketIdx >= buckets.length) continue;
-            const feeTier = BigInt(300); // Fixed 0.3% fee
             const feeDivisor = BigInt(10000);
             const amountIn = toBigInt(e.amountIn);
             const tokenIn = e.tokenIn_symbol;
-            const feeAmount = (amountIn * feeTier) / feeDivisor;
+            const feeAmount = (amountIn * BigInt(300)) / feeDivisor; // Fixed 0.3% fee
             if (tokenIn === e.tokenA_symbol || tokenIn === e.tokenIn_symbol) {
                 buckets[bucketIdx].volumeA += amountIn;
                 buckets[bucketIdx].feesA += feeAmount;

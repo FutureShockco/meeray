@@ -460,7 +460,7 @@ export const mongo = {
             const tradingPairsCollection = currentDb.collection('tradingPairs');
             await tradingPairsCollection.createIndex({ _id: 1 }); // pairId is _id
             await tradingPairsCollection.createIndex({ status: 1 });
-            await tradingPairsCollection.createIndex({ baseAssetSymbol: 1, baseAssetIssuer: 1, quoteAssetSymbol: 1, quoteAssetIssuer: 1 }, { name: "assets_combination_idx" });
+            await tradingPairsCollection.createIndex({ baseAssetSymbol: 1, quoteAssetSymbol: 1 }, { name: "assets_combination_idx" });
             logger.debug('[DB Indexes] Finished creating indexes for tradingPairs collection.');
 
             // Launchpads Collection Indexes

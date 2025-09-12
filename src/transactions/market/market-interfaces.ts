@@ -25,9 +25,7 @@ export enum OrderStatus {
 export interface TradingPairData {
   _id: string;                // Unique pair identifier (e.g., BTC-USDT)
   baseAssetSymbol: string;    // Base asset symbol (e.g., BTC)
-  baseAssetIssuer: string;    // Base asset issuer
   quoteAssetSymbol: string;   // Quote asset symbol (e.g., USDT)
-  quoteAssetIssuer: string;   // Quote asset issuer
   tickSize: string | bigint;          // Minimum price movement
   lotSize: string | bigint;           // Minimum quantity movement
   minNotional: string | bigint;       // Minimum order value in quote asset
@@ -45,9 +43,7 @@ export interface OrderData {
   pairId: string;                 // Reference to TradingPair._id
   
   baseAssetSymbol: string;        // From TradingPair for easier querying/display
-  baseAssetIssuer: string;        // From TradingPair
   quoteAssetSymbol: string;       // From TradingPair
-  quoteAssetIssuer: string;       // From TradingPair
 
   type: OrderType;
   side: OrderSide;
@@ -93,9 +89,7 @@ export function createOrder(data: Partial<OrderData & { /* Allow extra fields li
         userId: data.userId || '',
         pairId: data.pairId || '',
         baseAssetSymbol: data.baseAssetSymbol || '',
-        baseAssetIssuer: data.baseAssetIssuer || '',
         quoteAssetSymbol: data.quoteAssetSymbol || '',
-        quoteAssetIssuer: data.quoteAssetIssuer || '',
         side: data.side || OrderSide.BUY,
         type: data.type || OrderType.LIMIT,
         price: data.price !== undefined ? toBigInt(data.price) : undefined,
@@ -164,9 +158,7 @@ export interface OrderBookSnapshotData {
 // For operations that create/update orders/pairs
 export interface MarketCreatePairData {
     baseAssetSymbol: string;
-    // baseAssetIssuer: removed for security - now automatically set to transaction sender
     quoteAssetSymbol: string;
-    // quoteAssetIssuer: removed for security - now automatically set to transaction sender
     tickSize: string | bigint;             // Changed from number to bigint
     lotSize: string | bigint;              // Changed from number to bigint
     minNotional: string | bigint;          // Changed from number to bigint
@@ -176,7 +168,6 @@ export interface MarketCreatePairData {
 }
 
 export interface MarketPlaceOrderData {
-    userId: string;               // Will be sender
     pairId: string;
     type: OrderType;
     side: OrderSide;
@@ -189,7 +180,6 @@ export interface MarketPlaceOrderData {
 }
 
 export interface MarketCancelOrderData {
-    userId: string; // Will be sender
     orderId: string;
     pairId: string; // Useful for routing/sharding if books are managed per pair
 }
@@ -199,9 +189,8 @@ export interface MarketCancelOrderData {
 
 // Hybrid trading transaction data
 export interface HybridTradeData {
-  trader: string;                    // Account making the trade
-  tokenIn: string;                   // Token being sold (format: symbol@issuer)
-  tokenOut: string;                  // Token being bought (format: symbol@issuer)
+  tokenIn: string;                   // Token being sold (format: symbol)
+  tokenOut: string;                  // Token being bought (format: symbol)
   amountIn: string | bigint;         // Amount of tokenIn to trade
   
   // Price Control (choose one approach):
@@ -254,7 +243,6 @@ export interface LiquiditySource {
   bestAsk?: string | bigint;         // For orderbooks
   bidDepth?: string | bigint;        // Available liquidity on bid side
   askDepth?: string | bigint;        // Available liquidity on ask side
-  feeTier?: number;                  // Fee in basis points
   hasLiquidity?: boolean;            // Whether this source has actual liquidity to trade against
 }
 

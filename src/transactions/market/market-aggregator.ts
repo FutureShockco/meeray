@@ -55,7 +55,6 @@ export class LiquidityAggregator {
           tokenB: pool.tokenB_symbol,
           reserveA: pool.tokenA_reserve,
           reserveB: pool.tokenB_reserve,
-          feeTier: 300, // Fixed 0.3% fee
           hasLiquidity: toBigInt(pool.tokenA_reserve) > 0n && toBigInt(pool.tokenB_reserve) > 0n
         });
       }
@@ -97,8 +96,7 @@ export class LiquidityAggregator {
             bestBid: depth.bestBid,
             bestAsk: depth.bestAsk,
             bidDepth: depth.bidDepth,
-            askDepth: depth.askDepth,
-            feeTier: 0 // Orderbook fees handled differently
+            askDepth: depth.askDepth
           });
         }
       }
@@ -185,9 +183,8 @@ export class LiquidityAggregator {
       return null;
     }
     
-    // Calculate output using constant product formula with fees
-    const feeTier = 300; // Fixed 0.3% fee
-    const amountInWithFee = amountIn * BigInt(10000 - feeTier);
+    // Calculate output using constant product formula with fees (fixed 0.3% fee)
+    const amountInWithFee = amountIn * BigInt(9700); // 10000 - 300 = 9700 for 0.3% fee
     const numerator = amountInWithFee * reserveOut;
     const denominator = (reserveIn * BigInt(10000)) + amountInWithFee;
     const amountOut = numerator / denominator;

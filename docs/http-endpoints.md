@@ -184,8 +184,8 @@ Handler: `src/modules/http/market.ts` (available under both `/market` and `/mark
 *   **GET `/sources/:tokenA/:tokenB`**
     *   Description: List available liquidity sources (AMM and orderbook) for a token pair.
     *   Path Parameters:
-        *   `tokenA` (string): Token A symbol@issuer.
-        *   `tokenB` (string): Token B symbol@issuer.
+        *   `tokenA` (string): Token A symbol.
+        *   `tokenB` (string): Token B symbol.
     *   Response: `{ tokenA, tokenB, sources: LiquiditySource[], totalSources: number, ammSources: number, orderbookSources: number }`
 
 *   **POST `/quote`**
@@ -193,8 +193,8 @@ Handler: `src/modules/http/market.ts` (available under both `/market` and `/mark
     *   Request Body:
         ```json
         {
-          "tokenIn": "MRY@meeray-node1",
-          "tokenOut": "STEEM@meeray-node1",
+          "tokenIn": "MRY",
+          "tokenOut": "STEEM",
           "amountIn": "100000000",
           "maxSlippagePercent": 2.0
         }
@@ -227,7 +227,7 @@ Handler: `src/modules/http/market.ts` (available under both `/market` and `/mark
 *   **GET `/pairs/:pairId`**
     *   Description: Get details of a specific trading pair.
     *   Path Parameters:
-        *   `pairId` (string): The ID of the trading pair (e.g., `MRY@meeray-node1-STEEM@meeray-node1`).
+        *   `pairId` (string): The ID of the trading pair (e.g., `MRY-STEEM`).
     *   Response: `TradingPair` object or `{ message: string }` if not found.
 
 ### Orders
@@ -292,8 +292,8 @@ Handler: `src/modules/http/market.ts` (available under both `/market` and `/mark
     *   Request Body:
         ```json
         {
-          "tokenIn": "MRY@meeray-node1",
-          "tokenOut": "STEEM@meeray-node1", 
+          "tokenIn": "MRY",
+          "tokenOut": "STEEM", 
           "amountIn": "1000000000",
           "maxSlippagePercent": 2.0
         }
@@ -303,8 +303,8 @@ Handler: `src/modules/http/market.ts` (available under both `/market` and `/mark
 *   **GET `/liquidity-sources`**
     *   Description: List available liquidity sources for hybrid trading.
     *   Query Parameters:
-        *   `tokenA` (string, optional): Filter by token A symbol@issuer.
-        *   `tokenB` (string, optional): Filter by token B symbol@issuer.
+        *   `tokenA` (string, optional): Filter by token A symbol.
+        *   `tokenB` (string, optional): Filter by token B symbol.
     *   Response: `{ amm: LiquiditySource[], orderbook: LiquiditySource[] }`
 
 ## `/mine`
@@ -465,9 +465,10 @@ Handler: `src/modules/http/pools.ts`
     *   Query Parameters:
         *   `limit`, `offset` (see Common Query Parameters)
     *   Response: `{ data: Pool[], total: number, limit: number, skip: number }`
-    *   Notes: Each `Pool` includes reserves, `feeTier`, `totalLpTokens`, plus analytics helpers:
+    *   Notes: Each `Pool` includes reserves and `totalLpTokens`, plus analytics helpers:
         *   `aprA`, `aprB` (annualized fee APR as ratio, e.g., `0.23` for 23%)
         *   `fees24hA`, `fees24hB` (raw smallest units for 24h fees)
+        *   Fee is fixed at 0.3% (300 basis points) for all pools
 
 *   **GET `/:poolId`**
     *   Description: Get details of a specific liquidity pool.

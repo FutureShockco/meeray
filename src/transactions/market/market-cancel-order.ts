@@ -10,12 +10,6 @@ export async function validateTx(data: MarketCancelOrderData, sender: string): P
     try {
         logger.debug(`[market-cancel-order] Validating cancellation from ${sender}: ${JSON.stringify(data)}`);
 
-        // Validate sender matches userId
-        if (sender !== data.userId) {
-            logger.warn('[market-cancel-order] Sender must match userId for the order cancellation.');
-            return false;
-        }
-
         // Validate required fields
         if (!data.orderId || !data.pairId) {
             logger.warn('[market-cancel-order] Missing required fields: orderId, pairId.');
@@ -37,11 +31,11 @@ export async function validateTx(data: MarketCancelOrderData, sender: string): P
         const orderFromCache = await cache.findOnePromise('orders', { 
             _id: data.orderId, 
             pairId: data.pairId, 
-            userId: data.userId 
+            userId: sender 
         });
 
         if (!orderFromCache) {
-            logger.warn(`[market-cancel-order] Order ${data.orderId} for pair ${data.pairId} by user ${data.userId} not found or not owned by sender.`);
+            logger.warn(`[market-cancel-order] Order ${data.orderId} for pair ${data.pairId} by user ${sender} not found or not owned by sender.`);
             return false;
         }
 
@@ -55,9 +49,9 @@ export async function validateTx(data: MarketCancelOrderData, sender: string): P
         }
 
         // Validate sender account exists
-        const userAccount = await getAccount(data.userId);
+        const userAccount = await getAccount(sender);
         if (!userAccount) {
-            logger.warn(`[market-cancel-order] User account ${data.userId} not found.`);
+            logger.warn(`[market-cancel-order] User account ${sender} not found.`);
             return false;
         }
 
@@ -75,10 +69,10 @@ export async function process(data: MarketCancelOrderData, sender: string, id: s
         logger.debug(`[market-cancel-order] Processing cancellation from ${sender} for order ${data.orderId}`);
 
         // Get the order from cache
-        const order = await cache.findOnePromise('orders', { _id: data.orderId, pairId: data.pairId, userId: data.userId }) as OrderData;
+        const order = await cache.findOnePromise('orders', { _id: data.orderId, pairId: data.pairId, userId: sender }) as OrderData;
 
         // Use matching engine to cancel the order
-        const cancelSuccess = await matchingEngine.cancelOrder(data.orderId, data.pairId, data.userId);
+        const cancelSuccess = await matchingEngine.cancelOrder(data.orderId, data.pairId, sender);
         
         if (!cancelSuccess) {
             logger.error(`[market-cancel-order] Failed to cancel order ${data.orderId} in matching engine.`);
@@ -117,8 +111,8 @@ export async function process(data: MarketCancelOrderData, sender: string, id: s
             // For buy orders, return locked quote currency
             // For sell orders, return locked base currency
             const tokenToReturn = order.side === OrderSide.BUY ? 
-                `${order.quoteAssetSymbol}@${order.quoteAssetIssuer}` : 
-                `${order.baseAssetSymbol}@${order.baseAssetIssuer}`;
+                order.quoteAssetSymbol : 
+                order.baseAssetSymbol;
             
             const amountToReturn = order.side === OrderSide.BUY ? 
                 (unfilledQuantity * toBigInt(order.price || 0)) : // Buy: return quote currency

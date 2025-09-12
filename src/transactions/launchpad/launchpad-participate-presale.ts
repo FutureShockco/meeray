@@ -61,7 +61,7 @@ export async function validateTx(dataDb: LaunchpadParticipatePresaleData, sender
     logger.warn(`[launchpad-participate-presale] User account ${data.userId} not found.`);
     return false;
   }
-  const contributionTokenIdentifier = `${presaleDetails.quoteAssetForPresaleSymbol}${presaleDetails.quoteAssetForPresaleIssuer ? '@' + presaleDetails.quoteAssetForPresaleIssuer : ''}`;
+  const contributionTokenIdentifier = presaleDetails.quoteAssetForPresaleSymbol;
   const userBalanceString = userAccount.balances?.[contributionTokenIdentifier] || '0';
   const userBalance = toBigInt(userBalanceString);
   if (userBalance < toBigInt(data.contributionAmount)) {
@@ -80,7 +80,7 @@ export async function process(dataDb: LaunchpadParticipatePresaleData, sender: s
     const launchpadFromCache = await cache.findOnePromise('launchpads', { _id: data.launchpadId });
     const launchpad = launchpadFromCache as any; // validateTx ensures existence and presale fields
     const presaleDetails = launchpad.presaleDetailsSnapshot!;
-    const contributionTokenIdentifier = `${presaleDetails.quoteAssetForPresaleSymbol}${presaleDetails.quoteAssetForPresaleIssuer ? '@' + presaleDetails.quoteAssetForPresaleIssuer : ''}`;
+    const contributionTokenIdentifier = presaleDetails.quoteAssetForPresaleSymbol;
 
     const balanceAdjusted = await adjustBalance(sender, contributionTokenIdentifier, -toBigInt(data.contributionAmount));
     if (!balanceAdjusted) {
@@ -127,7 +127,6 @@ export async function process(dataDb: LaunchpadParticipatePresaleData, sender: s
       userId: data.userId,
       contributionAmount: toDbString(toBigInt(data.contributionAmount)),
       quoteAssetSymbol: presaleDetails.quoteAssetForPresaleSymbol,
-      quoteAssetIssuer: presaleDetails.quoteAssetForPresaleIssuer,
       totalQuoteRaised: toDbString(newTotalRaised),
       isNewParticipant: participantIndex === -1
     });

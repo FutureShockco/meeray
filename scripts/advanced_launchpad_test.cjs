@@ -97,7 +97,6 @@ async function launchToken(tokenSymbol, tokenName, quoteAssetSymbol) {
     presaleTokenAllocationPercentage: 30,
     pricePerToken: "50000", // Price in quote asset (e.g., 0.05 with 6 decimals for quote asset)
     quoteAssetForPresaleSymbol: quoteAssetSymbol,
-    quoteAssetForPresaleIssuer: username,
     minContributionPerUser: "50000000", // e.g., 50 with 6 decimals for quote asset
     maxContributionPerUser: "5000000000", // e.g., 5000 with 6 decimals for quote asset
     startTime: getFutureDateString(1), // 1 day from now

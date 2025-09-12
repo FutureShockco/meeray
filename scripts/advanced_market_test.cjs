@@ -84,7 +84,6 @@ async function mintTokens(symbol, to, amount) {
 // Individual order placement is no longer available - use market_trade instead
 async function executeHybridTrade(tokenIn, tokenOut, amountIn, maxSlippage = 2.0) {
   const payload = {
-    trader: username,
     tokenIn,
     tokenOut,
     amountIn: amountIn.toString(),
@@ -96,7 +95,6 @@ async function executeHybridTrade(tokenIn, tokenOut, amountIn, maxSlippage = 2.0
 async function cancelOrder(orderId) {
   const payload = {
     orderId,
-    trader: username
   };
   return sendCustomJson('market_cancel_order', payload);
 }
@@ -133,15 +131,14 @@ async function runAdvancedMarketTest() {
     console.log(`4. Creating liquidity pool ${baseSymbol}/${quoteSymbol}...`);
     await sendCustomJson('pool_create', {
       tokenA_symbol: baseSymbol,
-      tokenB_symbol: quoteSymbol,
-      feeTier: 30 // 0.3% fee tier
+      tokenB_symbol: quoteSymbol
     });
     console.log(`Pool created - trading pair automatically created with issuer assignment (${username})`);
 
     // 5. Add some AMM liquidity first (this creates initial price discovery)
     console.log(`5. Adding AMM liquidity to establish price...`);
     await sendCustomJson('pool_add_liquidity', {
-      poolId: `${baseSymbol}_${quoteSymbol}_30`, // Format: tokenA_tokenB_feeTier
+      poolId: `${baseSymbol}_${quoteSymbol}`, // Format: tokenA_tokenB
       provider: username,
       tokenA_amount: (1000 * Math.pow(10, tokenPrecision)).toString(), // 1000 ECH
       tokenB_amount: (1000 * Math.pow(10, tokenPrecision)).toString()  // 1000 USD (1:1 ratio)

@@ -33,8 +33,7 @@ router.get('/sources/:tokenA/:tokenB', (async (req: Request, res: Response) => {
         reserveA: source.reserveA?.toString(),
         reserveB: source.reserveB?.toString(),
         reserveAFormatted: formatAmount(toBigInt(source.reserveA!)),
-        reserveBFormatted: formatAmount(toBigInt(source.reserveB!)),
-        feeTier: 300 // Fixed 0.3% fee
+        reserveBFormatted: formatAmount(toBigInt(source.reserveB!))
       }),
       ...(source.type === 'ORDERBOOK' && {
         bestBid: source.bestBid?.toString(),
@@ -93,7 +92,6 @@ router.post('/quote', (async (req: Request, res: Response) => {
     }
     
     const tradeData: HybridTradeData = {
-      trader: 'quote_request', // Placeholder for quote
       tokenIn,
       tokenOut,
       amountIn: amountInBigInt,
@@ -147,7 +145,6 @@ router.post('/compare', (async (req: Request, res: Response) => {
     }
     
     const tradeData: HybridTradeData = {
-      trader: 'comparison_request',
       tokenIn,
       tokenOut,
       amountIn: toBigInt(amountIn)
@@ -237,6 +234,236 @@ router.get('/stats', (async (req: Request, res: Response) => {
     logger.error('Error fetching hybrid stats:', error);
     res.status(500).json({ 
       message: 'Error fetching statistics', 
+      error: error.message 
+    });
+  }
+}) as RequestHandler);
+
+/**
+ * Get statistics for a specific trading pair
+ * GET /market/stats/:pairId
+ */
+router.get('/stats/:pairId', (async (req: Request, res: Response) => {
+  try {
+    const { pairId } = req.params;
+    
+    // Check if trading pair exists
+    const pair = await cache.findOnePromise('tradingPairs', { _id: pairId });
+    if (!pair) {
+      return res.status(404).json({ message: 'Trading pair not found' });
+    }
+    
+    // Get trades for this pair
+    const trades = await cache.findPromise('trades', { pairId }, 
+      { sort: { timestamp: -1 }, limit: 100 }) || [];
+    
+    // Calculate 24h statistics
+    const now = Date.now();
+    const oneDayAgo = now - (24 * 60 * 60 * 1000);
+    const recentTrades = trades.filter(trade => trade.timestamp > oneDayAgo);
+    
+    const volume24h = recentTrades.reduce((sum, trade) => sum + trade.volume, 0);
+    const tradeCount24h = recentTrades.length;
+    
+    // Get price statistics
+    let priceChange24h = 0;
+    let priceChange24hPercent = 0;
+    if (recentTrades.length > 0) {
+      const latestPrice = recentTrades[0]?.price || 0;
+      const oldestPrice = recentTrades[recentTrades.length - 1]?.price || 0;
+      if (oldestPrice > 0) {
+        priceChange24h = latestPrice - oldestPrice;
+        priceChange24hPercent = (priceChange24h / oldestPrice) * 100;
+      }
+    }
+    
+    // Get current orders for this pair
+    const orders = await cache.findPromise('orders', { pairId }) || [];
+    const buyOrders = orders.filter(order => order.side === 'buy' && 
+      (order.status === 'open' || order.status === 'partial'));
+    const sellOrders = orders.filter(order => order.side === 'sell' && 
+      (order.status === 'open' || order.status === 'partial'));
+    
+    // Calculate spread
+    const highestBid = buyOrders.length > 0 ? 
+      Math.max(...buyOrders.map(order => order.price)) : 0;
+    const lowestAsk = sellOrders.length > 0 ? 
+      Math.min(...sellOrders.map(order => order.price)) : 0;
+    const spread = lowestAsk > 0 && highestBid > 0 ? lowestAsk - highestBid : 0;
+    const spreadPercent = highestBid > 0 ? (spread / highestBid) * 100 : 0;
+    
+    res.json({
+      pairId,
+      pair,
+      volume24h,
+      tradeCount24h,
+      priceChange24h,
+      priceChange24hPercent,
+      currentPrice: recentTrades[0]?.price || 0,
+      highestBid,
+      lowestAsk,
+      spread,
+      spreadPercent,
+      buyOrderCount: buyOrders.length,
+      sellOrderCount: sellOrders.length,
+      recentTrades: trades.slice(0, 10)
+    });
+  } catch (error: any) {
+    logger.error('Error fetching pair stats:', error);
+    res.status(500).json({ 
+      message: 'Error fetching pair stats', 
+      error: error.message 
+    });
+  }
+}) as RequestHandler);
+
+/**
+ * Get orderbook for a specific trading pair
+ * GET /market/orderbook/:pairId
+ */
+router.get('/orderbook/:pairId', (async (req: Request, res: Response) => {
+  try {
+    const { pairId } = req.params;
+    const { depth = 20 } = req.query; // Default to 20 levels
+    
+    // Check if trading pair exists
+    const pair = await cache.findOnePromise('tradingPairs', { _id: pairId });
+    if (!pair) {
+      return res.status(404).json({ message: 'Trading pair not found' });
+    }
+    
+    // Get active orders for this pair
+    const orders = await cache.findPromise('orders', { 
+      pairId,
+      status: { $in: ['open', 'partial'] }
+    }) || [];
+    
+    // Separate buy and sell orders
+    const buyOrders = orders
+      .filter(order => order.side === 'buy')
+      .sort((a, b) => b.price - a.price) // Highest price first
+      .slice(0, Number(depth));
+    
+    const sellOrders = orders
+      .filter(order => order.side === 'sell')
+      .sort((a, b) => a.price - b.price) // Lowest price first
+      .slice(0, Number(depth));
+    
+    // Format orderbook data
+    const bids = buyOrders.map(order => ({
+      price: order.price,
+      quantity: order.remainingQuantity || order.quantity,
+      total: order.price * (order.remainingQuantity || order.quantity)
+    }));
+    
+    const asks = sellOrders.map(order => ({
+      price: order.price,
+      quantity: order.remainingQuantity || order.quantity,
+      total: order.price * (order.remainingQuantity || order.quantity)
+    }));
+    
+    // Calculate spread
+    const highestBid = bids.length > 0 ? bids[0].price : 0;
+    const lowestAsk = asks.length > 0 ? asks[0].price : 0;
+    const spread = lowestAsk > 0 && highestBid > 0 ? lowestAsk - highestBid : 0;
+    const spreadPercent = highestBid > 0 ? (spread / highestBid) * 100 : 0;
+    
+    res.json({
+      pairId,
+      timestamp: Date.now(),
+      bids,
+      asks,
+      spread,
+      spreadPercent,
+      depth: {
+        bids: bids.length,
+        asks: asks.length
+      }
+    });
+  } catch (error: any) {
+    logger.error('Error fetching orderbook:', error);
+    res.status(500).json({ 
+      message: 'Error fetching orderbook', 
+      error: error.message 
+    });
+  }
+}) as RequestHandler);
+
+/**
+ * Get trade history for a specific trading pair
+ * GET /market/trades/:pairId
+ */
+router.get('/trades/:pairId', (async (req: Request, res: Response) => {
+  try {
+    const { pairId } = req.params;
+    const { limit = 50, since, before } = req.query;
+    
+    // Check if trading pair exists
+    const pair = await cache.findOnePromise('tradingPairs', { _id: pairId });
+    if (!pair) {
+      return res.status(404).json({ message: 'Trading pair not found' });
+    }
+    
+    // Build query filter
+    const filter: any = { pairId };
+    
+    // Add time range filters if provided
+    if (since) {
+      filter.timestamp = { $gte: Number(since) };
+    }
+    if (before) {
+      filter.timestamp = filter.timestamp ? 
+        { ...filter.timestamp, $lt: Number(before) } : 
+        { $lt: Number(before) };
+    }
+    
+    // Get trades for this pair
+    const trades = await cache.findPromise('trades', filter, {
+      sort: { timestamp: -1 }, // Most recent first
+      limit: Math.min(Number(limit), 500) // Cap at 500 trades
+    }) || [];
+    
+    // Format trade data
+    const formattedTrades = trades.map(trade => ({
+      id: trade._id || trade.id,
+      timestamp: trade.timestamp,
+      price: toBigInt(trade.price).toString(),
+      quantity: toBigInt(trade.quantity).toString(),
+      volume: trade.volume ? toBigInt(trade.volume).toString() : (toBigInt(trade.price) * toBigInt(trade.quantity)).toString(),
+      side: trade.side || 'unknown', // 'buy' or 'sell'
+      type: trade.type || 'market', // 'market', 'limit', etc.
+      source: trade.source || 'unknown' // 'amm', 'orderbook', 'hybrid'
+    }));
+    
+    // Calculate summary statistics
+    const volume24h = formattedTrades
+      .filter(trade => trade.timestamp > Date.now() - (24 * 60 * 60 * 1000))
+      .reduce((sum, trade) => sum + trade.volume, 0);
+    
+    const priceRange = formattedTrades.length > 0 ? {
+      high: Math.max(...formattedTrades.map(t => t.price)),
+      low: Math.min(...formattedTrades.map(t => t.price)),
+      latest: formattedTrades[0]?.price || 0
+    } : { high: 0, low: 0, latest: 0 };
+    
+    res.json({
+      pairId,
+      trades: formattedTrades,
+      summary: {
+        count: formattedTrades.length,
+        volume24h,
+        priceRange,
+        timestamp: Date.now()
+      },
+      pagination: {
+        limit: Number(limit),
+        hasMore: formattedTrades.length === Number(limit)
+      }
+    });
+  } catch (error: any) {
+    logger.error('Error fetching trades:', error);
+    res.status(500).json({ 
+      message: 'Error fetching trades', 
       error: error.message 
     });
   }
@@ -380,6 +607,84 @@ router.get('/orders/user/:userId', (async (req: Request, res: Response) => {
       userId,
       orders: orders || [],
       total: orders?.length || 0
+    });
+  } catch (error: any) {
+    logger.error('Error fetching user orders:', error);
+    res.status(500).json({ 
+      message: 'Error fetching user orders', 
+      error: error.message 
+    });
+  }
+}) as RequestHandler);
+
+/**
+ * Get orders for a specific user with optional pair filtering
+ * GET /market/orders/:userId?pairId=PAIR_ID
+ */
+router.get('/orders/:userId', (async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const { pairId, status, side, limit = 100 } = req.query;
+    
+    // Build query filter
+    const filter: any = { userId };
+    
+    if (pairId) {
+      filter.pairId = pairId;
+    }
+    
+    if (status) {
+      filter.status = status;
+    }
+    
+    if (side) {
+      filter.side = side;
+    }
+    
+    // Get orders with optional filtering
+    const orders = await cache.findPromise('orders', filter, {
+      sort: { timestamp: -1 }, // Most recent first
+      limit: Math.min(Number(limit), 500) // Cap at 500 orders
+    }) || [];
+    
+    // Format order data
+    const formattedOrders = orders.map(order => ({
+      id: order._id || order.id,
+      pairId: order.pairId,
+      side: order.side,
+      type: order.type,
+      price: order.price ? toBigInt(order.price).toString() : null,
+      quantity: toBigInt(order.quantity).toString(),
+      remainingQuantity: order.remainingQuantity ? toBigInt(order.remainingQuantity).toString() : '0',
+      filledQuantity: order.filledQuantity ? toBigInt(order.filledQuantity).toString() : '0',
+      status: order.status,
+      timestamp: order.timestamp,
+      lastUpdateTime: order.lastUpdateTime
+    }));
+    
+    // Calculate summary statistics
+    const summary = {
+      totalOrders: formattedOrders.length,
+      openOrders: formattedOrders.filter(o => o.status === 'open').length,
+      partialOrders: formattedOrders.filter(o => o.status === 'partial').length,
+      filledOrders: formattedOrders.filter(o => o.status === 'filled').length,
+      cancelledOrders: formattedOrders.filter(o => o.status === 'cancelled').length,
+      buyOrders: formattedOrders.filter(o => o.side === 'buy').length,
+      sellOrders: formattedOrders.filter(o => o.side === 'sell').length
+    };
+    
+    res.json({
+      userId,
+      pairId: pairId || 'all',
+      orders: formattedOrders,
+      summary,
+      filters: {
+        pairId: pairId || null,
+        status: status || null,
+        side: side || null,
+        limit: Number(limit)
+      },
+      timestamp: Date.now()
     });
   } catch (error: any) {
     logger.error('Error fetching user orders:', error);

@@ -27,7 +27,7 @@ export async function process(data: LaunchpadRefundPresaleData, sender: string):
   try {
     const lp = await cache.findOnePromise('launchpads', { _id: data.launchpadId });
     if (!lp || !lp.presale || !lp.presaleDetailsSnapshot) return false;
-    const quoteId = `${lp.presaleDetailsSnapshot.quoteAssetForPresaleSymbol}${lp.presaleDetailsSnapshot.quoteAssetForPresaleIssuer ? '@' + lp.presaleDetailsSnapshot.quoteAssetForPresaleIssuer : ''}`;
+    const quoteId = lp.presaleDetailsSnapshot.quoteAssetForPresaleSymbol;
 
     const participants = lp.presale.participants || [];
     for (const p of participants) {

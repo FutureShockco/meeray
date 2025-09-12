@@ -7,6 +7,73 @@ import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
 /**
+ * Distributes orderbook trading fees to AMM pool liquidity providers
+ * This ensures orderbook fees contribute to liquidity growth like AMM fees
+ */
+async function distributeOrderbookFeesToLiquidityProviders(
+  baseAssetSymbol: string,
+  quoteAssetSymbol: string,
+  baseTokenFee: bigint,
+  quoteTokenFee: bigint
+): Promise<void> {
+  try {
+    // Find the corresponding AMM pool for this trading pair
+    const poolId = generatePoolIdFromTokens(baseAssetSymbol, quoteAssetSymbol);
+    const pool = await cache.findOnePromise('liquidityPools', { _id: poolId });
+    
+    if (!pool) {
+      // No AMM pool exists for this pair - fees are burned
+      logger.debug(`[MatchingEngine] No AMM pool found for ${baseAssetSymbol}-${quoteAssetSymbol}, orderbook fees burned`);
+      return;
+    }
+
+    const totalLpTokens = toBigInt(pool.totalLpTokens);
+    if (totalLpTokens <= 0n) {
+      // Pool exists but has no liquidity providers - fees are burned
+      logger.debug(`[MatchingEngine] AMM pool ${poolId} has no LP tokens, orderbook fees burned`);
+      return;
+    }
+
+    // Update fee growth globals using the same mechanism as AMM pool swaps
+    let newFeeGrowthGlobalA = toBigInt(pool.feeGrowthGlobalA || '0');
+    let newFeeGrowthGlobalB = toBigInt(pool.feeGrowthGlobalB || '0');
+
+    // Distribute base token fees (assuming baseAsset is tokenA)
+    if (baseTokenFee > 0n) {
+      const feeGrowthDelta = (baseTokenFee * BigInt(1e18)) / totalLpTokens;
+      newFeeGrowthGlobalA = newFeeGrowthGlobalA + feeGrowthDelta;
+    }
+
+    // Distribute quote token fees (assuming quoteAsset is tokenB)
+    if (quoteTokenFee > 0n) {
+      const feeGrowthDelta = (quoteTokenFee * BigInt(1e18)) / totalLpTokens;
+      newFeeGrowthGlobalB = newFeeGrowthGlobalB + feeGrowthDelta;
+    }
+
+    // Update the pool's fee growth globals
+    await cache.updateOnePromise('liquidityPools', { _id: poolId }, {
+      $set: {
+        feeGrowthGlobalA: toDbString(newFeeGrowthGlobalA),
+        feeGrowthGlobalB: toDbString(newFeeGrowthGlobalB)
+      }
+    });
+
+    logger.debug(`[MatchingEngine] Distributed orderbook fees to AMM pool ${poolId}: ${baseTokenFee} ${baseAssetSymbol}, ${quoteTokenFee} ${quoteAssetSymbol}`);
+  } catch (error) {
+    logger.error(`[MatchingEngine] Error distributing orderbook fees: ${error}`);
+  }
+}
+
+/**
+ * Generate pool ID from token symbols (same logic as pool creation)
+ */
+function generatePoolIdFromTokens(tokenA_symbol: string, tokenB_symbol: string): string {
+  // Ensure canonical order to prevent duplicate pools (e.g., A-B vs B-A)
+  const [token1, token2] = [tokenA_symbol, tokenB_symbol].sort();
+  return `${token1}_${token2}`;
+}
+
+/**
  * Result returned by the MatchingEngine after processing an order.
  */
 export interface EngineMatchResult {
@@ -326,16 +393,47 @@ class MatchingEngine {
           quoteAsset: pairDetails.quoteAssetSymbol
         });
 
-        const baseTokenIdentifier = `${pairDetails.baseAssetSymbol}@${pairDetails.baseAssetIssuer}`;
-        const quoteTokenIdentifier = `${pairDetails.quoteAssetSymbol}@${pairDetails.quoteAssetIssuer}`;
+        const baseTokenIdentifier = pairDetails.baseAssetSymbol;
+        const quoteTokenIdentifier = pairDetails.quoteAssetSymbol;
         const tradePriceBigInt = toBigInt(trade.price);
         const tradeQuantityBigInt = toBigInt(trade.quantity);
         const tradeValue = tradePriceBigInt * tradeQuantityBigInt;
 
+        // Apply 0.3% fee split between buyer and seller (0.15% each)
+        const feeRate = BigInt(150); // 0.15% in basis points for each party
+        const feeDivisor = BigInt(10000);
+        
+        // Calculate fees for both parties
+        const baseTokenFee = (tradeQuantityBigInt * feeRate) / feeDivisor; // Fee on base token (taken from buyer)
+        const quoteTokenFee = (tradeValue * feeRate) / feeDivisor; // Fee on quote token (taken from seller)
+        
+        // Apply trades with fees
+        // Seller: loses base tokens, gains quote tokens minus fee
+        // Buyer: gains base tokens minus fee, loses quote tokens
         const adjSellerBase = await adjustBalance(trade.sellerUserId, baseTokenIdentifier, -tradeQuantityBigInt);
-        const adjBuyerBase = await adjustBalance(trade.buyerUserId, baseTokenIdentifier, tradeQuantityBigInt);
-        const adjSellerQuote = await adjustBalance(trade.sellerUserId, quoteTokenIdentifier, tradeValue);
+        const adjBuyerBase = await adjustBalance(trade.buyerUserId, baseTokenIdentifier, tradeQuantityBigInt - baseTokenFee);
+        const adjSellerQuote = await adjustBalance(trade.sellerUserId, quoteTokenIdentifier, tradeValue - quoteTokenFee);
         const adjBuyerQuote = await adjustBalance(trade.buyerUserId, quoteTokenIdentifier, -tradeValue);
+
+        // Distribute orderbook fees to corresponding AMM pool liquidity providers
+        // This creates a unified economic model where all trading activity benefits liquidity providers
+        await distributeOrderbookFeesToLiquidityProviders(
+          pairDetails.baseAssetSymbol, 
+          pairDetails.quoteAssetSymbol, 
+          baseTokenFee, 
+          quoteTokenFee
+        );
+
+        // Log fee collection for analytics
+        await logTransactionEvent('orderbook_fee_collected', 'system', {
+          marketId: takerOrder.pairId,
+          tradeId: trade._id,
+          baseFee: toDbString(baseTokenFee),
+          quoteFee: toDbString(quoteTokenFee),
+          baseAsset: pairDetails.baseAssetSymbol,
+          quoteAsset: pairDetails.quoteAssetSymbol,
+          totalFeePercent: "0.3" // 0.15% + 0.15% = 0.3% total
+        });
 
         if (!adjSellerBase || !adjBuyerBase || !adjSellerQuote || !adjBuyerQuote) {
           logger.error(`[MatchingEngine] CRITICAL: Balance adjustment failed for trade ${trade._id}.`);

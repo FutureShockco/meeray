@@ -53,8 +53,7 @@ function getOutputAmountBigInt(
     }
 
     // Use fixed 0.3% fee tier (300 basis points)
-    const feeTier = 300;
-    const feeMultiplier = BigInt(10000) - BigInt(feeTier); // 10000 - 300 = 9700 for 0.3% fee
+    const feeMultiplier = BigInt(9700); // 10000 - 300 = 9700 for 0.3% fee
     const feeDivisor = BigInt(10000);
 
     const amountInAfterFee = (inputAmount * feeMultiplier) / feeDivisor; // Use BigInt division like HTTP API
@@ -97,8 +96,7 @@ async function findBestTradeRoute(
         tokenA_symbol: p.tokenA_symbol,
         tokenA_reserve: p.tokenA_reserve,
         tokenB_symbol: p.tokenB_symbol,
-        tokenB_reserve: p.tokenB_reserve,
-        feeTier: 300 // Fixed 0.3% fee
+        tokenB_reserve: p.tokenB_reserve
     }));
 
     const routes: TradeRoute[] = [];
@@ -326,7 +324,7 @@ async function validateAutoRouteSwap(data: PoolSwapData, sender: string, traderA
         const hop = bestRoute.hops[i];
         
         // Get current pool data (same as execution)
-        const poolFromDb = (await cache.findOnePromise('liquidityPools', { _id: hop.poolId })) as { tokenA_symbol: string; tokenA_reserve: string; tokenB_symbol: string; tokenB_reserve: string; feeTier: number };
+        const poolFromDb = (await cache.findOnePromise('liquidityPools', { _id: hop.poolId })) as { tokenA_symbol: string; tokenA_reserve: string; tokenB_symbol: string; tokenB_reserve: string };
         if (!poolFromDb) {
             logger.warn(`[pool-swap] Pool ${hop.poolId} not found during validation for hop ${i + 1}.`);
             return false;
@@ -489,7 +487,6 @@ async function processSingleHopSwap(data: PoolSwapData, sender: string, transact
       amountIn: toDbString(toBigInt(data.amountIn)),
       amountOut: toDbString(amountOut),
       fee: toDbString(feeAmount),
-      feeTier: 300, // Fixed 0.3% fee
       tokenA_symbol: poolFromDb.tokenA_symbol,
       tokenB_symbol: poolFromDb.tokenB_symbol
     }, transactionId);
@@ -586,7 +583,6 @@ async function processSingleHopSwapWithResult(data: PoolSwapData, sender: string
             amountIn: toDbString(toBigInt(data.amountIn)),
             amountOut: toDbString(amountOut),
             fee: toDbString(feeAmount),
-            feeTier: 300, // Fixed 0.3% fee
             tokenA_symbol: poolFromDb.tokenA_symbol,
             tokenB_symbol: poolFromDb.tokenB_symbol
         }, transactionId);
@@ -704,7 +700,7 @@ async function processRoutedSwap(data: PoolSwapData, sender: string, transaction
 
     logger.info(`[pool-swap] Successful multi-hop swap by ${sender}: ${data.amountIn} ${data.hops![0].tokenIn_symbol} -> ${totalAmountOut} ${data.hops![data.hops!.length - 1].tokenOut_symbol} through ${data.hops!.length} hops`);
 
-    // Log event - get pool data for the first hop to access feeTier and token symbols
+    // Log event - get pool data for the first hop to access token symbols
     const firstPoolData = await cache.findOnePromise('liquidityPools', { _id: data.hops![0].poolId });
     await logEvent('defi', 'swap', sender, {
         poolId: data.hops![0].poolId, // Use the first hop's poolId instead of data.poolId
@@ -713,7 +709,6 @@ async function processRoutedSwap(data: PoolSwapData, sender: string, transaction
         amountIn: toDbString(toBigInt(data.amountIn)),
         amountOut: toDbString(totalAmountOut),
         fee: toDbString(totalAmountOut * BigInt(10000) / toBigInt(data.amountIn)),
-        feeTier: 300, // Fixed 0.3% fee
         tokenA_symbol: firstPoolData?.tokenA_symbol || data.hops![0].tokenIn_symbol,
         tokenB_symbol: firstPoolData?.tokenB_symbol || data.hops![0].tokenOut_symbol
     }, transactionId);

@@ -37,13 +37,6 @@ const POOL_TOKEN_SYMBOLS = [
     'LINK', 'UNI', 'AAVE', 'SNX', 'SUSHI', 'YFI', 'COMP', 'MKR', 'BAL'
 ];
 
-const POOL_FEE_TIERS = [
-    10,   // 0.01%
-    50,   // 0.05%
-    300,  // 0.3%
-    1000  // 1%
-];
-
 // Market order types and sides
 const MARKET_ORDER_TYPES = ['limit', 'market'];
 const MARKET_ORDER_SIDES = ['buy', 'sell'];
@@ -124,8 +117,7 @@ function generateRandomPoolData() {
         tokenA_symbol: POOL_TOKEN_SYMBOLS[tokenAIndex],
         tokenA_issuer: process.env.TOKEN_ISSUER || 'echelon-token-issuer',
         tokenB_symbol: POOL_TOKEN_SYMBOLS[tokenBIndex],
-        tokenB_issuer: process.env.TOKEN_ISSUER || 'echelon-token-issuer',
-        feeTier: getRandomElement(POOL_FEE_TIERS)
+        tokenB_issuer: process.env.TOKEN_ISSUER || 'echelon-token-issuer'
     };
 }
 
@@ -372,10 +364,10 @@ async function transfer(client, from, to, amount, username, privateKey) {
     }
 }
 
-function generatePoolId(tokenA_symbol, tokenB_symbol, feeTier) {
+function generatePoolId(tokenA_symbol, tokenB_symbol) {
     // Ensure canonical order to prevent duplicate pools (e.g., A-B vs B-A)
     const [token1, token2] = [tokenA_symbol, tokenB_symbol].sort();
-    return `${token1}_${token2}_${feeTier}`;
+    return `${token1}_${token2}`;
   }
 
 module.exports = {

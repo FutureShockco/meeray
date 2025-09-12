@@ -4,21 +4,22 @@ This document provides a comprehensive list of all transaction types implemented
 
 ## Token Identifier System
 
-**Important**: All tokens in the Echelon ecosystem use a secure identifier format: `symbol@issuer`
+**Important**: All tokens in the Echelon ecosystem use a simplified identifier format: `symbol`
 
 **Examples**:
-- Native tokens: `ECH@echelon-node1`, `STEEM@echelon-node1`, `SBD@echelon-node1`
-- Custom tokens: `MYTOKEN@alice`, `GAMETOKEN@project-team`
+- Native tokens: `ECH`, `STEEM`, `SBD`
+- Custom tokens: `MYTOKEN`, `GAMETOKEN`
 
 **Security Benefits**:
-- **Prevents confusion**: Multiple tokens can have the same symbol but different issuers
-- **Authorization control**: Only the issuer can perform certain operations on their tokens
+- **Unique symbols**: Each token symbol is globally unique across the ecosystem
+- **Simplified usage**: No need to track or specify issuers
+- **Authorization control**: Only the token creator can perform certain operations on their tokens
 - **Automatic verification**: System validates that transaction senders have proper permissions
 
 **Usage in Transactions**:
-- Market pairs: Specify both tokens with full identifiers
-- Trading: Reference exact tokens being exchanged
-- Transfers: Ensure you're sending the correct token variant
+- Market pairs: Specify both tokens by symbol only
+- Trading: Reference tokens by their unique symbols
+- Transfers: Simple symbol-based transfers
 
 ## 1. NFT Transactions
 
@@ -81,8 +82,7 @@ This document provides a comprehensive list of all transaction types implemented
     collectionSymbol: string;
     instanceId: string;
     price: number; // Sale price
-    paymentTokenSymbol: string; // Token for payment
-    paymentTokenIssuer?: string; // Required if paymentTokenSymbol is not NATIVE_TOKEN
+    paymentTokenSymbol: string; // Token for payment (e.g., "ECH", "STEEM")
   }
   ```
 
@@ -106,8 +106,7 @@ This document provides a comprehensive list of all transaction types implemented
   ```typescript
   export interface NftBuyPayload {
     listingId: string; // The ID of the listing to buy
-    // Buyer might offer a different price if it were an auction/offer system, but for direct buy, listingId is key.
-    // paymentTokenSymbol and paymentTokenIssuer are implied by the listing.
+    // Payment token is implied by the listing
   }
   ```
 
@@ -123,7 +122,6 @@ This document provides a comprehensive list of all transaction types implemented
     seller: string;
     price: number;
     paymentTokenSymbol: string;
-    paymentTokenIssuer?: string;
     listedAt: string;
     status: 'ACTIVE' | 'SOLD' | 'CANCELLED';
   }
@@ -138,8 +136,7 @@ This document provides a comprehensive list of all transaction types implemented
     collectionSymbol: string;
     instanceId: string;
     price: number; // Sale price
-    paymentTokenSymbol: string; // Token for payment
-    paymentTokenIssuer?: string; // Required if paymentTokenSymbol is not NATIVE_TOKEN
+    paymentTokenSymbol: string; // Token for payment (e.g., "ECH", "STEEM")
   }
   ```
 
@@ -163,8 +160,7 @@ This document provides a comprehensive list of all transaction types implemented
   ```typescript
   export interface NftBuyPayload {
     listingId: string; // The ID of the listing to buy
-    // Buyer might offer a different price if it were an auction/offer system, but for direct buy, listingId is key.
-    // paymentTokenSymbol and paymentTokenIssuer are implied by the listing.
+    // Payment token is implied by the listing
   }
   ```
 
@@ -198,34 +194,27 @@ This document provides a comprehensive list of all transaction types implemented
 
 ## 2. Market Transactions
 
-**Important Security Note**: All market transactions use a secure token identifier system where tokens are referenced as `symbol@issuer` (e.g., `ECH@echelon-node1`). For market pair creation, the issuer is automatically set to the transaction sender to prevent security vulnerabilities where users could specify arbitrary issuers.
+**Important Security Note**: All market transactions use a simplified token identifier system where tokens are referenced by their unique `symbol` (e.g., `ECH`, `STEEM`). Each token symbol is globally unique across the ecosystem, eliminating the need to specify issuers.
 
 **Token Identifier System**:
-- Native tokens (ECH, STEEM, SBD): issued by `config.masterName` (typically `echelon-node1`)
-- Custom tokens: issued by their creator account
-- Format: `symbol@issuer` ensures unique token identification across the ecosystem
+- All tokens: referenced by unique symbol only (e.g., `ECH`, `STEEM`, `MYTOKEN`)
+- Format: `symbol` ensures unique token identification across the ecosystem
 
 ### Market Create Pair (Type 9)
 - **File**: `src/transactions/market/market-create-pair.ts`
-- **Purpose**: Establishes a new trading pair for assets on the decentralized exchange with automatic issuer security.
-- **Security Enhancement**: The transaction sender is automatically assigned as the issuer for both assets, preventing users from specifying arbitrary issuers and eliminating potential security vulnerabilities.
+- **Purpose**: Establishes a new trading pair for assets on the decentralized exchange.
 - **Data Structure**:
   ```typescript
   export interface MarketCreatePairData {
-    baseAsset: string;        // Full token identifier: symbol@issuer (e.g., "ECH@echelon-node1")
-    quoteAsset: string;       // Full token identifier: symbol@issuer (e.g., "STEEM@echelon-node1")
-    metadata?: {              // Optional metadata for the trading pair
+    baseAssetSymbol: string;      // Token symbol (e.g., "ECH")
+    quoteAssetSymbol: string;     // Token symbol (e.g., "STEEM")
+    metadata?: {                  // Optional metadata for the trading pair
       description?: string;
       category?: string;
       [key: string]: any;
     };
   }
   ```
-
-**Important Security Notes**:
-- The issuer portion of `baseAsset` and `quoteAsset` is automatically set to the transaction sender
-- Users should specify assets as `symbol@issuer` but the system validates and enforces sender authorization
-- This prevents malicious users from creating pairs for tokens they don't control
 
 ### Market Cancel Order (Type 10)
 - **File**: `src/transactions/market/market-cancel-order.ts`
@@ -235,7 +224,7 @@ This document provides a comprehensive list of all transaction types implemented
   ```typescript
   export interface MarketCancelOrderData {
     orderId: string;          // Unique identifier of the order to cancel
-    trader: string;           // Account that placed the order (automatically set to sender)
+    pairId: string;           // Trading pair ID for the order
   }
   ```
 
@@ -244,13 +233,16 @@ This document provides a comprehensive list of all transaction types implemented
 ### Hybrid Market Trade (Type 11)
 - **File**: `src/transactions/market/market-trade.ts`
 - **Purpose**: Executes trades across both AMM pools and orderbook liquidity for optimal price discovery and execution.
+- **Fees**: All trades incur a 0.3% fee regardless of routing:
+  - **AMM Pools**: 0.3% fee taken from input amount, distributed to liquidity providers
+  - **Orderbook**: 0.15% fee from buyer + 0.15% fee from seller = 0.3% total, distributed to corresponding AMM pool liquidity providers
+- **Economic Model**: Orderbook fees support AMM liquidity growth, creating a unified ecosystem where all trading activity benefits liquidity providers
 - **Note**: This is the primary and recommended trading method. Users can specify exact prices for limit orders or use slippage protection for market orders.
 - **Data Structure**:
   ```typescript
   export interface MarketTradeData {
-    trader: string;                       // Account making the trade (automatically set to sender)
-    tokenIn: string;                      // Token being sold (symbol@issuer format)
-    tokenOut: string;                     // Token being bought (symbol@issuer format)
+    tokenIn: string;                      // Token being sold (symbol only, e.g., "ECH")
+    tokenOut: string;                     // Token being bought (symbol only, e.g., "STEEM")
     amountIn: string | bigint;           // Amount of tokenIn to trade
     
     // Price Control (choose ONE method):
@@ -284,8 +276,8 @@ This document provides a comprehensive list of all transaction types implemented
   "type": 11,
   "sender": "alice",
   "data": {
-    "tokenIn": "ECH@echelon-node1",
-    "tokenOut": "STEEM@echelon-node1", 
+    "tokenIn": "ECH",
+    "tokenOut": "STEEM", 
     "amountIn": "100000000",
     "price": "50000000"     // Will only execute at 0.5 STEEM per ECH or better
   }
@@ -298,8 +290,8 @@ This document provides a comprehensive list of all transaction types implemented
   "type": 11,
   "sender": "alice",
   "data": {
-    "tokenIn": "ECH@echelon-node1",
-    "tokenOut": "STEEM@echelon-node1", 
+    "tokenIn": "ECH",
+    "tokenOut": "STEEM", 
     "amountIn": "100000000",
     "maxSlippagePercent": 2.0   // Execute immediately with max 2% slippage
   }
@@ -331,8 +323,8 @@ This document provides a comprehensive list of all transaction types implemented
   "type": 11,
   "sender": "alice",
   "data": {
-    "tokenIn": "ECH@echelon-node1",
-    "tokenOut": "STEEM@echelon-node1", 
+    "tokenIn": "ECH",
+    "tokenOut": "STEEM", 
     "amountIn": "100000000",
     "maxSlippagePercent": 2.0
   }
@@ -373,8 +365,8 @@ The Echelon blockchain uses a **hybrid trading system** that combines the best o
   "type": 11,
   "sender": "alice",
   "data": {
-    "tokenIn": "ECH@echelon-node1",
-    "tokenOut": "STEEM@echelon-node1",
+    "tokenIn": "ECH",
+    "tokenOut": "STEEM",
     "amountIn": "100000000",
     "maxSlippagePercent": 2.0
   }
@@ -390,18 +382,18 @@ The Echelon blockchain uses a **hybrid trading system** that combines the best o
 ### Trading Process Step-by-Step
 
 #### Step 1: Determine Your Trade
-- **Token In**: The token you want to sell (e.g., "ECH@echelon-node1")
-- **Token Out**: The token you want to buy (e.g., "STEEM@echelon-node1")
+- **Token In**: The token you want to sell (e.g., "ECH")
+- **Token Out**: The token you want to buy (e.g., "STEEM")
 - **Amount In**: How much of the input token to trade
 - **Slippage Tolerance**: Maximum acceptable price deviation (typically 1-5%)
 
 #### Step 2: Submit Hybrid Trade Transaction
 ```typescript
 const tradeData = {
-  tokenIn: "ECH@echelon-node1",      // Token being sold
-  tokenOut: "STEEM@echelon-node1",   // Token being bought
-  amountIn: "100000000",             // 1.0 ECH (8 decimals)
-  maxSlippagePercent: 2.0            // 2% maximum slippage
+  tokenIn: "ECH",                  // Token being sold
+  tokenOut: "STEEM",               // Token being bought
+  amountIn: "100000000",           // 1.0 ECH (8 decimals)
+  maxSlippagePercent: 2.0          // 2% maximum slippage
 };
 
 // Submit as custom_json transaction
@@ -454,13 +446,13 @@ Slippage occurs when the actual execution price differs from the expected price 
 
 ### Token Identifier Format
 
-All tokens use the format: `symbol@issuer`
+All tokens use the format: `symbol`
 
 **Examples**:
-- Native tokens: `ECH@echelon-node1`, `STEEM@echelon-node1`
-- Custom tokens: `MYTOKEN@alice`, `DEFI@project-team`
+- Native tokens: `ECH`, `STEEM`, `SBD`
+- Custom tokens: `MYTOKEN`, `GAMETOKEN`
 
-**Security Note**: The issuer portion ensures you're trading the correct token, as multiple tokens can have the same symbol but different issuers.
+**Security Note**: Each token symbol is globally unique across the ecosystem, ensuring you're always trading the correct token.
 
 ### Advanced Features
 
@@ -485,8 +477,8 @@ Before trading, someone must create the trading pair:
   "type": 9,
   "sender": "alice",
   "data": {
-    "baseAsset": "ECH@echelon-node1",
-    "quoteAsset": "STEEM@echelon-node1",
+    "baseAssetSymbol": "ECH",
+    "quoteAssetSymbol": "STEEM",
     "metadata": {
       "description": "ECH/STEEM trading pair"
     }
@@ -508,8 +500,8 @@ Before trading, someone must create the trading pair:
 **Goal**: Swap 1 ECH for STEEM
 ```json
 {
-  "tokenIn": "ECH@echelon-node1",
-  "tokenOut": "STEEM@echelon-node1", 
+  "tokenIn": "ECH",
+  "tokenOut": "STEEM", 
   "amountIn": "100000000",
   "maxSlippagePercent": 1.0
 }
@@ -519,8 +511,8 @@ Before trading, someone must create the trading pair:
 **Goal**: Swap 100 ECH, accept up to 3% slippage
 ```json
 {
-  "tokenIn": "ECH@echelon-node1",
-  "tokenOut": "STEEM@echelon-node1",
+  "tokenIn": "ECH",
+  "tokenOut": "STEEM",
   "amountIn": "10000000000", 
   "maxSlippagePercent": 3.0
 }
@@ -530,8 +522,8 @@ Before trading, someone must create the trading pair:
 **Goal**: Ensure receiving at least 0.95 STEEM
 ```json
 {
-  "tokenIn": "ECH@echelon-node1",
-  "tokenOut": "STEEM@echelon-node1",
+  "tokenIn": "ECH",
+  "tokenOut": "STEEM",
   "amountIn": "100000000",
   "minAmountOut": "950"
 }
@@ -574,8 +566,8 @@ Before trading, someone must create the trading pair:
 {
   "type": 11,
   "data": {
-    "tokenIn": "STEEM@echelon-node1",
-    "tokenOut": "ECH@echelon-node1",
+    "tokenIn": "STEEM",
+    "tokenOut": "ECH",
     "amountIn": "1000",
     "maxSlippagePercent": 2.0
   }
@@ -592,15 +584,13 @@ Before trading, someone must create the trading pair:
 
 ### TradingPair
 - **File**: `src/transactions/market/market-interfaces.ts`
-- **Purpose**: Represents a tradable asset pair on the market, including its symbols, issuers, and trading parameters.
+- **Purpose**: Represents a tradable asset pair on the market, including its symbols and trading parameters.
 - **Data Structure**:
   ```typescript
   export interface TradingPairData {
-    _id: string;                          // Unique pair identifier (e.g., ECH@echelon-node1-STEEM@echelon-node1)
+    _id: string;                          // Unique pair identifier (e.g., ECH-STEEM)
     baseAssetSymbol: string;              // Base asset symbol (e.g., ECH)
-    baseAssetIssuer: string;              // Base asset issuer (automatically set to creator)
     quoteAssetSymbol: string;             // Quote asset symbol (e.g., STEEM)
-    quoteAssetIssuer: string;             // Quote asset issuer (automatically set to creator)
     tickSize: string | bigint;            // Minimum price movement
     lotSize: string | bigint;             // Minimum quantity movement
     minNotional: string | bigint;         // Minimum order value in quote asset
@@ -622,9 +612,7 @@ Before trading, someone must create the trading pair:
     userId: string;                       // Account ID of the user
     pairId: string;                       // Reference to TradingPair._id
     baseAssetSymbol: string;              // Base asset symbol
-    baseAssetIssuer: string;              // Base asset issuer
     quoteAssetSymbol: string;             // Quote asset symbol
-    quoteAssetIssuer: string;             // Quote asset issuer
     type: OrderType;                      // LIMIT or MARKET
     side: OrderSide;                      // BUY or SELL
     status: OrderStatus;                  // OPEN, FILLED, CANCELLED, etc.
@@ -726,40 +714,31 @@ Before trading, someone must create the trading pair:
 - **Data Structure**:
   ```typescript
   export interface FarmCreateData {
-    lpTokenSymbol: string;      // Symbol of the LP token that will be staked (e.g., "TKA/TKB-LP")
-    lpTokenIssuer: string;      // Issuer of the LP token
-    rewardTokenSymbol: string;  // Symbol of the token given as reward
-    rewardTokenIssuer: string;  // Issuer of the reward token
-    // farmId will be generated, e.g., hash(lpTokenSymbol, lpTokenIssuer, rewardTokenSymbol, rewardTokenIssuer)
-    // rewardRate: number; // Amount of rewardToken per second/block/period. This is complex and needs careful design for distribution.
-    // startBlock/startTime: number; // Block or time when farming starts
-    // endBlock/endTime: number;   // Block or time when farming ends (or if it's perpetual)
-    // For simplicity, let's assume rewards are manually distributed or handled by a simpler periodic mechanism initially.
+    stakingTokenSymbol: string;    // Symbol of the token that will be staked (e.g., "ECH_STEEM_LP")
+    rewardTokenSymbol: string;     // Symbol of the token given as reward
+    // farmId will be generated based on staking and reward tokens
   }
   ```
 
 ### Farm Stake (Type 13)
 - **File**: `src/transactions/farm/farm-stake.ts`
-- **Purpose**: Allows a user to stake their LP (Liquidity Provider) tokens into a specified farm to earn rewards.
+- **Purpose**: Allows a user to stake their tokens into a specified farm to earn rewards.
 - **Data Structure**:
   ```typescript
   export interface FarmStakeData {
     farmId: string;             // Identifier of the farm
-    staker: string;             // Account staking the LP tokens (sender)
-    lpTokenAmount: number;      // Amount of LP tokens to stake
+    tokenAmount: number;        // Amount of tokens to stake
   }
   ```
 
 ### Farm Unstake (Type 14)
 - **File**: `src/transactions/farm/farm-unstake.ts`
-- **Purpose**: Allows a user to withdraw their staked LP tokens from a farm.
+- **Purpose**: Allows a user to withdraw their staked tokens from a farm.
 - **Data Structure**:
   ```typescript
   export interface FarmUnstakeData {
     farmId: string;             // Identifier of the farm
-    staker: string;             // Account unstaking the LP tokens (sender)
-    lpTokenAmount: number;      // Amount of LP tokens to unstake
-    // withdrawRewards: boolean; // Default true, also claim pending rewards
+    tokenAmount: number;        // Amount of tokens to unstake
   }
   ```
 
@@ -770,7 +749,6 @@ Before trading, someone must create the trading pair:
   ```typescript
   export interface FarmClaimRewardsData {
     farmId: string;             // Identifier of the farm
-    staker: string;             // Account claiming rewards (sender)
   }
   ```
 
@@ -783,10 +761,8 @@ Before trading, someone must create the trading pair:
   ```typescript
   export interface PoolCreateData {
     tokenA_symbol: string;      // Symbol of the first token in the pair
-    tokenA_issuer: string;      // Issuer account of the first token
     tokenB_symbol: string;      // Symbol of the second token in the pair
-    tokenB_issuer: string;      // Issuer account of the second token
-    feeTier?: number;           // Optional: e.g., 10 (0.01%), 50 (0.05%), 300 (0.3%), 1000 (1%). In basis points.
+    // Note: Fee is fixed at 0.3% (300 basis points) - no longer configurable
   }
   ```
 
@@ -797,7 +773,6 @@ Before trading, someone must create the trading pair:
   ```typescript
   export interface PoolAddLiquidityData {
     poolId: string;             // Identifier of the liquidity pool
-    provider: string;           // Account providing the liquidity (sender of the transaction)
     tokenA_amount: number;      // Amount of token A to add
     tokenB_amount: number;      // Amount of token B to add (must respect pool ratio, or be first provider)
   }
@@ -810,7 +785,6 @@ Before trading, someone must create the trading pair:
   ```typescript
   export interface PoolRemoveLiquidityData {
     poolId: string;             // Identifier of the liquidity pool
-    provider: string;           // Account removing the liquidity (sender of the transaction)
     lpTokenAmount: number;      // Amount of LP (Liquidity Provider) tokens to burn/redeem
   }
   ```
@@ -851,7 +825,7 @@ export interface PoolSwapData {
   "type": 17,
   "sender": "alice",
   "data": {
-    "poolId": "ECH_STEEM_300",
+    "poolId": "ECH_STEEM",
     "tokenIn_symbol": "ECH",
     "tokenOut_symbol": "STEEM",
     "amountIn": "100000000",
@@ -872,14 +846,14 @@ export interface PoolSwapData {
     "minAmountOut": "44000000",
     "hops": [
       {
-        "poolId": "ECH_STEEM_300",
+        "poolId": "ECH_STEEM",
         "tokenIn_symbol": "ECH",
         "tokenOut_symbol": "STEEM",
         "amountIn": "100000000",
         "minAmountOut": "44775000"
       },
       {
-        "poolId": "STEEM_USDT_300",
+        "poolId": "STEEM_USDT",
         "tokenIn_symbol": "STEEM",
         "tokenOut_symbol": "USDT",
         "amountIn": "44775000",
@@ -925,7 +899,7 @@ POST /pools/route-swap
   "bestRoute": {
     "hops": [
       {
-        "poolId": "ECH_STEEM_300",
+        "poolId": "ECH_STEEM",
         "tokenIn": "ECH",
         "tokenOut": "STEEM",
         "amountIn": "100000000",
@@ -939,7 +913,7 @@ POST /pools/route-swap
         "priceImpactFormatted": "0.1234%"
       },
       {
-        "poolId": "STEEM_USDT_300",
+        "poolId": "STEEM_USDT",
         "tokenIn": "STEEM",
         "tokenOut": "USDT",
         "amountIn": "45000000",
@@ -978,14 +952,14 @@ POST /pools/route-swap
     "minAmountOut": "44275000",
     "hops": [
       {
-        "poolId": "ECH_STEEM_300",
+        "poolId": "ECH_STEEM",
         "tokenIn_symbol": "ECH",
         "tokenOut_symbol": "STEEM",
         "amountIn": "100000000",
         "minAmountOut": "44775000"
       },
       {
-        "poolId": "STEEM_USDT_300",
+        "poolId": "STEEM_USDT",
         "tokenIn_symbol": "STEEM",
         "tokenOut_symbol": "USDT",
         "amountIn": "45000000",
@@ -1124,7 +1098,6 @@ POST /pools/route-swap
     presaleDetails?: PresaleDetails; // From launchpad-interfaces.ts
     liquidityProvisionDetails?: LiquidityProvisionDetails; // From launchpad-interfaces.ts
     launchFeeTokenSymbol: string;
-    launchFeeTokenIssuer?: string;
   }
   ```
 
@@ -1202,7 +1175,6 @@ POST /pools/route-swap
     presaleTokenAllocationPercentage: number;
     pricePerToken: number;
     quoteAssetForPresaleSymbol: string;
-    quoteAssetForPresaleIssuer?: string;
     minContributionPerUser: number;
     maxContributionPerUser: number;
     startTime: string;
@@ -1306,10 +1278,8 @@ POST /pools/route-swap
   export interface LiquidityPool {
     _id: string;
     tokenA_symbol: string;
-    tokenA_issuer: string;
     tokenA_reserve: number;
     tokenB_symbol: string;
-    tokenB_issuer: string;
     tokenB_reserve: number;
     totalLpTokens: number;
     lpTokenSymbol: string;
@@ -1336,16 +1306,14 @@ POST /pools/route-swap
 
 ### Farm
 - **File**: `src/transactions/farm/farm-interfaces.ts`
-- **Purpose**: Represents a yield farming contract where users can stake LP tokens to earn reward tokens.
+- **Purpose**: Represents a yield farming contract where users can stake tokens to earn reward tokens.
 - **Data Structure**:
   ```typescript
   export interface Farm {
     _id: string;
-    lpTokenSymbol: string;
-    lpTokenIssuer: string;
+    stakingTokenSymbol: string;
     rewardTokenSymbol: string;
-    rewardTokenIssuer: string;
-    totalLpStaked: number;
+    totalTokensStaked: number;
     createdAt: string;
   }
   ```

@@ -5,7 +5,6 @@ This document fully specifies the Launchpad domain for building a complete Launc
 Conventions
 - All on-chain amounts are provided/accepted in smallest units unless stated otherwise.
 - API responses include both human-readable and raw smallest-unit amounts where relevant.
-- Tokens use `symbol@issuer` when applicable (e.g., `STEEM@echelon-node1`).
 
 Base URLs and Auth
 - HTTP base path for launchpad: `/launchpad`
@@ -47,7 +46,6 @@ Base URLs and Auth
     "presaleTokenAllocationPercentage": 20,
     "pricePerToken": "1000000",
     "quoteAssetForPresaleSymbol": "STEEM",
-    "quoteAssetForPresaleIssuer": "echelon-node1",
     "minContributionPerUser": "1000000",
     "maxContributionPerUser": "100000000",
     "startTime": "2025-01-20T00:00:00.000Z",
@@ -90,7 +88,7 @@ Broadcast example (custom_json)
   "contributionAmount": "5000000"
 }
 ```
-- Rules: presale must be active; amount within min/max; not exceeding hard cap; user must have sufficient balance of `quoteAssetForPresaleSymbol@issuer`.
+- Rules: presale must be active; amount within min/max; not exceeding hard cap; user must have sufficient balance of `quoteAssetForPresaleSymbol`.
 - Effects: deducts quote amount; updates `presale.totalQuoteRaised` and participant record `{ userId, quoteAmountContributed, tokensAllocated?, claimed }`.
 
 Broadcast example (custom_json)
@@ -167,7 +165,6 @@ Example response item
     "pricePerToken": "1000000",
     "rawPricePerToken": "1000000",
     "quoteAssetForPresaleSymbol": "STEEM",
-    "quoteAssetForPresaleIssuer": "echelon-node1",
     "minContributionPerUser": "1000000",
     "rawMinContributionPerUser": "1000000",
     "maxContributionPerUser": "100000000",
@@ -234,7 +231,7 @@ Errors
   "tokenomicsSnapshot": {"totalSupply":"...","tokenDecimals":"...","allocations":[{"recipient":"...","percentage":10}]},
   "presaleDetailsSnapshot": {"pricePerToken":"...","quoteAssetForPresaleSymbol":"STEEM", "minContributionPerUser":"...","maxContributionPerUser":"...","hardCap":"...","softCap":"..."},
   "presale": {"totalQuoteRaised":"0","participants":[{"userId":"bob","quoteAmountContributed":"...","tokensAllocated":"...","claimed":false}],"status":"NOT_STARTED|ACTIVE|..."},
-  "mainTokenId": "MYT@echelon-node1",
+  "mainTokenId": "MYT",
   "createdAt": "ISO",
   "updatedAt": "ISO"
 }

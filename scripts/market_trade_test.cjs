@@ -27,9 +27,8 @@ async function main() {
 
         // Test data for a basic market trade (auto-routing)
         const basicTradeData = {
-            trader: username,
-            tokenIn: 'ECH@echelon-node1',      // Use full token identifier format
-            tokenOut: 'STEEM@echelon-node1',   // Use full token identifier format
+            tokenIn: 'ECH',      // Use full token identifier format
+            tokenOut: 'STEEM',   // Use full token identifier format
             amountIn: '100000000',             // 1.0 ECH (ECH has 8 decimals)
             maxSlippagePercent: 5.0            // Maximum 5% slippage (let system calculate minAmountOut)
             // minAmountOut: not specified - let the system calculate based on slippage
@@ -54,9 +53,8 @@ async function main() {
         console.log('\n--- Testing with specific routing ---');
 
         const routedTradeData = {
-            trader: username,
-            tokenIn: 'ECH@echelon-node1',      // Use full token identifier format
-            tokenOut: 'STEEM@echelon-node1',   // Use full token identifier format  
+            tokenIn: 'ECH',      // Use full token identifier format
+            tokenOut: 'STEEM',   // Use full token identifier format  
             amountIn: '50000000',              // 0.5 ECH (0.5 * 10^8 = 50000000)
             maxSlippagePercent: 10.0,          // 10% slippage (let system calculate minAmountOut)
             routes: [
@@ -64,7 +62,7 @@ async function main() {
                     type: 'AMM',
                     allocation: 70,  // 70% through AMM
                     details: {
-                        poolId: 'ECH_STEEM_300'  // Format: token1_token2_feeTier (300 bps = 3% fee)
+                        poolId: 'ECH_STEEM'  // Format: token1_token2
                     }
                 },
                 {
@@ -98,9 +96,8 @@ async function main() {
         console.log('Note: Only use minAmountOut if you know the exact token decimals and expected output');
 
         const preciseTradeData = {
-            trader: username,
-            tokenIn: 'ECH@echelon-node1',
-            tokenOut: 'STEEM@echelon-node1',
+            tokenIn: 'ECH',
+            tokenOut: 'STEEM',
             amountIn: '10000000',              // 0.1 ECH (small amount)
             minAmountOut: '1',                 // Accept as little as 0.001 STEEM (very loose for testing)
             // maxSlippagePercent: not specified when using minAmountOut

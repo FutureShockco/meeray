@@ -31,17 +31,15 @@ async function main() {
         const hybridTrades = [
             // Example: Trade ECH for STEEM
             {
-                trader: username,
-                tokenIn: 'ECH@echelon-node1',
-                tokenOut: 'STEEM@echelon-node1', 
+                tokenIn: 'ECH',
+                tokenOut: 'STEEM', 
                 amountIn: '100000000', // 1.0 ECH (8 decimals)
                 maxSlippagePercent: 2.0 // 2% max slippage
             },
             // Example: Trade STEEM for ECH
             {
-                trader: username,
-                tokenIn: 'STEEM@echelon-node1',
-                tokenOut: 'ECH@echelon-node1',
+                tokenIn: 'STEEM',
+                tokenOut: 'ECH',
                 amountIn: '1000', // 1.0 STEEM (3 decimals)
                 maxSlippagePercent: 2.0
             }

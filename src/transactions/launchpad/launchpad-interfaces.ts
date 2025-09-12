@@ -43,7 +43,6 @@ export interface PresaleDetails {
   presaleTokenAllocationPercentage: number;
   pricePerToken: string | bigint;
   quoteAssetForPresaleSymbol: string;
-  quoteAssetForPresaleIssuer?: string;
   minContributionPerUser: string | bigint;
   maxContributionPerUser: string | bigint;
   startTime: string;

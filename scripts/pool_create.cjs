@@ -24,10 +24,7 @@ async function main() {
     // Generate random pool data
     const poolCreateData = {
         tokenA_symbol: "TESTS",
-        tokenA_issuer: "echelon-node1",
-        tokenB_symbol: lastSymbol,
-        tokenB_issuer: "echelon-node1",
-        feeTier: 300
+        tokenB_symbol: lastSymbol
     }
 
     console.log(`Creating pool with account ${username}:`);
