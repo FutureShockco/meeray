@@ -1,179 +1,285 @@
-import cache from '../cache.js';
-import config from '../config.js';
-import { FarmData } from '../transactions/farm/farm-interfaces.js';
-import { toBigInt, toDbString } from './bigint.js';
 import logger from '../logger.js';
+import cache from '../cache.js';
 
-export interface FarmWeightInfo {
+export interface WeightedRewardDistribution {
   farmId: string;
   weight: number;
-  totalStaked: bigint;
-  rewardShare: number; // Percentage of total farm rewards (0-100)
-  rewardPerBlock: bigint; // Actual MRY rewards per block for this farm
+  farmReward: string; // BigInt as string
+  totalWeight: number;
 }
 
-export interface FarmRewardDistribution {
-  totalWeight: number;
-  totalNativeFarmReward: bigint; // From config.farmReward
-  farms: FarmWeightInfo[];
+export interface GlobalRewardInfo {
+  totalRewardPerBlock: string; // 1 MRY per block as BigInt string
+  currentBlock: number;
+  totalNativeFarmWeight: number;
+  activeFarmCount: number;
 }
 
 /**
- * Calculate reward distribution across all active native farms based on their weights
+ * Calculate how much reward each native farm should get based on weights
  */
-export async function calculateFarmRewardDistribution(blockNumber?: number): Promise<FarmRewardDistribution> {
+export async function calculateWeightedRewards(currentBlock: number): Promise<WeightedRewardDistribution[]> {
+  logger.debug(`[farm-weights] Calculating weighted rewards for block ${currentBlock}`);
+
   try {
-    const currentConfig = config.read(blockNumber || 0);
-    const totalNativeReward = BigInt(currentConfig.farmReward); // 1 MRY per block
-
     // Get all active native farms
-    const activeFarms = await cache.findPromise('farms', {
-      status: 'active',
-      isNativeFarm: true
-    }) as FarmData[] | null;
+    const nativeFarms = await cache.findPromise('farms', { 
+      isNativeFarm: true,
+      isActive: true 
+    });
 
-    if (!activeFarms || activeFarms.length === 0) {
-      return {
-        totalWeight: 0,
-        totalNativeFarmReward: totalNativeReward,
-        farms: []
-      };
+    if (!nativeFarms || nativeFarms.length === 0) {
+      logger.debug('[farm-weights] No active native farms found');
+      return [];
     }
 
-    // Calculate total weight across all active native farms
+    // Calculate total weight of all native farms
     let totalWeight = 0;
-    const farmInfos: FarmWeightInfo[] = [];
-
-    for (const farm of activeFarms) {
-      totalWeight += farm.weight;
-      farmInfos.push({
-        farmId: farm._id,
-        weight: farm.weight,
-        totalStaked: toBigInt(farm.totalStaked || '0'),
-        rewardShare: 0, // Will calculate below
-        rewardPerBlock: BigInt(0) // Will calculate below
-      });
+    for (const farm of nativeFarms) {
+      totalWeight += farm.weight || 0;
     }
 
-    // Calculate reward share and per-block rewards for each farm
-    if (totalWeight > 0) {
-      for (const farmInfo of farmInfos) {
-        farmInfo.rewardShare = (farmInfo.weight / totalWeight) * 100;
-        farmInfo.rewardPerBlock = (totalNativeReward * BigInt(Math.floor(farmInfo.weight * 10000))) / BigInt(totalWeight * 10000);
+    if (totalWeight === 0) {
+      logger.warn('[farm-weights] Total weight is 0, no rewards to distribute');
+      return [];
+    }
+
+    // Total reward per block is 1 MRY (1000000000000000000 wei)
+    const totalRewardPerBlock = BigInt('1000000000000000000');
+
+    const distributions: WeightedRewardDistribution[] = [];
+
+    // Calculate each farm's share
+    for (const farm of nativeFarms) {
+      const farmWeight = farm.weight || 0;
+      if (farmWeight > 0) {
+        // farmReward = (farmWeight / totalWeight) * totalRewardPerBlock
+        const farmReward = (totalRewardPerBlock * BigInt(farmWeight)) / BigInt(totalWeight);
+        
+        distributions.push({
+          farmId: farm._id?.toString() || '',
+          weight: farmWeight,
+          farmReward: farmReward.toString(),
+          totalWeight
+        });
+
+        logger.debug(`[farm-weights] Farm ${farm._id}: weight=${farmWeight}/${totalWeight}, reward=${farmReward.toString()}`);
       }
     }
 
-    return {
-      totalWeight,
-      totalNativeFarmReward: totalNativeReward,
-      farms: farmInfos
-    };
+    logger.debug(`[farm-weights] Calculated rewards for ${distributions.length} farms with total weight ${totalWeight}`);
+    return distributions;
 
   } catch (error) {
-    logger.error('[farm-weights] Error calculating reward distribution:', error);
-    return {
-      totalWeight: 0,
-      totalNativeFarmReward: BigInt(config.farmReward),
-      farms: []
-    };
+    logger.error(`[farm-weights] Error calculating weighted rewards: ${error}`);
+    throw error;
   }
 }
 
 /**
- * Get reward distribution for a specific farm
+ * Get global reward information for farms
  */
-export async function getFarmRewardInfo(farmId: string): Promise<FarmWeightInfo | null> {
-  const distribution = await calculateFarmRewardDistribution();
-  return distribution.farms.find(f => f.farmId === farmId) || null;
+export async function getGlobalRewardInfo(currentBlock: number): Promise<GlobalRewardInfo> {
+  logger.debug(`[farm-weights] Getting global reward info for block ${currentBlock}`);
+
+  try {
+    // Get all active native farms
+    const nativeFarms = await cache.findPromise('farms', { 
+      isNativeFarm: true,
+      isActive: true 
+    });
+
+    let totalWeight = 0;
+    for (const farm of nativeFarms || []) {
+      totalWeight += farm.weight || 0;
+    }
+
+    return {
+      totalRewardPerBlock: '1000000000000000000', // 1 MRY
+      currentBlock,
+      totalNativeFarmWeight: totalWeight,
+      activeFarmCount: (nativeFarms || []).length
+    };
+
+  } catch (error) {
+    logger.error(`[farm-weights] Error getting global reward info: ${error}`);
+    throw error;
+  }
 }
 
 /**
- * Update farm weights (admin function)
+ * Update farm's accumulated rewards based on weight distribution
  */
-export async function updateFarmWeight(farmId: string, newWeight: number): Promise<boolean> {
+export async function updateFarmRewards(farmId: string, additionalReward: string): Promise<boolean> {
+  logger.debug(`[farm-weights] Updating farm ${farmId} rewards by ${additionalReward}`);
+
   try {
-    if (newWeight < 0 || newWeight > 1000) {
-      logger.warn(`[farm-weights] Invalid weight: ${newWeight}. Must be 0-1000.`);
+    const farm = await cache.findOnePromise('farms', { _id: farmId });
+    if (!farm) {
+      logger.warn(`[farm-weights] Farm ${farmId} not found`);
       return false;
     }
 
+    const currentReward = BigInt(farm.totalRewards || '0');
+    const newReward = currentReward + BigInt(additionalReward);
+
     const result = await cache.updateOnePromise('farms', 
       { _id: farmId },
-      { $set: { weight: newWeight, lastUpdatedAt: new Date().toISOString() }}
+      { 
+        $set: { 
+          totalRewards: newReward.toString(),
+          lastRewardUpdate: new Date().toISOString()
+        }
+      }
     );
 
     if (result) {
-      logger.info(`[farm-weights] Updated farm ${farmId} weight to ${newWeight}`);
+      logger.debug(`[farm-weights] Updated farm ${farmId} total rewards to ${newReward.toString()}`);
+      return true;
+    } else {
+      logger.error(`[farm-weights] Failed to update farm ${farmId} rewards`);
+      return false;
     }
 
-    return !!result;
   } catch (error) {
-    logger.error(`[farm-weights] Error updating farm weight:`, error);
+    logger.error(`[farm-weights] Error updating farm rewards: ${error}`);
     return false;
   }
 }
 
 /**
- * Create or update multiple farm weights at once (admin batch update)
+ * Process block rewards for all native farms based on weights
  */
-export async function batchUpdateFarmWeights(updates: Array<{farmId: string, weight: number}>): Promise<boolean> {
+export async function processBlockRewards(currentBlock: number): Promise<boolean> {
+  logger.debug(`[farm-weights] Processing block rewards for block ${currentBlock}`);
+
   try {
-    let successCount = 0;
+    const distributions = await calculateWeightedRewards(currentBlock);
     
-    for (const update of updates) {
-      const success = await updateFarmWeight(update.farmId, update.weight);
-      if (success) successCount++;
+    if (distributions.length === 0) {
+      logger.debug('[farm-weights] No distributions to process');
+      return true; // Not an error, just no active farms
     }
 
-    logger.info(`[farm-weights] Batch update completed. ${successCount}/${updates.length} farms updated.`);
-    return successCount === updates.length;
-  } catch (error) {
-    logger.error('[farm-weights] Error in batch update:', error);
-    return false;
-  }
-}
-
-/**
- * Get total APR for a farm (includes both native MRY rewards and any custom token rewards)
- */
-export async function calculateFarmAPR(
-  farmId: string, 
-  mryPrice: number = 1, // MRY price in USD
-  lpTokenPrice: number = 1 // LP token price in USD
-): Promise<{
-  nativeAPR: number;    // APR from native MRY rewards
-  customAPR?: number;   // APR from custom token rewards (if any)
-  totalAPR: number;     // Combined APR
-}> {
-  try {
-    const farm = await cache.findOnePromise('farms', { _id: farmId }) as FarmData | null;
-    if (!farm) {
-      return { nativeAPR: 0, totalAPR: 0 };
-    }
-
-    const rewardInfo = await getFarmRewardInfo(farmId);
-    let nativeAPR = 0;
-
-    if (rewardInfo && farm.isNativeFarm && rewardInfo.totalStaked > BigInt(0)) {
-      // Calculate native MRY APR
-      const yearlyBlocks = 365 * 24 * 60 * 60 / (config.blockTime / 1000); // blocks per year
-      const yearlyNativeRewards = Number(rewardInfo.rewardPerBlock) * yearlyBlocks;
-      const yearlyRewardValueUSD = yearlyNativeRewards * mryPrice / Math.pow(10, config.nativeTokenPrecision);
-      const totalStakedValueUSD = Number(rewardInfo.totalStaked) * lpTokenPrice / Math.pow(10, 18); // Assuming 18 decimals for LP
-      
-      if (totalStakedValueUSD > 0) {
-        nativeAPR = (yearlyRewardValueUSD / totalStakedValueUSD) * 100;
+    let successCount = 0;
+    for (const distribution of distributions) {
+      const success = await updateFarmRewards(distribution.farmId, distribution.farmReward);
+      if (success) {
+        successCount++;
       }
     }
 
-    // For now, just return native APR. Custom token APR calculation would be similar
+    const allSuccess = successCount === distributions.length;
+    if (allSuccess) {
+      logger.debug(`[farm-weights] Successfully processed rewards for all ${successCount} farms`);
+    } else {
+      logger.warn(`[farm-weights] Partial success: ${successCount}/${distributions.length} farms updated`);
+    }
+
+    return allSuccess;
+
+  } catch (error) {
+    logger.error(`[farm-weights] Error processing block rewards: ${error}`);
+    return false;
+  }
+}
+
+/**
+ * Get a farm's current weight and projected rewards
+ */
+export async function getFarmWeightInfo(farmId: string): Promise<{
+  farmId: string;
+  weight: number;
+  isNativeFarm: boolean;
+  rewardShare: number; // Percentage (0-100)
+  projectedDailyReward: string; // BigInt as string
+} | null> {
+  logger.debug(`[farm-weights] Getting weight info for farm ${farmId}`);
+
+  try {
+    const farm = await cache.findOnePromise('farms', { _id: farmId });
+    if (!farm) {
+      logger.warn(`[farm-weights] Farm ${farmId} not found`);
+      return null;
+    }
+
+    if (!farm.isNativeFarm) {
+      return {
+        farmId,
+        weight: 0,
+        isNativeFarm: false,
+        rewardShare: 0,
+        projectedDailyReward: '0'
+      };
+    }
+
+    // Get total weight of all native farms
+    const nativeFarms = await cache.findPromise('farms', { 
+      isNativeFarm: true,
+      isActive: true 
+    });
+
+    let totalWeight = 0;
+    for (const f of nativeFarms || []) {
+      totalWeight += f.weight || 0;
+    }
+
+    const farmWeight = farm.weight || 0;
+    const rewardShare = totalWeight > 0 ? (farmWeight / totalWeight) * 100 : 0;
+    
+    // Daily reward = rewardShare * totalDailyReward
+    // Assuming 1200 blocks per day (3 second blocks), 1 MRY per block
+    const blocksPerDay = 1200;
+    const totalDailyReward = BigInt('1000000000000000000') * BigInt(blocksPerDay); // 1200 MRY per day
+    const projectedDailyReward = totalWeight > 0 
+      ? (totalDailyReward * BigInt(farmWeight)) / BigInt(totalWeight)
+      : BigInt(0);
+
     return {
-      nativeAPR,
-      totalAPR: nativeAPR
+      farmId,
+      weight: farmWeight,
+      isNativeFarm: true,
+      rewardShare: parseFloat(rewardShare.toFixed(4)),
+      projectedDailyReward: projectedDailyReward.toString()
     };
 
   } catch (error) {
-    logger.error(`[farm-weights] Error calculating APR for farm ${farmId}:`, error);
-    return { nativeAPR: 0, totalAPR: 0 };
+    logger.error(`[farm-weights] Error getting farm weight info: ${error}`);
+    return null;
+  }
+}
+
+/**
+ * Validate that total weights don't exceed reasonable limits
+ */
+export async function validateTotalWeights(): Promise<{ isValid: boolean; totalWeight: number; maxAllowed: number }> {
+  logger.debug('[farm-weights] Validating total weights');
+
+  try {
+    const nativeFarms = await cache.findPromise('farms', { 
+      isNativeFarm: true,
+      isActive: true 
+    });
+
+    let totalWeight = 0;
+    for (const farm of nativeFarms || []) {
+      totalWeight += farm.weight || 0;
+    }
+
+    // Max allowed total weight could be 10000 (allowing for fine-grained distribution)
+    const maxAllowed = 10000;
+    const isValid = totalWeight <= maxAllowed;
+
+    logger.debug(`[farm-weights] Total weight: ${totalWeight}/${maxAllowed}, valid: ${isValid}`);
+
+    return {
+      isValid,
+      totalWeight,
+      maxAllowed
+    };
+
+  } catch (error) {
+    logger.error(`[farm-weights] Error validating total weights: ${error}`);
+    throw error;
   }
 }

@@ -365,49 +365,172 @@ Returns a list of all farming pools with formatted amounts.
 #### GET /launchpad
 Returns a list of all launchpad projects with formatted amounts.
 
+**Query Parameters:**
+- `status` (optional): Filter by launchpad status
+
+**Response:**
+```json
+[
+  {
+    "id": "launch123",
+    "tokenSymbol": "NEWTOKEN",
+    "tokenName": "New Token Project",
+    "targetRaise": "10000.000",
+    "rawTargetRaise": "10000000000",
+    "totalCommitted": "5000.000",
+    "rawTotalCommitted": "5000000000",
+    "presale": {
+      "goal": "10000.000",
+      "rawGoal": "10000000000",
+      "raisedAmount": "5000.000",
+      "rawRaisedAmount": "5000000000",
+      "tokenPrice": "0.001",
+      "rawTokenPrice": "1000000",
+      "participants": [
+        {
+          "userId": "alice",
+          "amountContributed": "100.000",
+          "rawAmountContributed": "100000000",
+          "tokensAllocated": "100000.000",
+          "rawTokensAllocated": "100000000000"
+        }
+      ]
+    }
+  }
+]
+```
+
+#### GET /launchpad/:launchpadId
+Returns details for a specific launchpad project.
+
+**Response:**
+```json
+{
+  "id": "launch123",
+  "tokenSymbol": "NEWTOKEN",
+  "tokenName": "New Token Project",
+  "status": "PRESALE_ACTIVE",
+  "launchedByUserId": "creator",
+  "tokenomicsSnapshot": {
+    "totalSupply": "1000000.000",
+    "rawTotalSupply": "1000000000000",
+    "tokenDecimals": 6,
+    "allocations": [
+      {
+        "recipient": "PRESALE_PARTICIPANTS",
+        "percentage": 40,
+        "amount": "400000.000",
+        "rawAmount": "400000000000"
+      }
+    ]
+  },
+  "presaleDetailsSnapshot": {
+    "pricePerToken": "0.001",
+    "rawPricePerToken": "1000000",
+    "hardCap": "10000.000",
+    "rawHardCap": "10000000000"
+  }
+}
+```
+
+#### GET /launchpad/:launchpadId/user/:userId
+Returns participation details for a specific user in a launchpad.
+
+**Response:**
+```json
+{
+  "userId": "alice",
+  "amountContributed": "100.000",
+  "rawAmountContributed": "100000000",
+  "tokensAllocated": "100000.000",
+  "rawTokensAllocated": "100000000000",
+  "claimedAmount": "0.000",
+  "rawClaimedAmount": "0",
+  "claimed": false
+}
+```
+
+#### GET /launchpad/:launchpadId/user/:userId/claimable
+Returns claimable token amounts for a user across all allocations.
+
+**Response:**
+```json
+{
+  "launchpadId": "launch123",
+  "userId": "alice",
+  "totalAllocated": "100000.000",
+  "rawTotalAllocated": "100000000000",
+  "claimed": "0.000",
+  "rawClaimed": "0",
+  "claimable": "100000.000",
+  "rawClaimable": "100000000000"
+}
+```
+
+#### GET /launchpad/:launchpadId/participants
+Returns paginated list of presale participants.
+
+**Query Parameters:**
+- `limit` (optional): Number of results per page (default: 10)
+- `offset` (optional): Number of results to skip (default: 0)
+
 **Response:**
 ```json
 {
   "data": [
     {
-      "id": "launch123",
-      "tokenSymbol": "NEWTOKEN",
-      "tokenName": "New Token Project",
-      "targetRaise": "10000.000",
-      "rawTargetRaise": "10000000000",
-      "totalCommitted": "5000.000",
-      "rawTotalCommitted": "5000000000",
-      "presale": {
-        "goal": "10000.000",
-        "rawGoal": "10000000000",
-        "raisedAmount": "5000.000",
-        "rawRaisedAmount": "5000000000",
-        "tokenPrice": "0.001",
-        "rawTokenPrice": "1000000",
-        "participants": [
-          {
-            "userId": "alice",
-            "amountContributed": "100.000",
-            "rawAmountContributed": "100000000",
-            "tokensAllocated": "100000.000",
-            "rawTokensAllocated": "100000000000"
-          }
-        ]
-      }
+      "userId": "alice",
+      "quoteAmountContributed": "100000000",
+      "tokensAllocated": "100000000000",
+      "claimed": false
+    }
+  ],
+  "total": 1,
+  "limit": 10,
+  "offset": 0
+}
+```
+
+#### GET /launchpad/:launchpadId/whitelist
+Returns whitelist configuration and members.
+
+**Response:**
+```json
+{
+  "whitelistEnabled": true,
+  "whitelist": ["alice", "bob", "charlie"]
+}
+```
+
+#### GET /launchpad/:launchpadId/settlement-preview
+Returns token allocation preview for presale participants.
+
+**Response:**
+```json
+{
+  "data": [
+    {
+      "userId": "alice",
+      "contributed": "100000000",
+      "tokensAllocatedPreview": "100000000000"
     }
   ]
 }
 ```
 
 #### Launchpad Transactions (custom_json)
-- Type 27 `launchpad_launch_token`: Create a launchpad project.
-- Type 28 `launchpad_participate_presale`: Contribute to presale.
-- Type 29 `launchpad_claim_tokens`: Claim tokens (presale participants).
-- Type 33 `launchpad_update_status`: Lifecycle transitions (activate/schedule, pause/resume, end, cancel).
-- Type 34 `launchpad_finalize_presale`: Compute `tokensAllocated` for participants, set success/failed.
-- Type 35 `launchpad_set_main_token`: Attach main token id (TGE step).
-- Type 36 `launchpad_refund_presale`: Refund contributors on failure/cancel.
-- Type 37 `launchpad_update_whitelist`: Manage presale whitelist (add/remove/enable/disable/replace).
+- Type 29 `launchpad_launch_token`: Create a launchpad project.
+- Type 30 `launchpad_participate_presale`: Contribute to presale.
+- Type 31 `launchpad_claim_tokens`: Claim tokens (presale participants).
+- Type 35 `launchpad_update_status`: Lifecycle transitions (activate/schedule, pause/resume, end, cancel).
+- Type 36 `launchpad_finalize_presale`: Compute `tokensAllocated` for participants, set success/failed.
+- Type 37 `launchpad_set_main_token`: Attach main token id (TGE step).
+- Type 38 `launchpad_refund_presale`: Refund contributors on failure/cancel.
+- Type 39 `launchpad_update_whitelist`: Manage presale whitelist (add/remove/enable/disable/replace).
+- Type 44 `launchpad_configure_presale`: Configure presale details and parameters.
+- Type 45 `launchpad_configure_tokenomics`: Configure token distribution and allocations.
+- Type 46 `launchpad_configure_airdrop`: Configure airdrop recipients and amounts.
+- Type 47 `launchpad_update_metadata`: Update project metadata and information.
 
 ### NFTs
 

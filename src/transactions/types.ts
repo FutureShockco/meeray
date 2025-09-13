@@ -61,7 +61,13 @@ export enum TransactionType {
   NFT_CANCEL_BID = 40,
   NFT_MAKE_OFFER = 41,
   NFT_ACCEPT_OFFER = 42,
-  NFT_CANCEL_OFFER = 43
+  NFT_CANCEL_OFFER = 43,
+
+  // Launchpad Configuration Transactions
+  LAUNCHPAD_CONFIGURE_PRESALE = 44,
+  LAUNCHPAD_CONFIGURE_TOKENOMICS = 45,
+  LAUNCHPAD_CONFIGURE_AIRDROP = 46,
+  LAUNCHPAD_UPDATE_METADATA = 47
 }
 
 export const transactions: { [key: number]: string } = {
@@ -122,6 +128,12 @@ export const transactions: { [key: number]: string } = {
   [TransactionType.LAUNCHPAD_SET_MAIN_TOKEN]: 'launchpad_set_main_token',
   [TransactionType.LAUNCHPAD_REFUND_PRESALE]: 'launchpad_refund_presale',
   [TransactionType.LAUNCHPAD_UPDATE_WHITELIST]: 'launchpad_update_whitelist',
+
+  // Launchpad Configuration Transactions
+  [TransactionType.LAUNCHPAD_CONFIGURE_PRESALE]: 'launchpad_configure_presale',
+  [TransactionType.LAUNCHPAD_CONFIGURE_TOKENOMICS]: 'launchpad_configure_tokenomics',
+  [TransactionType.LAUNCHPAD_CONFIGURE_AIRDROP]: 'launchpad_configure_airdrop',
+  [TransactionType.LAUNCHPAD_UPDATE_METADATA]: 'launchpad_update_metadata',
 
   // NEW NFT Marketplace Transactions
   [TransactionType.NFT_CANCEL_BID]: 'nft_cancel_bid',
