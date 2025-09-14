@@ -89,11 +89,6 @@ export async function validateTx(data: LaunchpadLaunchTokenData, sender: string)
     return false;
   }
 
-  if (data.launchFeeTokenIssuer && !validate.string(data.launchFeeTokenIssuer, 16, 3)) {
-    logger.warn('[launchpad-launch-token] Invalid launchFeeTokenIssuer.');
-    return false;
-  }
-
   logger.debug('[launchpad-launch-token] Validation passed (simplified structure).');
   return true;
 }

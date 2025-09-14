@@ -53,15 +53,6 @@ export interface PresaleDetails {
   fcfsAfterReservedAllocation?: boolean;
 }
 
-export interface LiquidityProvisionDetails {
-  dexIdentifier: string;
-  liquidityTokenAllocationPercentage: number;
-  quoteAssetForLiquiditySymbol: string;
-  quoteAssetForLiquidityIssuer?: string;
-  initialQuoteAmountProvidedByProject?: number;
-  lpTokenLockupMonths?: number;
-}
-
 export interface LaunchpadLaunchTokenData {
   userId: string;
   tokenName: string;
@@ -75,7 +66,6 @@ export interface LaunchpadLaunchTokenData {
   
   // Fee payment (required)
   launchFeeTokenSymbol: string;
-  launchFeeTokenIssuer?: string;
 }
 
 export enum LaunchpadStatus {
@@ -90,7 +80,6 @@ export enum LaunchpadStatus {
   PRESALE_SUCCEEDED_HARDCAP_MET = 'PRESALE_SUCCEEDED_HARDCAP_MET',
   PRESALE_FAILED_SOFTCAP_NOT_MET = 'PRESALE_FAILED_SOFTCAP_NOT_MET',
   TOKEN_GENERATION_EVENT = 'TOKEN_GENERATION_EVENT',
-  LIQUIDITY_PROVISIONING = 'LIQUIDITY_PROVISIONING',
   TRADING_LIVE = 'TRADING_LIVE',
   COMPLETED = 'COMPLETED',
   CANCELLED = 'CANCELLED',
@@ -124,7 +113,6 @@ export interface LaunchpadData {
   };
   tokenomicsSnapshot?: Tokenomics; // Optional - can be configured later
   presaleDetailsSnapshot?: PresaleDetails;
-  liquidityProvisionDetailsSnapshot?: LiquidityProvisionDetails;
   airdropRecipients?: Array<{
     username: string;
     amount: string | bigint;
@@ -179,12 +167,6 @@ export interface LaunchpadConfigureTokenomicsData {
   userId: string;
   launchpadId: string;
   tokenomics: Tokenomics;
-}
-
-export interface LaunchpadConfigureLiquidityData {
-  userId: string;
-  launchpadId: string;
-  liquidityProvisionDetails: LiquidityProvisionDetails;
 }
 
 export interface LaunchpadUpdateMetadataData {

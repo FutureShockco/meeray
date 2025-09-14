@@ -1096,7 +1096,6 @@ POST /pools/route-swap
     projectSocials?: { [platform: string]: string };
     tokenomics: Tokenomics; // From launchpad-interfaces.ts
     presaleDetails?: PresaleDetails; // From launchpad-interfaces.ts
-    liquidityProvisionDetails?: LiquidityProvisionDetails; // From launchpad-interfaces.ts
     launchFeeTokenSymbol: string;
   }
   ```
@@ -1186,21 +1185,6 @@ POST /pools/route-swap
   }
   ```
 
-### LiquidityProvisionDetails
-- **File**: `src/transactions/launchpad/launchpad-interfaces.ts`
-- **Purpose**: Specifies the details for providing initial liquidity to a decentralized exchange for a token launched via the launchpad.
-- **Data Structure**:
-  ```typescript
-  interface LiquidityProvisionDetails {
-    dexIdentifier: string;
-    liquidityTokenAllocationPercentage: number;
-    quoteAssetForLiquiditySymbol: string;
-    quoteAssetForLiquidityIssuer?: string;
-    initialQuoteAmountProvidedByProject?: number;
-    lpTokenLockupMonths?: number;
-  }
-  ```
-
 ### Token (Launchpad)
 - **File**: `src/transactions/launchpad/launchpad-interfaces.ts`
 - **Purpose**: Represents a token specifically created or managed within the context of the launchpad system.
@@ -1242,7 +1226,6 @@ POST /pools/route-swap
     };
     tokenomicsSnapshot: Tokenomics;
     presaleDetailsSnapshot?: PresaleDetails;
-    liquidityProvisionDetailsSnapshot?: LiquidityProvisionDetails;
     launchedByUserId: string;
     createdAt: string;
     updatedAt: string;

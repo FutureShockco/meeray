@@ -25,8 +25,7 @@ const ALLOWED_TRANSITIONS: Record<LaunchpadStatus, LaunchpadStatus[]> = {
   [LaunchpadStatus.PRESALE_SUCCEEDED_SOFTCAP_MET]: [LaunchpadStatus.TOKEN_GENERATION_EVENT, LaunchpadStatus.CANCELLED],
   [LaunchpadStatus.PRESALE_SUCCEEDED_HARDCAP_MET]: [LaunchpadStatus.TOKEN_GENERATION_EVENT, LaunchpadStatus.CANCELLED],
   [LaunchpadStatus.PRESALE_FAILED_SOFTCAP_NOT_MET]: [LaunchpadStatus.CANCELLED],
-  [LaunchpadStatus.TOKEN_GENERATION_EVENT]: [LaunchpadStatus.LIQUIDITY_PROVISIONING],
-  [LaunchpadStatus.LIQUIDITY_PROVISIONING]: [LaunchpadStatus.TRADING_LIVE],
+  [LaunchpadStatus.TOKEN_GENERATION_EVENT]: [LaunchpadStatus.TRADING_LIVE],
   [LaunchpadStatus.TRADING_LIVE]: [LaunchpadStatus.COMPLETED],
   [LaunchpadStatus.COMPLETED]: [],
   [LaunchpadStatus.CANCELLED]: []

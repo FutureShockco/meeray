@@ -107,15 +107,6 @@ async function launchToken(tokenSymbol, tokenName, quoteAssetSymbol) {
     fcfsAfterReservedAllocation: true
   };
 
-  const liquidityProvisionData = {
-    dexIdentifier: "EchelonSwapV1",
-    liquidityTokenAllocationPercentage: 25,
-    quoteAssetForLiquiditySymbol: quoteAssetSymbol,
-    quoteAssetForLiquidityIssuer: username,
-    initialQuoteAmountProvidedByProject: "50000000000", // e.g., 50,000 with 6 decimals for quote asset
-    lpTokenLockupMonths: 12
-  };
-
   const payload = {
     userId: username,
     tokenName: tokenName,
@@ -127,8 +118,7 @@ async function launchToken(tokenSymbol, tokenName, quoteAssetSymbol) {
     projectSocials: { twitter: "@example", telegram: "t.me/example" },
     tokenomics: tokenomicsData,
     presaleDetails: presaleDetailsData,
-    liquidityProvisionDetails: liquidityProvisionData,
-    launchFeeTokenSymbol: "ECH"
+    launchFeeTokenSymbol: "MRY"
   };
 
   return sendCustomJson('launchpad_launch_token', payload);
