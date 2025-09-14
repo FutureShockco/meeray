@@ -14,14 +14,7 @@ import validate from '../../validation/index.js';
 import config from '../../config.js';
 
 function generateLaunchpadId(): string {
-  return `lp-${crypto.randomBytes(12).toString('hex')}`;
-}
-
-function generateTokenId(symbol: string, issuer?: string): string {
-  if (issuer) {
-    return `${symbol.toUpperCase()}@${issuer}`;
-  }
-  return `${symbol.toUpperCase()}-${crypto.randomBytes(8).toString('hex')}`;
+  return `pad-${crypto.randomBytes(12).toString('hex')}`;
 }
 
 export async function validateTx(data: LaunchpadLaunchTokenData, sender: string): Promise<boolean> {
@@ -83,12 +76,6 @@ export async function validateTx(data: LaunchpadLaunchTokenData, sender: string)
     return false;
   }
 
-  // Launch fee token validation
-  if (!validate.string(data.launchFeeTokenSymbol, 10, 1, config.tokenSymbolAllowedChars)) {
-    logger.warn('[launchpad-launch-token] Invalid launchFeeTokenSymbol.');
-    return false;
-  }
-
   logger.debug('[launchpad-launch-token] Validation passed (simplified structure).');
   return true;
 }
@@ -115,7 +102,6 @@ export async function process(launchData: LaunchpadLaunchTokenData, sender: stri
       launchedByUserId: sender,
       createdAt: now,
       updatedAt: now,
-      feePaid: false,
     };
 
     // Add optional fields if provided

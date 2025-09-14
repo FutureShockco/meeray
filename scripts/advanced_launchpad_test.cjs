@@ -111,14 +111,12 @@ async function launchToken(tokenSymbol, tokenName, quoteAssetSymbol) {
     userId: username,
     tokenName: tokenName,
     tokenSymbol: tokenSymbol,
-    tokenStandard: "NATIVE",
     tokenDescription: `${tokenName} - A test token launched via the Echelon Launchpad.`,
     tokenLogoUrl: "https://example.com/token.png",
     projectWebsite: "https://example.com",
     projectSocials: { twitter: "@example", telegram: "t.me/example" },
     tokenomics: tokenomicsData,
-    presaleDetails: presaleDetailsData,
-    launchFeeTokenSymbol: "MRY"
+    presaleDetails: presaleDetailsData
   };
 
   return sendCustomJson('launchpad_launch_token', payload);

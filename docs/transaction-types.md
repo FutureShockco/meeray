@@ -1089,14 +1089,12 @@ POST /pools/route-swap
     userId: string;
     tokenName: string;
     tokenSymbol: string;
-    tokenStandard: TokenStandard; // From launchpad-interfaces.ts (NATIVE, WRAPPED_NATIVE_LIKE)
     tokenDescription?: string;
     tokenLogoUrl?: string;
     projectWebsite?: string;
     projectSocials?: { [platform: string]: string };
     tokenomics: Tokenomics; // From launchpad-interfaces.ts
     presaleDetails?: PresaleDetails; // From launchpad-interfaces.ts
-    launchFeeTokenSymbol: string;
   }
   ```
 
@@ -1194,7 +1192,6 @@ POST /pools/route-swap
     _id: string;
     name: string;
     symbol: string;
-    standard: TokenStandard;
     decimals: number;
     totalSupply: number;
     maxSupply?: number;
@@ -1220,7 +1217,6 @@ POST /pools/route-swap
     tokenToLaunch: {
       name: string;
       symbol: string;
-      standard: TokenStandard;
       decimals: number;
       totalSupply: number;
     };
@@ -1243,12 +1239,6 @@ POST /pools/route-swap
     };
     mainTokenId?: string;
     dexPairAddress?: string;
-    feePaid: boolean;
-    feeDetails?: {
-      tokenSymbol: string;
-      tokenIssuer?: string;
-      amount: number;
-    };
     relatedTxIds?: string[];
   }
   ```

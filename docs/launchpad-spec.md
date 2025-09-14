@@ -2,7 +2,7 @@
 
 This document fully specifies the Launchpad domain for building a complete Launchpad app on Echelon. It is self-contained; you do not need access to the codebase.
 
-**Updated:** September 2025 - Includes all current transaction types (29-47), complete HTTP API endpoints, vesting support, whitelist management, airdrop functionality, and settlement preview capabilities.
+Includes all current transaction, complete HTTP API endpoints, vesting support, whitelist management, airdrop functionality, and settlement preview capabilities.
 
 Conventions
 - All on-chain amounts are provided/accepted in smallest units unless stated otherwise.
@@ -29,43 +29,27 @@ Base URLs and Auth
 
 ### 1) Launchpad Launch Token (Type 29)
 - File: `src/transactions/launchpad/launchpad-launch-token.ts`
-- Purpose: Create a launchpad project with tokenomics, optional presale, and liquidity details.
+- Purpose: Create a basic launchpad project with minimal required information. Complex configuration can be added later.
+- Fee: 100 MRY automatically deducted from sender's account (no need to specify fee token).
 - Data:
 ```json
 {
   "userId": "alice",
   "tokenName": "My Token",
   "tokenSymbol": "MYT",
-  "tokenStandard": "NATIVE", // or WRAPPED_NATIVE_LIKE
-  "tokenDescription": "...",
-  "tokenLogoUrl": "https://...",
-  "projectWebsite": "https://...",
-  "projectSocials": { "twitter": "..." },
-  "tokenomics": {
-    "totalSupply": "100000000000000000",   
-    "tokenDecimals": "8",                  
-    "allocations": [
-      { "recipient": "PRESALE_PARTICIPANTS", "percentage": 20 },
-      { "recipient": "LIQUIDITY_POOL", "percentage": 10 },
-      { "recipient": "PROJECT_TEAM", "percentage": 15, "vestingSchedule": {"type":"LINEAR_MONTHLY", "durationMonths": 12} }
-    ]
-  },
-  "presaleDetails": {
-    "presaleTokenAllocationPercentage": 20,
-    "pricePerToken": "1000000",
-    "quoteAssetForPresaleSymbol": "STEEM",
-    "minContributionPerUser": "1000000",
-    "maxContributionPerUser": "100000000",
-    "startTime": "2025-01-20T00:00:00.000Z",
-    "endTime": "2025-01-27T00:00:00.000Z",
-    "hardCap": "10000000000",
-    "softCap": "1000000000",
-    "whitelistRequired": false
-  },
-  "launchFeeTokenSymbol": "MRY"  // Native Meeray token used for all fees
+  "totalSupply": "100000000000000000",
+  "tokenDecimals": 8
 }
 ```
-- Effects (storage snapshot fields): creates `launchpads` doc with `_id`, `status`, `tokenToLaunch`, `tokenomicsSnapshot`, `presaleDetailsSnapshot?`, `presale?`, timestamps, and `launchedByUserId`.
+- Optional fields (can be set via configuration transactions later):
+  - `tokenDescription` - Set via (launchpad_update_metadata)
+  - `tokenLogoUrl` - Set via (launchpad_update_metadata)  
+  - `projectWebsite` - Set via (launchpad_update_metadata)
+  - `projectSocials` - Set via (launchpad_update_metadata)
+  - `tokenomics` - Set via (launchpad_configure_tokenomics)
+  - `presaleDetails` - Set (launchpad_configure_presale)
+- Effects: creates basic `launchpads` doc with `_id`, `status: UPCOMING`, basic `tokenToLaunch` info, timestamps, and `launchedByUserId`.
+- Fee: Automatically deducts 100 MRY (configured in `config.launchPadCreationFee`) from sender's account. Transaction fails if insufficient balance.
 
 Broadcast example (custom_json)
 ```json
@@ -275,7 +259,6 @@ Example response item
   "tokenToLaunch": {
     "name": "My Token",
     "symbol": "MYT",
-    "standard": "NATIVE",
     "decimals": 8,
     "totalSupply": "100000000000000000"  
   },
@@ -403,15 +386,13 @@ Errors
   "_id": "lp-...",
   "projectId": "MYT-launch-lp-...",
   "status": "UPCOMING|PRESALE_ACTIVE|...",
-  "tokenToLaunch": {"name":"","symbol":"","standard":"","decimals":8,"totalSupply":"...","description":"...","website":"..."},
+  "tokenToLaunch": {"name":"","symbol":"","decimals":8,"totalSupply":"...","description":"...","website":"..."},
   "tokenomicsSnapshot": {"totalSupply":"...","tokenDecimals":"...","allocations":[{"recipient":"...","percentage":10,"vestingSchedule":{"type":"LINEAR_MONTHLY","durationMonths":12}}]},
   "presaleDetailsSnapshot": {"pricePerToken":"...","quoteAssetForPresaleSymbol":"STEEM", "minContributionPerUser":"...","maxContributionPerUser":"...","hardCap":"...","softCap":"...","startTime":"ISO","endTime":"ISO","whitelistRequired":false},
   "presale": {"totalQuoteRaised":"0","participants":[{"userId":"bob","quoteAmountContributed":"...","tokensAllocated":"...","claimed":false}],"status":"NOT_STARTED|ACTIVE|ENDED_PENDING_CLAIMS|...","whitelist":["alice","bob"],"whitelistEnabled":false},
   "airdropRecipients": [{"username":"bob","amount":"1000000000","claimed":false}],
   "mainTokenId": "MYT",
   "dexPairAddress": "...",
-  "feePaid": false,
-  "feeDetails": {"tokenSymbol":"MRY","amount":"..."},
   "launchedByUserId": "alice",
   "relatedTxIds": ["tx123","tx456"],
   "createdAt": "ISO",

@@ -24,6 +24,7 @@ const config = {
   tokenNameMaxLength: 50,
   tokenCreationFee: 10000000000, // 100 MRY
   nftCollectionCreationFee: 10000000000, // 100 MRY
+  launchPadCreationFee: 10000000000, // 100 MRY
   tokenSymbolMaxLength: 10,
   tokenSymbolMinLength: 3,
   tokenPrecisionMax: 18,

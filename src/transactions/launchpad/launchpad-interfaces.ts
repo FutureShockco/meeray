@@ -63,9 +63,6 @@ export interface LaunchpadLaunchTokenData {
   // Optional basic info (can also be set via LaunchpadUpdateMetadataData)
   tokenDescription?: string;
   projectWebsite?: string;
-  
-  // Fee payment (required)
-  launchFeeTokenSymbol: string;
 }
 
 export enum LaunchpadStatus {
@@ -135,12 +132,6 @@ export interface LaunchpadData {
   };
   mainTokenId?: string;
   dexPairAddress?: string;
-  feePaid: boolean;
-  feeDetails?: {
-    tokenSymbol: string;
-    tokenIssuer?: string;
-    amount: string | bigint;
-  };
   relatedTxIds?: string[];
 }
 
