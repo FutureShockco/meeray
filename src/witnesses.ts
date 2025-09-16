@@ -1,7 +1,7 @@
 import config from './config.js';
 import cache from './cache.js';
 import logger from './logger.js';
-import p2p from './p2p.js';
+import p2p from './p2p/index.js';
 import { toDbString } from './utils/bigint.js';
 import { adjustTokenSupply } from './utils/token.js';
 import { adjustBalance } from './utils/account.js';

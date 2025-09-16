@@ -1,6 +1,6 @@
 import steemConfig from './config.js';
 import logger from '../logger.js';
-import p2p from '../p2p.js';
+import p2p from '../p2p/index.js';
 import chain from '../chain.js';
 import SteemApiClient from './apiClient.js';
 import config from '../config.js';

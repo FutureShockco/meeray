@@ -1,5 +1,5 @@
 import express, { Request, Response, Router, RequestHandler } from 'express';
-import p2p from '../../p2p.js';
+import p2p from '../../p2p/index.js';
 
 const router = express.Router();
 

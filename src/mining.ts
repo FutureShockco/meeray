@@ -7,7 +7,7 @@ import steem from './steem.js';
 import { Transaction } from './transactions/index.js';
 import cache from './cache.js';
 import consensus from './consensus.js';
-import p2p from './p2p.js';
+import p2p from './p2p/index.js';
 import { hashAndSignBlock } from './crypto.js';
 
 export const mining = {

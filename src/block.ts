@@ -6,7 +6,7 @@ import logger from './logger.js';
 import chain from './chain.js';
 import { isValidSignature } from './crypto.js';
 import steem from './steem.js';
-import p2p from './p2p.js';
+import p2p from './p2p/index.js';
 
 
 export class Block {

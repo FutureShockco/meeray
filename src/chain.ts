@@ -10,7 +10,7 @@ import cache from './cache.js';
 import txHistory from './modules/txHistory.js';
 import witnessesStats from './modules/witnessesStats.js';
 import { witnessesModule } from './witnesses.js';
-import p2p from './p2p.js';
+import p2p from './p2p/index.js';
 import notifications from './modules/notifications.js';
 import settings from './settings.js';
 import mongo from './mongo.js';

@@ -2,7 +2,7 @@ import 'dotenv/config';
 import http from './modules/http/index.js';
 import logger from './logger.js';
 import config from './config.js';
-import { p2p } from './p2p.js';
+import p2p from './p2p/index.js';
 import { chain } from './chain.js';
 import transaction from './transaction.js';
 import cache from './cache.js';

@@ -2,7 +2,7 @@ import logger from './logger.js';
 import { SteemBlockResult } from './steemParser.js';
 import config from './config.js';
 import { Block } from './block.js';
-import p2p from './p2p.js';
+import p2p from './p2p/index.js';
 import { chain } from './chain.js';
 import SteemApiClient from './steem/apiClient.js';
 import SyncManager from './steem/syncManager.js';
