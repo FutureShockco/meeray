@@ -162,8 +162,17 @@ export const mining = {
 
                     newBlock = hashAndSignBlock(newBlock);
 
-                    if (newBlock.phash !== chain.getLatestBlock().hash) {
-                        logger.warn(`mineBlock: Chain advanced while preparing block ${newBlock._id}. Own block is stale. Aborting mining attempt for ${process.env.STEEM_ACCOUNT}.`);
+                    // Critical: Check if chain advanced while we were preparing the block
+                    const currentLatestBlock = chain.getLatestBlock();
+                    if (newBlock.phash !== currentLatestBlock.hash) {
+                        logger.warn(`mineBlock: Chain advanced while preparing block ${newBlock._id}. Expected phash ${newBlock.phash.substr(0, 8)}, current head ${currentLatestBlock.hash.substr(0, 8)}. Aborting mining attempt for ${process.env.STEEM_ACCOUNT}.`);
+                        cb(true, newBlock);
+                        return;
+                    }
+                    
+                    // Double-check the block ID is still correct
+                    if (newBlock._id !== currentLatestBlock._id + 1) {
+                        logger.warn(`mineBlock: Block ID mismatch. Expected ${currentLatestBlock._id + 1}, got ${newBlock._id}. Chain may have advanced. Aborting mining attempt.`);
                         cb(true, newBlock);
                         return;
                     }
@@ -198,11 +207,22 @@ export const mining = {
             logger.debug('[MINING-ABORT] Cleared current mining timeout');
         }
         
+        // Clear any stale consensus state that might cause issues
+        if (consensus.possBlocks && consensus.possBlocks.length > 0) {
+            const currentChainHead = chain.getLatestBlock()._id;
+            // Remove any possible blocks that are now outdated
+            consensus.possBlocks = consensus.possBlocks.filter(pb => pb.block._id > currentChainHead);
+            logger.debug(`[MINING-ABORT] Cleaned stale consensus blocks, ${consensus.possBlocks.length} remaining`);
+        }
+        
         // Restart mining with current chain state
         const latestBlock = chain.getLatestBlock();
         if (latestBlock && !p2p.recovering) {
             logger.debug(`[MINING-RESTART] Restarting mining for block ${latestBlock._id + 1} with phash ${latestBlock.hash.substr(0, 8)}`);
-            mining.minerWorker(latestBlock);
+            // Add a small delay to allow network state to stabilize after collision
+            setTimeout(() => {
+                mining.minerWorker(latestBlock);
+            }, 100);
         } else {
             logger.debug('[MINING-RESTART] Skipping restart - either no latest block or in recovery mode');
         }
