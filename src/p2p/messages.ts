@@ -17,16 +17,15 @@ import {
     SteemSyncStatus 
 } from './types.js';
 import { P2P_CONFIG, P2P_RUNTIME_CONFIG } from './config.js';
+import { SocketManager } from './socket.js';
 
 const bs58 = baseX(config.b58Alphabet || '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz');
 
 export class MessageHandler {
     private state: P2PState;
-    private sendJSON: (ws: EnhancedWebSocket, data: any) => void;
 
-    constructor(state: P2PState, sendJSON: (ws: EnhancedWebSocket, data: any) => void) {
+    constructor(state: P2PState) {
         this.state = state;
-        this.sendJSON = sendJSON;
     }
 
     setupMessageHandler(ws: EnhancedWebSocket): void {
@@ -97,7 +96,7 @@ export class MessageHandler {
             ws.challengeHash = random;
 
             const latestBlock = chain.getLatestBlock();
-            this.sendJSON(ws, {
+            SocketManager.sendJSON(ws, {
                 t: MessageType.NODE_STATUS,
                 d: {
                     nodeId: this.state.nodeId?.pub || '',
@@ -106,7 +105,6 @@ export class MessageHandler {
                     previous_block_hash: latestBlock.phash,
                     origin_block: config.originHash,
                     version: P2P_CONFIG.VERSION,
-                    sign: this.signChallenge(random)
                 }
             });
         }
@@ -196,7 +194,7 @@ export class MessageHandler {
         }
 
         if (block) {
-            this.sendJSON(ws, { t: MessageType.BLOCK, d: block });
+            SocketManager.sendJSON(ws, { t: MessageType.BLOCK, d: block });
         }
     }
 
@@ -274,7 +272,7 @@ export class MessageHandler {
 
             for (const socket of this.state.sockets) {
                 if (socket !== ws && socket.node_status?.nodeId !== syncStatus.nodeId) {
-                    this.sendJSON(socket, relayedMessage);
+                    SocketManager.sendJSON(socket, relayedMessage);
                 }
             }
         }
@@ -327,9 +325,4 @@ export class MessageHandler {
         });
     }
 
-    private signChallenge(challengeHash: string): string {
-        // This would implement the signature logic
-        // For now, returning empty string - this needs to be implemented
-        return '';
-    }
 }

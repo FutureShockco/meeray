@@ -8,6 +8,7 @@ import { witnessesModule } from '../witnesses.js';
 import { chain } from '../chain.js';
 import { EnhancedWebSocket, P2PState } from './types.js';
 import { P2P_CONFIG, P2P_RUNTIME_CONFIG } from './config.js';
+import { SocketManager } from './socket.js';
 
 export class ConnectionManager {
     private state: P2PState;

@@ -4,24 +4,22 @@ import { chain } from '../chain.js';
 import { witnessesModule } from '../witnesses.js';
 import { EnhancedWebSocket, P2PState, MessageType } from './types.js';
 import { P2P_CONFIG, P2P_RUNTIME_CONFIG } from './config.js';
+import { SocketManager } from './socket.js';
 
 export class PeerDiscovery {
     private state: P2PState;
-    private sendJSON: (ws: EnhancedWebSocket, data: any) => void;
     private connect: (peers: string[], isInit?: boolean) => void;
 
     constructor(
         state: P2PState, 
-        sendJSON: (ws: EnhancedWebSocket, data: any) => void,
         connect: (peers: string[], isInit?: boolean) => void
     ) {
         this.state = state;
-        this.sendJSON = sendJSON;
         this.connect = connect;
     }
 
     requestPeerLists(): void {
-        const connectedPeers = this.state.sockets.filter(s => s.node_status);
+        const connectedPeers = SocketManager.getSocketsWithStatus();
         const currentPeerCount = connectedPeers.length;
         const totalWitnesses = config.witnesses || 5;
         const minPeersForConsensus = Math.ceil(totalWitnesses * 0.6);
@@ -38,12 +36,12 @@ export class PeerDiscovery {
         logger.debug(`[PEER_REQUEST] Requesting peer lists from ${peersToQuery.length}/${connectedPeers.length} peers (current: ${currentPeerCount}, min needed: ${minPeersForConsensus})`);
 
         peersToQuery.forEach(socket => {
-            this.sendJSON(socket, { t: MessageType.QUERY_PEER_LIST, d: {} });
+            SocketManager.sendJSON(socket, { t: MessageType.QUERY_PEER_LIST, d: {} });
         });
     }
 
     async discoveryWorker(isInit: boolean = false): Promise<void> {
-        const currentPeerCount = this.state.sockets.filter(s => s.node_status).length;
+        const currentPeerCount = SocketManager.getSocketsWithStatus().length;
         const totalWitnesses = config.witnesses || 5;
 
         // Calculate consensus requirements
@@ -68,13 +66,13 @@ export class PeerDiscovery {
             const block = chain.getLatestBlock();
             const witnesses = witnessesModule.generateWitnesses(false, config.read(block._id).witnesses, 0);
             for (const witness of witnesses) {
-                if (this.state.sockets.length >= P2P_RUNTIME_CONFIG.MAX_PEERS) break;
+                if (SocketManager.getSocketCount() >= P2P_RUNTIME_CONFIG.MAX_PEERS) break;
                 if (!witness.ws) continue;
 
                 if (P2P_RUNTIME_CONFIG.DISCOVERY_EXCLUDE.includes(witness.name)) continue;
 
                 let isConnected = false;
-                for (const socket of this.state.sockets) {
+                for (const socket of SocketManager.getSockets()) {
                     try {
                         const witnessIp = witness.ws.split('://')[1].split(':')[0];
                         const socketIp = socket._socket.remoteAddress?.replace('::ffff:', '') || '';
@@ -134,7 +132,7 @@ export class PeerDiscovery {
 
         logger.debug(`Sending peer list with ${knownPeers.length} peers to requesting peer`);
 
-        this.sendJSON(ws, {
+        SocketManager.sendJSON(ws, {
             t: MessageType.PEER_LIST,
             d: { peers: knownPeers }
         });
