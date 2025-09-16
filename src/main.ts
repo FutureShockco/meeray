@@ -2,7 +2,7 @@ import 'dotenv/config';
 import http from './modules/http/index.js';
 import logger from './logger.js';
 import config from './config.js';
-import p2p from './p2p/index.js';
+import { p2p } from './p2p/index.js';
 import { chain } from './chain.js';
 import transaction from './transaction.js';
 import cache from './cache.js';
@@ -15,7 +15,6 @@ import { initializeModules } from './initialize.js';
 import { Block } from './block.js';
 import settings from './settings.js';
 import { startWorker as startSteemBridgeWorker } from './modules/steemBridge.js';
-import mining from './mining.js';
 
 process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
     logger.error('CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
@@ -223,7 +222,7 @@ async function startDaemon(cfg: any) {
     http.init();
     p2p.init();
     p2p.connect(settings.peers, true);
-    setTimeout(() => p2p.keepAlive(), 3000);
+    setTimeout(() => p2p.keepAlive(), 6000);
 
     if (settings.steemBridgeEnabled) {
         logger.info('Starting Steem bridge worker...');
@@ -234,30 +233,6 @@ async function startDaemon(cfg: any) {
     setInterval(() => {
         transaction.cleanPool?.();
     }, (cfg.blockTime || 3000) * 0.9);
-    
-    // Start initial mining with the latest block to kick off the mining process
-    const latestBlock = chain.getLatestBlock();
-    if (latestBlock) {
-        logger.info('Starting initial mining process...');
-        mining.minerWorker(latestBlock);
-    }
-    
-    // Add a mining heartbeat to ensure mining restarts during network silence
-    // This prevents deadlock when all nodes restart and no one is mining
-    setInterval(() => {
-        // Only restart mining if no mining timeout is active and we're not in recovery
-        if (!chain.worker && !p2p.recovering && !chain.shuttingDown) {
-            const currentLatest = chain.getLatestBlock();
-            const timeSinceLastBlock = Date.now() - currentLatest.timestamp;
-            const maxSilence = (cfg.blockTime || 3000) * 3; // 3 block intervals
-            
-            if (timeSinceLastBlock > maxSilence) {
-                logger.info(`Mining heartbeat: ${timeSinceLastBlock}ms since last block (>${maxSilence}ms threshold). Restarting mining...`);
-                mining.ensureMiningActive();
-            }
-        }
-    }, (cfg.blockTime || 3000) * 2); // Check every 2 block intervals
-    
     logger.info('Node daemon started successfully.');
 }
 

@@ -162,17 +162,8 @@ export const mining = {
 
                     newBlock = hashAndSignBlock(newBlock);
 
-                    // Critical: Check if chain advanced while we were preparing the block
-                    const currentLatestBlock = chain.getLatestBlock();
-                    if (newBlock.phash !== currentLatestBlock.hash) {
-                        logger.warn(`mineBlock: Chain advanced while preparing block ${newBlock._id}. Expected phash ${newBlock.phash.substr(0, 8)}, current head ${currentLatestBlock.hash.substr(0, 8)}. Aborting mining attempt for ${process.env.STEEM_ACCOUNT}.`);
-                        cb(true, newBlock);
-                        return;
-                    }
-                    
-                    // Double-check the block ID is still correct
-                    if (newBlock._id !== currentLatestBlock._id + 1) {
-                        logger.warn(`mineBlock: Block ID mismatch. Expected ${currentLatestBlock._id + 1}, got ${newBlock._id}. Chain may have advanced. Aborting mining attempt.`);
+                    if (newBlock.phash !== chain.getLatestBlock().hash) {
+                        logger.warn(`mineBlock: Chain advanced while preparing block ${newBlock._id}. Own block is stale. Aborting mining attempt for ${process.env.STEEM_ACCOUNT}.`);
                         cb(true, newBlock);
                         return;
                     }
@@ -194,54 +185,6 @@ export const mining = {
                 }
             });
         });
-    },
-
-    /**
-     * Abort current mining operation and restart with fresh chain state
-     * Used for collision resolution to prevent phash mismatches
-     */
-    abortAndRestartMining: (): void => {
-        if (chain.worker) {
-            clearTimeout(chain.worker);
-            chain.worker = null;
-            logger.debug('[MINING-ABORT] Cleared current mining timeout');
-        }
-        
-        // Clear any stale consensus state that might cause issues
-        if (consensus.possBlocks && consensus.possBlocks.length > 0) {
-            const currentChainHead = chain.getLatestBlock()._id;
-            // Remove any possible blocks that are now outdated
-            consensus.possBlocks = consensus.possBlocks.filter(pb => pb.block._id > currentChainHead);
-            logger.debug(`[MINING-ABORT] Cleaned stale consensus blocks, ${consensus.possBlocks.length} remaining`);
-        }
-        
-        // Restart mining with current chain state
-        const latestBlock = chain.getLatestBlock();
-        if (latestBlock && !p2p.recovering) {
-            logger.debug(`[MINING-RESTART] Restarting mining for block ${latestBlock._id + 1} with phash ${latestBlock.hash.substr(0, 8)}`);
-            // Add a small delay to allow network state to stabilize after collision
-            setTimeout(() => {
-                mining.minerWorker(latestBlock);
-            }, 100);
-        } else {
-            logger.debug('[MINING-RESTART] Skipping restart - either no latest block or in recovery mode');
-        }
-    },
-
-    /**
-     * Force restart mining even if no timeout is active
-     * Used for network silence recovery
-     */
-    ensureMiningActive: (): void => {
-        if (!p2p.recovering && !chain.shuttingDown) {
-            const latestBlock = chain.getLatestBlock();
-            if (latestBlock) {
-                logger.debug(`[MINING-ENSURE] Force restarting mining for block ${latestBlock._id + 1}`);
-                clearTimeout(chain.worker);
-                chain.worker = null;
-                mining.minerWorker(latestBlock);
-            }
-        }
     },
 
     minerWorker: (block: Block): void => {
@@ -357,7 +300,7 @@ export const mining = {
                             steem.getLatestSteemBlockNum().then(latestSteemBlock => {
                                 logger.warn(`minerWorker: Normal Mode: latestBlock (${latestSteemBlock})`);
                                 if (latestSteemBlock) {
-                                    logger.warn(`Waiting for steem chain head to advance: latestBlock=${latestBlock?.steemBlockNum}, latestSteemBlock=${latestSteemBlock}`);
+                                    console.log(`Waiting for steem chain head to advance: latestBlock=${latestBlock?.steemBlockNum}, latestSteemBlock=${latestSteemBlock}`);
                                     if (latestBlock && latestBlock.steemBlockNum < latestSteemBlock) {
                                         mining.mineBlock(function (error, finalBlock) {
                                             if (error) {

@@ -23,8 +23,6 @@ export class ConnectionManager {
     }
 
     async keepAlive(): Promise<void> {
-        logger.debug('[KEEP_ALIVE] Starting keep-alive check, configured peers:', P2P_RUNTIME_CONFIG.PEERS.length);
-        logger.debug('[KEEP_ALIVE] PEERS array:', P2P_RUNTIME_CONFIG.PEERS);
         const toConnect: string[] = [];
 
         for (const peer of P2P_RUNTIME_CONFIG.PEERS) {
