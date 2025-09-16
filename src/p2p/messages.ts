@@ -18,14 +18,17 @@ import {
 } from './types.js';
 import { P2P_CONFIG, P2P_RUNTIME_CONFIG } from './config.js';
 import { SocketManager } from './socket.js';
+import { PeerDiscovery } from './discovery.js';
 
 const bs58 = baseX(config.b58Alphabet || '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz');
 
 export class MessageHandler {
     private state: P2PState;
+    private peerDiscovery: PeerDiscovery;
 
-    constructor(state: P2PState) {
+    constructor(state: P2PState, peerDiscovery: PeerDiscovery) {
         this.state = state;
+        this.peerDiscovery = peerDiscovery;
     }
 
     setupMessageHandler(ws: EnhancedWebSocket): void {
@@ -70,11 +73,11 @@ export class MessageHandler {
                     break;
 
                 case MessageType.QUERY_PEER_LIST:
-                    // This is handled by PeerDiscovery
+                    this.peerDiscovery.handlePeerListQuery(ws, message);
                     break;
 
                 case MessageType.PEER_LIST:
-                    // This is handled by PeerDiscovery
+                    this.peerDiscovery.handlePeerList(ws, message);
                     break;
             }
         });

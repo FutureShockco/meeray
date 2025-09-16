@@ -6,7 +6,7 @@ import logger from '../logger.js';
 import config from '../config.js';
 import { witnessesModule } from '../witnesses.js';
 import { chain } from '../chain.js';
-import { EnhancedWebSocket, P2PState } from './types.js';
+import { EnhancedWebSocket, P2PState, MessageType } from './types.js';
 import { P2P_CONFIG, P2P_RUNTIME_CONFIG } from './config.js';
 import { SocketManager } from './socket.js';
 
@@ -141,6 +141,10 @@ export class ConnectionManager {
         }, P2P_CONFIG.HANDSHAKE_TIMEOUT);
 
         this.state.sockets.push(ws);
+        
+        // Send NODE_STATUS query to initiate handshake
+        SocketManager.sendJSON(ws, { t: MessageType.QUERY_NODE_STATUS, d: {} });
+        
         // Note: messageHandler and errorHandler will be set by the main P2P module
     }
 

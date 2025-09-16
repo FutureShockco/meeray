@@ -38,8 +38,8 @@ const state: P2PState = {
 
 // Initialize sub-modules
 const connectionManager = new ConnectionManager(state);
-const messageHandler = new MessageHandler(state);
 const peerDiscovery = new PeerDiscovery(state, (peers, isInit) => connectionManager.connect(peers, isInit));
+const messageHandler = new MessageHandler(state, peerDiscovery);
 const recoveryManager = new RecoveryManager(state);
 
 // Main P2P object that maintains compatibility with existing interface
