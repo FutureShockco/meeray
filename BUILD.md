@@ -1,8 +1,8 @@
 # Meeray Node Build & Packaging Instructions (Windows)
 
 ## 1. Prerequisites
-- node.exe v20.19.5 (single file)
-- mongod.exe v8.0.13 (single file)
+- node.exe v20.19.5 (single file available at https://nodejs.org/dist/v20.19.5/node-v20.19.5-win-x64.zip)
+- mongod.exe v8.0.13 (single file available at https://fastdl.mongodb.org/windows/mongodb-windows-x86_64-8.0.13.zip)
 - NSIS (Nullsoft Scriptable Install System) v3.11
 
 ## 2. Automated Build Steps
