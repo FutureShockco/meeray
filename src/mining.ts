@@ -228,6 +228,22 @@ export const mining = {
         }
     },
 
+    /**
+     * Force restart mining even if no timeout is active
+     * Used for network silence recovery
+     */
+    ensureMiningActive: (): void => {
+        if (!p2p.recovering && !chain.shuttingDown) {
+            const latestBlock = chain.getLatestBlock();
+            if (latestBlock) {
+                logger.debug(`[MINING-ENSURE] Force restarting mining for block ${latestBlock._id + 1}`);
+                clearTimeout(chain.worker);
+                chain.worker = null;
+                mining.minerWorker(latestBlock);
+            }
+        }
+    },
+
     minerWorker: (block: Block): void => {
         logger.trace(`minerWorker: Entered. Current chain head _id: ${block._id}. p2p.recovering: ${p2p.recovering}`);
         if (p2p.recovering) return;
@@ -341,7 +357,7 @@ export const mining = {
                             steem.getLatestSteemBlockNum().then(latestSteemBlock => {
                                 logger.warn(`minerWorker: Normal Mode: latestBlock (${latestSteemBlock})`);
                                 if (latestSteemBlock) {
-                                    console.log(`Waiting for steem chain head to advance: latestBlock=${latestBlock?.steemBlockNum}, latestSteemBlock=${latestSteemBlock}`);
+                                    logger.warn(`Waiting for steem chain head to advance: latestBlock=${latestBlock?.steemBlockNum}, latestSteemBlock=${latestSteemBlock}`);
                                     if (latestBlock && latestBlock.steemBlockNum < latestSteemBlock) {
                                         mining.mineBlock(function (error, finalBlock) {
                                             if (error) {

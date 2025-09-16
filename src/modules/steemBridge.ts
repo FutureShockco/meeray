@@ -3,6 +3,7 @@ import SteemApiClient from '../steem/apiClient.js';
 import { PrivateKey } from 'dsteem';
 import { mongo } from '../mongo.js';
 import config from '../config.js';
+import logger from '../logger.js';
 const client = new SteemApiClient();
 
 
@@ -36,7 +37,7 @@ interface DepositJobDoc {
 }
 
 async function transfer(to: string, amount: string, symbol: string, memo: string) {
-    console.log(to, amount, symbol, memo);
+    logger.debug(`Preparing transfer: to=${to}, amount=${amount}, symbol=${symbol}, memo=${memo}`);
     const operation = ['transfer', {
         required_auths: [settings.steemBridgeAccount],
         required_posting_auths: [],
@@ -47,12 +48,12 @@ async function transfer(to: string, amount: string, symbol: string, memo: string
     }];
 
     try {
-        console.log(`Broadcasting transfer from ${settings.steemBridgeAccount} to ${to} with amount: ${amount}`);
+        logger.debug(`Broadcasting transfer from ${settings.steemBridgeAccount} to ${to} with amount: ${amount}`);
         const result = await client.sendOperations([operation], PrivateKey.fromString(settings.steemBridgeActiveKey));
-        console.log(`Transfer successful: TX ID ${result.id}`);
+        logger.debug(`Transfer successful: TX ID ${result.id}`);
         return result;
     } catch (error: any) {
-        console.error(`Error in transfer:`, error);
+        logger.error(`Error in transfer:`, error);
         if (error?.data?.stack) {
             console.error('dsteem error data:', error.data.stack);
         }
@@ -72,9 +73,9 @@ async function broadcastTokenMint(mintData: { symbol: string; to: string; amount
     }];
 
     try {
-        console.log(`Broadcasting TOKEN_MINT for ${mintData.amount} ${mintData.symbol} to ${mintData.to}`);
+        logger.debug(`Broadcasting TOKEN_MINT for ${mintData.amount} ${mintData.symbol} to ${mintData.to}`);
         const result = await client.sendOperations([operation], PrivateKey.fromString(settings.steemBridgeActiveKey));
-        console.log(`TOKEN_MINT broadcast successful: TX ID ${result.id}`);
+        logger.debug(`TOKEN_MINT broadcast successful: TX ID ${result.id}`);
         return result;
     } catch (error: any) {
         console.error(`Error in broadcastTokenMint:`, error);

@@ -242,6 +242,22 @@ async function startDaemon(cfg: any) {
         mining.minerWorker(latestBlock);
     }
     
+    // Add a mining heartbeat to ensure mining restarts during network silence
+    // This prevents deadlock when all nodes restart and no one is mining
+    setInterval(() => {
+        // Only restart mining if no mining timeout is active and we're not in recovery
+        if (!chain.worker && !p2p.recovering && !chain.shuttingDown) {
+            const currentLatest = chain.getLatestBlock();
+            const timeSinceLastBlock = Date.now() - currentLatest.timestamp;
+            const maxSilence = (cfg.blockTime || 3000) * 3; // 3 block intervals
+            
+            if (timeSinceLastBlock > maxSilence) {
+                logger.info(`Mining heartbeat: ${timeSinceLastBlock}ms since last block (>${maxSilence}ms threshold). Restarting mining...`);
+                mining.ensureMiningActive();
+            }
+        }
+    }, (cfg.blockTime || 3000) * 2); // Check every 2 block intervals
+    
     logger.info('Node daemon started successfully.');
 }
 

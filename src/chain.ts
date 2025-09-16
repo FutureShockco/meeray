@@ -410,7 +410,7 @@ export const chain = {
             logger.warn(`validateAndAddBlock${recoveryMode}: Block ID: ${block?._id} failed isValidNewBlock. Witness: ${block?.witness}`);
             return cb("Block failed basic validation", null);
         }
-        logger.trace(`validateAndAddBlock: Block ID: ${block?._id} passed isValidNewBlock. Witness: ${block?.witness}`); // Changed from console.log
+        logger.trace(`validateAndAddBlock: Block ID: ${block?._id} passed isValidNewBlock. Witness: ${block?.witness}`);
         // straight execution
         chain.executeBlockTransactions(block, false, function (successfullyExecutedTxs: any[], distributed: string) {
             logger.trace(`validateAndAddBlock: executeBlockTransactions for Block ID: ${block?._id} completed. Valid Txs: ${successfullyExecutedTxs?.length}/${block?.txs?.length}, Distributed: ${distributed}`);
