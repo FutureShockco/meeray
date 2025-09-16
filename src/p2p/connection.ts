@@ -12,21 +12,22 @@ import { SocketManager } from './socket.js';
 
 export class ConnectionManager {
     private state: P2PState;
+    private outgoingConnectionHandler?: (ws: EnhancedWebSocket) => void;
 
     constructor(state: P2PState) {
         this.state = state;
     }
 
+    setOutgoingConnectionHandler(handler: (ws: EnhancedWebSocket) => void): void {
+        this.outgoingConnectionHandler = handler;
+    }
+
     async keepAlive(): Promise<void> {
-        // Use console.log instead of logger to avoid serialization issues
-        console.log('[KEEP_ALIVE] PEERS count:', P2P_RUNTIME_CONFIG.PEERS.length);
-        console.log('[KEEP_ALIVE] First peer:', P2P_RUNTIME_CONFIG.PEERS[0]);
-        console.log('[KEEP_ALIVE] All peers:', JSON.stringify(P2P_RUNTIME_CONFIG.PEERS));
-        
+        logger.debug('[KEEP_ALIVE] Starting keep-alive check, configured peers:', P2P_RUNTIME_CONFIG.PEERS.length);
+        logger.debug('[KEEP_ALIVE] PEERS array:', P2P_RUNTIME_CONFIG.PEERS);
         const toConnect: string[] = [];
 
         for (const peer of P2P_RUNTIME_CONFIG.PEERS) {
-            console.log('[KEEP_ALIVE] Processing peer:', peer);
             let connected = false;
             const colonSplit = peer.replace('ws://', '').split(':');
             const port = parseInt(colonSplit.pop() || P2P_RUNTIME_CONFIG.P2P_PORT.toString());
@@ -57,17 +58,13 @@ export class ConnectionManager {
         }
 
         if (toConnect.length > 0) {
-            console.log('[KEEP_ALIVE] Will attempt to connect to:', toConnect);
             this.connect(toConnect);
-        } else {
-            console.log('[KEEP_ALIVE] All peers already connected');
         }
 
         setTimeout(() => this.keepAlive(), P2P_CONFIG.KEEP_ALIVE_INTERVAL);
     }
 
     connect(newPeers: string[], isInit: boolean = false): void {
-        console.log('[CONNECT] Attempting to connect to peers:', newPeers);
         newPeers.forEach((peer) => {
             // Skip if already connecting to this peer
             if (this.state.connectingPeers.has(peer)) {
@@ -100,7 +97,12 @@ export class ConnectionManager {
 
             ws.on('open', () => {
                 this.state.connectingPeers.delete(peer);
-                this.handshake(ws);
+                // Use the outgoing connection handler if available, otherwise fallback to direct handshake
+                if (this.outgoingConnectionHandler) {
+                    this.outgoingConnectionHandler(ws);
+                } else {
+                    this.handshake(ws);
+                }
             });
 
             ws.on('error', () => {
@@ -153,17 +155,10 @@ export class ConnectionManager {
         this.state.sockets.push(ws);
         
         // Send NODE_STATUS query to initiate handshake
-        if (!this.state.nodeId?.pub) {
-            logger.error('Cannot send QUERY_NODE_STATUS: nodeId not set!');
-            ws.close();
-            return;
-        }
-        
-        logger.debug('Sending QUERY_NODE_STATUS to peer with nodeId:', this.state.nodeId.pub, 'challenge:', random);
         SocketManager.sendJSON(ws, { 
             t: MessageType.QUERY_NODE_STATUS, 
             d: { 
-                nodeId: this.state.nodeId.pub,
+                nodeId: this.state.nodeId?.pub || '',
                 random: random 
             } 
         });

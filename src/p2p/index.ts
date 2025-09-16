@@ -42,6 +42,14 @@ const peerDiscovery = new PeerDiscovery(state, (peers, isInit) => connectionMana
 const messageHandler = new MessageHandler(state, peerDiscovery);
 const recoveryManager = new RecoveryManager(state);
 
+// Set up the outgoing connection handler now that messageHandler is available
+connectionManager.setOutgoingConnectionHandler((ws: EnhancedWebSocket) => {
+    // Same setup as incoming connections
+    messageHandler.setupMessageHandler(ws);
+    errorHandler(ws);
+    connectionManager.handshake(ws);
+});
+
 // Main P2P object that maintains compatibility with existing interface
 export const p2p = {
     // Expose state properties for backward compatibility
@@ -61,14 +69,6 @@ export const p2p = {
     get lastPeerListConnection() { return state.lastPeerListConnection; },
 
     init(): void {
-        logger.debug('[INIT] Starting P2P initialization');
-        logger.debug('[INIT] All env vars:', Object.keys(process.env).filter(k => k.includes('PEER')));
-        logger.debug('[INIT] Direct env check:', process.env.PEERS);
-        logger.debug('[INIT] PEERS environment variable:', process.env.PEERS);
-        logger.debug('[INIT] Parsed PEERS array:', P2P_RUNTIME_CONFIG.PEERS);
-        logger.debug('[INIT] PEERS length:', P2P_RUNTIME_CONFIG.PEERS.length);
-        logger.debug('[INIT] PEERS type:', typeof P2P_RUNTIME_CONFIG.PEERS);
-        logger.debug('[INIT] PEERS is array:', Array.isArray(P2P_RUNTIME_CONFIG.PEERS));
         generateNodeId();
         const server = new WebSocketServer({ 
             host: P2P_RUNTIME_CONFIG.P2P_HOST, 
