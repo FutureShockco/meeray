@@ -55,7 +55,7 @@ async function transfer(to: string, amount: string, symbol: string, memo: string
     } catch (error: any) {
         logger.error(`Error in transfer:`, error);
         if (error?.data?.stack) {
-            console.error('dsteem error data:', error.data.stack);
+            logger.error('dsteem error data:', error.data.stack);
         }
         throw error;
     }
@@ -78,9 +78,9 @@ async function broadcastTokenMint(mintData: { symbol: string; to: string; amount
         logger.debug(`TOKEN_MINT broadcast successful: TX ID ${result.id}`);
         return result;
     } catch (error: any) {
-        console.error(`Error in broadcastTokenMint:`, error);
+        logger.error(`Error in broadcastTokenMint:`, error);
         if (error?.data?.stack) {
-            console.error('dsteem error data:', error.data.stack);
+            logger.error('dsteem error data:', error.data.stack);
         }
         throw error;
     }

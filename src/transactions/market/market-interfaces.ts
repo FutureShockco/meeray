@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { BigIntToString, toBigInt, toDbString } from '../../utils/bigint.js';
-
+import logger from '../../logger.js';
 export enum OrderType {
   LIMIT = 'limit',
   MARKET = 'market',
@@ -80,7 +80,7 @@ export function createOrder(data: Partial<OrderData & { /* Allow extra fields li
     if (data.expirationTimestamp !== undefined) {
         expiresAtValue = new Date(Number(data.expirationTimestamp) * 1000).toISOString(); // Assuming seconds timestamp
         if (data.expiresAt && data.expiresAt !== expiresAtValue) {
-            console.warn('Both expiresAt (string) and expirationTimestamp (number) provided. Using expirationTimestamp.');
+            logger.warn('Both expiresAt (string) and expirationTimestamp (number) provided. Using expirationTimestamp.');
         }
     }
 
