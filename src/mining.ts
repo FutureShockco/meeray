@@ -190,7 +190,26 @@ export const mining = {
     minerWorker: (block: Block): void => {
         logger.trace(`minerWorker: Entered. Current chain head _id: ${block._id}. p2p.recovering: ${p2p.recovering}`);
         if (p2p.recovering) return;
+        
+        // Clear existing mining timeout
         clearTimeout(chain.worker);
+        chain.worker = null;
+
+        // Prevent duplicate mining attempts for the same block height
+        const candidateBlockId = block._id + 1;
+        if ((chain as any).lastMiningAttemptBlockId === candidateBlockId) {
+            logger.debug(`minerWorker: Already attempted mining for block ${candidateBlockId}, skipping duplicate attempt`);
+            return;
+        }
+        (chain as any).lastMiningAttemptBlockId = candidateBlockId;
+        
+        // Auto-reset the flag after block time to allow retry if needed
+        setTimeout(() => {
+            if ((chain as any).lastMiningAttemptBlockId === candidateBlockId) {
+                (chain as any).lastMiningAttemptBlockId = null;
+                logger.debug(`minerWorker: Auto-reset mining attempt flag for block ${candidateBlockId}`);
+            }
+        }, (steem.isInSyncMode() ? config.syncBlockTime : config.blockTime) * 2);
 
         if (!chain.schedule || !chain.schedule.shuffle || chain.schedule.shuffle.length === 0) {
             logger.fatal('Witness schedule not available or empty. Chain might be over or not initialized.');
@@ -282,6 +301,8 @@ export const mining = {
                         const waitForAdvance = () => {
                             const latestBlock = chain.getLatestBlock();
                             if (latestBlock && latestBlock._id > currentBlockId) {
+                                // Reset the mining attempt flag before calling minerWorker to allow new block
+                                (chain as any).lastMiningAttemptBlockId = null;
                                 mining.minerWorker(latestBlock);
                             } else {
                                 setTimeout(waitForAdvance, 1000);

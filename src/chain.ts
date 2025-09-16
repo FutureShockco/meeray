@@ -360,6 +360,10 @@ export const chain = {
             chain.schedule = witnessesModule.witnessSchedule(block);
 
         chain.recentBlocks.push(block);
+        
+        // Reset mining attempt flag when block is successfully added
+        (chain as any).lastMiningAttemptBlockId = null;
+        
         mining.minerWorker(block);
         chain.output(block);
 
