@@ -15,6 +15,7 @@ import { initializeModules } from './initialize.js';
 import { Block } from './block.js';
 import settings from './settings.js';
 import { startWorker as startSteemBridgeWorker } from './modules/steemBridge.js';
+import mining from './mining.js';
 
 process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
     logger.error('CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
@@ -233,6 +234,14 @@ async function startDaemon(cfg: any) {
     setInterval(() => {
         transaction.cleanPool?.();
     }, (cfg.blockTime || 3000) * 0.9);
+    
+    // Start initial mining with the latest block to kick off the mining process
+    const latestBlock = chain.getLatestBlock();
+    if (latestBlock) {
+        logger.info('Starting initial mining process...');
+        mining.minerWorker(latestBlock);
+    }
+    
     logger.info('Node daemon started successfully.');
 }
 
