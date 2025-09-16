@@ -5,6 +5,7 @@ import p2p, { MessageType } from './p2p.js';
 import { isValidNewBlock } from './block.js';
 import { signMessage } from './crypto.js';
 import steem from './steem.js';
+import mining from './mining.js';
 
 const consensus_need = 1;  // Reduced for 2-node setup
 const consensus_total = 2;  // Reduced for 2-node setup
@@ -282,7 +283,13 @@ export const consensus: Consensus = {
                 chain.validateAndAddBlock(possBlock.block, false, (err: any) => {
                     if (err) {
                         logger.error(`[CONSENSUS-TRYSTEP] Error for block ${possBlock.block?._id}:`, err);
+                    } else {
+                        // Block was successfully added to chain - restart mining to ensure correct phash
+                        // This is critical for collision resolution to prevent "invalid phash" errors
+                        logger.debug(`[COLLISION-RESTART] Block ${possBlock.block._id} applied successfully, restarting mining with fresh chain state`);
+                        mining.abortAndRestartMining();
                     }
+                    
                     let newPossBlocks = [];
                     for (let y = 0; y < this.possBlocks.length; y++)
                         if (possBlock.block._id < this.possBlocks[y].block._id)

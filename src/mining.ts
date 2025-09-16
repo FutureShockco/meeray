@@ -187,6 +187,27 @@ export const mining = {
         });
     },
 
+    /**
+     * Abort current mining operation and restart with fresh chain state
+     * Used for collision resolution to prevent phash mismatches
+     */
+    abortAndRestartMining: (): void => {
+        if (chain.worker) {
+            clearTimeout(chain.worker);
+            chain.worker = null;
+            logger.debug('[MINING-ABORT] Cleared current mining timeout');
+        }
+        
+        // Restart mining with current chain state
+        const latestBlock = chain.getLatestBlock();
+        if (latestBlock && !p2p.recovering) {
+            logger.debug(`[MINING-RESTART] Restarting mining for block ${latestBlock._id + 1} with phash ${latestBlock.hash.substr(0, 8)}`);
+            mining.minerWorker(latestBlock);
+        } else {
+            logger.debug('[MINING-RESTART] Skipping restart - either no latest block or in recovery mode');
+        }
+    },
+
     minerWorker: (block: Block): void => {
         logger.trace(`minerWorker: Entered. Current chain head _id: ${block._id}. p2p.recovering: ${p2p.recovering}`);
         if (p2p.recovering) return;
