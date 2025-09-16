@@ -60,7 +60,15 @@ export const p2p = {
     get lastEmergencyDiscovery() { return state.lastEmergencyDiscovery; },
     get lastPeerListConnection() { return state.lastPeerListConnection; },
 
-    async init(): Promise<void> {
+    init(): void {
+        logger.debug('[INIT] Starting P2P initialization');
+        logger.debug('[INIT] All env vars:', Object.keys(process.env).filter(k => k.includes('PEER')));
+        logger.debug('[INIT] Direct env check:', process.env.PEERS);
+        logger.debug('[INIT] PEERS environment variable:', process.env.PEERS);
+        logger.debug('[INIT] Parsed PEERS array:', P2P_RUNTIME_CONFIG.PEERS);
+        logger.debug('[INIT] PEERS length:', P2P_RUNTIME_CONFIG.PEERS.length);
+        logger.debug('[INIT] PEERS type:', typeof P2P_RUNTIME_CONFIG.PEERS);
+        logger.debug('[INIT] PEERS is array:', Array.isArray(P2P_RUNTIME_CONFIG.PEERS));
         generateNodeId();
         const server = new WebSocketServer({ 
             host: P2P_RUNTIME_CONFIG.P2P_HOST, 
@@ -70,7 +78,6 @@ export const p2p = {
 
         logger.info('Listening websocket p2p port on: ' + P2P_RUNTIME_CONFIG.P2P_PORT);
         logger.info('Version: ' + P2P_CONFIG.VERSION);
-
         // Initialize recovery and refresh
         setTimeout(() => {
             recoveryManager.recover();
@@ -79,11 +86,15 @@ export const p2p = {
 
         // Initialize discovery if enabled
         if (!P2P_RUNTIME_CONFIG.NO_DISCOVERY) {
+            logger.debug('[INIT] Discovery enabled, starting discovery worker');
             setInterval(() => peerDiscovery.discoveryWorker(), P2P_CONFIG.DISCOVERY_INTERVAL);
             peerDiscovery.discoveryWorker(true);
+        } else {
+            logger.debug('[INIT] Discovery disabled via NO_DISCOVERY flag');
         }
 
         // Initialize peer list requests (primary discovery method)
+        logger.debug('[INIT] Setting up peer list requests');
         setInterval(() => peerDiscovery.requestPeerLists(), P2P_CONFIG.PEER_LIST_REQUEST_INTERVAL);
         setTimeout(() => peerDiscovery.requestPeerLists(), P2P_CONFIG.PEER_LIST_INITIAL_DELAY);
 
@@ -128,9 +139,12 @@ function generateNodeId(): void {
 }
 
 function handshake(ws: EnhancedWebSocket): void {
-    connectionManager.handshake(ws);
+    logger.debug('New incoming connection, setting up handshake');
+    // Set up message handler FIRST, before sending any messages
     messageHandler.setupMessageHandler(ws);
     errorHandler(ws);
+    // Now initiate the handshake process
+    connectionManager.handshake(ws);
 }
 
 // Communication functions

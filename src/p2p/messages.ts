@@ -32,7 +32,9 @@ export class MessageHandler {
     }
 
     setupMessageHandler(ws: EnhancedWebSocket): void {
+        logger.debug('Setting up message handler for websocket');
         ws.on('message', (data) => {
+            logger.debug('Received P2P message:', data.toString().substring(0, 100));
             let message: any;
             try {
                 message = JSON.parse(data.toString());
@@ -84,7 +86,12 @@ export class MessageHandler {
     }
 
     handleNodeStatusQuery(ws: EnhancedWebSocket, message: any): void {
-        if (typeof message.d?.nodeId !== 'string' || typeof message.d?.random !== 'string') return;
+        logger.debug('Received QUERY_NODE_STATUS:', message.d);
+        
+        if (typeof message.d?.nodeId !== 'string' || typeof message.d?.random !== 'string') {
+            logger.warn('Invalid QUERY_NODE_STATUS format:', message.d);
+            return;
+        }
 
         const wsNodeId = message.d.nodeId;
         if (wsNodeId === this.state.nodeId?.pub) {
@@ -125,11 +132,18 @@ export class MessageHandler {
                     sign: signature
                 }
             });
+            
+            logger.debug('Sent NODE_STATUS response with signature');
         }
     }
 
     handleNodeStatus(ws: EnhancedWebSocket, message: any): void {
-        if (typeof message.d?.sign !== 'string') return;
+        logger.debug('Received NODE_STATUS:', message.d);
+        
+        if (typeof message.d?.sign !== 'string') {
+            logger.warn('NODE_STATUS missing signature:', message.d);
+            return;
+        }
 
         const wsIndex = this.state.sockets.indexOf(ws);
         if (wsIndex === -1) return;

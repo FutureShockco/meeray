@@ -22,7 +22,7 @@ export const P2P_RUNTIME_CONFIG = {
     MAX_PEERS: Number(process.env.MAX_PEERS) || 15,
     P2P_PORT: Number(process.env.P2P_PORT) || P2P_CONFIG.DEFAULT_PORT,
     P2P_HOST: process.env.P2P_HOST || '::',
-    PEERS: process.env.PEERS ? process.env.PEERS.split(',').map(s => s.trim()).filter(Boolean) : [],
+    PEERS: process.env.PEERS ? process.env.PEERS.split(',') : [],
     NO_DISCOVERY: process.env.NO_DISCOVERY === '1',
     OFFLINE: process.env.OFFLINE === '1',
     DISCOVERY_EXCLUDE: process.env.DISCOVERY_EXCLUDE ? process.env.DISCOVERY_EXCLUDE.split(',') : []
