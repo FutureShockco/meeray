@@ -31,3 +31,5 @@ scripts/lastLaunchpadId.txt
 .env
 .cursor/
 config/p2p_node_id.json
+build/node.exe
+build/mongod.exe
