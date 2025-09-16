@@ -102,16 +102,17 @@ export class MessageHandler {
 
         const wsIndex = this.state.sockets.indexOf(ws);
         if (wsIndex !== -1) {
-            const random = message.d.random;
-            ws.challengeHash = random;
+            const receivedChallenge = message.d.random;
+            // Store the challenge they sent us for signing our response
+            ws.receivedChallenge = receivedChallenge;
 
             const latestBlock = chain.getLatestBlock();
             
-            // Sign the challenge hash to prove we own this nodeId
+            // Sign the challenge hash they sent us to prove we own our nodeId
             let signature = '';
             if (this.state.nodeId?.priv) {
                 try {
-                    const sigObj = secp256k1.ecdsaSign(Buffer.from(random, 'hex'), bs58.decode(this.state.nodeId.priv));
+                    const sigObj = secp256k1.ecdsaSign(Buffer.from(receivedChallenge, 'hex'), bs58.decode(this.state.nodeId.priv));
                     signature = bs58.encode(sigObj.signature);
                 } catch (error) {
                     logger.error('Failed to sign challenge:', error);
@@ -148,11 +149,12 @@ export class MessageHandler {
         const wsIndex = this.state.sockets.indexOf(ws);
         if (wsIndex === -1) return;
 
-        const nodeId = this.state.sockets[wsIndex].node_status?.nodeId;
-        if (!message.d.nodeId || message.d.nodeId !== nodeId) return;
-
+        // Use the challenge we sent to them (not the one they sent to us)
         const challengeHash = this.state.sockets[wsIndex].challengeHash;
-        if (!challengeHash) return;
+        if (!challengeHash) {
+            logger.warn('No challengeHash found for signature verification');
+            return;
+        }
 
         if (message.d.origin_block !== config.originHash) {
             logger.debug('Different chain ID, disconnecting');
@@ -164,7 +166,7 @@ export class MessageHandler {
             const isValidSignature = secp256k1.ecdsaVerify(
                 bs58.decode(message.d.sign),
                 Buffer.from(challengeHash, 'hex'),
-                bs58.decode(nodeId || '')
+                bs58.decode(message.d.nodeId || '')
             );
 
             if (!isValidSignature) {
@@ -177,7 +179,7 @@ export class MessageHandler {
             for (let i = 0; i < this.state.sockets.length; i++) {
                 if (i !== wsIndex &&
                     this.state.sockets[i].node_status &&
-                    this.state.sockets[i].node_status?.nodeId === nodeId) {
+                    this.state.sockets[i].node_status?.nodeId === message.d.nodeId) {
                     logger.debug('Peer disconnected: duplicate connection');
                     this.state.sockets[i].close();
                 }
@@ -189,6 +191,8 @@ export class MessageHandler {
 
             delete message.d.sign;
             this.state.sockets[wsIndex].node_status = message.d;
+
+            logger.debug(`Peer connection established successfully with nodeId: ${message.d.nodeId}`);
 
         } catch (error) {
             logger.error('Error during NODE_STATUS verification:', error);

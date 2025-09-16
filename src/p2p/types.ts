@@ -42,6 +42,7 @@ export interface EnhancedWebSocket extends WebSocket {
     node_status?: NodeStatus;
     steemSyncStatus?: SteemSyncStatus;
     challengeHash?: string;
+    receivedChallenge?: string;
     pendingDisconnect?: NodeJS.Timeout;
     sentUs?: [string, number][];
     _peerUrl?: string;

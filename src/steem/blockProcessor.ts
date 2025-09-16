@@ -70,7 +70,7 @@ class BlockProcessor {
             try {
                 logger.debug(`Fetching Steem block ${blockNum} - attempt ${attempt}/${maxAttempts}`);
                 const rawSteemBlock = await this.apiClient.getBlock(blockNum);
-
+                logger.debug(`Fetched Steem block ${rawSteemBlock} data`);
                 if (rawSteemBlock) {
                     this.resetConsecutiveErrors();
                     return {
