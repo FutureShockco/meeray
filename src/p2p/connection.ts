@@ -9,6 +9,7 @@ import { chain } from '../chain.js';
 import { EnhancedWebSocket, P2PState, MessageType } from './types.js';
 import { P2P_CONFIG, P2P_RUNTIME_CONFIG } from './config.js';
 import { SocketManager } from './socket.js';
+import steem from '../steem.js';
 
 export class ConnectionManager {
     private state: P2PState;
@@ -189,7 +190,11 @@ export class ConnectionManager {
                 if (now - this.state.lastEmergencyDiscovery > P2P_CONFIG.EMERGENCY_COOLDOWN) {
                     logger.warn(`[CONNECTION] Below consensus threshold! (${currentPeerCount}/${minPeersForConsensus}) - triggering emergency discovery`);
                     this.state.lastEmergencyDiscovery = now;
-
+                    if (steem.isInSyncMode()) {
+                        logger.warn(`[CONNECTION] Exiting sync mode due to insufficient peers for consensus`);
+                        const currentBlock = chain.getLatestBlock();
+                        steem.exitSyncMode(currentBlock._id, currentBlock.steemBlockNum || 0);
+                    }
                     // These methods will be called by the main P2P module
                     // requestPeerLists();
                     // discoveryWorker(false);
