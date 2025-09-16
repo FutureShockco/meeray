@@ -22,7 +22,6 @@ src/logs/output.log.3.gz
 scripts/start.bat
 dist/
 scripts/accounts_steem.json
-
 scripts/lastTokenSymbol.txt
 scripts/lastNFTCollectionSymbol.txt
 scripts/lastNFTListingId.txt
@@ -33,3 +32,4 @@ scripts/lastLaunchpadId.txt
 config/p2p_node_id.json
 build/node.exe
 build/mongod.exe
+MeerayNodeSetup.exe
