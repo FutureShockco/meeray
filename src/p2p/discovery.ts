@@ -1,5 +1,6 @@
 import logger from '../logger.js';
 import config from '../config.js';
+import consensus from '../consensus.js';
 import { chain } from '../chain.js';
 import { witnessesModule } from '../witnesses.js';
 import { EnhancedWebSocket, P2PState, MessageType } from './types.js';
@@ -142,7 +143,10 @@ export class PeerDiscovery {
         const receivedPeers: string[] = message.d?.peers || [];
         if (!Array.isArray(receivedPeers)) return;
 
-        const currentPeerCount = this.state.sockets.filter(s => s.node_status).length;
+        const connectedPeerCount = this.state.sockets.filter(s => s.node_status).length;
+        // Include current node in consensus count if it's an active witness
+        const currentNodeIsWitness = consensus.isActive();
+        const currentPeerCount = connectedPeerCount + (currentNodeIsWitness ? 1 : 0);
         const totalWitnesses = config.witnesses || 5;
         const minPeersForConsensus = Math.ceil(totalWitnesses * 0.6);
         const optimalPeerCount = Math.min(totalWitnesses - 1, P2P_RUNTIME_CONFIG.MAX_PEERS);

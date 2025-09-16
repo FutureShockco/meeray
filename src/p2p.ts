@@ -154,7 +154,10 @@ export const p2p = {
     },
 
     discoveryWorker: async (isInit: boolean = false): Promise<void> => {
-        const currentPeerCount = p2p.sockets.filter(s => s.node_status).length;
+        const connectedPeerCount = p2p.sockets.filter(s => s.node_status).length;
+        // Include current node in consensus count if it's an active witness
+        const currentNodeIsWitness = consensus.isActive();
+        const currentPeerCount = connectedPeerCount + (currentNodeIsWitness ? 1 : 0);
         const totalWitnesses = config.witnesses || 5;
 
         // Calculate consensus requirements
@@ -690,7 +693,10 @@ export const p2p = {
         const receivedPeers: string[] = message.d?.peers || [];
         if (!Array.isArray(receivedPeers)) return;
 
-        const currentPeerCount = p2p.sockets.filter(s => s.node_status).length;
+        const connectedPeerCount = p2p.sockets.filter(s => s.node_status).length;
+        // Include current node in consensus count if it's an active witness
+        const currentNodeIsWitness = consensus.isActive();
+        const currentPeerCount = connectedPeerCount + (currentNodeIsWitness ? 1 : 0);
         const totalWitnesses = config.witnesses || 5;
         const minPeersForConsensus = Math.ceil(totalWitnesses * 0.6);
         const optimalPeerCount = Math.min(totalWitnesses - 1, max_peers);
@@ -894,7 +900,10 @@ export const p2p = {
         const index = p2p.sockets.indexOf(ws);
         if (index !== -1) {
             p2p.sockets.splice(index, 1);
-            const currentPeerCount = p2p.sockets.filter(s => s.node_status).length;
+            const connectedPeerCount = p2p.sockets.filter(s => s.node_status).length;
+            // Include current node in consensus count if it's an active witness
+            const currentNodeIsWitness = consensus.isActive();
+            const currentPeerCount = connectedPeerCount + (currentNodeIsWitness ? 1 : 0);
             const totalWitnesses = config.witnesses || 5;
             const minPeersForConsensus = Math.ceil(totalWitnesses * 0.6);
 
