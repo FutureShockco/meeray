@@ -176,8 +176,8 @@ export class ConnectionManager {
             
             // Keep SocketManager in sync
             SocketManager.setSockets(this.state.sockets);
-            const isActive = consensus.isActive();
-            const currentPeerCount = this.state.sockets.filter(s => s.node_status).length + (isActive ? 1 : 0);
+            const currentNodeIsWitness = consensus.isActive();
+            const currentPeerCount = this.state.sockets.filter(s => s.node_status).length + (currentNodeIsWitness ? 1 : 0);
             const totalWitnesses = config.witnesses || 5;
             const minPeersForConsensus = Math.ceil(totalWitnesses * 0.6);
 
