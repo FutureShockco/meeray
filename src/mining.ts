@@ -191,6 +191,37 @@ export const mining = {
         logger.trace(`minerWorker: Entered. Current chain head _id: ${block._id}. p2p.recovering: ${p2p.recovering}`);
         if (p2p.recovering) return;
         
+        // Check if we have sufficient peers for consensus before mining
+        const connectedPeerCount = p2p.sockets.filter(s => s.node_status).length;
+        const currentNodeIsWitness = consensus.isActive();
+        const currentPeerCount = connectedPeerCount + (currentNodeIsWitness ? 1 : 0);
+        const totalWitnesses = config.witnesses || 5;
+        const minPeersForConsensus = Math.ceil(totalWitnesses * 0.6);
+        
+        // If we're in sync mode but below consensus threshold, exit sync mode
+        if (steem.isInSyncMode() && currentPeerCount < minPeersForConsensus) {
+            logger.warn(`[SYNC-EXIT] Below consensus threshold (${currentPeerCount}/${minPeersForConsensus}) while in sync mode. Forcing sync mode exit.`);
+            const currentBlock = chain.getLatestBlock();
+            steem.exitSyncMode(currentBlock._id, currentBlock.steemBlockNum || 0);
+            // Continue with normal mining logic below
+        }
+        
+        if (currentPeerCount < minPeersForConsensus) {
+            logger.warn(`[MINING] Insufficient peers for consensus (${currentPeerCount}/${minPeersForConsensus}). Delaying mining for block ${block._id + 1}`);
+            // Retry mining after a short delay, giving time for peer discovery to work
+            chain.worker = setTimeout(() => {
+                const newLatestBlock = chain.getLatestBlock();
+                // Only retry if the chain hasn't advanced (no one else mined this block)
+                if (newLatestBlock._id === block._id) {
+                    mining.minerWorker(block);
+                } else {
+                    // Chain advanced, start mining the new latest block
+                    mining.minerWorker(newLatestBlock);
+                }
+            }, 3000);
+            return;
+        }
+        
         // Clear existing mining timeout
         clearTimeout(chain.worker);
         chain.worker = null;
