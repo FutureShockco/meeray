@@ -300,7 +300,7 @@ export const mining = {
                             steem.getLatestSteemBlockNum().then(latestSteemBlock => {
                                 logger.warn(`minerWorker: Normal Mode: latestBlock (${latestSteemBlock})`);
                                 if (latestSteemBlock) {
-                                    console.log(`Waiting for steem chain head to advance: latestBlock=${latestBlock?.steemBlockNum}, latestSteemBlock=${latestSteemBlock}`);
+                                    logger.warn(`Waiting for steem chain head to advance: latestBlock=${latestBlock?.steemBlockNum}, latestSteemBlock=${latestSteemBlock}`);
                                     if (latestBlock && latestBlock.steemBlockNum < latestSteemBlock) {
                                         mining.mineBlock(function (error, finalBlock) {
                                             if (error) {

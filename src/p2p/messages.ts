@@ -159,13 +159,6 @@ export class MessageHandler {
             return;
         }
 
-        console.log('=== SIGNATURE VERIFICATION DEBUG ===');
-        console.log('Our challenge hash:', challengeHash);
-        console.log('Their nodeId:', message.d.nodeId);
-        console.log('Their signature:', message.d.sign);
-        console.log('Challenge buffer:', Buffer.from(challengeHash, 'hex'));
-        console.log('NodeId decoded length:', bs58.decode(message.d.nodeId || '').length);
-
         if (message.d.origin_block !== config.originHash) {
             logger.debug('Different chain ID, disconnecting');
             ws.close();
@@ -179,15 +172,12 @@ export class MessageHandler {
                 bs58.decode(message.d.nodeId || '')
             );
 
-            console.log('Signature verification result:', isValidSignature);
-
             if (!isValidSignature) {
                 logger.warn('Wrong NODE_STATUS signature, disconnecting');
                 ws.close();
                 return;
             }
 
-            // Remove duplicate connections
             for (let i = 0; i < this.state.sockets.length; i++) {
                 if (i !== wsIndex &&
                     this.state.sockets[i].node_status &&

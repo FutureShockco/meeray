@@ -1,19 +1,8 @@
 import { WebSocketServer } from 'ws';
-import baseX from 'base-x';
-import config from '../config.js';
 import logger from '../logger.js';
 import { getNewKeyPair } from '../crypto.js';
 import { Block } from '../block.js';
-import { chain } from '../chain.js';
-
-// Import the modular components
-import { 
-    EnhancedWebSocket, 
-    P2PState, 
-    NodeKeyPair, 
-    MessageType,
-    SteemSyncStatus 
-} from './types.js';
+import { EnhancedWebSocket, P2PState, SteemSyncStatus } from './types.js';
 import { P2P_CONFIG, P2P_RUNTIME_CONFIG } from './config.js';
 import { ConnectionManager } from './connection.js';
 import { PeerDiscovery } from './discovery.js';
@@ -21,9 +10,6 @@ import { MessageHandler } from './messages.js';
 import { SocketManager } from './socket.js';
 import { RecoveryManager } from './recovery.js';
 
-const bs58 = baseX(config.b58Alphabet || '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz');
-
-// State object
 const state: P2PState = {
     sockets: [],
     recoveringBlocks: [],
@@ -42,22 +28,17 @@ const peerDiscovery = new PeerDiscovery(state, (peers, isInit) => connectionMana
 const recoveryManager = new RecoveryManager(state);
 const messageHandler = new MessageHandler(state, peerDiscovery, recoveryManager);
 
-// Initialize SocketManager with the state sockets
 SocketManager.setSockets(state.sockets);
 
-// Set up the outgoing connection handler now that messageHandler is available
 connectionManager.setOutgoingConnectionHandler((ws: EnhancedWebSocket) => {
-    // Same setup as incoming connections
     messageHandler.setupMessageHandler(ws);
     errorHandler(ws);
     connectionManager.handshake(ws);
 });
 
-// Main P2P object that maintains compatibility with existing interface
 export const p2p = {
-    // Expose state properties for backward compatibility
     get sockets() { 
-        SocketManager.setSockets(state.sockets); // Keep SocketManager in sync
+        SocketManager.setSockets(state.sockets);
         return state.sockets; 
     },
     get recoveringBlocks() { return state.recoveringBlocks; },
@@ -106,7 +87,6 @@ export const p2p = {
         setInterval(() => SocketManager.cleanRoundConfHistory(), P2P_CONFIG.HISTORY_INTERVAL);
     },
 
-    // Delegate to sub-modules
     generateNodeId: () => generateNodeId(),
     requestPeerLists: () => peerDiscovery.requestPeerLists(),
     discoveryWorker: (isInit?: boolean) => peerDiscovery.discoveryWorker(isInit),
@@ -114,15 +94,12 @@ export const p2p = {
     connect: (peers: string[], isInit?: boolean) => connectionManager.connect(peers, isInit),
     handshake: (ws: EnhancedWebSocket) => handshake(ws),
     
-    // Message handling - delegate to MessageHandler
     messageHandler: (ws: EnhancedWebSocket) => messageHandler.setupMessageHandler(ws),
 
-    // Core functions - delegate to specialized managers
     recover: () => recoveryManager.recover(),
     refresh: (force?: boolean) => recoveryManager.refresh(force),
     addRecursive: (block: Block) => messageHandler.addRecursive(block),
 
-    // Communication functions - delegate to SocketManager
     errorHandler: (ws: EnhancedWebSocket) => errorHandler(ws),
     closeConnection: (ws: EnhancedWebSocket) => connectionManager.closeConnection(ws),
     sendJSON: (ws: EnhancedWebSocket, data: any) => SocketManager.sendJSON(ws, data),
@@ -155,19 +132,15 @@ function generateNodeId(): void {
 
 function handshake(ws: EnhancedWebSocket): void {
     logger.debug('New incoming connection, setting up handshake');
-    // Set up message handler FIRST, before sending any messages
     messageHandler.setupMessageHandler(ws);
     errorHandler(ws);
-    // Now initiate the handshake process
     connectionManager.handshake(ws);
 }
 
-// Communication functions
 function errorHandler(ws: EnhancedWebSocket): void {
     ws.on('close', () => connectionManager.closeConnection(ws));
     ws.on('error', () => connectionManager.closeConnection(ws));
 }
 
-// Export both default and named for compatibility
 export default p2p;
 export { MessageType } from './types.js';
