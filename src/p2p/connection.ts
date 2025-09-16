@@ -152,6 +152,9 @@ export class ConnectionManager {
 
         this.state.sockets.push(ws);
         
+        // Keep SocketManager in sync
+        SocketManager.setSockets(this.state.sockets);
+        
         // Send NODE_STATUS query to initiate handshake
         SocketManager.sendJSON(ws, { 
             t: MessageType.QUERY_NODE_STATUS, 
@@ -168,6 +171,10 @@ export class ConnectionManager {
         const index = this.state.sockets.indexOf(ws);
         if (index !== -1) {
             this.state.sockets.splice(index, 1);
+            
+            // Keep SocketManager in sync
+            SocketManager.setSockets(this.state.sockets);
+            
             const currentPeerCount = this.state.sockets.filter(s => s.node_status).length;
             const totalWitnesses = config.witnesses || 5;
             const minPeersForConsensus = Math.ceil(totalWitnesses * 0.6);

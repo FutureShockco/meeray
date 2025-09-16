@@ -37,7 +37,7 @@ export class MessageHandler {
     setupMessageHandler(ws: EnhancedWebSocket): void {
         logger.debug('Setting up message handler for websocket');
         ws.on('message', (data) => {
-            logger.debug('Received P2P message:', data.toString().substring(0, 100));
+            logger.debug(`Received P2P message: ${data.toString().substring(0, 100)}`);
             let message: any;
             try {
                 message = JSON.parse(data.toString());
@@ -323,6 +323,10 @@ export class MessageHandler {
                 consensus.queue.push(message);
             } else if (validationStep > 0) {
                 consensus.remoteRoundConfirm(message);
+            } else if (validationStep === -1) {
+                // Block validation failed - trigger recovery
+                logger.debug('Block validation failed, triggering recovery');
+                this.recoveryManager.recover();
             }
         });
     }

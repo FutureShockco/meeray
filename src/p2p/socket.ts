@@ -3,21 +3,18 @@ import { EnhancedWebSocket, MessageType, SteemSyncStatus } from './types.js';
 import { Block } from '../block.js';
 import { P2P_CONFIG } from './config.js';
 
-// Central socket communication utilities - THE single source of truth for all P2P communication
+// Central socket communication utilities - stateless, works with provided sockets array
 export class SocketManager {
-    private static sockets: EnhancedWebSocket[] = [];
+    private static currentSockets: EnhancedWebSocket[] = [];
 
-    // Core socket management
+    // Set the current sockets array to work with
     static setSockets(sockets: EnhancedWebSocket[]): void {
-        this.sockets = sockets;
+        this.currentSockets = sockets;
     }
 
     static getSockets(): EnhancedWebSocket[] {
-        return this.sockets;
+        return this.currentSockets;
     }
-
-    // Remove individual socket management since we'll use setSockets to sync
-    // static addSocket and removeSocket are no longer needed since we sync via setSockets
 
     // Core communication methods
     static sendJSON(ws: EnhancedWebSocket, data: any): void {
@@ -31,9 +28,9 @@ export class SocketManager {
     }
 
     static broadcast(data: any): void {
-        const socketCount = this.sockets.length;
+        const socketCount = this.currentSockets.length;
         logger.debug(`P2P broadcast: Sending to ${socketCount} connected sockets. Message type: ${data.t}`);
-        this.sockets.forEach(ws => {
+        this.currentSockets.forEach((ws: EnhancedWebSocket) => {
             if (ws.readyState === 1) {
                 this.sendJSON(ws, data);
             }
@@ -41,7 +38,7 @@ export class SocketManager {
     }
 
     static broadcastNotSent(data: any): void {
-        for (const socket of this.sockets) {
+        for (const socket of this.currentSockets) {
             if (socket.readyState !== 1) continue;
 
             if (!socket.sentUs) {
@@ -77,7 +74,7 @@ export class SocketManager {
     // Utility methods
     static cleanRoundConfHistory(): void {
         const now = Date.now();
-        for (const socket of this.sockets) {
+        for (const socket of this.currentSockets) {
             if (!socket.sentUs) continue;
             for (let i = socket.sentUs.length - 1; i >= 0; i--) {
                 if (now - socket.sentUs[i][1] > P2P_CONFIG.KEEP_HISTORY_FOR) {
@@ -89,15 +86,15 @@ export class SocketManager {
 
     // Query methods for easier access
     static getConnectedSockets(): EnhancedWebSocket[] {
-        return this.sockets.filter(s => s.readyState === 1);
+        return this.currentSockets.filter((s: EnhancedWebSocket) => s.readyState === 1);
     }
 
     static getSocketsWithStatus(): EnhancedWebSocket[] {
-        return this.sockets.filter(s => s.node_status);
+        return this.currentSockets.filter((s: EnhancedWebSocket) => s.node_status);
     }
 
     static getSocketCount(): number {
-        return this.sockets.length;
+        return this.currentSockets.length;
     }
 
     static getConnectedCount(): number {

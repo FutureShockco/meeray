@@ -42,6 +42,9 @@ const peerDiscovery = new PeerDiscovery(state, (peers, isInit) => connectionMana
 const recoveryManager = new RecoveryManager(state);
 const messageHandler = new MessageHandler(state, peerDiscovery, recoveryManager);
 
+// Initialize SocketManager with the state sockets
+SocketManager.setSockets(state.sockets);
+
 // Set up the outgoing connection handler now that messageHandler is available
 connectionManager.setOutgoingConnectionHandler((ws: EnhancedWebSocket) => {
     // Same setup as incoming connections

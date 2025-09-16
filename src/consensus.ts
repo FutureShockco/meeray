@@ -199,6 +199,7 @@ export const consensus: Consensus = {
                     logger.warn('Block collision detected at height ' + possBlock.block._id + ', the witnesses are:', collisions);
 
                     // In sync mode, use deterministic collision resolution
+                    logger.debug(`[CONSENSUS-DEBUG] steem.isInSyncMode()=${steem.isInSyncMode()}, p2p.recovering=${p2p.recovering}`);
                     if (steem.isInSyncMode() && !p2p.recovering) {
                         logger.info(`[SYNC-COLLISION] Detected ${collisions.length} colliding blocks at height ${possBlock.block._id}. Using deterministic resolution...`);
 
