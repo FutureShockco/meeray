@@ -5,7 +5,6 @@ import p2p, { MessageType } from './p2p/index.js';
 import { isValidNewBlock } from './block.js';
 import { signMessage } from './crypto.js';
 import steem from './steem.js';
-import mining from './mining.js';
 
 const consensus_need = 1;  // Reduced for 2-node setup
 const consensus_total = 2;  // Reduced for 2-node setup
@@ -63,133 +62,29 @@ const processSyncCollisionWindow = (height: number) => {
         // Only one block - process normally
         const block = pendingBlocks[0].block;
         const cb = pendingBlocks[0].cb;
-        logger.debug(`[COLLISION-WINDOW] Single block for height ${height}, processing normally`);
         consensus.processBlockNormally(0, block, cb);
     } else {
         // Multiple blocks - apply deterministic resolution
-        logger.info(`[COLLISION-RESOLUTION] Resolving collision for height ${height} with ${pendingBlocks.length} blocks`);
+        logger.info(`[SYNC-COLLISION-WINDOW] Collision detected for height ${height} with ${pendingBlocks.length} blocks. Applying deterministic resolution.`);
         
-        // Analyze the collision type
-        const uniquePhashes = [...new Set(pendingBlocks.map(pb => pb.block.phash))];
-        
-        if (uniquePhashes.length === 1) {
-            // Same-parent collision - standard timestamp-based resolution
-            logger.info(`[COLLISION-RESOLUTION] Same-parent collision - all blocks reference phash ${uniquePhashes[0].substr(0, 8)}`);
-            
-            // Sort by timestamp first, then by hash for deterministic ordering
-            pendingBlocks.sort((a, b) => {
-                if (a.block.timestamp !== b.block.timestamp) {
-                    return a.block.timestamp - b.block.timestamp;
-                }
-                return a.block.hash < b.block.hash ? -1 : 1;
-            });
-            
-            const winningBlock = pendingBlocks[0];
-            logger.info(`[COLLISION-WINNER] Block ${height} by ${winningBlock.block.witness} wins (timestamp: ${winningBlock.block.timestamp})`);
-            
-            // Log the losing blocks
-            for (let i = 1; i < pendingBlocks.length; i++) {
-                const losingBlock = pendingBlocks[i];
-                logger.debug(`[COLLISION-LOSER] Block ${height} by ${losingBlock.block?.witness || 'unknown'} rejected (timestamp: ${losingBlock.block?.timestamp || 'unknown'})`);
-                
-                // Store losing blocks as alternatives for diagnostic purposes
-                if (losingBlock.block && !chain.alternativeBlocks) chain.alternativeBlocks = [];
-                if (losingBlock.block && chain.alternativeBlocks) {
-                    const altBlock = {
-                        ...losingBlock.block,
-                        _isAlternative: true,
-                        _storedAt: Date.now(),
-                        _rejectionReason: 'collision_loser'
-                    };
-                    chain.alternativeBlocks.push(altBlock);
-                }
+        // Sort by timestamp first, then by hash for deterministic ordering
+        pendingBlocks.sort((a, b) => {
+            if (a.block.timestamp !== b.block.timestamp) {
+                return a.block.timestamp - b.block.timestamp;
             }
-            
-            // Process the winning block
-            consensus.processBlockNormally(0, winningBlock.block, winningBlock.cb);
-            
-        } else {
-            // Fork collision - different parent blocks referenced
-            logger.warn(`[COLLISION-RESOLUTION] Fork collision detected - blocks reference different parents`);
-            
-            // In fork situations, we need to be more careful about resolution
-            // Check which parent blocks are valid in our current chain
-            const validBlocks = [];
-            const invalidBlocks = [];
-            
-            for (const pendingBlock of pendingBlocks) {
-                const block = pendingBlock.block;
-                const currentChainHead = chain.getLatestBlock();
-                
-                // Check if the phash references our current chain head or a recently valid block
-                let isValidPhash = false;
-                
-                if (block.phash === currentChainHead.hash) {
-                    isValidPhash = true;
-                } else {
-                    // Check recent blocks
-                    const maxLookback = Math.min(chain.recentBlocks.length, 5);
-                    for (let i = 1; i <= maxLookback; i++) {
-                        const historicalBlock = chain.recentBlocks[chain.recentBlocks.length - i];
-                        if (historicalBlock && historicalBlock.hash === block.phash && historicalBlock._id === block._id - 1) {
-                            isValidPhash = true;
-                            break;
-                        }
-                    }
-                }
-                
-                if (isValidPhash) {
-                    validBlocks.push(pendingBlock);
-                    logger.debug(`[FORK-ANALYSIS] Block from ${block.witness} has valid phash reference`);
-                } else {
-                    invalidBlocks.push(pendingBlock);
-                    logger.debug(`[FORK-ANALYSIS] Block from ${block.witness} has invalid phash reference ${block.phash.substr(0, 8)}`);
-                }
-            }
-            
-            if (validBlocks.length > 0) {
-                // Process valid blocks using standard resolution
-                logger.info(`[FORK-RESOLUTION] Processing ${validBlocks.length} valid blocks, rejecting ${invalidBlocks.length} invalid`);
-                
-                // Sort valid blocks by timestamp and hash
-                validBlocks.sort((a, b) => {
-                    if (a.block.timestamp !== b.block.timestamp) {
-                        return a.block.timestamp - b.block.timestamp;
-                    }
-                    return a.block.hash < b.block.hash ? -1 : 1;
-                });
-                
-                const winningBlock = validBlocks[0];
-                logger.info(`[FORK-WINNER] Block ${height} by ${winningBlock.block.witness} wins fork resolution`);
-                
-                // Store all losing blocks as alternatives
-                [...validBlocks.slice(1), ...invalidBlocks].forEach(losingBlock => {
-                    if (losingBlock.block && !chain.alternativeBlocks) chain.alternativeBlocks = [];
-                    if (losingBlock.block && chain.alternativeBlocks) {
-                        const altBlock = {
-                            ...losingBlock.block,
-                            _isAlternative: true,
-                            _storedAt: Date.now(),
-                            _rejectionReason: 'fork_loser'
-                        };
-                        chain.alternativeBlocks.push(altBlock);
-                    }
-                });
-                
-                consensus.processBlockNormally(0, winningBlock.block, winningBlock.cb);
-            } else {
-                // No valid blocks found - this shouldn't happen but handle gracefully
-                logger.error(`[FORK-RESOLUTION] No valid blocks found in fork collision for height ${height}. This suggests a deeper chain issue.`);
-                // Reject all blocks by calling their callbacks with error
-                pendingBlocks.forEach(pb => {
-                    if (pb.cb) pb.cb(-1);
-                });
-            }
+            return a.block.hash < b.block.hash ? -1 : 1;
+        });
+
+        const winningBlock = pendingBlocks[0];
+
+        // Log the losing blocks
+        for (let i = 1; i < pendingBlocks.length; i++) {
+            const losingBlock = pendingBlocks[i];
+            logger.debug(`[SYNC-COLLISION-WINDOW] Rejected: Block ${height} by ${losingBlock.block?.witness || 'unknown'} (timestamp: ${losingBlock.block?.timestamp || 'unknown'})`);
         }
-        
-        if(!consensus.observer) {
-            logger.debug(`[COLLISION-RESOLUTION] Collision resolution completed for height ${height}`);
-        }
+
+        // Process the winning block
+        consensus.processBlockNormally(0, winningBlock.block, winningBlock.cb);
     }
 
     // Cleanup
@@ -385,13 +280,7 @@ export const consensus: Consensus = {
                 chain.validateAndAddBlock(possBlock.block, false, (err: any) => {
                     if (err) {
                         logger.error(`[CONSENSUS-TRYSTEP] Error for block ${possBlock.block?._id}:`, err);
-                    } else {
-                        // Block was successfully added to chain - restart mining to ensure correct phash
-                        // This is critical for collision resolution to prevent "invalid phash" errors
-                        logger.debug(`[COLLISION-RESTART] Block ${possBlock.block._id} applied successfully, restarting mining with fresh chain state`);
-                        mining.abortAndRestartMining();
                     }
-                    
                     let newPossBlocks = [];
                     for (let y = 0; y < this.possBlocks.length; y++)
                         if (possBlock.block._id < this.possBlocks[y].block._id)
@@ -477,28 +366,7 @@ export const consensus: Consensus = {
             
             // Add this block to pending blocks for this height
             syncPendingBlocks[blockHeight].push({ block, cb });
-            
-            // Enhanced collision detection and logging
-            const currentPendingCount = syncPendingBlocks[blockHeight].length;
-            if (currentPendingCount > 1) {
-                logger.info(`[COLLISION-CONFIRMED] Multiple blocks detected for height ${blockHeight}. Current count: ${currentPendingCount}`);
-                
-                // Log details of all blocks in collision for debugging
-                syncPendingBlocks[blockHeight].forEach((pendingBlock, idx) => {
-                    const b = pendingBlock.block;
-                    logger.debug(`[COLLISION-BLOCK-${idx}] Height: ${b._id}, Witness: ${b.witness}, Hash: ${b.hash.substr(0, 8)}, Timestamp: ${b.timestamp}, phash: ${b.phash.substr(0, 8)}`);
-                });
-                
-                // Check if this is a same-phash collision (both reference same parent) or fork collision
-                const uniquePhashes = [...new Set(syncPendingBlocks[blockHeight].map(pb => pb.block.phash))];
-                if (uniquePhashes.length === 1) {
-                    logger.info(`[COLLISION-TYPE] Same-parent collision detected for height ${blockHeight} - all blocks reference phash ${uniquePhashes[0].substr(0, 8)}`);
-                } else {
-                    logger.warn(`[COLLISION-TYPE] Fork collision detected for height ${blockHeight} - blocks reference different parents: ${uniquePhashes.map(ph => ph.substr(0, 8)).join(', ')}`);
-                }
-            }
-            
-            logger.debug(`[COLLISION-WINDOW] Added block from ${block.witness} to collision window for height ${blockHeight} (${currentPendingCount} total)`);
+            logger.debug(`[COLLISION-WINDOW] Added block from ${block.witness} to collision window for height ${blockHeight} (${syncPendingBlocks[blockHeight].length} total)`);
             return; // Don't process immediately
         }
 
