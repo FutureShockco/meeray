@@ -10,6 +10,7 @@ import { EnhancedWebSocket, P2PState, MessageType } from './types.js';
 import { P2P_CONFIG, P2P_RUNTIME_CONFIG } from './config.js';
 import { SocketManager } from './socket.js';
 import steem from '../steem.js';
+import consensus from '../consensus.js';
 
 export class ConnectionManager {
     private state: P2PState;
@@ -175,8 +176,8 @@ export class ConnectionManager {
             
             // Keep SocketManager in sync
             SocketManager.setSockets(this.state.sockets);
-            
-            const currentPeerCount = this.state.sockets.filter(s => s.node_status).length;
+            const isActive = consensus.isActive();
+            const currentPeerCount = this.state.sockets.filter(s => s.node_status).length + (isActive ? 1 : 0);
             const totalWitnesses = config.witnesses || 5;
             const minPeersForConsensus = Math.ceil(totalWitnesses * 0.6);
 
