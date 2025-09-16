@@ -143,7 +143,13 @@ export class ConnectionManager {
         this.state.sockets.push(ws);
         
         // Send NODE_STATUS query to initiate handshake
-        SocketManager.sendJSON(ws, { t: MessageType.QUERY_NODE_STATUS, d: {} });
+        SocketManager.sendJSON(ws, { 
+            t: MessageType.QUERY_NODE_STATUS, 
+            d: { 
+                nodeId: this.state.nodeId?.pub || '',
+                random: random 
+            } 
+        });
         
         // Note: messageHandler and errorHandler will be set by the main P2P module
     }

@@ -99,6 +99,20 @@ export class MessageHandler {
             ws.challengeHash = random;
 
             const latestBlock = chain.getLatestBlock();
+            
+            // Sign the challenge hash to prove we own this nodeId
+            let signature = '';
+            if (this.state.nodeId?.priv) {
+                try {
+                    const sigObj = secp256k1.ecdsaSign(Buffer.from(random, 'hex'), bs58.decode(this.state.nodeId.priv));
+                    signature = bs58.encode(sigObj.signature);
+                } catch (error) {
+                    logger.error('Failed to sign challenge:', error);
+                    ws.close();
+                    return;
+                }
+            }
+
             SocketManager.sendJSON(ws, {
                 t: MessageType.NODE_STATUS,
                 d: {
@@ -108,6 +122,7 @@ export class MessageHandler {
                     previous_block_hash: latestBlock.phash,
                     origin_block: config.originHash,
                     version: P2P_CONFIG.VERSION,
+                    sign: signature
                 }
             });
         }
