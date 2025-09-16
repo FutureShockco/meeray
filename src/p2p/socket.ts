@@ -46,16 +46,24 @@ export class SocketManager {
 
             if (!socket.sentUs) {
                 this.sendJSON(socket, data);
-                socket.sentUs = [[JSON.stringify(data), Date.now()]];
+                socket.sentUs = [[data.s?.s || JSON.stringify(data), Date.now()]];
                 continue;
             }
 
-            const dataStr = JSON.stringify(data);
-            const alreadySent = socket.sentUs.some(([sent]) => sent === dataStr);
+            // Check by signature first (old P2P behavior), fallback to full message
+            const signature = data.s?.s;
+            let alreadySent = false;
+            
+            if (signature) {
+                alreadySent = socket.sentUs.some(([sent]) => sent === signature);
+            } else {
+                const dataStr = JSON.stringify(data);
+                alreadySent = socket.sentUs.some(([sent]) => sent === dataStr);
+            }
             
             if (!alreadySent) {
                 this.sendJSON(socket, data);
-                socket.sentUs.push([dataStr, Date.now()]);
+                socket.sentUs.push([signature || JSON.stringify(data), Date.now()]);
             }
         }
     }
