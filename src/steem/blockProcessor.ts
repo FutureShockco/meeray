@@ -19,7 +19,10 @@ class BlockProcessor {
     async processBlock(blockNum: number): Promise<SteemBlockResult | null> {
         const lastProcessedSteemBlockBySidechain = chain.getLatestBlock()?.steemBlockNum || 0;
 
+        logger.debug(`Processing block ${blockNum}, last processed: ${lastProcessedSteemBlockBySidechain}`);
+
         if (blockNum !== lastProcessedSteemBlockBySidechain + 1) {
+            logger.warn(`Block ${blockNum} is not sequential. Expected ${lastProcessedSteemBlockBySidechain + 1}, returning null`);
             return null;
         }
 
@@ -52,6 +55,7 @@ class BlockProcessor {
             }
 
             this.processingBlocks = this.processingBlocks.filter(b => b !== blockNum);
+            logger.debug(`Block processor returning result for block ${blockNum} with ${steemBlockResult.transactions.length} transactions`);
             return steemBlockResult;
         } catch (error) {
             this.incrementConsecutiveErrors();
@@ -70,7 +74,7 @@ class BlockProcessor {
             try {
                 logger.debug(`Fetching Steem block ${blockNum} - attempt ${attempt}/${maxAttempts}`);
                 const rawSteemBlock = await this.apiClient.getBlock(blockNum);
-                logger.debug(`Fetched Steem block ${rawSteemBlock} data`);
+
                 if (rawSteemBlock) {
                     this.resetConsecutiveErrors();
                     return {

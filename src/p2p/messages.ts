@@ -156,6 +156,13 @@ export class MessageHandler {
             return;
         }
 
+        console.log('=== SIGNATURE VERIFICATION DEBUG ===');
+        console.log('Our challenge hash:', challengeHash);
+        console.log('Their nodeId:', message.d.nodeId);
+        console.log('Their signature:', message.d.sign);
+        console.log('Challenge buffer:', Buffer.from(challengeHash, 'hex'));
+        console.log('NodeId decoded length:', bs58.decode(message.d.nodeId || '').length);
+
         if (message.d.origin_block !== config.originHash) {
             logger.debug('Different chain ID, disconnecting');
             ws.close();
@@ -168,6 +175,8 @@ export class MessageHandler {
                 Buffer.from(challengeHash, 'hex'),
                 bs58.decode(message.d.nodeId || '')
             );
+
+            console.log('Signature verification result:', isValidSignature);
 
             if (!isValidSignature) {
                 logger.warn('Wrong NODE_STATUS signature, disconnecting');
@@ -269,6 +278,7 @@ export class MessageHandler {
     }
 
     handleBlockConfRound(ws: EnhancedWebSocket, message: any): void {
+        logger.debug(`Received BLOCK_CONF_ROUND from ${message.s?.n}: round=${message.d?.r}, block hash=${message.d?.b?.hash}`);
         if (this.state.recovering) return;
         if (!message.s?.s || !message.s?.n || !message.d?.ts) return;
 
@@ -284,6 +294,7 @@ export class MessageHandler {
             this.state.sockets[wsIndex].sentUs!.push([message.s.s, now]);
         }
 
+        logger.debug(`Calling consensus.remoteRoundConfirm for block confirmation`);
         consensus.remoteRoundConfirm(message);
     }
 

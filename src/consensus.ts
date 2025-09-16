@@ -155,9 +155,11 @@ export const consensus: Consensus = {
         return actives;
     },
     tryNextStep: function () {
+        logger.debug(`consensus.tryNextStep: possBlocks.length=${this.possBlocks.length}, finalizing=${this.finalizing}`);
         const consensus_size = this.activeWitnesses().length;
         let threshold = consensus_size * consensus_threshold;
         if (!this.isActive()) threshold += 1;
+        logger.debug(`consensus.tryNextStep: consensus_size=${consensus_size}, threshold=${threshold}, isActive=${this.isActive()}`);
         let possBlocksById: Record<string, any[]> = {};
         if (this.possBlocks.length > 1) {
             for (let i = 0; i < this.possBlocks.length; i++) {
@@ -441,12 +443,16 @@ export const consensus: Consensus = {
         }
     },
     endRound: function (round: number, block: any, roundCallback?: Function) {
+        logger.debug(`consensus.endRound: round ${round}, block ${block._id}, isActive: ${this.isActive()}`);
         if (this.isActive()) {
             let onlyBlockHash: any = { hash: block.hash };
             if (block.witness === process.env.STEEM_ACCOUNT && round === 0)
                 onlyBlockHash = block;
             let signed = signMessage({ t: MessageType.BLOCK_CONF_ROUND, d: { r: round, b: onlyBlockHash, ts: new Date().getTime() } })
+            logger.debug(`consensus.endRound: Broadcasting block confirmation for block ${block._id}`);
             p2p.broadcast(signed);
+        } else {
+            logger.debug(`consensus.endRound: Not active, skipping broadcast for block ${block._id}`);
         }
         this.tryNextStep();
     },
@@ -454,16 +460,24 @@ export const consensus: Consensus = {
         const block = message.d.b;
         const round = message.d.r;
         const witness = message.s.n;
+        logger.debug(`consensus.remoteRoundConfirm: witness=${witness}, round=${round}, blockHash=${block.hash}, possBlocks.length=${this.possBlocks.length}`);
         for (let i = 0; i < this.possBlocks.length; i++) {
             if (block.hash === this.possBlocks[i].block.hash) {
+                logger.debug(`consensus.remoteRoundConfirm: Found matching block at index ${i}`);
                 if (this.possBlocks[i][round] && this.possBlocks[i][round].indexOf(witness) === -1) {
                     for (let r = round; r >= 0; r--)
                         if (this.possBlocks[i][r].indexOf(witness) === -1)
                             this.possBlocks[i][r].push(witness);
+                    logger.debug(`consensus.remoteRoundConfirm: Added witness confirmation, calling tryNextStep`);
                     this.tryNextStep();
+                } else {
+                    logger.debug(`consensus.remoteRoundConfirm: Witness ${witness} already confirmed for round ${round}`);
                 }
                 break;
             }
+        }
+        if (this.possBlocks.length === 0) {
+            logger.debug(`consensus.remoteRoundConfirm: No possBlocks available`);
         }
     },
 

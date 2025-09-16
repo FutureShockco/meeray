@@ -151,6 +151,7 @@ const processBlock = async (blockNum: number): Promise<SteemBlockResult | null> 
 
     for (let retries = 0; retries < 5; retries++) {
         const result = await blockProcessor.processBlock(blockNum);
+        logger.debug(`steem.processBlock received result for block ${blockNum}: ${result ? 'success' : 'null'}`);
         if (result !== null) {
             return result;
         }

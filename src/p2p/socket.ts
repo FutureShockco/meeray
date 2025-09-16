@@ -39,6 +39,7 @@ export class SocketManager {
     }
 
     static broadcast(data: any): void {
+        logger.debug(`P2P broadcast: Sending to ${this.sockets.length} connected sockets. Message type: ${data.t}`);
         this.sockets.forEach(ws => {
             if (ws.readyState === 1) {
                 this.sendJSON(ws, data);

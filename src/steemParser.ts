@@ -50,6 +50,7 @@ export interface ParsedTransaction {
  * @returns Array of parsed transactions
  */
 const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number): Promise<SteemBlockResult> => {
+    logger.debug(`Starting to parse Steem block ${blockNum} with ${steemBlock.transactions.length} transactions`);
     const txs: ParsedTransaction[] = [];
     let opIndex = 0;
     // Process each transaction
@@ -287,6 +288,7 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
         }
     }
 
+    logger.debug(`Finished parsing Steem block ${blockNum}, found ${txs.length} valid transactions`);
     return { transactions: txs, timestamp: new Date(steemBlock.timestamp + 'Z').getTime() };
 };
 

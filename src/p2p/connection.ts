@@ -151,6 +151,7 @@ export class ConnectionManager {
         }, P2P_CONFIG.HANDSHAKE_TIMEOUT);
 
         this.state.sockets.push(ws);
+        SocketManager.addSocket(ws);  // Also add to SocketManager for broadcasts
         
         // Send NODE_STATUS query to initiate handshake
         SocketManager.sendJSON(ws, { 
@@ -168,6 +169,7 @@ export class ConnectionManager {
         const index = this.state.sockets.indexOf(ws);
         if (index !== -1) {
             this.state.sockets.splice(index, 1);
+            SocketManager.removeSocket(ws);  // Also remove from SocketManager
             const currentPeerCount = this.state.sockets.filter(s => s.node_status).length;
             const totalWitnesses = config.witnesses || 5;
             const minPeersForConsensus = Math.ceil(totalWitnesses * 0.6);
