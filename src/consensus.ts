@@ -298,11 +298,15 @@ export const consensus: Consensus = {
         }
     },
     round: function (round: number, block: any, cb?: (result: number) => void) {
+        logger.debug(`consensus.round: round=${round}, block keys=[${Object.keys(block).join(',')}], block._id=${block._id}, needsFullBlock=${!!(block._id && block.witness && block.timestamp && block.hash)}`);
+        
         if (block._id && block._id !== chain.getLatestBlock?.()._id + 1) {
+            logger.debug(`consensus.round: Rejecting block - wrong _id. Expected ${chain.getLatestBlock?.()._id + 1}, got ${block._id}`);
             if (cb) cb(-1);
             return;
         }
         if (block.hash === chain.getLatestBlock?.().hash) {
+            logger.debug(`consensus.round: Rejecting block - same hash as current head`);
             if (cb) cb(-1);
             return;
         }

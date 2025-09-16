@@ -294,8 +294,32 @@ export class MessageHandler {
             this.state.sockets[wsIndex].sentUs!.push([message.s.s, now]);
         }
 
-        logger.debug(`Calling consensus.remoteRoundConfirm for block confirmation`);
-        consensus.remoteRoundConfirm(message);
+        // Check if already processed
+        for (const processed of consensus.processed || []) {
+            if (processed[0]?.s?.s === message.s.s) return;
+        }
+
+        // Add to processed list
+        if (!consensus.processed) consensus.processed = [];
+        consensus.processed.push([message, now]);
+
+        // Broadcast to other peers
+        SocketManager.broadcastNotSent(message);
+
+        // Process in consensus - follow the old P2P logic
+        logger.debug(`P2P calling consensus.round with block data:`, JSON.stringify(message.d.b));
+        consensus.round(0, message.d.b, (validationStep: number) => {
+            logger.debug(`P2P consensus.round callback: validationStep=${validationStep}`);
+            if (validationStep === 0) {
+                if (!consensus.queue) consensus.queue = [];
+                consensus.queue.push(message);
+            } else if (validationStep > 0) {
+                logger.debug(`P2P calling consensus.remoteRoundConfirm`);
+                consensus.remoteRoundConfirm(message);
+            } else {
+                logger.debug(`P2P consensus.round validation failed with step=${validationStep}`);
+            }
+        });
     }
 
     handleSteemSyncStatus(ws: EnhancedWebSocket, message: any): void {
