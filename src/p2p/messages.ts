@@ -19,16 +19,19 @@ import {
 import { P2P_CONFIG, P2P_RUNTIME_CONFIG } from './config.js';
 import { SocketManager } from './socket.js';
 import { PeerDiscovery } from './discovery.js';
+import { RecoveryManager } from './recovery.js';
 
 const bs58 = baseX(config.b58Alphabet || '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz');
 
 export class MessageHandler {
     private state: P2PState;
     private peerDiscovery: PeerDiscovery;
+    private recoveryManager: RecoveryManager;
 
-    constructor(state: P2PState, peerDiscovery: PeerDiscovery) {
+    constructor(state: P2PState, peerDiscovery: PeerDiscovery, recoveryManager: RecoveryManager) {
         this.state = state;
         this.peerDiscovery = peerDiscovery;
+        this.recoveryManager = recoveryManager;
     }
 
     setupMessageHandler(ws: EnhancedWebSocket): void {
@@ -245,19 +248,25 @@ export class MessageHandler {
 
     handleBlock(ws: EnhancedWebSocket, message: any): void {
         const block = message.d;
-        if (!block || typeof block._id !== 'number') return;
 
-        const wsIndex = this.state.sockets.indexOf(ws);
-        if (wsIndex === -1) return;
+        if (!block?._id || !this.state.recoveringBlocks.includes(block._id)) {
+            logger.warn('Ignoring block - not in recovering list');
+            return;
+        }
 
-        // Update peer's head block info
-        this.state.sockets[wsIndex].node_status!.head_block = block._id;
-        this.state.sockets[wsIndex].node_status!.head_block_hash = block.hash;
-        this.state.sockets[wsIndex].node_status!.previous_block_hash = block.phash;
+        const index = this.state.recoveringBlocks.indexOf(block._id);
+        if (index !== -1) {
+            this.state.recoveringBlocks.splice(index, 1);
+        }
 
-        if (this.state.recovering) return;
+        const currentHead = chain.getLatestBlock()._id;
 
-        consensus.round(0, block);
+        if (currentHead + 1 === block._id) {
+            this.addRecursive(block);
+        } else {
+            this.state.recoveredBlocks[block._id] = block;
+            this.recoveryManager.recover();
+        }
     }
 
     handleNewBlock(ws: EnhancedWebSocket, message: any): void {
@@ -306,18 +315,14 @@ export class MessageHandler {
         // Broadcast to other peers
         SocketManager.broadcastNotSent(message);
 
-        // Process in consensus - follow the old P2P logic
+        // Process in consensus
         logger.debug(`P2P calling consensus.round with block data:`, JSON.stringify(message.d.b));
         consensus.round(0, message.d.b, (validationStep: number) => {
-            logger.debug(`P2P consensus.round callback: validationStep=${validationStep}`);
             if (validationStep === 0) {
                 if (!consensus.queue) consensus.queue = [];
                 consensus.queue.push(message);
             } else if (validationStep > 0) {
-                logger.debug(`P2P calling consensus.remoteRoundConfirm`);
                 consensus.remoteRoundConfirm(message);
-            } else {
-                logger.debug(`P2P consensus.round validation failed with step=${validationStep}`);
             }
         });
     }
@@ -350,38 +355,26 @@ export class MessageHandler {
     }
 
     addRecursive(block: Block): void {
-        if (this.state.recoverAttempt > P2P_CONFIG.MAX_RECOVER_ATTEMPTS) {
-            logger.error('Too many recovery attempts, stopping');
-            this.state.recovering = false;
-            this.state.recoverAttempt = 0;
-            return;
-        }
-
-        const targetBlockId = chain.getLatestBlock()._id + 1;
-        if (block._id !== targetBlockId) {
-            logger.warn(`Expected block ${targetBlockId}, got ${block._id}. Storing for later.`);
-            this.state.recoveredBlocks[block._id] = block;
-            return;
-        }
-
-        chain.validateAndAddBlock(block, true, (newBlock: Block | null) => {
-            if (!newBlock) {
+        chain.validateAndAddBlock(block, true, (err: any, newBlock: Block | null) => {
+            if (err) {
+                cache.rollback();
+                this.state.recoveredBlocks = {};
+                this.state.recoveringBlocks = [];
                 this.state.recoverAttempt++;
-                logger.warn(`Block validation failed. Attempt ${this.state.recoverAttempt}/${P2P_CONFIG.MAX_RECOVER_ATTEMPTS}`);
-                
-                if (this.state.recoverAttempt <= P2P_CONFIG.MAX_RECOVER_ATTEMPTS) {
-                    // Retry logic would go here
+
+                if (this.state.recoverAttempt > P2P_CONFIG.MAX_RECOVER_ATTEMPTS) {
+                    logger.error(`Error Replay: exceeded max attempts for block ${block._id}`);
                 } else {
-                    this.state.recovering = false;
-                    this.state.recoverAttempt = 0;
+                    logger.warn(`Recover attempt #${this.state.recoverAttempt} for block ${block._id}`);
+                    this.state.recovering = chain.getLatestBlock()._id;
+                    this.recoveryManager.recover();
                 }
             } else {
                 this.state.recoverAttempt = 0;
                 if (newBlock) {
                     delete this.state.recoveredBlocks[newBlock._id];
                 }
-                // Trigger recovery for next block
-                // recover() would be called here
+                this.recoveryManager.recover();
 
                 // Process next block if available
                 const nextBlockId = chain.getLatestBlock()._id + 1;

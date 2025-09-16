@@ -39,8 +39,8 @@ const state: P2PState = {
 // Initialize sub-modules
 const connectionManager = new ConnectionManager(state);
 const peerDiscovery = new PeerDiscovery(state, (peers, isInit) => connectionManager.connect(peers, isInit));
-const messageHandler = new MessageHandler(state, peerDiscovery);
 const recoveryManager = new RecoveryManager(state);
+const messageHandler = new MessageHandler(state, peerDiscovery, recoveryManager);
 
 // Set up the outgoing connection handler now that messageHandler is available
 connectionManager.setOutgoingConnectionHandler((ws: EnhancedWebSocket) => {
