@@ -7,7 +7,7 @@ import { chain } from './chain.js';
 import transaction from './transaction.js';
 import cache from './cache.js';
 import { setMongoDbInstance as setCacheMongoDbInstance } from './cache.js';
-import { witnessesStats } from './modules/witnessesStats.js';
+import { witnessesStats } from './witnessesStats.js';
 import { blocks } from './blockStore.js';
 import { mongo, StateDoc } from './mongo.js'; 
 import { witnessesModule } from './witnesses.js';

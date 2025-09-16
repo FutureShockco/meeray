@@ -8,7 +8,6 @@ import { chain } from './chain.js';
 import { Block } from './block.js';
 import { TokenData } from './transactions/token/token-interfaces.js';
 import { toDbString, setTokenDecimals } from './utils/bigint.js';
-import settings from './settings.js';
 import { FarmData } from './transactions/farm/farm-interfaces.js';
 
 const DB_NAME = process.env.MONGO_DB || 'meeray';

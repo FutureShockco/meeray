@@ -1,0 +1,27 @@
+version: '3.8'
+services:
+  mongo:
+    image: mongo:6.0
+    container_name: meeray-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  meeray:
+    build: .
+    container_name: meeray-node
+    depends_on:
+      - mongo
+    env_file:
+      - .env
+    environment:
+      - MONGO_URL=mongodb://mongo:27017
+    ports:
+      - "3001:3001"
+      - "6001:6001"
+    command: npm start
+
+volumes:
+  mongo-data:

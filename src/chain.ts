@@ -8,7 +8,7 @@ import { Transaction } from './transactions/index.js';
 import mining from './mining.js';
 import cache from './cache.js';
 import txHistory from './modules/txHistory.js';
-import witnessesStats from './modules/witnessesStats.js';
+import witnessesStats from './witnessesStats.js';
 import { witnessesModule } from './witnesses.js';
 import p2p from './p2p/index.js';
 import notifications from './modules/notifications.js';

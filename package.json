@@ -4,7 +4,7 @@
   "type": "module",
   "main": "./dist/main.js",
   "scripts": {
-    "start": "tsx dist/main.js",
+  "start": "node dist/main.js",
     "test": "nodemon --watch src --ext ts --exec \"tsx src/main.ts\"",
     "dev": "nodemon --watch src --ext ts --exec \"tsx src/main.ts\"",
     "observer": "npm run reset-observer && cross-env PEERS=ws://localhost:6001 LOG_LEVEL=info WITNESS_PUBLIC_KEY=x WITNESS_PRIVATE_KEY=x MONGO_DB=meeray_observer STEEM_ACCOUNT=observer_node API_PORT=3001 P2P_PORT=6002 nodemon --watch src --ext ts --exec \"tsx src/main.ts\"",
