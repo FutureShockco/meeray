@@ -16,16 +16,8 @@ export class SocketManager {
         return this.sockets;
     }
 
-    static addSocket(socket: EnhancedWebSocket): void {
-        this.sockets.push(socket);
-    }
-
-    static removeSocket(socket: EnhancedWebSocket): void {
-        const index = this.sockets.indexOf(socket);
-        if (index !== -1) {
-            this.sockets.splice(index, 1);
-        }
-    }
+    // Remove individual socket management since we'll use setSockets to sync
+    // static addSocket and removeSocket are no longer needed since we sync via setSockets
 
     // Core communication methods
     static sendJSON(ws: EnhancedWebSocket, data: any): void {
@@ -39,7 +31,8 @@ export class SocketManager {
     }
 
     static broadcast(data: any): void {
-        logger.debug(`P2P broadcast: Sending to ${this.sockets.length} connected sockets. Message type: ${data.t}`);
+        const socketCount = this.sockets.length;
+        logger.debug(`P2P broadcast: Sending to ${socketCount} connected sockets. Message type: ${data.t}`);
         this.sockets.forEach(ws => {
             if (ws.readyState === 1) {
                 this.sendJSON(ws, data);

@@ -123,10 +123,22 @@ export const p2p = {
     errorHandler: (ws: EnhancedWebSocket) => errorHandler(ws),
     closeConnection: (ws: EnhancedWebSocket) => connectionManager.closeConnection(ws),
     sendJSON: (ws: EnhancedWebSocket, data: any) => SocketManager.sendJSON(ws, data),
-    broadcast: (data: any) => SocketManager.broadcast(data),
-    broadcastNotSent: (data: any) => SocketManager.broadcastNotSent(data),
-    broadcastBlock: (block: Block) => SocketManager.broadcastBlock(block),
-    broadcastSyncStatus: (syncStatus: SteemSyncStatus) => SocketManager.broadcastSyncStatus(syncStatus),
+    broadcast: (data: any) => { 
+        SocketManager.setSockets(state.sockets); 
+        return SocketManager.broadcast(data); 
+    },
+    broadcastNotSent: (data: any) => { 
+        SocketManager.setSockets(state.sockets); 
+        return SocketManager.broadcastNotSent(data); 
+    },
+    broadcastBlock: (block: Block) => { 
+        SocketManager.setSockets(state.sockets); 
+        return SocketManager.broadcastBlock(block); 
+    },
+    broadcastSyncStatus: (syncStatus: SteemSyncStatus) => { 
+        SocketManager.setSockets(state.sockets); 
+        return SocketManager.broadcastSyncStatus(syncStatus); 
+    },
     cleanRoundConfHistory: () => SocketManager.cleanRoundConfHistory()
 };
 

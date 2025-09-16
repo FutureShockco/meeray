@@ -178,6 +178,7 @@ export const consensus: Consensus = {
         }
         for (let i = 0; i < this.possBlocks.length; i++) {
             const possBlock = this.possBlocks[i];
+            logger.debug(`consensus.tryNextStep: possBlock[${i}] - blockId=${possBlock.block._id}, round0=${possBlock[0]?.length || 0}, round1=${possBlock[1]?.length || 0}, finalRound=${possBlock[(config.consensusRounds || 2) - 1]?.length || 0}`);
             //logger.cons('T'+Math.ceil(threshold)+' R0-'+possBlock[0].length+' R1-'+possBlock[1].length)
             if (
                 possBlock[(config.consensusRounds || 2) - 1].length > threshold &&
@@ -449,7 +450,7 @@ export const consensus: Consensus = {
             if (block.witness === process.env.STEEM_ACCOUNT && round === 0)
                 onlyBlockHash = block;
             let signed = signMessage({ t: MessageType.BLOCK_CONF_ROUND, d: { r: round, b: onlyBlockHash, ts: new Date().getTime() } })
-            logger.debug(`consensus.endRound: Broadcasting block confirmation for block ${block._id}`);
+            logger.debug(`consensus.endRound: Broadcasting block confirmation for block ${block._id}. Payload:`, JSON.stringify({ r: round, b: onlyBlockHash, ts: new Date().getTime() }));
             p2p.broadcast(signed);
         } else {
             logger.debug(`consensus.endRound: Not active, skipping broadcast for block ${block._id}`);
@@ -465,9 +466,12 @@ export const consensus: Consensus = {
             if (block.hash === this.possBlocks[i].block.hash) {
                 logger.debug(`consensus.remoteRoundConfirm: Found matching block at index ${i}`);
                 if (this.possBlocks[i][round] && this.possBlocks[i][round].indexOf(witness) === -1) {
-                    for (let r = round; r >= 0; r--)
-                        if (this.possBlocks[i][r].indexOf(witness) === -1)
+                    for (let r = round; r >= 0; r--) {
+                        if (this.possBlocks[i][r].indexOf(witness) === -1) {
                             this.possBlocks[i][r].push(witness);
+                            logger.debug(`consensus.remoteRoundConfirm: Added witness ${witness} to round ${r}, now has ${this.possBlocks[i][r].length} confirmations`);
+                        }
+                    }
                     logger.debug(`consensus.remoteRoundConfirm: Added witness confirmation, calling tryNextStep`);
                     this.tryNextStep();
                 } else {

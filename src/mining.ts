@@ -31,9 +31,7 @@ export const mining = {
 
         try {
             // Wait for Steem block processing to complete - this is BLOCKING
-            logger.debug(`mining.prepareBlock: About to process Steem block ${nextSteemBlockNum}`);
             const transactions = await steem.processBlock(nextSteemBlockNum);
-            logger.debug(`mining.prepareBlock: Received result for block ${nextSteemBlockNum}: ${transactions ? 'success' : 'null'}`);
             
             if (!transactions) {
                 // Handle the case where the Steem block doesn't exist yet
