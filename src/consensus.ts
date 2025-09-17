@@ -6,6 +6,9 @@ import { isValidNewBlock } from './block.js';
 import { signMessage } from './crypto.js';
 import steem from './steem.js';
 
+const consensus_need = 2
+const consensus_total = 3
+
 // Sync mode collision detection window - 200ms
 const SYNC_COLLISION_WINDOW_MS = 200;
 const syncCollisionTimers: { [height: number]: NodeJS.Timeout } = {};
@@ -19,7 +22,7 @@ export interface Consensus {
     finalizing: boolean;
     possBlocks: any[];
     witnessLastSeen?: Map<string, number>;
-    getConsensus: (blockId?: number) => { consensus_need: number; consensus_total: number; consensus_threshold: number; consensus_active: boolean };
+    getConsensus: () => { consensus_need: number; consensus_total: number; consensus_threshold: number; consensus_active: number; consensus_size: number, consensus_is_met: boolean };
     getActiveWitnessKey: (name: string) => string | undefined;
     isActive: () => boolean;
     activeWitnesses: () => string[];
@@ -86,24 +89,6 @@ const processSyncCollisionWindow = (height: number) => {
         // Process the winning block
         consensus.processBlockNormally(0, winningBlock.block, winningBlock.cb);
     }
-
-    // Cleanup
-    delete syncCollisionTimers[height];
-    delete syncPendingBlocks[height];
-
-    // Additional cleanup: Remove any stale collision windows (older than 2 seconds)
-    const now = Date.now();
-    const staleThreshold = 2000; // 2 seconds
-
-    Object.keys(syncCollisionTimers).forEach(heightStr => {
-        const h = parseInt(heightStr);
-        if (h < height - 5) { // Clean up timers for heights more than 5 blocks old
-            logger.debug(`[SYNC-COLLISION-WINDOW] Cleaning up stale collision timer for height ${h}`);
-            clearTimeout(syncCollisionTimers[h]);
-            delete syncCollisionTimers[h];
-            delete syncPendingBlocks[h];
-        }
-    });
 };
 
 export const consensus: Consensus = {
@@ -120,13 +105,12 @@ export const consensus: Consensus = {
                 return shuffle[i].witnessPublicKey;
         return;
     },
-    getConsensus: (blockId?: number) => {
-        const witnessCount = config.read(blockId || 0).witnesses;
-        const consensus_need = Math.ceil(witnessCount * 0.66); // 66% of witnesses needed
-        const consensus_total = witnessCount;
+    getConsensus: () => {
+        const consensus_size = consensus.activeWitnesses().length
         const consensus_threshold = consensus_need / consensus_total;
-        const consensus_active = consensus_threshold >= consensus_need
-        return { consensus_need, consensus_total, consensus_threshold, consensus_active };
+        const consensus_active = consensus_size * consensus_threshold
+        const consensus_is_met = consensus_size / consensus_active >= consensus_threshold
+        return { consensus_need, consensus_total, consensus_threshold, consensus_active, consensus_size, consensus_is_met };
     },
     isActive: function () {
         if (this.observer) return false;
@@ -213,14 +197,12 @@ export const consensus: Consensus = {
         return actives;
     },
     tryNextStep: function () {
-        logger.debug(`consensus.tryNextStep: possBlocks.length=${this.possBlocks.length}, finalizing=${this.finalizing}`);
-        const consensus_size = this.activeWitnesses().length;
-        const currentBlock = chain.getLatestBlock();
-        const { consensus_threshold } = this.getConsensus(currentBlock?._id);
+        const { consensus_threshold, consensus_size } = this.getConsensus();
         let threshold = consensus_size * consensus_threshold;
         if (!this.isActive()) threshold += 1;
         logger.debug(`consensus.tryNextStep: consensus_size=${consensus_size}, threshold=${threshold}, consensus_threshold=${consensus_threshold}, isActive=${this.isActive()}`);
         let possBlocksById: Record<string, any[]> = {};
+
         if (this.possBlocks.length > 1) {
             for (let i = 0; i < this.possBlocks.length; i++) {
                 const blockId = this.possBlocks[i].block._id;
@@ -236,6 +218,7 @@ export const consensus: Consensus = {
                     return a.block.hash < b.block.hash ? -1 : 1;
             });
         }
+
         for (let i = 0; i < this.possBlocks.length; i++) {
             const possBlock = this.possBlocks[i];
             logger.debug(`consensus.tryNextStep: possBlock[${i}] - blockId=${possBlock.block._id}, round0=${possBlock[0]?.length || 0}, round1=${possBlock[1]?.length || 0}, finalRound=${possBlock[(config.consensusRounds || 2) - 1]?.length || 0}`);
@@ -251,11 +234,13 @@ export const consensus: Consensus = {
                 // log which block got applied if collision exists
                 if (possBlocksById[possBlock.block._id] && possBlocksById[possBlock.block._id].length > 1) {
                     let collisions = [];
-                    for (let j = 0; j < possBlocksById[possBlock.block._id].length; j++)
+                    for (let j = 0; j < possBlocksById[possBlock.block._id].length; j++) {
                         collisions.push([
                             possBlocksById[possBlock.block._id][j].block.witness,
                             possBlocksById[possBlock.block._id][j].block.timestamp,
                         ]);
+                    }
+
                     logger.warn('Block collision detected at height ' + possBlock.block._id + ', the witnesses are:', collisions);
 
                     // In sync mode, use deterministic collision resolution
@@ -297,50 +282,12 @@ export const consensus: Consensus = {
                         }
 
                         logger.info(`[SYNC-COLLISION] Block ${possBlock.block._id} by ${possBlock.block.witness} won collision (timestamp: ${possBlock.block.timestamp})`);
-                        // Continue with processing the winning block
                     }
 
                     // In normal mode, apply the winning block as before
                     logger.info('Applying block ' + possBlock.block._id + '#' + possBlock.block.hash.substr(0, 4) + ' by ' + possBlock.block.witness + ' with timestamp ' + possBlock.block.timestamp);
 
-                    // Store alternative blocks for sync reconciliation (diagnostic only now)
-                    const alternativeBlocks = possBlocksById[possBlock.block._id].filter(pb => pb.block.hash !== possBlock.block.hash);
-                    if (alternativeBlocks.length > 0) {
-                        logger.info(`[COLLISION-TRACKING] Storing ${alternativeBlocks.length} alternative blocks for height ${possBlock.block._id} for diagnostics`);
-
-                        for (const altBlock of alternativeBlocks) {
-                            // Security check: Only store blocks that passed basic validation
-                            if (!altBlock.block.hash || !altBlock.block.witness || !altBlock.block.signature) {
-                                logger.warn(`[COLLISION-TRACKING] Skipping invalid alternative block from ${altBlock.block.witness}`);
-                                continue;
-                            }
-
-                            // Add alternative blocks for diagnostic purposes
-                            const tempBlock = {
-                                ...altBlock.block,
-                                _isAlternative: true,
-                                _storedAt: Date.now() // Timestamp for cleanup
-                            };
-
-                            // Store in a way that can be referenced but doesn't interfere with main chain
-                            if (!chain.alternativeBlocks) chain.alternativeBlocks = [];
-                            chain.alternativeBlocks.push(tempBlock);
-
-                            // Enhanced memory management: Keep only recent alternatives
-                            const maxAlternatives = 25;
-                            const maxAge = 300000; // 5 minutes max age
-                            const now = Date.now();
-
-                            // Clean by both count and age
-                            chain.alternativeBlocks = chain.alternativeBlocks.filter(ab =>
-                                now - ab._storedAt < maxAge && // Remove old blocks
-                                ab._id >= possBlock.block._id - 10 // Keep only last 10 block heights
-                            ).slice(-maxAlternatives); // Keep only last N blocks
-                        }
-                    }
-                } else {
-                    logger.debug('block ' + possBlock.block._id + '#' + possBlock.block.hash.substr(0, 4) + ' got finalized');
-                }
+                } 
                 chain.validateAndAddBlock(possBlock.block, false, (err: any) => {
                     if (err) {
                         logger.error(`[CONSENSUS-TRYSTEP] Error for block ${possBlock.block?._id}:`, err);

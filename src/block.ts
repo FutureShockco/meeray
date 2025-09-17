@@ -191,14 +191,12 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
     } else {
         // Universal backup: Allow any active witness to serve as backup
         // Check if the witness is in the current shuffle (active witnesses)
-        for (let i = 0; i < chain.schedule.shuffle.length; i++) {
-            if (chain.schedule.shuffle[i].name === newBlock.witness) {
-                // Calculate backup priority based on witness position in shuffle
-                const primaryWitnessIndex = (newBlock._id - 1) % chain.schedule.shuffle.length;
-                let backupSlot = (i - primaryWitnessIndex + chain.schedule.shuffle.length) % chain.schedule.shuffle.length;
-                if (backupSlot === 0) backupSlot = chain.schedule.shuffle.length; // Primary becomes last backup
-                witnessPriority = backupSlot + 1; // +1 because priority 1 is reserved for primary
-                break;
+        for (let i = 1; i <= config.read(newBlock._id).witnesses; i++) {
+            if (!chain.recentBlocks[chain.recentBlocks.length - i])
+                break
+            if (chain.recentBlocks[chain.recentBlocks.length - i].miner === newBlock.miner) {
+                witnessPriority = i+1
+                break
             }
         }
     }
@@ -207,18 +205,13 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
         return false;
     }
     const blockTime = newBlock.sync ? config.syncBlockTime : config.blockTime;
-    const expectedMinDelay = witnessPriority === 1 ? blockTime : blockTime * (1 + ((witnessPriority - 1) * 0.5));
-    if (previousBlock && (newBlock.timestamp - previousBlock.timestamp < expectedMinDelay)) {
-        const isRecovering = p2p.recovering || p2p.recoveringBlocks.length > 0 || p2p.recoverAttempt > 0;
-        const isReplayMode = process.env.REBUILD_STATE === '1';
-
-        logger.debug(`[TIMING-CHECK] Block ${newBlock._id}: timeDiff=${newBlock.timestamp - previousBlock.timestamp}, required=${expectedMinDelay}, priority=#${witnessPriority}, recovering=${isRecovering}, rebuild=${isReplayMode}, p2p.recovering=${p2p.recovering}, recoveringBlocks=${p2p.recoveringBlocks.length}, recoverAttempt=${p2p.recoverAttempt}`);
-
-        if (!isRecovering && !isReplayMode) {
+    const isRecovering = p2p.recovering || p2p.recoveringBlocks.length > 0 || p2p.recoverAttempt > 0;
+    const isReplayMode = process.env.REBUILD_STATE === '1';
+    if(newBlock.timestamp - previousBlock.timestamp < witnessPriority*blockTime)
+    {
+        if (!isRecovering && !isReplayMode && !steem.isInSyncMode()) {
             logger.error('block too early for witness with priority #' + witnessPriority);
             return false;
-        } else {
-            logger.info(`[RECOVERY] Allowing block timing validation bypass for block ${newBlock._id} with witness priority #${witnessPriority} (recovering=${isRecovering}, rebuild=${isReplayMode})`);
         }
     }
 
