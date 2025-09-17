@@ -32,7 +32,7 @@ const config = {
   tokenMinSupply: 1,
   tokenMaxSupply: 1000000000000000000,
   consensusRounds: 2,
-  witnesses: 2,
+  witnesses: 3,
   maxDrift: 30000,
   notifPurge: 1000,
   notifPurgeAfter: 10,
