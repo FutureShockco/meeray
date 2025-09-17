@@ -276,7 +276,9 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
     }
     const blockTime = newBlock.sync ? config.syncBlockTime : config.blockTime;
     // Check block is not too early for backup (skip during recovery/replay)
-    if (previousBlock && (newBlock.timestamp - previousBlock.timestamp < witnessPriority * blockTime)) {
+    // Use the same timing logic as mining: primary=1x, backup1=1.5x, backup2=2x, etc.
+    const expectedMinDelay = witnessPriority === 1 ? blockTime : blockTime * (1 + ((witnessPriority - 1) * 0.5));
+    if (previousBlock && (newBlock.timestamp - previousBlock.timestamp < expectedMinDelay)) {
         // During recovery/replay, we need to be more lenient with timing validation
         // as historical blocks may have been mined in rapid succession
         
@@ -285,7 +287,7 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
         const isHistoricalBlock = newBlock.timestamp < (Date.now() - 24 * 60 * 60 * 1000); // Block older than 24 hours
         const isReplayMode = process.env.REBUILD_STATE === '1';
         
-        logger.debug(`[TIMING-CHECK] Block ${newBlock._id}: timeDiff=${newBlock.timestamp - previousBlock.timestamp}, required=${witnessPriority * blockTime}, priority=#${witnessPriority}, recovering=${isRecovering}, historical=${isHistoricalBlock}, rebuild=${isReplayMode}, p2p.recovering=${p2p.recovering}, recoveringBlocks=${p2p.recoveringBlocks.length}, recoverAttempt=${p2p.recoverAttempt}`);
+        logger.debug(`[TIMING-CHECK] Block ${newBlock._id}: timeDiff=${newBlock.timestamp - previousBlock.timestamp}, required=${expectedMinDelay}, priority=#${witnessPriority}, recovering=${isRecovering}, historical=${isHistoricalBlock}, rebuild=${isReplayMode}, p2p.recovering=${p2p.recovering}, recoveringBlocks=${p2p.recoveringBlocks.length}, recoverAttempt=${p2p.recoverAttempt}`);
         
         if (!isRecovering && !isHistoricalBlock && !isReplayMode) {
             logger.error('block too early for witness with priority #' + witnessPriority);
