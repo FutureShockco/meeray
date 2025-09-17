@@ -189,7 +189,11 @@ export const mining = {
 
     minerWorker: (block: Block): void => {
         logger.trace(`minerWorker: Entered. Current chain head _id: ${block._id}. p2p.recovering: ${p2p.recovering}`);
-        if (p2p.recovering) return;
+        if (p2p.recovering) {
+            // Don't mark as mining attempt if we're in recovery mode
+            logger.debug('minerWorker: Skipping mining - node in recovery mode');
+            return;
+        }
         
         // Check if we have sufficient peers for consensus before mining
         const connectedPeerCount = p2p.sockets.filter(s => s.node_status).length;
@@ -219,6 +223,7 @@ export const mining = {
                     mining.minerWorker(newLatestBlock);
                 }
             }, 3000);
+            logger.debug('minerWorker: Insufficient peers, delaying mining (no tracking needed)');
             return;
         }
         
@@ -228,22 +233,42 @@ export const mining = {
 
         // Prevent duplicate mining attempts for the same block height
         const candidateBlockId = block._id + 1;
-        if ((chain as any).lastMiningAttemptBlockId === candidateBlockId) {
-            logger.debug(`minerWorker: Already attempted mining for block ${candidateBlockId}, skipping duplicate attempt`);
+        
+        // Initialize mining tracking if not exists
+        if (!(chain as any).activeMiningAttempts) {
+            (chain as any).activeMiningAttempts = new Set();
+        }
+        
+        // Auto-cleanup completed/failed mining attempts
+        const cleanupMiningAttempt = () => {
+            (chain as any).activeMiningAttempts.delete(candidateBlockId);
+            logger.debug(`minerWorker: Cleaned up mining attempt for block ${candidateBlockId}`);
+        };
+        
+        // Cleanup after reasonable timeout
+        const cleanupTimeout = setTimeout(cleanupMiningAttempt, (steem.isInSyncMode() ? config.syncBlockTime : config.blockTime) * 3);
+        
+        // Helper function for early returns that need cleanup
+        const abortMining = (reason: string) => {
+            cleanupMiningAttempt();
+            clearTimeout(cleanupTimeout);
+            logger.warn(`minerWorker: Aborting mining for block ${candidateBlockId}: ${reason}`);
+        };
+        
+        // Check if already mining this block
+        if ((chain as any).activeMiningAttempts.has(candidateBlockId)) {
+            logger.warn(`minerWorker: Already actively mining block ${candidateBlockId}, skipping duplicate attempt`);
+            // Don't call abortMining here since the attempt is already tracked
             return;
         }
-        (chain as any).lastMiningAttemptBlockId = candidateBlockId;
         
-        // Auto-reset the flag after block time to allow retry if needed
-        setTimeout(() => {
-            if ((chain as any).lastMiningAttemptBlockId === candidateBlockId) {
-                (chain as any).lastMiningAttemptBlockId = null;
-                logger.debug(`minerWorker: Auto-reset mining attempt flag for block ${candidateBlockId}`);
-            }
-        }, (steem.isInSyncMode() ? config.syncBlockTime : config.blockTime) * 2);
+        // Mark as actively mining
+        (chain as any).activeMiningAttempts.add(candidateBlockId);
+        logger.debug(`minerWorker: Starting mining attempt for block ${candidateBlockId}`);
 
         if (!chain.schedule || !chain.schedule.shuffle || chain.schedule.shuffle.length === 0) {
             logger.fatal('Witness schedule not available or empty. Chain might be over or not initialized.');
+            abortMining('No witness schedule');
             return;
         }
 
@@ -252,6 +277,7 @@ export const mining = {
         // but being absolutely defensive in case chain.schedule.shuffle is an empty array from a faulty witnessModule.witnessSchedule
         if (shuffleLength === 0) {
             logger.fatal('Witness schedule shuffle length is 0 despite earlier checks. Aborting minerWorker.');
+            abortMining('Empty witness shuffle');
             return;
         }
 
@@ -271,7 +297,7 @@ export const mining = {
 
         if (thisNodeIsPrimaryWitness && chain.lastWriteWasSlow) {
             logger.warn(`minerWorker: Previous cache write was slow. This node (${process.env.STEEM_ACCOUNT}) is primary for next block ${nextBlockId}. Forcing a delay to allow backups.`);
-            mineInMs = -blockTime;
+            mineInMs = blockTime * 2; // Delay primary to give backups a chance (positive delay)
             chain.lastWriteWasSlow = false;
             logger.trace(`minerWorker: Self-throttle applied: mineInMs set to ${mineInMs} for block ${nextBlockId}.`);
         }
@@ -290,13 +316,13 @@ export const mining = {
                 const recentBlockIndex = chain.recentBlocks.length - i;
                 if (recentBlockIndex >= 0 && chain.recentBlocks[recentBlockIndex].witness === process.env.STEEM_ACCOUNT) {
                     if (justExitedSync) {
-                        const targetTimestamp = lastBlockTimestamp + (config.blockTime * (i + 1) + (config.blockTime / 2));
+                        const targetTimestamp = lastBlockTimestamp + (config.blockTime * (1 + (i * 0.5)) + (config.blockTime / 2));
                         mineInMs = targetTimestamp - currentTime;
                         logger.trace(`minerWorker: Post-sync transition: Backup witness (slot ${i + 1}). Target: ${new Date(targetTimestamp).toISOString()}. Current: ${new Date(currentTime).toISOString()}. Calculated mineInMs: ${mineInMs}`);
                     } else {
-                        mineInMs = blockTime * (i + 1);
+                        mineInMs = blockTime * (1 + (i * 0.5));
                     }
-                    logger.debug(`minerWorker: Scheduled as backup witness (slot ${i + 1}). Initial mineInMs: ${mineInMs}ms`);
+                    logger.debug(`minerWorker: Scheduled as backup witness (slot ${i + 1}). Initial mineInMs: ${mineInMs}ms (${1 + (i * 0.5)}x blockTime)`);
                     break;
                 }
             }
@@ -321,6 +347,7 @@ export const mining = {
                 const postSyncGracePeriod = (config.blockTime || 3000) * 10;
                 if (chain.lastWriteWasSlow) {
                     logger.warn('minerWorker: Post-block-add check: lastWriteWasSlow is true. Prioritizing network health. Will not mine this slot.');
+                    abortMining('Network health - slow write detected');
                     return;
                 }
                 if (lastSyncExitTime && (currentTime - lastSyncExitTime < postSyncGracePeriod)) {
@@ -340,11 +367,12 @@ export const mining = {
                             }
                         };
                         setTimeout(waitForAdvance, 1000);
+                        abortMining('Post-sync grace period - timing too compressed');
                         return;
                     }
                 } else {
-                    const normalSkipThreshold = Math.max(150, blockTime / 3);
-                    logger.debug(`minerWorker: Normal Mode: mineInMs (${mineInMs}ms) is above threshold (${normalSkipThreshold}ms). Proceeding to mine.`);
+                    const normalSkipThreshold = config.blockTime / 2;
+                    logger.debug(`minerWorker: Normal Mode: mineInMs (${mineInMs}ms) vs threshold (${normalSkipThreshold}ms)`);
                     if (mineInMs < normalSkipThreshold) {
                         logger.warn(`minerWorker: Normal Mode: mineInMs (${mineInMs}ms) is below threshold (${normalSkipThreshold}ms). Waiting for chain head to advance.`);
                         const waitForAdvance = () => {
@@ -374,6 +402,7 @@ export const mining = {
                             });
                         };
                         setTimeout(waitForAdvance, 3000);
+                        abortMining('Normal mode - timing too compressed');
                         return;
                     }
                 }
@@ -382,8 +411,18 @@ export const mining = {
 
             chain.worker = setTimeout(function () {
                 mining.mineBlock(function (error, finalBlock) {
+                    // Clean up mining attempt when done (success or failure)
+                    const minedBlockId = block._id + 1;
+                    if ((chain as any).activeMiningAttempts) {
+                        (chain as any).activeMiningAttempts.delete(minedBlockId);
+                        logger.debug(`minerWorker: Mining completed for block ${minedBlockId}, cleaned up mining attempt`);
+                    }
+                    clearTimeout(cleanupTimeout); // Cancel auto-cleanup since we're doing it now
+                    
                     if (error) {
-                        logger.warn(`minerWorker: mineBlock: callback error for ${block._id + 1}. finalBlock._id: ${finalBlock?._id}`, error);
+                        logger.warn(`minerWorker: mineBlock: callback error for ${minedBlockId}. finalBlock._id: ${finalBlock?._id}`, error);
+                    } else {
+                        logger.debug(`minerWorker: Successfully mined block ${minedBlockId}`);
                     }
                 });
             }, mineInMs);

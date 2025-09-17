@@ -143,15 +143,26 @@ export const consensus: Consensus = {
         const actives: string[] = [];
 
         let currentWitness = chain.schedule.shuffle[(blockNum - 1) % config.witnesses].name;
-        if (consensus.getActiveWitnessKey(currentWitness))
+        const currentWitnessKey = consensus.getActiveWitnessKey(currentWitness);
+        logger.debug(`[DEBUG-ACTIVE-WITNESSES] Current witness for block ${blockNum}: ${currentWitness}, hasKey: ${!!currentWitnessKey}`);
+        if (currentWitnessKey)
             actives.push(currentWitness);
 
-        for (let i = 1; i < 2 * config.witnesses; i++)
-            if (chain.recentBlocks[chain.recentBlocks.length - i]
-                && actives.indexOf(chain.recentBlocks[chain.recentBlocks.length - i].witness) === -1
-                && consensus.getActiveWitnessKey(chain.recentBlocks[chain.recentBlocks.length - i].witness))
-                actives.push(chain.recentBlocks[chain.recentBlocks.length - i].witness);
+        for (let i = 1; i < 2 * config.witnesses; i++) {
+            const recentBlock = chain.recentBlocks[chain.recentBlocks.length - i];
+            if (recentBlock) {
+                const witnessKey = consensus.getActiveWitnessKey(recentBlock.witness);
+                const alreadyAdded = actives.indexOf(recentBlock.witness) !== -1;
+                logger.debug(`[DEBUG-ACTIVE-WITNESSES] Recent block ${i}: witness=${recentBlock.witness}, hasKey: ${!!witnessKey}, alreadyAdded: ${alreadyAdded}`);
+                if (!alreadyAdded && witnessKey) {
+                    actives.push(recentBlock.witness);
+                }
+            } else {
+                logger.debug(`[DEBUG-ACTIVE-WITNESSES] No recent block at index ${i}`);
+            }
+        }
 
+        logger.debug(`[DEBUG-ACTIVE-WITNESSES] Final active witnesses: [${actives.join(',')}] (count: ${actives.length})`);
         return actives;
     },
     tryNextStep: function () {
@@ -314,7 +325,10 @@ export const consensus: Consensus = {
 
         // COLLISION WINDOW - Use synchronized window only when needed (sync mode or multiple witnesses)
         const activeWitnessCount = this.activeWitnesses().length;
+        const activeWitnessList = this.activeWitnesses();
         const needCollisionWindow = steem.isInSyncMode() || activeWitnessCount > 1;
+
+        logger.debug(`[DEBUG-COLLISION] Block ${block._id} - activeWitnesses: ${activeWitnessCount} [${activeWitnessList.join(',')}], syncMode: ${steem.isInSyncMode()}, needCollisionWindow: ${needCollisionWindow}`);
         
         if (round === 0 && needCollisionWindow && block._id && block.witness && block.timestamp && block.hash) {
             logger.debug(`[COLLISION-WINDOW] Using collision window for height ${block._id} (activeWitnesses: ${activeWitnessCount}, syncMode: ${steem.isInSyncMode()})`);
@@ -378,12 +392,6 @@ export const consensus: Consensus = {
             return; // Don't process immediately
         }
 
-        // Skip collision window for single witness in normal mode
-        if (round === 0 && !needCollisionWindow) {
-            logger.debug(`[COLLISION-WINDOW] Skipping collision window for height ${block._id || 'unknown'} (activeWitnesses: ${activeWitnessCount}, syncMode: ${steem.isInSyncMode()})`);
-        }
-
-        // Normal processing (non-sync mode or non-round-0)
         this.processBlockNormally(round, block, cb);
     },
     
@@ -511,7 +519,7 @@ export const consensus: Consensus = {
         const majorityThreshold = Math.ceil(peersWithStatus.length / 2);
 
         if (peersAdvanced.length >= majorityThreshold) {
-            logger.info(`[SYNC-COLLISION] Network majority (${peersAdvanced.length}/${peersWithStatus.length}) advanced past collision. Requesting winning block.`);
+            logger.warn(`[SYNC-COLLISION] Network majority (${peersAdvanced.length}/${peersWithStatus.length}) advanced past collision. Requesting winning block.`);
 
             // Find the most common head block among advanced peers
             const headBlocks: { [key: number]: number } = {};
@@ -525,19 +533,19 @@ export const consensus: Consensus = {
             );
 
             // Request the winning block for collision height
-            logger.info(`[SYNC-COLLISION] Requesting block ${collisionHeight} from peer with head ${winningHeight}`);
+            logger.warn(`[SYNC-COLLISION] Requesting block ${collisionHeight} from peer with head ${winningHeight}`);
             const championPeer = peersAdvanced.find(ws => ws.node_status!.head_block >= winningHeight);
             if (championPeer) {
                 p2p.sendJSON(championPeer, { t: MessageType.QUERY_BLOCK, d: collisionHeight });
             }
         } else {
-            logger.info(`[SYNC-COLLISION] Network majority (${peersWithStatus.length - peersAdvanced.length}/${peersWithStatus.length}) did not advance. Proceeding with collision rejection.`);
+            logger.warn(`[SYNC-COLLISION] Network majority (${peersWithStatus.length - peersAdvanced.length}/${peersWithStatus.length}) did not advance. Proceeding with collision rejection.`);
             this.rejectCollisionAndWait(collisionHeight);
         }
     },
 
     rejectCollisionAndWait: function (collisionHeight: number) {
-        logger.info(`[SYNC-COLLISION] Rejecting all colliding blocks at height ${collisionHeight}. Chain head unchanged.`);
+        logger.warn(`[SYNC-COLLISION] Rejecting all colliding blocks at height ${collisionHeight}. Chain head unchanged.`);
 
         // Remove all blocks at collision height from consideration
         let newPossBlocks = [];
@@ -548,7 +556,7 @@ export const consensus: Consensus = {
         }
         this.possBlocks = newPossBlocks;
 
-        logger.info(`[SYNC-COLLISION] Chain head remains at ${chain.getLatestBlock()._id}#${chain.getLatestBlock().hash.substr(0, 4)}. Next witness can mine cleanly.`);
+        logger.warn(`[SYNC-COLLISION] Chain head remains at ${chain.getLatestBlock()._id}#${chain.getLatestBlock().hash.substr(0, 4)}. Next witness can mine cleanly.`);
     },
 };
 

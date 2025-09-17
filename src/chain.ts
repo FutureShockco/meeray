@@ -361,8 +361,12 @@ export const chain = {
 
         chain.recentBlocks.push(block);
         
-        // Reset mining attempt flag when block is successfully added
-        (chain as any).lastMiningAttemptBlockId = null;
+        // Reset mining attempt flags when block is successfully added
+        (chain as any).lastMiningAttemptBlockId = null; // Legacy cleanup
+        if ((chain as any).activeMiningAttempts) {
+            (chain as any).activeMiningAttempts.delete(block._id); // New system cleanup
+            logger.debug(`chain.addBlock: Cleaned up mining attempt for block ${block._id}`);
+        }
         
         mining.minerWorker(block);
         chain.output(block);
