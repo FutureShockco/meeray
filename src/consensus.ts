@@ -6,16 +6,6 @@ import { isValidNewBlock } from './block.js';
 import { signMessage } from './crypto.js';
 import steem from './steem.js';
 
-// Dynamic consensus configuration based on witness count
-const getConsensusConfig = (blockId?: number) => {
-    const witnessCount = config.read(blockId || 0).witnesses;
-    const consensus_need = Math.ceil(witnessCount * 0.66); // 66% of witnesses needed
-    const consensus_total = witnessCount;
-    const consensus_threshold = consensus_need / consensus_total;
-    
-    return { consensus_need, consensus_total, consensus_threshold };
-};
-
 // Sync mode collision detection window - 200ms
 const SYNC_COLLISION_WINDOW_MS = 200;
 const syncCollisionTimers: { [height: number]: NodeJS.Timeout } = {};
@@ -29,6 +19,7 @@ export interface Consensus {
     finalizing: boolean;
     possBlocks: any[];
     witnessLastSeen?: Map<string, number>;
+    getConsensus: (blockId?: number) => { consensus_need: number; consensus_total: number; consensus_threshold: number; consensus_active: boolean };
     getActiveWitnessKey: (name: string) => string | undefined;
     isActive: () => boolean;
     activeWitnesses: () => string[];
@@ -40,6 +31,8 @@ export interface Consensus {
     handleSyncCollisionWithNetworkQuery: (collisionHeight: number, collisions: any[], savedPossBlocks: any[]) => void;
     rejectCollisionAndWait: (collisionHeight: number) => void;
 }
+
+
 
 // Function to process collected blocks after collision window
 const processSyncCollisionWindow = (height: number) => {
@@ -73,7 +66,7 @@ const processSyncCollisionWindow = (height: number) => {
     } else {
         // Multiple blocks - apply deterministic resolution
         logger.info(`[SYNC-COLLISION-WINDOW] Collision detected for height ${height} with ${pendingBlocks.length} blocks. Applying deterministic resolution.`);
-        
+
         // Sort by timestamp first, then by hash for deterministic ordering
         pendingBlocks.sort((a, b) => {
             if (a.block.timestamp !== b.block.timestamp) {
@@ -97,11 +90,11 @@ const processSyncCollisionWindow = (height: number) => {
     // Cleanup
     delete syncCollisionTimers[height];
     delete syncPendingBlocks[height];
-    
+
     // Additional cleanup: Remove any stale collision windows (older than 2 seconds)
     const now = Date.now();
     const staleThreshold = 2000; // 2 seconds
-    
+
     Object.keys(syncCollisionTimers).forEach(heightStr => {
         const h = parseInt(heightStr);
         if (h < height - 5) { // Clean up timers for heights more than 5 blocks old
@@ -126,6 +119,14 @@ export const consensus: Consensus = {
             if (shuffle[i].name === name)
                 return shuffle[i].witnessPublicKey;
         return;
+    },
+    getConsensus: (blockId?: number) => {
+        const witnessCount = config.read(blockId || 0).witnesses;
+        const consensus_need = Math.ceil(witnessCount * 0.66); // 66% of witnesses needed
+        const consensus_total = witnessCount;
+        const consensus_threshold = consensus_need / consensus_total;
+        const consensus_active = consensus_threshold >= consensus_need
+        return { consensus_need, consensus_total, consensus_threshold, consensus_active };
     },
     isActive: function () {
         if (this.observer) return false;
@@ -159,12 +160,12 @@ export const consensus: Consensus = {
         let currentWitness = chain.schedule.shuffle[(blockNum - 1) % config.witnesses].name;
         const currentWitnessKey = consensus.getActiveWitnessKey(currentWitness);
         logger.debug(`[DEBUG-ACTIVE-WITNESSES] Current witness for block ${blockNum}: ${currentWitness}, hasKey: ${!!currentWitnessKey}`);
-        
+
         // Only add current witness if they have a key and haven't timed out
         if (currentWitnessKey) {
             const lastSeen = consensus.witnessLastSeen.get(currentWitness) || currentTime;
             const timeSinceLastSeen = currentTime - lastSeen;
-            
+
             if (timeSinceLastSeen <= witnessTimeoutMs) {
                 actives.push(currentWitness);
                 logger.debug(`[DEBUG-ACTIVE-WITNESSES] Added current witness ${currentWitness} (last seen ${timeSinceLastSeen}ms ago)`);
@@ -178,13 +179,13 @@ export const consensus: Consensus = {
             if (recentBlock) {
                 const witnessKey = consensus.getActiveWitnessKey(recentBlock.witness);
                 const alreadyAdded = actives.indexOf(recentBlock.witness) !== -1;
-                
+
                 if (!alreadyAdded && witnessKey) {
                     // Update last seen time for this witness based on when they mined this block
                     consensus.witnessLastSeen.set(recentBlock.witness, recentBlock.timestamp);
-                    
+
                     const timeSinceLastSeen = currentTime - recentBlock.timestamp;
-                    
+
                     if (timeSinceLastSeen <= witnessTimeoutMs) {
                         actives.push(recentBlock.witness);
                         logger.debug(`[DEBUG-ACTIVE-WITNESSES] Added recent witness ${recentBlock.witness} (last seen ${timeSinceLastSeen}ms ago)`);
@@ -201,7 +202,7 @@ export const consensus: Consensus = {
             const timeSinceLastSeen = currentTime - lastSeenTime;
             const alreadyAdded = actives.indexOf(witness) !== -1;
             const witnessKey = consensus.getActiveWitnessKey(witness);
-            
+
             if (!alreadyAdded && witnessKey && timeSinceLastSeen <= witnessTimeoutMs) {
                 actives.push(witness);
                 logger.debug(`[DEBUG-ACTIVE-WITNESSES] Added witness ${witness} based on recent P2P activity (last seen ${timeSinceLastSeen}ms ago)`);
@@ -215,7 +216,7 @@ export const consensus: Consensus = {
         logger.debug(`consensus.tryNextStep: possBlocks.length=${this.possBlocks.length}, finalizing=${this.finalizing}`);
         const consensus_size = this.activeWitnesses().length;
         const currentBlock = chain.getLatestBlock();
-        const { consensus_threshold } = getConsensusConfig(currentBlock?._id);
+        const { consensus_threshold } = this.getConsensus(currentBlock?._id);
         let threshold = consensus_size * consensus_threshold;
         if (!this.isActive()) threshold += 1;
         logger.debug(`consensus.tryNextStep: consensus_size=${consensus_size}, threshold=${threshold}, consensus_threshold=${consensus_threshold}, isActive=${this.isActive()}`);
@@ -359,7 +360,7 @@ export const consensus: Consensus = {
     },
     round: function (round: number, block: any, cb?: (result: number) => void) {
         logger.debug(`consensus.round: round=${round}, block keys=[${Object.keys(block).join(',')}], block._id=${block._id}, needsFullBlock=${!!(block._id && block.witness && block.timestamp && block.hash)}`);
-        
+
         if (block._id && block._id !== chain.getLatestBlock?.()._id + 1) {
             logger.debug(`consensus.round: Rejecting block - wrong _id. Expected ${chain.getLatestBlock?.()._id + 1}, got ${block._id}`);
             if (cb) cb(-1);
@@ -377,17 +378,17 @@ export const consensus: Consensus = {
         const needCollisionWindow = steem.isInSyncMode() || activeWitnessCount > 1;
 
         logger.debug(`[DEBUG-COLLISION] Block ${block._id} - activeWitnesses: ${activeWitnessCount} [${activeWitnessList.join(',')}], syncMode: ${steem.isInSyncMode()}, needCollisionWindow: ${needCollisionWindow}`);
-        
+
         if (round === 0 && needCollisionWindow && block._id && block.witness && block.timestamp && block.hash) {
             logger.debug(`[COLLISION-WINDOW] Using collision window for height ${block._id} (activeWitnesses: ${activeWitnessCount}, syncMode: ${steem.isInSyncMode()})`);
             const blockHeight = block._id;
-            
+
             // Check if we already have a timer for this height
             if (!syncCollisionTimers[blockHeight]) {
                 // Use the earliest block timestamp we've seen + collision window as the deadline
                 // This ensures all nodes use the same reference point once they see any block for this height
                 let earliestTimestamp = block.timestamp;
-                
+
                 // Check if we have other pending blocks for this height to find the earliest timestamp
                 if (syncPendingBlocks[blockHeight]) {
                     for (const pendingBlock of syncPendingBlocks[blockHeight]) {
@@ -396,16 +397,16 @@ export const consensus: Consensus = {
                         }
                     }
                 }
-                
+
                 const windowEndTime = earliestTimestamp + SYNC_COLLISION_WINDOW_MS;
                 const currentTime = Date.now();
                 const timeUntilWindowEnd = Math.max(50, windowEndTime - currentTime); // Minimum 50ms
-                
+
                 logger.debug(`[COLLISION-WINDOW] Starting synchronized collision window for height ${blockHeight}, ends in ${timeUntilWindowEnd}ms (reference: ${earliestTimestamp})`);
                 if (!syncPendingBlocks[blockHeight]) {
                     syncPendingBlocks[blockHeight] = [];
                 }
-                
+
                 syncCollisionTimers[blockHeight] = setTimeout(() => {
                     processSyncCollisionWindow(blockHeight);
                 }, timeUntilWindowEnd);
@@ -418,14 +419,14 @@ export const consensus: Consensus = {
                             earliestTimestamp = pendingBlock.block.timestamp;
                         }
                     }
-                    
+
                     // If this is the new earliest block, reset the timer
                     if (block.timestamp < earliestTimestamp) {
                         clearTimeout(syncCollisionTimers[blockHeight]);
                         const windowEndTime = block.timestamp + SYNC_COLLISION_WINDOW_MS;
                         const currentTime = Date.now();
                         const timeUntilWindowEnd = Math.max(50, windowEndTime - currentTime);
-                        
+
                         logger.debug(`[COLLISION-WINDOW] Updated collision window for height ${blockHeight} with earlier timestamp, ends in ${timeUntilWindowEnd}ms`);
                         syncCollisionTimers[blockHeight] = setTimeout(() => {
                             processSyncCollisionWindow(blockHeight);
@@ -433,7 +434,7 @@ export const consensus: Consensus = {
                     }
                 }
             }
-            
+
             // Add this block to pending blocks for this height
             syncPendingBlocks[blockHeight].push({ block, cb });
             logger.debug(`[COLLISION-WINDOW] Added block from ${block.witness} to collision window for height ${blockHeight} (${syncPendingBlocks[blockHeight].length} total)`);
@@ -442,7 +443,7 @@ export const consensus: Consensus = {
 
         this.processBlockNormally(round, block, cb);
     },
-    
+
     processBlockNormally: async function (round: number, block: any, cb?: (result: number) => void) {
         if (round === 0) {
             for (let i = 0; i < this.possBlocks.length; i++)
@@ -474,7 +475,7 @@ export const consensus: Consensus = {
                 if (cb) cb(-1);
             } else {
                 logger.debug('Precommitting block ' + block._id + '#' + block.hash.substr(0, 4));
-                
+
                 // Track witness activity when they mine a block
                 if (!this.witnessLastSeen) {
                     this.witnessLastSeen = new Map<string, number>();
@@ -528,13 +529,13 @@ export const consensus: Consensus = {
         const block = message.d.b;
         const round = message.d.r;
         const witness = message.s.n;
-        
+
         // Track witness activity for timeout detection
         if (!this.witnessLastSeen) {
             this.witnessLastSeen = new Map<string, number>();
         }
         this.witnessLastSeen.set(witness, Date.now());
-        
+
         logger.debug(`consensus.remoteRoundConfirm: witness=${witness}, round=${round}, blockHash=${block.hash}, possBlocks.length=${this.possBlocks.length}`);
         for (let i = 0; i < this.possBlocks.length; i++) {
             if (block.hash === this.possBlocks[i].block.hash) {

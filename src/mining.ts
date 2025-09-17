@@ -200,17 +200,16 @@ export const mining = {
         const currentNodeIsWitness = consensus.isActive();
         const currentPeerCount = connectedPeerCount + (currentNodeIsWitness ? 1 : 0);
         const totalWitnesses = config.witnesses || 5;
-        const minPeersForConsensus = Math.ceil(totalWitnesses * 0.6);
+        const minPeersForConsensus = Math.ceil(totalWitnesses * 0.66);
         
         // If we're in sync mode but below consensus threshold, exit sync mode
-        if (steem.isInSyncMode() && currentPeerCount < minPeersForConsensus) {
+        if (steem.isInSyncMode() && !consensus.getConsensus().consensus_active) {
             logger.warn(`[SYNC-EXIT] Below consensus threshold (${currentPeerCount}/${minPeersForConsensus}) while in sync mode. Forcing sync mode exit.`);
             const currentBlock = chain.getLatestBlock();
             steem.exitSyncMode(currentBlock._id, currentBlock.steemBlockNum || 0);
-            // Continue with normal mining logic below
         }
         
-        if (currentPeerCount < minPeersForConsensus && consensus.isActive()) {
+        if (consensus.getConsensus().consensus_active && consensus.isActive()) {
             logger.warn(`[MINING] Insufficient peers for consensus (${currentPeerCount}/${minPeersForConsensus}). Delaying mining for block ${block._id + 1}`);
             // Retry mining after a short delay, giving time for peer discovery to work
             chain.worker = setTimeout(() => {
@@ -261,39 +260,8 @@ export const mining = {
             // Don't call abortMining here since the attempt is already tracked
             return;
         }
-        
-        // Prevent same witness from mining same block multiple times (collision prevention)
-        if (!(chain as any).witnessBlockAttempts) {
-            (chain as any).witnessBlockAttempts = new Map();
-        }
-        const witnessBlockKey = `${process.env.STEEM_ACCOUNT}:${candidateBlockId}`;
-        if ((chain as any).witnessBlockAttempts.has(witnessBlockKey)) {
-            logger.warn(`minerWorker: Witness ${process.env.STEEM_ACCOUNT} already attempted to mine block ${candidateBlockId}. Preventing collision.`);
-            return;
-        }
-        
-        // Mark this witness+block combination as attempted
-        (chain as any).witnessBlockAttempts.set(witnessBlockKey, Date.now());
-        
-        // Cleanup old attempts (keep only last 10 blocks worth)
-        const cleanupThreshold = candidateBlockId - 10;
-        for (const [key, _] of (chain as any).witnessBlockAttempts.entries()) {
-            const blockId = parseInt(key.split(':')[1]);
-            if (blockId < cleanupThreshold) {
-                (chain as any).witnessBlockAttempts.delete(key);
-            }
-        }
-        
-        
-        // Mark as actively mining
-        (chain as any).activeMiningAttempts.add(candidateBlockId);
-        logger.debug(`minerWorker: Starting mining attempt for block ${candidateBlockId}`);
 
-        if (!chain.schedule || !chain.schedule.shuffle || chain.schedule.shuffle.length === 0) {
-            logger.fatal('Witness schedule not available or empty. Chain might be over or not initialized.');
-            abortMining('No witness schedule');
-            return;
-        }
+
 
         const shuffleLength = chain.schedule.shuffle.length;
         // It's highly unlikely shuffleLength would be 0 here due to the check above, 
