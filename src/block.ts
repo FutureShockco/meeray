@@ -273,12 +273,7 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
     }
     const blockTime = newBlock.sync ? config.syncBlockTime : config.blockTime;
     // Check block is not too early for backup (skip during recovery/replay)
-    // ✅ IMPROVED: More lenient timing for missing witnesses
-    const expectedMinDelay = witnessPriority > 1 ? 
-        Math.min(witnessPriority * blockTime, 2 * blockTime) : // Cap backup delay at 2x blockTime when witnesses are missing
-        blockTime;
-    
-    if (previousBlock && (newBlock.timestamp - previousBlock.timestamp < expectedMinDelay)) {
+    if (previousBlock && (newBlock.timestamp - previousBlock.timestamp < witnessPriority * blockTime)) {
         // During recovery/replay, we need to be more lenient with timing validation
         // as historical blocks may have been mined in rapid succession
         
