@@ -344,7 +344,9 @@ export const mining = {
 
         if (mineInMs !== null) {
             mineInMs -= (new Date().getTime() - block.timestamp);
-            mineInMs += 40;
+            // Add larger buffer for backup witnesses to account for processing delays
+            const bufferMs = thisNodeIsPrimaryWitness ? 40 : 200; // 200ms buffer for backups
+            mineInMs += bufferMs;
             const timeSinceLastBlock = chain.lastBlockTime ? Date.now() - chain.lastBlockTime : 0;
             chain.lastBlockTime = Date.now();
             logger.trace(`minerWorker: Calculated mineInMs: ${mineInMs}. Will try to mine for block _id ${block._id + 1}. (sync: ${steem.isInSyncMode()}), timeSinceLastBlock: ${timeSinceLastBlock}ms`);
