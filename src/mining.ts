@@ -262,6 +262,29 @@ export const mining = {
             return;
         }
         
+        // ✅ DOUBLE-MINING PROTECTION: Check if this witness already produced a block at this height
+        const witnessName = process.env.STEEM_ACCOUNT;
+        const existingBlockAtHeight = chain.recentBlocks.find(
+            b => b._id === candidateBlockId && b.witness === witnessName
+        );
+        if (existingBlockAtHeight) {
+            logger.warn(`minerWorker: Witness ${witnessName} already produced block ${candidateBlockId} (hash: ${existingBlockAtHeight.hash}), skipping duplicate mining attempt`);
+            abortMining('Witness already produced block at this height');
+            return;
+        }
+        
+        // Also check alternative blocks if present
+        if (chain.alternativeBlocks && Array.isArray(chain.alternativeBlocks)) {
+            const altExistingBlock = chain.alternativeBlocks.find(
+                b => b._id === candidateBlockId && b.witness === witnessName
+            );
+            if (altExistingBlock) {
+                logger.warn(`minerWorker: Witness ${witnessName} already produced block ${candidateBlockId} in alternativeBlocks, skipping duplicate mining attempt`);
+                abortMining('Witness already produced block at this height (alternative)');
+                return;
+            }
+        }
+        
         // Mark as actively mining
         (chain as any).activeMiningAttempts.add(candidateBlockId);
         logger.debug(`minerWorker: Starting mining attempt for block ${candidateBlockId}`);
@@ -411,18 +434,55 @@ export const mining = {
 
             chain.worker = setTimeout(function () {
                 mining.mineBlock(function (error, finalBlock) {
-                    // Clean up mining attempt when done (success or failure)
                     const minedBlockId = block._id + 1;
-                    if ((chain as any).activeMiningAttempts) {
-                        (chain as any).activeMiningAttempts.delete(minedBlockId);
-                        logger.debug(`minerWorker: Mining completed for block ${minedBlockId}, cleaned up mining attempt`);
-                    }
                     clearTimeout(cleanupTimeout); // Cancel auto-cleanup since we're doing it now
                     
                     if (error) {
                         logger.warn(`minerWorker: mineBlock: callback error for ${minedBlockId}. finalBlock._id: ${finalBlock?._id}`, error);
+                        
+                        // ✅ SMART RETRY LOGIC - Only allow network-level recovery, not witness-level retries
+                        // This prevents the same witness from double-mining while still allowing deadlock recovery
+                        
+                        // Clean up mining attempt immediately to prevent double-mining
+                        if ((chain as any).activeMiningAttempts) {
+                            (chain as any).activeMiningAttempts.delete(minedBlockId);
+                            logger.debug(`minerWorker: Cleaned up failed mining attempt for block ${minedBlockId}`);
+                        }
+                        
+                        // Only retry after a significant delay if chain is truly stuck (no one else mined)
+                        setTimeout(() => {
+                            const currentLatestBlock = chain.getLatestBlock();
+                            if (currentLatestBlock._id === block._id) {
+                                // Chain hasn't advanced - network might be stuck
+                                logger.warn(`minerWorker: Network appears stuck at block ${currentLatestBlock._id} - triggering peer discovery`);
+                                
+                                // Don't retry immediately - let other witnesses try first
+                                // Just trigger network recovery mechanisms
+                                if (p2p.discoveryWorker) {
+                                    p2p.discoveryWorker(false);
+                                }
+                                
+                                // Only restart mining after a long delay to let network recover
+                                setTimeout(() => {
+                                    const finalLatestBlock = chain.getLatestBlock();
+                                    if (finalLatestBlock._id === block._id) {
+                                        logger.info(`minerWorker: Network still stuck after recovery attempt, restarting mining as last resort`);
+                                        mining.minerWorker(finalLatestBlock);
+                                    }
+                                }, 30000); // Wait 30 seconds before final restart
+                            } else {
+                                logger.debug(`minerWorker: Chain advanced to ${currentLatestBlock._id}, no restart needed`);
+                            }
+                        }, 15000); // Wait 15 seconds before checking if network is stuck
+                        
                     } else {
                         logger.debug(`minerWorker: Successfully mined block ${minedBlockId}`);
+                        
+                        // Clean up mining attempt on success
+                        if ((chain as any).activeMiningAttempts) {
+                            (chain as any).activeMiningAttempts.delete(minedBlockId);
+                            logger.debug(`minerWorker: Cleaned up successful mining attempt for block ${minedBlockId}`);
+                        }
                     }
                 });
             }, mineInMs);
