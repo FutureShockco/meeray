@@ -28,6 +28,7 @@ export interface Consensus {
     queue: any[];
     finalizing: boolean;
     possBlocks: any[];
+    witnessLastSeen?: Map<string, number>;
     getActiveWitnessKey: (name: string) => string | undefined;
     isActive: () => boolean;
     activeWitnesses: () => string[];
@@ -147,24 +148,63 @@ export const consensus: Consensus = {
         // and out of consensus 2*config.witnesses blocks after his last scheduled block
         const blockNum = chain.getLatestBlock()._id + 1;
         const actives: string[] = [];
+        const currentTime = Date.now();
+        const witnessTimeoutMs = config.blockTime * 4; // Consider witness offline after 4 block times without activity
+
+        // Track when we last saw each witness be active (mining or confirming)
+        if (!consensus.witnessLastSeen) {
+            consensus.witnessLastSeen = new Map<string, number>();
+        }
 
         let currentWitness = chain.schedule.shuffle[(blockNum - 1) % config.witnesses].name;
         const currentWitnessKey = consensus.getActiveWitnessKey(currentWitness);
         logger.debug(`[DEBUG-ACTIVE-WITNESSES] Current witness for block ${blockNum}: ${currentWitness}, hasKey: ${!!currentWitnessKey}`);
-        if (currentWitnessKey)
-            actives.push(currentWitness);
+        
+        // Only add current witness if they have a key and haven't timed out
+        if (currentWitnessKey) {
+            const lastSeen = consensus.witnessLastSeen.get(currentWitness) || currentTime;
+            const timeSinceLastSeen = currentTime - lastSeen;
+            
+            if (timeSinceLastSeen <= witnessTimeoutMs) {
+                actives.push(currentWitness);
+                logger.debug(`[DEBUG-ACTIVE-WITNESSES] Added current witness ${currentWitness} (last seen ${timeSinceLastSeen}ms ago)`);
+            } else {
+                logger.debug(`[DEBUG-ACTIVE-WITNESSES] Excluding timed out current witness ${currentWitness} (last seen ${timeSinceLastSeen}ms ago, timeout: ${witnessTimeoutMs}ms)`);
+            }
+        }
 
         for (let i = 1; i < 2 * config.witnesses; i++) {
             const recentBlock = chain.recentBlocks[chain.recentBlocks.length - i];
             if (recentBlock) {
                 const witnessKey = consensus.getActiveWitnessKey(recentBlock.witness);
                 const alreadyAdded = actives.indexOf(recentBlock.witness) !== -1;
-                logger.debug(`[DEBUG-ACTIVE-WITNESSES] Recent block ${i}: witness=${recentBlock.witness}, hasKey: ${!!witnessKey}, alreadyAdded: ${alreadyAdded}`);
+                
                 if (!alreadyAdded && witnessKey) {
-                    actives.push(recentBlock.witness);
+                    // Update last seen time for this witness based on when they mined this block
+                    consensus.witnessLastSeen.set(recentBlock.witness, recentBlock.timestamp);
+                    
+                    const timeSinceLastSeen = currentTime - recentBlock.timestamp;
+                    
+                    if (timeSinceLastSeen <= witnessTimeoutMs) {
+                        actives.push(recentBlock.witness);
+                        logger.debug(`[DEBUG-ACTIVE-WITNESSES] Added recent witness ${recentBlock.witness} (last seen ${timeSinceLastSeen}ms ago)`);
+                    } else {
+                        logger.debug(`[DEBUG-ACTIVE-WITNESSES] Excluding timed out witness ${recentBlock.witness} (last seen ${timeSinceLastSeen}ms ago, timeout: ${witnessTimeoutMs}ms)`);
+                    }
                 }
-            } else {
-                logger.debug(`[DEBUG-ACTIVE-WITNESSES] No recent block at index ${i}`);
+            }
+        }
+
+        // Also track witnesses who have recently sent confirmations (from P2P messages)
+        // This will be updated in remoteRoundConfirm
+        for (const [witness, lastSeenTime] of consensus.witnessLastSeen.entries()) {
+            const timeSinceLastSeen = currentTime - lastSeenTime;
+            const alreadyAdded = actives.indexOf(witness) !== -1;
+            const witnessKey = consensus.getActiveWitnessKey(witness);
+            
+            if (!alreadyAdded && witnessKey && timeSinceLastSeen <= witnessTimeoutMs) {
+                actives.push(witness);
+                logger.debug(`[DEBUG-ACTIVE-WITNESSES] Added witness ${witness} based on recent P2P activity (last seen ${timeSinceLastSeen}ms ago)`);
             }
         }
 
@@ -434,6 +474,12 @@ export const consensus: Consensus = {
                 if (cb) cb(-1);
             } else {
                 logger.debug('Precommitting block ' + block._id + '#' + block.hash.substr(0, 4));
+                
+                // Track witness activity when they mine a block
+                if (!this.witnessLastSeen) {
+                    this.witnessLastSeen = new Map<string, number>();
+                }
+                this.witnessLastSeen.set(block.witness, Date.now());
 
                 this.possBlocks.push(possBlock);
 
@@ -482,6 +528,13 @@ export const consensus: Consensus = {
         const block = message.d.b;
         const round = message.d.r;
         const witness = message.s.n;
+        
+        // Track witness activity for timeout detection
+        if (!this.witnessLastSeen) {
+            this.witnessLastSeen = new Map<string, number>();
+        }
+        this.witnessLastSeen.set(witness, Date.now());
+        
         logger.debug(`consensus.remoteRoundConfirm: witness=${witness}, round=${round}, blockHash=${block.hash}, possBlocks.length=${this.possBlocks.length}`);
         for (let i = 0; i < this.possBlocks.length; i++) {
             if (block.hash === this.possBlocks[i].block.hash) {
