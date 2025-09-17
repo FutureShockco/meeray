@@ -244,9 +244,7 @@ export const consensus: Consensus = {
                     logger.warn('Block collision detected at height ' + possBlock.block._id + ', the witnesses are:', collisions);
 
                     // In sync mode, use deterministic collision resolution
-                    logger.debug(`[CONSENSUS-DEBUG] steem.isInSyncMode()=${steem.isInSyncMode()}, p2p.recovering=${p2p.recovering}`);
                     if (steem.isInSyncMode() && !p2p.recovering) {
-                        logger.info(`[SYNC-COLLISION] Detected ${collisions.length} colliding blocks at height ${possBlock.block._id}. Using deterministic resolution...`);
 
                         // Find the winning block using deterministic criteria
                         let winningBlock = possBlock;
@@ -267,7 +265,6 @@ export const consensus: Consensus = {
 
                         // If this isn't the winning block, remove it and wait for the winner
                         if (possBlock.block.hash !== winningBlock.block.hash) {
-                            logger.debug(`[SYNC-COLLISION] Block ${possBlock.block._id} by ${possBlock.block.witness} lost collision. Winner: ${winningBlock.block.witness} (timestamp: ${winningBlock.block.timestamp})`);
 
                             // Remove losing blocks from consideration
                             let newPossBlocks = [];
@@ -281,7 +278,6 @@ export const consensus: Consensus = {
                             return;
                         }
 
-                        logger.info(`[SYNC-COLLISION] Block ${possBlock.block._id} by ${possBlock.block.witness} won collision (timestamp: ${possBlock.block.timestamp})`);
                     }
 
                     // In normal mode, apply the winning block as before

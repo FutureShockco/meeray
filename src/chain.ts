@@ -34,7 +34,6 @@ export const chain = {
     worker: null as any,
     shuttingDown: false,
     latestSteemBlock: 0,
-    lastWriteWasSlow: false, // New property to track slow cache writes
     lastBlockTime: 0, // Timestamp of when the last mining cycle started or block was processed
     alternativeBlocks: [] as any[], // Store alternative blocks for sync reconciliation
 
@@ -109,6 +108,7 @@ export const chain = {
         if (chain.nextOutput.txs > 1)
             outputLog += 's';
         const distInNativeToken = (Number(chain.nextOutput.dist) / Math.pow(10, config.nativeTokenPrecision));
+        outputLog += '  steemBlockNum: ' + block.steemBlockNum;
         outputLog += '  dist: ' + distInNativeToken + ' ' + config.nativeTokenSymbol;
         outputLog += '  delay: ' + (currentOutTime - block.timestamp);
         if (block.missedBy && !rebuilding)

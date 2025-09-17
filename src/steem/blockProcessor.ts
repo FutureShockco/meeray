@@ -22,7 +22,7 @@ class BlockProcessor {
         logger.debug(`Processing block ${blockNum}, last processed: ${lastProcessedSteemBlockBySidechain}`);
 
         if (blockNum !== lastProcessedSteemBlockBySidechain + 1) {
-            logger.warn(`Block ${blockNum} is not sequential. Expected ${lastProcessedSteemBlockBySidechain + 1}, returning null`);
+            logger.debug(`Block ${blockNum} is not sequential. Expected ${lastProcessedSteemBlockBySidechain + 1}, returning null`);
             return null;
         }
 
@@ -66,7 +66,7 @@ class BlockProcessor {
     }
 
     private async fetchBlockWithRetry(blockNum: number): Promise<SteemBlock | null> {
-        const maxAttempts = Math.max(1, 5);
+        const maxAttempts = 5;
         let attempt = 0;
 
         while (attempt < maxAttempts) {
