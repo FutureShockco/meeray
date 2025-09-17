@@ -122,6 +122,7 @@ export function isValidBlockTxs(newBlock: any): Promise<boolean> {
 }
 
 export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boolean, verifyTxValidity: boolean): Promise<boolean> {
+
     if (!newBlock) return false;
     if (!newBlock._id || typeof newBlock._id !== 'number') {
         logger.error('invalid block _id');
@@ -158,6 +159,26 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
     if (newBlock.missedBy && typeof newBlock.missedBy !== 'string') {
         logger.error('invalid block missedBy');
         return false;
+    }
+
+    // Prevent a witness from mining more than one block at the same height
+    // Check recentBlocks for same witness at this height
+    const duplicateBlock = chain.recentBlocks.find(
+        b => b._id === newBlock._id && b.witness === newBlock.witness && b.hash !== newBlock.hash
+    );
+    if (duplicateBlock) {
+        logger.error(`[BLOCK-COLLISION] Witness ${newBlock.witness} already produced a block at height ${newBlock._id}. Rejecting duplicate.`);
+        return false;
+    }
+    // Also check alternativeBlocks if present
+    if (chain.alternativeBlocks && Array.isArray(chain.alternativeBlocks)) {
+        const altDuplicate = chain.alternativeBlocks.find(
+            b => b._id === newBlock._id && b.witness === newBlock.witness && b.hash !== newBlock.hash
+        );
+        if (altDuplicate) {
+            logger.error(`[BLOCK-COLLISION] Witness ${newBlock.witness} already produced a block at height ${newBlock._id} (alternativeBlocks). Rejecting duplicate.`);
+            return false;
+        }
     }
 
     // Check block timestamp is not too far in the future
