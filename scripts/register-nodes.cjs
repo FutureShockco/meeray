@@ -19,8 +19,8 @@ async function main() {
     //const nodes = ['echelon-node1', 'echelon-node2', 'echelon-node3', 'echelon-node4', 'echelon-node5'];
     //const publicKeys = ['e27B66QHwRLjnjxi5KAa9G7fLSDajtoB6CxuZ87oTdfS', 'mxRB23vGuuj4YjJNApTrjJ1D4urDoGJPt5Bqht26ZXm6', '29YugDTkCuz1L2sQ8SvknF89cUh9RzaPfhogXrzuTJ7YK', 'wKqHm9QWCbQnqNT2Vz2Pk6pPistXgzvANJm2jAXubuzP', 'onk2Dhko4JjxGL8arsP4F41vCq5UPDNZKBaCRTMhd51J'];
 
-    const nodes = ['echelon-node1', 'echelon-node2'];
-    const publicKeys = ['e27B66QHwRLjnjxi5KAa9G7fLSDajtoB6CxuZ87oTdfS', 'mxRB23vGuuj4YjJNApTrjJ1D4urDoGJPt5Bqht26ZXm6'];
+    const nodes = ['echelon-node1', 'echelon-node2', 'echelon-node3'];
+    const publicKeys = ['e27B66QHwRLjnjxi5KAa9G7fLSDajtoB6CxuZ87oTdfS', 'mxRB23vGuuj4YjJNApTrjJ1D4urDoGJPt5Bqht26ZXm6', '29YugDTkCuz1L2sQ8SvknF89cUh9RzaPfhogXrzuTJ7YK'];
 
 
     const create = async () => {
