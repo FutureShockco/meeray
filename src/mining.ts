@@ -230,7 +230,7 @@ export const mining = {
 
         if (thisNodeIsPrimaryWitness && mineInMs === null) {
             if (justExitedSync) {
-                const targetTimestamp = lastBlockTimestamp + config.blockTime;
+                const targetTimestamp = lastBlockTimestamp + blockTime;
                 mineInMs = targetTimestamp - currentTime;
                 logger.trace(`minerWorker: Post-sync transition: Scheduled as next witness. Target: ${new Date(targetTimestamp).toISOString()}. Current: ${new Date(currentTime).toISOString()}. Calculated mineInMs: ${mineInMs}`);
             } else {
@@ -259,10 +259,9 @@ export const mining = {
             consensus.observer = false;
 
             if (steem.isInSyncMode()) {
-                const syncSkipThreshold = Math.max(20, blockTime / 100);
-                if (mineInMs < syncSkipThreshold) {
+                if (mineInMs <  blockTime/2) {
                     const newCalculatedDelay = Math.max(50, Math.floor(blockTime / 4));
-                    logger.warn(`minerWorker: In Sync: mineInMs (${mineInMs}ms) is below threshold (${syncSkipThreshold}ms). Calculated new delay: ${newCalculatedDelay}ms. Scheduling to mine then.`);
+                    logger.warn(`minerWorker: In Sync: mineInMs (${mineInMs}ms) is below threshold (${blockTime}ms). Calculated new delay: ${newCalculatedDelay}ms. Scheduling to mine then.`);
                     mineInMs = newCalculatedDelay;
                 }
             } else {
@@ -291,10 +290,8 @@ export const mining = {
                         return;
                     }
                 } else {
-                    const normalSkipThreshold = config.blockTime / 2;
-                    logger.debug(`minerWorker: Normal Mode: mineInMs (${mineInMs}ms) vs threshold (${normalSkipThreshold}ms)`);
-                    if (mineInMs < normalSkipThreshold) {
-                        logger.warn(`minerWorker: Normal Mode: mineInMs (${mineInMs}ms) is below threshold (${normalSkipThreshold}ms). Waiting for chain head to advance.`);
+                    if (mineInMs < blockTime / 2) {
+                        logger.warn(`minerWorker: Normal Mode: mineInMs (${mineInMs}ms) is below threshold (${blockTime}ms)`);
                         const waitForAdvance = () => {
                             const latestBlock = chain.getLatestBlock();
                             steem.getLatestSteemBlockNum().then(latestSteemBlock => {

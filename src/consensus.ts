@@ -442,7 +442,8 @@ export const consensus: Consensus = {
                         i--;
                         continue;
                     }
-                    if (this.queue[i].d.ts + 2 * config.blockTime < new Date().getTime()) {
+                    const blockTime = steem.isInSyncMode() ? config.syncBlockTime : config.blockTime;
+                    if (this.queue[i].d.ts + 2 * blockTime < new Date().getTime()) {
                         this.queue.splice(i, 1);
                         i--;
                     }
