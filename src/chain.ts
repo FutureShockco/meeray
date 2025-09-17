@@ -368,6 +368,13 @@ export const chain = {
             logger.debug(`chain.addBlock: Cleaned up mining attempt for block ${block._id}`);
         }
         
+        // Cancel any pending mining timeout to prevent delayed warnings
+        if (chain.worker) {
+            clearTimeout(chain.worker);
+            chain.worker = null;
+            logger.debug(`chain.addBlock: Cancelled pending mining timeout for block ${block._id}`);
+        }
+        
         mining.minerWorker(block);
         chain.output(block);
 
