@@ -210,7 +210,7 @@ export const mining = {
             // Continue with normal mining logic below
         }
         
-        if (currentPeerCount < minPeersForConsensus) {
+        if (currentPeerCount < minPeersForConsensus && consensus.isActive()) {
             logger.warn(`[MINING] Insufficient peers for consensus (${currentPeerCount}/${minPeersForConsensus}). Delaying mining for block ${block._id + 1}`);
             // Retry mining after a short delay, giving time for peer discovery to work
             chain.worker = setTimeout(() => {

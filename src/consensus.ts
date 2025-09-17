@@ -6,9 +6,15 @@ import { isValidNewBlock } from './block.js';
 import { signMessage } from './crypto.js';
 import steem from './steem.js';
 
-const consensus_need = 1;  // Reduced for 2-node setup
-const consensus_total = 2;  // Reduced for 2-node setup
-const consensus_threshold = consensus_need / consensus_total;
+// Dynamic consensus configuration based on witness count
+const getConsensusConfig = (blockId?: number) => {
+    const witnessCount = config.read(blockId || 0).witnesses;
+    const consensus_need = Math.ceil(witnessCount * 0.6); // 60% of witnesses needed
+    const consensus_total = witnessCount;
+    const consensus_threshold = consensus_need / consensus_total;
+    
+    return { consensus_need, consensus_total, consensus_threshold };
+};
 
 // Sync mode collision detection window - 200ms
 const SYNC_COLLISION_WINDOW_MS = 200;
@@ -168,9 +174,11 @@ export const consensus: Consensus = {
     tryNextStep: function () {
         logger.debug(`consensus.tryNextStep: possBlocks.length=${this.possBlocks.length}, finalizing=${this.finalizing}`);
         const consensus_size = this.activeWitnesses().length;
+        const currentBlock = chain.getLatestBlock();
+        const { consensus_threshold } = getConsensusConfig(currentBlock?._id);
         let threshold = consensus_size * consensus_threshold;
         if (!this.isActive()) threshold += 1;
-        logger.debug(`consensus.tryNextStep: consensus_size=${consensus_size}, threshold=${threshold}, isActive=${this.isActive()}`);
+        logger.debug(`consensus.tryNextStep: consensus_size=${consensus_size}, threshold=${threshold}, consensus_threshold=${consensus_threshold}, isActive=${this.isActive()}`);
         let possBlocksById: Record<string, any[]> = {};
         if (this.possBlocks.length > 1) {
             for (let i = 0; i < this.possBlocks.length; i++) {

@@ -55,12 +55,6 @@ const history: Record<number, Partial<typeof config>> = {
   1000090: {
     witnesses: 10,
   },
-  31480: {
-    witnesses: 2,
-  },
-  86850: {
-    witnesses: 3,
-  },
 };
 
 function read(blockNum: number): typeof config {
