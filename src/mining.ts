@@ -262,6 +262,28 @@ export const mining = {
             return;
         }
         
+        // Prevent same witness from mining same block multiple times (collision prevention)
+        if (!(chain as any).witnessBlockAttempts) {
+            (chain as any).witnessBlockAttempts = new Map();
+        }
+        const witnessBlockKey = `${process.env.STEEM_ACCOUNT}:${candidateBlockId}`;
+        if ((chain as any).witnessBlockAttempts.has(witnessBlockKey)) {
+            logger.warn(`minerWorker: Witness ${process.env.STEEM_ACCOUNT} already attempted to mine block ${candidateBlockId}. Preventing collision.`);
+            return;
+        }
+        
+        // Mark this witness+block combination as attempted
+        (chain as any).witnessBlockAttempts.set(witnessBlockKey, Date.now());
+        
+        // Cleanup old attempts (keep only last 10 blocks worth)
+        const cleanupThreshold = candidateBlockId - 10;
+        for (const [key, _] of (chain as any).witnessBlockAttempts.entries()) {
+            const blockId = parseInt(key.split(':')[1]);
+            if (blockId < cleanupThreshold) {
+                (chain as any).witnessBlockAttempts.delete(key);
+            }
+        }
+        
         
         // Mark as actively mining
         (chain as any).activeMiningAttempts.add(candidateBlockId);

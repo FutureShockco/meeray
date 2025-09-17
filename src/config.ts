@@ -33,7 +33,7 @@ const config = {
   tokenMaxSupply: 1000000000000000000,
   consensusRounds: 2,
   witnesses: 3,
-  maxDrift: 30000,
+  maxDrift: 300,
   notifPurge: 1000,
   notifPurgeAfter: 10,
   allowedUsernameChars: 'abcdefghijklmnopqrstuvwxyz0123456789.-',
