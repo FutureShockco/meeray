@@ -257,12 +257,15 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
     if (chain.schedule.shuffle[(newBlock._id - 1) % config.witnesses].name === newBlock.witness) {
         witnessPriority = 1;
     } else {
-        // Allow backup witnesses if scheduled missed
-        for (let i = 1; i <= config.witnesses; i++) {
-            const recentBlock = chain.recentBlocks[chain.recentBlocks.length - i];
-            if (!recentBlock) break;
-            if (recentBlock.witness === newBlock.witness) {
-                witnessPriority = i + 1;
+        // Universal backup: Allow any active witness to serve as backup
+        // Check if the witness is in the current shuffle (active witnesses)
+        for (let i = 0; i < chain.schedule.shuffle.length; i++) {
+            if (chain.schedule.shuffle[i].name === newBlock.witness) {
+                // Calculate backup priority based on witness position in shuffle
+                const primaryWitnessIndex = (newBlock._id - 1) % chain.schedule.shuffle.length;
+                let backupSlot = (i - primaryWitnessIndex + chain.schedule.shuffle.length) % chain.schedule.shuffle.length;
+                if (backupSlot === 0) backupSlot = chain.schedule.shuffle.length; // Primary becomes last backup
+                witnessPriority = backupSlot + 1; // +1 because priority 1 is reserved for primary
                 break;
             }
         }

@@ -313,19 +313,32 @@ export const mining = {
             }
         }
         else if (mineInMs === null) {
-            for (let i = 1; i < 2 * config.witnesses; i++) {
-                const recentBlockIndex = chain.recentBlocks.length - i;
-                if (recentBlockIndex >= 0 && chain.recentBlocks[recentBlockIndex].witness === process.env.STEEM_ACCOUNT) {
-                    if (justExitedSync) {
-                        const targetTimestamp = lastBlockTimestamp + (config.blockTime * (1 + (i * 0.5)) + (config.blockTime / 2));
-                        mineInMs = targetTimestamp - currentTime;
-                        logger.trace(`minerWorker: Post-sync transition: Backup witness (slot ${i + 1}). Target: ${new Date(targetTimestamp).toISOString()}. Current: ${new Date(currentTime).toISOString()}. Calculated mineInMs: ${mineInMs}`);
-                    } else {
-                        mineInMs = blockTime * (1 + (i * 0.5));
-                    }
-                    logger.debug(`minerWorker: Scheduled as backup witness (slot ${i + 1}). Initial mineInMs: ${mineInMs}ms (${1 + (i * 0.5)}x blockTime)`);
+            // Universal backup: Any active witness can backup after primary witness time
+            // Check if this witness is in the current shuffle (active witnesses)
+            let isActiveWitness = false;
+            let backupSlot = 0;
+            
+            for (let i = 0; i < chain.schedule.shuffle.length; i++) {
+                if (chain.schedule.shuffle[i].name === process.env.STEEM_ACCOUNT) {
+                    isActiveWitness = true;
+                    // Calculate backup slot based on witness position in shuffle
+                    // Primary witness gets slot 0, others get slots 1, 2, 3...
+                    const primaryWitnessIndex = (nextBlockId - 1) % chain.schedule.shuffle.length;
+                    backupSlot = (i - primaryWitnessIndex + chain.schedule.shuffle.length) % chain.schedule.shuffle.length;
+                    if (backupSlot === 0) backupSlot = chain.schedule.shuffle.length; // Primary becomes last backup
                     break;
                 }
+            }
+            
+            if (isActiveWitness && backupSlot > 0) {
+                if (justExitedSync) {
+                    const targetTimestamp = lastBlockTimestamp + (config.blockTime * (1 + (backupSlot * 0.5)) + (config.blockTime / 2));
+                    mineInMs = targetTimestamp - currentTime;
+                    logger.trace(`minerWorker: Post-sync transition: Backup witness (slot ${backupSlot}). Target: ${new Date(targetTimestamp).toISOString()}. Current: ${new Date(currentTime).toISOString()}. Calculated mineInMs: ${mineInMs}`);
+                } else {
+                    mineInMs = blockTime * (1 + (backupSlot * 0.5));
+                }
+                logger.debug(`minerWorker: Scheduled as backup witness (slot ${backupSlot}). Initial mineInMs: ${mineInMs}ms (${1 + (backupSlot * 0.5)}x blockTime)`);
             }
         }
 
