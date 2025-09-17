@@ -9,7 +9,7 @@ import steem from './steem.js';
 // Dynamic consensus configuration based on witness count
 const getConsensusConfig = (blockId?: number) => {
     const witnessCount = config.read(blockId || 0).witnesses;
-    const consensus_need = Math.ceil(witnessCount * 0.6); // 60% of witnesses needed
+    const consensus_need = Math.ceil(witnessCount * 0.66); // 66% of witnesses needed
     const consensus_total = witnessCount;
     const consensus_threshold = consensus_need / consensus_total;
     
