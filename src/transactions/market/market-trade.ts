@@ -598,14 +598,52 @@ async function recordAMMTrade(params: {
     
     // Ensure price is not zero - if it is, calculate a simple price
     if (priceValue === 0n && quantity > 0n && volume > 0n) {
-      // Simple price calculation: volume / quantity, scaled by 1e8
-      priceValue = (volume * BigInt(1e8)) / quantity;
-      logger.warn(`[recordAMMTrade] Price was 0, using simple calculation: ${priceValue} for ${volume}/${quantity}`);
+      // Calculate price considering decimal differences
+      const tokenInDecimals = getTokenDecimals(params.tokenIn);
+      const tokenOutDecimals = getTokenDecimals(params.tokenOut);
+      const decimalDifference = tokenOutDecimals - tokenInDecimals;
+      
+      // Adjust for decimal differences in the calculation
+      let adjustedVolume = volume;
+      let adjustedQuantity = quantity;
+      
+      if (decimalDifference > 0) {
+        // TokenOut has more decimals, scale up volume
+        adjustedVolume = volume * BigInt(10 ** decimalDifference);
+      } else if (decimalDifference < 0) {
+        // TokenIn has more decimals, scale up quantity
+        adjustedQuantity = quantity * BigInt(10 ** (-decimalDifference));
+      }
+      
+      // Calculate price: (adjustedVolume * 1e8) / adjustedQuantity
+      priceValue = (adjustedVolume * BigInt(1e8)) / adjustedQuantity;
+      
+      // Ensure price is never negative
+      if (priceValue < 0n) {
+        logger.error(`[recordAMMTrade] CRITICAL: Negative price calculated in fallback! Using 0 instead.`);
+        priceValue = 0n;
+      }
+      
+      logger.warn(`[recordAMMTrade] Price was 0, using decimal-aware calculation: ${priceValue} for ${volume} ${quoteSymbol}/${quantity} ${baseSymbol} (decimals: ${tokenInDecimals}/${tokenOutDecimals})`);
     }
     
     // Debug logging
-    logger.debug(`[recordAMMTrade] Trade: ${params.amountIn} ${params.tokenIn} -> ${params.amountOut} ${params.tokenOut}`);
-    logger.debug(`[recordAMMTrade] Mapped: ${quantity} ${baseSymbol} (quantity), ${volume} ${quoteSymbol} (volume), price: ${priceValue}`);
+    logger.info(`[recordAMMTrade] Trade: ${params.amountIn} ${params.tokenIn} -> ${params.amountOut} ${params.tokenOut}`);
+    logger.info(`[recordAMMTrade] Mapped: ${quantity} ${baseSymbol} (quantity), ${volume} ${quoteSymbol} (volume), price: ${priceValue}`);
+    logger.info(`[recordAMMTrade] Pair: ${pairId}, Base: ${baseSymbol}, Quote: ${quoteSymbol}`);
+    
+    // Additional validation
+    if (priceValue === 0n) {
+      logger.error(`[recordAMMTrade] CRITICAL: Price is still 0 after all calculations!`);
+      logger.error(`[recordAMMTrade] Input: ${params.amountIn} ${params.tokenIn}, Output: ${params.amountOut} ${params.tokenOut}`);
+      logger.error(`[recordAMMTrade] Quantity: ${quantity}, Volume: ${volume}`);
+    }
+    
+    // Final safety check - ensure price is never negative
+    if (priceValue < 0n) {
+      logger.error(`[recordAMMTrade] CRITICAL: Final price is negative! Setting to 0. Price: ${priceValue}`);
+      priceValue = 0n;
+    }
     
     // Create trade record matching the orderbook trade format
     const tradeRecord = {

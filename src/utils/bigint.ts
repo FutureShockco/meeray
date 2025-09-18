@@ -100,16 +100,33 @@ export function calculateDecimalAwarePrice(
     tokenInSymbol: string, 
     tokenOutSymbol: string
 ): bigint {
-    if (amountOut === 0n) return 0n;
+    // Validate inputs - both must be positive
+    if (amountOut <= 0n || amountIn <= 0n) return 0n;
     
     const tokenInDecimals = getTokenDecimals(tokenInSymbol);
     const tokenOutDecimals = getTokenDecimals(tokenOutSymbol);
     const decimalDifference = tokenOutDecimals - tokenInDecimals;
-    const scalingFactor = decimalDifference >= 0 ? 
-        BigInt(10 ** decimalDifference) : 
-        BigInt(1) / BigInt(10 ** (-decimalDifference));
     
-    return (amountIn * scalingFactor * BigInt(1e8)) / amountOut;
+    let price: bigint;
+    
+    // Handle decimal differences properly
+    if (decimalDifference >= 0) {
+        // TokenOut has more decimals, scale up amountIn
+        const scalingFactor = BigInt(10 ** decimalDifference);
+        price = (amountIn * scalingFactor * BigInt(1e8)) / amountOut;
+    } else {
+        // TokenIn has more decimals, scale up amountOut
+        const scalingFactor = BigInt(10 ** (-decimalDifference));
+        price = (amountIn * BigInt(1e8)) / (amountOut * scalingFactor);
+    }
+    
+    // Ensure price is never negative (should never happen with positive inputs)
+    if (price < 0n) {
+        console.error(`[calculateDecimalAwarePrice] CRITICAL: Negative price calculated! amountIn: ${amountIn}, amountOut: ${amountOut}, decimals: ${tokenInDecimals}/${tokenOutDecimals}`);
+        return 0n;
+    }
+    
+    return price;
 }
 
 /**
