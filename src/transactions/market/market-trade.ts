@@ -445,9 +445,11 @@ async function executeOrderbookRoute(
 ): Promise<{ success: boolean; amountOut: bigint; error?: string }> {
   try {
     const orderbookDetails = route.details as any; // OrderbookRouteDetails
+    logger.debug(`[executeOrderbookRoute] Route details:`, orderbookDetails);
     
     // Determine order type based on whether price is specified in tradeData OR route details
     const orderType = (tradeData.price || orderbookDetails.price) ? OrderType.LIMIT : OrderType.MARKET;
+    logger.debug(`[executeOrderbookRoute] Order type: ${orderType}, tradeData.price: ${tradeData.price}, orderbookDetails.price: ${orderbookDetails.price}`);
     
     // Get the trading pair to determine correct base/quote assignment
     const pair = await cache.findOnePromise('tradingPairs', { _id: orderbookDetails.pairId });
@@ -455,20 +457,25 @@ async function executeOrderbookRoute(
       return { success: false, amountOut: BigInt(0), error: `Trading pair ${orderbookDetails.pairId} not found` };
     }
     
+    // Get the price for this order
+    const orderPrice = tradeData.price || orderbookDetails.price;
+    logger.debug(`[executeOrderbookRoute] Order price: ${orderPrice}, tradeData.price: ${tradeData.price}, orderbookDetails.price: ${orderbookDetails.price}`);
+
     // Calculate the correct quantity based on order side
     let orderQuantity: bigint;
     if (orderbookDetails.side === OrderSide.BUY) {
       // For buy orders, quantity should be the amount of base currency to buy
       // Calculate: quantity = amountIn (quote) / price
-      const price = tradeData.price || orderbookDetails.price;
-      if (!price) {
+      if (!orderPrice) {
         return { success: false, amountOut: BigInt(0), error: 'Price required for buy orders' };
       }
-      orderQuantity = amountIn / toBigInt(price);
+      orderQuantity = amountIn / toBigInt(orderPrice);
     } else {
       // For sell orders, quantity is the amount of base currency to sell
       orderQuantity = amountIn;
     }
+
+    logger.debug(`[executeOrderbookRoute] Order quantity: ${orderQuantity}, amountIn: ${amountIn}, orderPrice: ${orderPrice}`);
 
     // Create order (limit or market)
     const orderData: any = {
@@ -483,7 +490,8 @@ async function executeOrderbookRoute(
 
     // Add price for limit orders (from tradeData or route details)
     if (orderType === OrderType.LIMIT) {
-      orderData.price = tradeData.price || orderbookDetails.price;
+      orderData.price = orderPrice;
+      logger.debug(`[executeOrderbookRoute] Setting order price to: ${orderData.price}`);
     }
 
     const createdOrder = createOrder(orderData);
@@ -497,7 +505,7 @@ async function executeOrderbookRoute(
 
     // For limit orders, the order might not be filled immediately
     if (orderType === OrderType.LIMIT && result.trades.length === 0) {
-      logger.info(`[hybrid-trade] Limit order placed at price ${tradeData.price}, waiting for matching`);
+      logger.info(`[hybrid-trade] Limit order placed at price ${orderPrice}, waiting for matching`);
       return { success: true, amountOut: BigInt(0) }; // Order placed but not filled yet
     }
 
