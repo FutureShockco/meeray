@@ -4,6 +4,7 @@ import { mongo } from '../../mongo.js';
 import logger from '../../logger.js';
 import { toBigInt, toDbString as bigintToString, parseTokenAmount, formatTokenAmount } from '../../utils/bigint.js';
 import { getTokenDecimals } from '../../utils/bigint.js';
+import { getOutputAmountBigInt, calculatePriceImpact } from '../../utils/pool.js';
 import { formatTokenAmountForResponse, formatTokenAmountSimple } from '../../utils/http.js';
 
 const router: Router = express.Router();
@@ -22,7 +23,6 @@ interface Pool {
     tokenA_reserve: string; // Padded BigInt string
     tokenB_symbol: string;
     tokenB_reserve: string; // Padded BigInt string
-    feeRateBasisPoints: bigint; // e.g., 30n for 0.3% (30 / 10000)
     precisionFactor?: bigint; // e.g. 10n**18n for precision in intermediate calcs, if needed
 }
 
@@ -42,57 +42,7 @@ interface TradeRoute {
 }
 
 
-/**
- * Calculates the output amount for a single swap in a pool using BigInt.
- * Assumes fee is taken from the input amount.
- * Formula: outputAmount = (inputAmountAfterFee * outputReserve) / (inputReserve + inputAmountAfterFee)
- */
-function getOutputAmountBigInt(
-    inputAmount: bigint,
-    inputReserve: bigint,
-    outputReserve: bigint,
-    feeRateBasisPoints: bigint // e.g., 30n for 0.3%
-): bigint {
-    if (inputAmount <= 0n || inputReserve <= 0n || outputReserve <= 0n) {
-        return 0n;
-    }
-    
-    // Use the same calculation method as the actual swap execution
-    // Fee tiers are in basis points: 10 = 0.01%, 50 = 0.05%, 300 = 0.3%, 1000 = 1%
-    const feeMultiplier = BigInt(10000) - feeRateBasisPoints; // e.g., 10000 - 300 = 9700 for 0.3% fee
-    const feeDivisor = BigInt(10000);
 
-    const amountInAfterFee = (inputAmount * feeMultiplier) / feeDivisor;
-
-    if (amountInAfterFee <= 0n) return 0n;
-
-    const numerator = amountInAfterFee * outputReserve;
-    const denominator = inputReserve + amountInAfterFee;
-    
-    if (denominator === 0n) return 0n; // Avoid division by zero
-    return numerator / denominator; // BigInt division naturally truncates
-}
-
-/**
- * Calculates the price impact of a swap.
- * Price impact = (amountIn / (reserveIn + amountIn)) * 100
- * This represents the percentage change in the price of the input token.
- */
-function calculatePriceImpact(
-    amountIn: bigint,
-    reserveIn: bigint
-): number {
-    if (amountIn <= 0n || reserveIn <= 0n) {
-        return 0;
-    }
-    
-    // Calculate price impact as percentage
-    // Price impact = (amountIn / (reserveIn + amountIn)) * 100
-    const totalReserveAfterSwap = reserveIn + amountIn;
-    const priceImpactBasisPoints = Number((amountIn * BigInt(10000)) / totalReserveAfterSwap);
-    
-    return priceImpactBasisPoints / 100; // Convert basis points to percentage
-}
 
 /**
  * Finds all possible trade routes from a start token to an end token using BigInt.
@@ -116,7 +66,6 @@ async function findAllTradeRoutesBigInt(
         _id: p._id.toString(), // ensure _id is string
         tokenA_reserve: p.tokenA_reserve as string,
         tokenB_reserve: p.tokenB_reserve as string,
-        feeRateBasisPoints: BigInt(300), // Fixed 0.3% fee
     }));
 
     const routes: TradeRoute[] = [];
@@ -146,7 +95,7 @@ async function findAllTradeRoutesBigInt(
             if (tokenInReserveBigInt <= 0n || tokenOutReserveBigInt <= 0n) continue;
             if (currentPath.length > 0 && currentPath[currentPath.length -1].tokenIn === nextTokenSymbol) continue;
             
-            const amountOutFromHopBigInt = getOutputAmountBigInt( currentAmountInBigInt, tokenInReserveBigInt, tokenOutReserveBigInt, pool.feeRateBasisPoints );
+            const amountOutFromHopBigInt = getOutputAmountBigInt( currentAmountInBigInt, tokenInReserveBigInt, tokenOutReserveBigInt );
             if (amountOutFromHopBigInt <= 0n) continue;
             
             // Calculate price impact for this hop

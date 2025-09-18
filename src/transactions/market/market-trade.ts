@@ -10,10 +10,13 @@ import crypto from 'crypto';
 // Import transaction processors for different route types
 import * as poolSwap from '../pool/pool-swap.js';
 import { PoolSwapResult } from '../pool/pool-interfaces.js';
+import { calculateExpectedAMMOutput } from '../../utils/pool.js';
 import { matchingEngine } from '../market/matching-engine.js';
 import { OrderData, OrderType, OrderSide, OrderStatus, createOrder } from '../market/market-interfaces.js';
 
 const NUMERIC_FIELDS_HYBRID_TRADE: Array<keyof HybridTradeData> = ['amountIn', 'minAmountOut', 'price'];
+
+
 
 export async function validateTx(data: HybridTradeData, sender: string): Promise<boolean> {
   try {
@@ -168,6 +171,24 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
         if (!hasLiquidity) {
           logger.warn(`[hybrid-trade] No liquidity available for ${data.tokenIn}/${data.tokenOut}. Pools exist but have no liquidity, and orderbook has no orders.`);
           return false;
+        }
+
+        // For AMM sources, validate that the expected output would be greater than 0
+        const ammSources = sources.filter(source => source.type === 'AMM');
+        for (const ammSource of ammSources) {
+          if (ammSource.hasLiquidity) {
+            const expectedOutput = calculateExpectedAMMOutput(
+              toBigInt(data.amountIn),
+              data.tokenIn,
+              data.tokenOut,
+              ammSource
+            );
+            
+            if (expectedOutput === BigInt(0)) {
+              logger.warn(`[hybrid-trade] AMM route would produce zero output for ${data.amountIn} ${data.tokenIn} -> ${data.tokenOut}. Trade would fail.`);
+              return false;
+            }
+          }
         }
       }
     }
@@ -357,6 +378,12 @@ async function executeAMMRoute(
     
     // Use user's slippagePercent if provided, otherwise default to 1%
     const slippagePercent = tradeData.maxSlippagePercent || 1.0;
+
+    // Pre-validate that this route would produce non-zero output
+    // This is an additional safeguard beyond the main validation
+    if (ammDetails.expectedOutput && toBigInt(ammDetails.expectedOutput) === BigInt(0)) {
+      return { success: false, amountOut: BigInt(0), error: 'Expected output is zero for this AMM route' };
+    }
     
     // Create pool swap data
     const swapData = {

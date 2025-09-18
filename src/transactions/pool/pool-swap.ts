@@ -4,6 +4,7 @@ import validate from '../../validation/index.js';
 import { PoolSwapData, LiquidityPoolData, PoolSwapResult } from './pool-interfaces.js';
 import { adjustBalance, getAccount, Account } from '../../utils/account.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
+import { getOutputAmountBigInt, calculatePriceImpact } from '../../utils/pool.js';
 import mongo from '../../mongo.js';
 import { logEvent } from '../../utils/event-logger.js';
 import crypto from 'crypto';
@@ -37,50 +38,6 @@ interface Pool {
     // Note: Fee is always 0.3% (300 basis points) - no longer stored per pool
 }
 
-/**
- * Calculates the output amount for a swap using the constant product formula
- * This matches the exact logic used in the HTTP route-swap API
- * 
- * IMPORTANT: This function uses the same calculation as src/modules/http/pools.ts:getOutputAmountBigInt
- * Any changes to the calculation logic must be made in both places to maintain consistency.
- */
-function getOutputAmountBigInt(
-    inputAmount: bigint,
-    inputReserve: bigint,
-    outputReserve: bigint
-): bigint {
-    if (inputAmount <= 0n || inputReserve <= 0n || outputReserve <= 0n) {
-        return 0n;
-    }
-
-    // Use fixed 0.3% fee tier (300 basis points)
-    const feeMultiplier = BigInt(9700); // 10000 - 300 = 9700 for 0.3% fee
-    const feeDivisor = BigInt(10000);
-
-    const amountInAfterFee = (inputAmount * feeMultiplier) / feeDivisor; // Use BigInt division like HTTP API
-
-    if (amountInAfterFee <= 0n) return 0n;
-
-    const numerator = amountInAfterFee * outputReserve;
-    const denominator = inputReserve + amountInAfterFee;
-    
-    if (denominator === 0n) return 0n; // Avoid division by zero
-    return numerator / denominator; // BigInt division naturally truncates
-}
-
-/**
- * Calculates the price impact of a swap
- */
-function calculatePriceImpact(amountIn: bigint, reserveIn: bigint): number {
-    if (amountIn <= 0n || reserveIn <= 0n) {
-        return 0;
-    }
-
-    const totalReserveAfterSwap = reserveIn + amountIn;
-    const priceImpactBasisPoints = Number((amountIn * BigInt(10000)) / totalReserveAfterSwap);
-
-    return priceImpactBasisPoints / 100;
-}
 
 /**
  * Finds the best trade route from start token to end token
