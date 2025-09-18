@@ -481,20 +481,26 @@ router.get('/trades/:pairId', (async (req: Request, res: Response) => {
       limit: Math.min(Number(limit), 500) // Cap at 500 trades
     }) || [];
     
-    // Format trade data
-    const formattedTrades = trades.map(trade => ({
-      id: trade._id || trade.id,
-      timestamp: trade.timestamp,
-      price: formatAmount(toBigInt(trade.price)),
-      rawPrice: toBigInt(trade.price).toString(),
-      quantity: formatAmount(toBigInt(trade.quantity)),
-      rawQuantity: toBigInt(trade.quantity).toString(),
-      volume: trade.volume ? formatAmount(toBigInt(trade.volume)) : formatAmount(toBigInt(trade.price) * toBigInt(trade.quantity)),
-      rawVolume: trade.volume ? toBigInt(trade.volume).toString() : (toBigInt(trade.price) * toBigInt(trade.quantity)).toString(),
-      side: trade.side || 'unknown', // 'buy' or 'sell'
-      type: trade.type || 'market', // 'market', 'limit', etc.
-      source: trade.source || 'unknown' // 'amm', 'orderbook', 'hybrid'
-    }));
+    // Format trade data with proper decimal handling
+    const formattedTrades = trades.map(trade => {
+      const priceBigInt = toBigInt(trade.price);
+      const quantityBigInt = toBigInt(trade.quantity);
+      const volumeBigInt = trade.volume ? toBigInt(trade.volume) : (priceBigInt * quantityBigInt) / BigInt(1e8);
+      
+      return {
+        id: trade._id || trade.id,
+        timestamp: trade.timestamp,
+        price: formatAmount(priceBigInt),
+        rawPrice: priceBigInt.toString(),
+        quantity: formatAmount(quantityBigInt),
+        rawQuantity: quantityBigInt.toString(),
+        volume: formatAmount(volumeBigInt),
+        rawVolume: volumeBigInt.toString(),
+        side: trade.side || 'unknown', // 'buy' or 'sell'
+        type: trade.type || 'market', // 'market', 'limit', etc.
+        source: trade.source || 'unknown' // 'pool', 'orderbook', 'hybrid'
+      };
+    });
     
     // Calculate summary statistics
     const volume24h = formattedTrades

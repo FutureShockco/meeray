@@ -4,7 +4,7 @@ import validate from '../../validation/index.js';
 import { HybridTradeData, HybridTradeResult, HybridRoute } from './market-interfaces.js';
 import { liquidityAggregator } from './market-aggregator.js';
 import { getAccount, adjustBalance } from '../../utils/account.js';
-import { toBigInt, getTokenDecimals, calculateDecimalAwarePrice } from '../../utils/bigint.js';
+import { toBigInt, getTokenDecimals, calculateDecimalAwarePrice, toDbString } from '../../utils/bigint.js';
 import crypto from 'crypto';
 
 // Import transaction processors for different route types
@@ -596,6 +596,17 @@ async function recordAMMTrade(params: {
       priceValue = calculateDecimalAwarePrice(params.amountIn, params.amountOut, quoteSymbol, baseSymbol);
     }
     
+    // Ensure price is not zero - if it is, calculate a simple price
+    if (priceValue === 0n && quantity > 0n && volume > 0n) {
+      // Simple price calculation: volume / quantity, scaled by 1e8
+      priceValue = (volume * BigInt(1e8)) / quantity;
+      logger.warn(`[recordAMMTrade] Price was 0, using simple calculation: ${priceValue} for ${volume}/${quantity}`);
+    }
+    
+    // Debug logging
+    logger.debug(`[recordAMMTrade] Trade: ${params.amountIn} ${params.tokenIn} -> ${params.amountOut} ${params.tokenOut}`);
+    logger.debug(`[recordAMMTrade] Mapped: ${quantity} ${baseSymbol} (quantity), ${volume} ${quoteSymbol} (volume), price: ${priceValue}`);
+    
     // Create trade record matching the orderbook trade format
     const tradeRecord = {
       _id: crypto.randomBytes(12).toString('hex'),
@@ -606,19 +617,19 @@ async function recordAMMTrade(params: {
       takerOrderId: null, // AMM trades don't have taker orders
       buyerUserId: params.sender, // User is buying tokenOut with tokenIn
       sellerUserId: 'AMM', // AMM is the seller
-      price: priceValue.toString(),
-      quantity: quantity.toString(),
-      volume: volume.toString(),
+      price: toDbString(priceValue), // Use toDbString for proper BigInt conversion
+      quantity: toDbString(quantity),
+      volume: toDbString(volume),
       timestamp: Date.now(),
       side: 'buy', // User is buying
       type: 'market', // AMM trades are market orders
-      source: 'amm', // Mark as AMM source
+      source: 'pool', // Mark as pool source (changed from 'amm' to match your data)
       isMakerBuyer: false,
       feeAmount: '0', // Fees are handled in the pool swap
       feeCurrency: quoteSymbol,
       makerFee: '0',
       takerFee: '0',
-      total: volume.toString()
+      total: toDbString(volume)
     };
 
     // Save to trades collection
