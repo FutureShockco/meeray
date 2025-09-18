@@ -361,26 +361,68 @@ async function recordPoolSwapTrade(params: {
     // Calculate price considering token decimals for proper scaling
     const price = calculateDecimalAwarePrice(params.amountIn, params.amountOut, params.tokenIn, params.tokenOut);
     
+    // Get the trading pair to determine correct base/quote assignment
+    const pair = await cache.findOnePromise('tradingPairs', { _id: pairId });
+    if (!pair) {
+      logger.warn(`[pool-swap] Trading pair ${pairId} not found, using token symbols as-is`);
+    }
+    
+    // Determine correct base/quote mapping and trade side
+    let baseSymbol, quoteSymbol, tradeSide: 'buy' | 'sell';
+    let buyerUserId: string;
+    let sellerUserId: string;
+    
+    if (pair) {
+      baseSymbol = pair.baseAssetSymbol;
+      quoteSymbol = pair.quoteAssetSymbol;
+      
+      // Determine trade side based on token direction
+      if (params.tokenOut === baseSymbol) {
+        // User is buying the base asset (tokenOut = base), it's a BUY
+        tradeSide = 'buy';
+        buyerUserId = params.sender;
+        sellerUserId = 'POOL';
+      } else if (params.tokenIn === baseSymbol) {
+        // User is selling the base asset (tokenIn = base), it's a SELL
+        tradeSide = 'sell';
+        buyerUserId = 'POOL';
+        sellerUserId = params.sender;
+      } else {
+        // Fallback to buy if we can't determine the direction
+        logger.warn(`[pool-swap] Could not determine trade side for ${params.tokenIn} -> ${params.tokenOut}, defaulting to buy`);
+        tradeSide = 'buy';
+        buyerUserId = params.sender;
+        sellerUserId = 'POOL';
+      }
+    } else {
+      // Fallback when pair info is not available
+      baseSymbol = params.tokenOut;
+      quoteSymbol = params.tokenIn;
+      tradeSide = 'buy';
+      buyerUserId = params.sender;
+      sellerUserId = 'POOL';
+    }
+
     // Create trade record matching the orderbook trade format
     const tradeRecord = {
       _id: crypto.randomBytes(12).toString('hex'),
       pairId: pairId,
-      baseAssetSymbol: params.tokenOut,
-      quoteAssetSymbol: params.tokenIn,
+      baseAssetSymbol: baseSymbol,
+      quoteAssetSymbol: quoteSymbol,
       makerOrderId: null, // Pool swaps don't have maker orders
       takerOrderId: null, // Pool swaps don't have taker orders
-      buyerUserId: params.sender, // User is buying tokenOut with tokenIn
-      sellerUserId: 'POOL', // Pool is the seller
+      buyerUserId: buyerUserId,
+      sellerUserId: sellerUserId,
       price: price.toString(),
       quantity: params.amountOut.toString(),
       volume: (price * params.amountOut / BigInt(1e8)).toString(), // volume = price * quantity
       timestamp: Date.now(),
-      side: 'buy', // User is buying
+      side: tradeSide,
       type: 'market', // Pool swaps are market orders
       source: 'pool', // Mark as pool source
       isMakerBuyer: false,
       feeAmount: '0', // Fees are handled in the pool swap
-      feeCurrency: params.tokenIn,
+      feeCurrency: quoteSymbol,
       makerFee: '0',
       takerFee: '0',
       total: params.amountIn.toString()

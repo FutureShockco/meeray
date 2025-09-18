@@ -645,6 +645,29 @@ async function recordAMMTrade(params: {
       priceValue = 0n;
     }
     
+    // Determine the correct trade side based on token direction
+    let tradeSide: 'buy' | 'sell';
+    let buyerUserId: string;
+    let sellerUserId: string;
+    
+    if (params.tokenOut === baseSymbol) {
+      // User is buying the base asset (tokenOut = base), it's a BUY
+      tradeSide = 'buy';
+      buyerUserId = params.sender;
+      sellerUserId = 'AMM';
+    } else if (params.tokenIn === baseSymbol) {
+      // User is selling the base asset (tokenIn = base), it's a SELL
+      tradeSide = 'sell';
+      buyerUserId = 'AMM';
+      sellerUserId = params.sender;
+    } else {
+      // Fallback to buy if we can't determine the direction
+      logger.warn(`[recordAMMTrade] Could not determine trade side for ${params.tokenIn} -> ${params.tokenOut}, defaulting to buy`);
+      tradeSide = 'buy';
+      buyerUserId = params.sender;
+      sellerUserId = 'AMM';
+    }
+
     // Create trade record matching the orderbook trade format
     const tradeRecord = {
       _id: crypto.randomBytes(12).toString('hex'),
@@ -653,13 +676,13 @@ async function recordAMMTrade(params: {
       quoteAssetSymbol: quoteSymbol,
       makerOrderId: null, // AMM trades don't have maker orders
       takerOrderId: null, // AMM trades don't have taker orders
-      buyerUserId: params.sender, // User is buying tokenOut with tokenIn
-      sellerUserId: 'AMM', // AMM is the seller
+      buyerUserId: buyerUserId,
+      sellerUserId: sellerUserId,
       price: toDbString(priceValue), // Use toDbString for proper BigInt conversion
       quantity: toDbString(quantity),
       volume: toDbString(volume),
       timestamp: Date.now(),
-      side: 'buy', // User is buying
+      side: tradeSide,
       type: 'market', // AMM trades are market orders
       source: 'pool', // Mark as pool source (changed from 'amm' to match your data)
       isMakerBuyer: false,

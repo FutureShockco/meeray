@@ -30,8 +30,8 @@ router.get('/sources/:tokenA/:tokenB', (async (req: Request, res: Response) => {
       tokenA: source.tokenA,
       tokenB: source.tokenB,
       ...(source.type === 'AMM' && {
-        reserveA: formatAmount(toBigInt(source.reserveA!)),
-        reserveB: formatAmount(toBigInt(source.reserveB!)),
+        reserveA: formatAmount(toBigInt(source.reserveA!), source.tokenA),
+        reserveB: formatAmount(toBigInt(source.reserveB!), source.tokenB),
         rawReserveA: source.reserveA?.toString(),
         rawReserveB: source.reserveB?.toString()
       }),
@@ -40,8 +40,8 @@ router.get('/sources/:tokenA/:tokenB', (async (req: Request, res: Response) => {
         bestAsk: formatAmount(toBigInt(source.bestAsk!)),
         rawBestBid: source.bestBid?.toString(),
         rawBestAsk: source.bestAsk?.toString(),
-        bidDepth: formatAmount(toBigInt(source.bidDepth!)),
-        askDepth: formatAmount(toBigInt(source.askDepth!)),
+        bidDepth: formatAmount(toBigInt(source.bidDepth!), source.tokenA),
+        askDepth: formatAmount(toBigInt(source.askDepth!), source.tokenA),
         rawBidDepth: source.bidDepth?.toString(),
         rawAskDepth: source.askDepth?.toString()
       })
@@ -109,12 +109,12 @@ router.post('/quote', (async (req: Request, res: Response) => {
     // Add formatted amounts and additional info
     const enhancedQuote = {
       ...quote,
-      amountIn: formatAmount(toBigInt(quote.amountIn)),
+      amountIn: formatAmount(toBigInt(quote.amountIn), tokenIn),
       rawAmountIn: quote.amountIn,
       routes: quote.routes.map(route => ({
         ...route,
-        amountIn: formatAmount(toBigInt(route.amountIn)),
-        amountOut: formatAmount(toBigInt(route.amountOut)),
+        amountIn: formatAmount(toBigInt(route.amountIn), tokenIn),
+        amountOut: formatAmount(toBigInt(route.amountOut), tokenOut),
         rawAmountIn: route.amountIn,
         rawAmountOut: route.amountOut,
         details: route.details
@@ -185,7 +185,7 @@ router.post('/compare', (async (req: Request, res: Response) => {
     res.json({
       tokenIn,
       tokenOut,
-      amountIn: formatAmount(toBigInt(amountIn)),
+      amountIn: formatAmount(toBigInt(amountIn), tokenIn),
       rawAmountIn: amountIn,
       comparison,
       timestamp: new Date().toISOString()
@@ -298,7 +298,7 @@ router.get('/stats/:pairId', (async (req: Request, res: Response) => {
     res.json({
       pairId,
       pair,
-      volume24h: formatAmount(BigInt(Math.round(volume24h * 1e8))),
+      volume24h: formatAmount(BigInt(Math.round(volume24h * 1e8)), pair.quoteAssetSymbol),
       rawVolume24h: volume24h.toString(),
       tradeCount24h,
       priceChange24h: formatAmount(BigInt(Math.round(priceChange24h * 1e8))),
@@ -319,9 +319,9 @@ router.get('/stats/:pairId', (async (req: Request, res: Response) => {
         ...trade,
         price: formatAmount(toBigInt(trade.price || 0)),
         rawPrice: toBigInt(trade.price || 0).toString(),
-        quantity: formatAmount(toBigInt(trade.quantity || 0)),
+        quantity: formatAmount(toBigInt(trade.quantity || 0), pair.baseAssetSymbol),
         rawQuantity: toBigInt(trade.quantity || 0).toString(),
-        volume: trade.volume ? formatAmount(toBigInt(trade.volume)) : '0.00000000',
+        volume: trade.volume ? formatAmount(toBigInt(trade.volume), pair.quoteAssetSymbol) : '0.00000000',
         rawVolume: trade.volume ? toBigInt(trade.volume).toString() : '0'
       }))
     });
@@ -369,7 +369,7 @@ router.get('/orderbook/:pairId', (async (req: Request, res: Response) => {
     // Format orderbook data
     const bids = buyOrders.map(order => {
       const price = formatAmount(toBigInt(order.price || 0));
-      const quantity = formatAmount(toBigInt(order.remainingQuantity || order.quantity));
+      const quantity = formatAmount(toBigInt(order.remainingQuantity || order.quantity), pair.baseAssetSymbol);
       const rawPrice = toBigInt(order.price || 0).toString();
       const rawQuantity = toBigInt(order.remainingQuantity || order.quantity).toString();
       
@@ -381,7 +381,7 @@ router.get('/orderbook/:pairId', (async (req: Request, res: Response) => {
         pair.quoteAssetSymbol
       );
       
-      const total = formatAmount(rawTotalBigInt);
+      const total = formatAmount(rawTotalBigInt, pair.quoteAssetSymbol);
       const rawTotal = rawTotalBigInt.toString();
       
       return {
@@ -396,7 +396,7 @@ router.get('/orderbook/:pairId', (async (req: Request, res: Response) => {
 
     const asks = sellOrders.map(order => {
       const price = formatAmount(toBigInt(order.price || 0));
-      const quantity = formatAmount(toBigInt(order.remainingQuantity || order.quantity));
+      const quantity = formatAmount(toBigInt(order.remainingQuantity || order.quantity), pair.baseAssetSymbol);
       const rawPrice = toBigInt(order.price || 0).toString();
       const rawQuantity = toBigInt(order.remainingQuantity || order.quantity).toString();
       
@@ -408,7 +408,7 @@ router.get('/orderbook/:pairId', (async (req: Request, res: Response) => {
         pair.quoteAssetSymbol
       );
       
-      const total = formatAmount(rawTotalBigInt);
+      const total = formatAmount(rawTotalBigInt, pair.quoteAssetSymbol);
       const rawTotal = rawTotalBigInt.toString();
       
       return {
@@ -492,9 +492,9 @@ router.get('/trades/:pairId', (async (req: Request, res: Response) => {
         timestamp: trade.timestamp,
         price: formatAmount(priceBigInt),
         rawPrice: priceBigInt.toString(),
-        quantity: formatAmount(quantityBigInt),
+        quantity: formatAmount(quantityBigInt, pair.baseAssetSymbol),
         rawQuantity: quantityBigInt.toString(),
-        volume: formatAmount(volumeBigInt),
+        volume: formatAmount(volumeBigInt, pair.quoteAssetSymbol),
         rawVolume: volumeBigInt.toString(),
         side: trade.side || 'unknown', // 'buy' or 'sell'
         type: trade.type || 'market', // 'market', 'limit', etc.
@@ -528,7 +528,7 @@ router.get('/trades/:pairId', (async (req: Request, res: Response) => {
       trades: formattedTrades,
       summary: {
         count: formattedTrades.length,
-        volume24h: formatAmount(BigInt(Math.round(volume24h))),
+        volume24h: formatAmount(BigInt(Math.round(volume24h)), pair.quoteAssetSymbol),
         rawVolume24h: Math.round(volume24h).toString(),
         priceRange,
         timestamp: Date.now()
@@ -589,9 +589,14 @@ router.get('/health', (async (req: Request, res: Response) => {
 /**
  * Helper functions
  */
-function formatAmount(amount: bigint): string {
-  // Format based on standard 8 decimal scaling for display
-  // Trade prices are already stored with proper decimal consideration
+function formatAmount(amount: bigint, tokenSymbol?: string): string {
+  // Format based on token-specific decimal scaling for display
+  if (tokenSymbol) {
+    const decimals = getTokenDecimals(tokenSymbol);
+    const divisor = Math.pow(10, decimals);
+    return (Number(amount) / divisor).toFixed(decimals);
+  }
+  // Fallback to 8 decimals for backward compatibility
   return (Number(amount) / 1e8).toFixed(8);
 }
 
@@ -739,24 +744,40 @@ router.get('/orders/:userId', (async (req: Request, res: Response) => {
       limit: Math.min(Number(limit), 500) // Cap at 500 orders
     }) || [];
     
+    // Get trading pair information for proper decimal formatting
+    const pairIds = [...new Set(orders.map(order => order.pairId))];
+    const pairs = await Promise.all(
+      pairIds.map(async (id) => {
+        const pair = await cache.findOnePromise('tradingPairs', { _id: id });
+        return { [id]: pair };
+      })
+    );
+    const pairMap = pairs.reduce((acc, pair) => ({ ...acc, ...pair }), {});
+
     // Format order data
-    const formattedOrders = orders.map(order => ({
-      id: order._id || order.id,
-      pairId: order.pairId,
-      side: order.side,
-      type: order.type,
-      price: order.price ? formatAmount(toBigInt(order.price)) : null,
-      rawPrice: order.price ? toBigInt(order.price).toString() : null,
-      quantity: formatAmount(toBigInt(order.quantity)),
-      rawQuantity: toBigInt(order.quantity).toString(),
-      remainingQuantity: formatAmount(toBigInt(order.remainingQuantity || 0)),
-      rawRemainingQuantity: toBigInt(order.remainingQuantity || 0).toString(),
-      filledQuantity: formatAmount(toBigInt(order.filledQuantity || 0)),
-      rawFilledQuantity: toBigInt(order.filledQuantity || 0).toString(),
-      status: order.status,
-      timestamp: order.timestamp,
-      lastUpdateTime: order.lastUpdateTime
-    }));
+    const formattedOrders = orders.map(order => {
+      const pair = pairMap[order.pairId];
+      const baseSymbol = pair?.baseAssetSymbol || 'UNKNOWN';
+      const quoteSymbol = pair?.quoteAssetSymbol || 'UNKNOWN';
+      
+      return {
+        id: order._id || order.id,
+        pairId: order.pairId,
+        side: order.side,
+        type: order.type,
+        price: order.price ? formatAmount(toBigInt(order.price)) : null,
+        rawPrice: order.price ? toBigInt(order.price).toString() : null,
+        quantity: formatAmount(toBigInt(order.quantity), baseSymbol),
+        rawQuantity: toBigInt(order.quantity).toString(),
+        remainingQuantity: formatAmount(toBigInt(order.remainingQuantity || 0), baseSymbol),
+        rawRemainingQuantity: toBigInt(order.remainingQuantity || 0).toString(),
+        filledQuantity: formatAmount(toBigInt(order.filledQuantity || 0), baseSymbol),
+        rawFilledQuantity: toBigInt(order.filledQuantity || 0).toString(),
+        status: order.status,
+        timestamp: order.timestamp,
+        lastUpdateTime: order.lastUpdateTime
+      };
+    });
     
     // Calculate summary statistics
     const summary = {
