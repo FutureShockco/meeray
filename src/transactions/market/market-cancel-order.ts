@@ -4,7 +4,7 @@ import validate from '../../validation/index.js';
 import { MarketCancelOrderData, OrderData, OrderStatus, OrderSide } from './market-interfaces.js';
 import { getAccount, adjustBalance } from '../../utils/account.js';
 import { matchingEngine } from './matching-engine.js';
-import { toBigInt } from '../../utils/bigint.js';
+import { toBigInt, calculateTradeValue } from '../../utils/bigint.js';
 
 export async function validateTx(data: MarketCancelOrderData, sender: string): Promise<boolean> {
     try {
@@ -114,9 +114,14 @@ export async function process(data: MarketCancelOrderData, sender: string, id: s
                 order.quoteAssetSymbol : 
                 order.baseAssetSymbol;
             
-            const amountToReturn = order.side === OrderSide.BUY ? 
-                (unfilledQuantity * toBigInt(order.price || 0)) : // Buy: return quote currency
-                unfilledQuantity; // Sell: return base currency
+            let amountToReturn: bigint;
+            if (order.side === OrderSide.BUY) {
+                // Buy order: return quote currency, considering decimal differences
+                amountToReturn = calculateTradeValue(toBigInt(order.price || 0), unfilledQuantity, order.baseAssetSymbol, order.quoteAssetSymbol);
+            } else {
+                // Sell order: return base currency (no price conversion needed)
+                amountToReturn = unfilledQuantity;
+            }
 
             if (amountToReturn > BigInt(0)) {
                 await adjustBalance(sender, tokenToReturn, amountToReturn);

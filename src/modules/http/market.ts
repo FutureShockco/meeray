@@ -3,7 +3,7 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import { liquidityAggregator } from '../../transactions/market/market-aggregator.js';
 import { HybridTradeData } from '../../transactions/market/market-interfaces.js';
-import { toBigInt } from '../../utils/bigint.js';
+import { toBigInt, getTokenDecimals, calculateTradeValue } from '../../utils/bigint.js';
 
 const router = express.Router();
 
@@ -372,8 +372,18 @@ router.get('/orderbook/:pairId', (async (req: Request, res: Response) => {
       const quantity = formatAmount(toBigInt(order.remainingQuantity || order.quantity));
       const rawPrice = toBigInt(order.price || 0).toString();
       const rawQuantity = toBigInt(order.remainingQuantity || order.quantity).toString();
-      const total = formatAmount(BigInt(Math.round((Number(price) * Number(quantity)) * 1e8)));
-      const rawTotal = Math.round((Number(toBigInt(order.price || 0)) * Number(toBigInt(order.remainingQuantity || order.quantity))) / 1e8 * 1e8).toString();
+      
+      // Calculate total considering decimal differences (price is already scaled by 1e8)
+      const rawTotalBigInt = calculateTradeValue(
+        toBigInt(order.price || 0), 
+        toBigInt(order.remainingQuantity || order.quantity),
+        pair.baseAssetSymbol,
+        pair.quoteAssetSymbol
+      );
+      
+      const total = formatAmount(rawTotalBigInt);
+      const rawTotal = rawTotalBigInt.toString();
+      
       return {
         price,
         rawPrice,
@@ -389,8 +399,18 @@ router.get('/orderbook/:pairId', (async (req: Request, res: Response) => {
       const quantity = formatAmount(toBigInt(order.remainingQuantity || order.quantity));
       const rawPrice = toBigInt(order.price || 0).toString();
       const rawQuantity = toBigInt(order.remainingQuantity || order.quantity).toString();
-      const total = formatAmount(BigInt(Math.round((Number(price) * Number(quantity)) * 1e8)));
-      const rawTotal = Math.round((Number(toBigInt(order.price || 0)) * Number(toBigInt(order.remainingQuantity || order.quantity))) / 1e8 * 1e8).toString();
+      
+      // Calculate total considering decimal differences (price is already scaled by 1e8)
+      const rawTotalBigInt = calculateTradeValue(
+        toBigInt(order.price || 0), 
+        toBigInt(order.remainingQuantity || order.quantity),
+        pair.baseAssetSymbol,
+        pair.quoteAssetSymbol
+      );
+      
+      const total = formatAmount(rawTotalBigInt);
+      const rawTotal = rawTotalBigInt.toString();
+      
       return {
         price,
         rawPrice,
@@ -564,7 +584,8 @@ router.get('/health', (async (req: Request, res: Response) => {
  * Helper functions
  */
 function formatAmount(amount: bigint): string {
-  // Format based on token decimals - using 8 decimals as default
+  // Format based on standard 8 decimal scaling for display
+  // Trade prices are already stored with proper decimal consideration
   return (Number(amount) / 1e8).toFixed(8);
 }
 

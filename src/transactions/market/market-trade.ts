@@ -4,7 +4,7 @@ import validate from '../../validation/index.js';
 import { HybridTradeData, HybridTradeResult, HybridRoute } from './market-interfaces.js';
 import { liquidityAggregator } from './market-aggregator.js';
 import { getAccount, adjustBalance } from '../../utils/account.js';
-import { toBigInt } from '../../utils/bigint.js';
+import { toBigInt, getTokenDecimals, calculateDecimalAwarePrice } from '../../utils/bigint.js';
 import crypto from 'crypto';
 
 // Import transaction processors for different route types
@@ -218,8 +218,14 @@ export async function process(data: HybridTradeData, sender: string, transaction
         // Check if AMM output meets minAmountOut requirement
         if (data.minAmountOut && toBigInt(quote.amountOut) < toBigInt(data.minAmountOut)) {
           // AMM output too low - use orderbook as limit order with calculated price
-          const calculatedPrice = (toBigInt(data.amountIn) * BigInt(1e8)) / toBigInt(data.minAmountOut); // Assuming 8 decimal precision
-          logger.info(`[hybrid-trade] AMM output ${quote.amountOut} below minAmountOut ${data.minAmountOut}. Routing to orderbook as limit order at calculated price ${calculatedPrice}`);
+          // Calculate price considering different token decimals
+          const calculatedPrice = calculateDecimalAwarePrice(
+            toBigInt(data.amountIn), 
+            toBigInt(data.minAmountOut), 
+            data.tokenIn, 
+            data.tokenOut
+          );
+          logger.info(`[hybrid-trade] AMM output ${quote.amountOut} below minAmountOut ${data.minAmountOut}. Routing to orderbook as limit order at calculated price ${calculatedPrice} (considering token decimals)`);
           
           // Find the correct trading pair ID regardless of token order
           const pairId = await findTradingPairId(data.tokenIn, data.tokenOut);
@@ -312,8 +318,8 @@ export async function process(data: HybridTradeData, sender: string, transaction
         totalAmountIn += routeAmountIn;
       } else {
         logger.error(`[hybrid-trade] Failed to execute ${route.type} route: ${routeResult.error}`);
-        // Rollback any successful routes if needed
-        // For now, continue with other routes
+        // Continue with other routes - partial execution is allowed
+        // Individual route failures don't fail the entire trade unless all routes fail
       }
     }
 
@@ -443,6 +449,12 @@ async function executeOrderbookRoute(
     // Determine order type based on whether price is specified in tradeData OR route details
     const orderType = (tradeData.price || orderbookDetails.price) ? OrderType.LIMIT : OrderType.MARKET;
     
+    // Get the trading pair to determine correct base/quote assignment
+    const pair = await cache.findOnePromise('tradingPairs', { _id: orderbookDetails.pairId });
+    if (!pair) {
+      return { success: false, amountOut: BigInt(0), error: `Trading pair ${orderbookDetails.pairId} not found` };
+    }
+    
     // Create order (limit or market)
     const orderData: any = {
       userId: sender,
@@ -450,8 +462,8 @@ async function executeOrderbookRoute(
       type: orderType,
       side: orderbookDetails.side,
       quantity: amountIn,
-      baseAssetSymbol: tradeData.tokenIn,
-      quoteAssetSymbol: tradeData.tokenOut
+      baseAssetSymbol: pair.baseAssetSymbol,
+      quoteAssetSymbol: pair.quoteAssetSymbol
     };
 
     // Add price for limit orders (from tradeData or route details)
@@ -550,32 +562,63 @@ async function recordAMMTrade(params: {
       return;
     }
     
-    // Calculate price (price = amountIn / amountOut, scaled appropriately)
-    const price = params.amountOut > 0n ? (params.amountIn * BigInt(1e8)) / params.amountOut : 0n;
+    // Get the trading pair to determine correct base/quote assignment
+    const pair = await cache.findOnePromise('tradingPairs', { _id: pairId });
+    if (!pair) {
+      logger.warn(`[recordAMMTrade] Trading pair ${pairId} not found, using token symbols as-is`);
+    }
+    
+    // Determine correct base/quote mapping and price calculation
+    let baseSymbol, quoteSymbol, quantity, volume, priceValue;
+    if (pair) {
+      // Use actual pair configuration
+      baseSymbol = pair.baseAssetSymbol;
+      quoteSymbol = pair.quoteAssetSymbol;
+      
+      // Determine which direction the trade went
+      if (params.tokenOut === baseSymbol) {
+        // User bought base asset with quote asset
+        quantity = params.amountOut; // Amount of base received
+        volume = params.amountIn;    // Amount of quote spent
+        priceValue = calculateDecimalAwarePrice(params.amountIn, params.amountOut, quoteSymbol, baseSymbol);
+      } else {
+        // User sold base asset for quote asset
+        quantity = params.amountIn;  // Amount of base sold
+        volume = params.amountOut;   // Amount of quote received
+        priceValue = calculateDecimalAwarePrice(params.amountOut, params.amountIn, quoteSymbol, baseSymbol);
+      }
+    } else {
+      // Fallback: calculate price with token decimal consideration
+      baseSymbol = params.tokenOut;
+      quoteSymbol = params.tokenIn;
+      quantity = params.amountOut;
+      volume = params.amountIn;
+      priceValue = calculateDecimalAwarePrice(params.amountIn, params.amountOut, quoteSymbol, baseSymbol);
+    }
     
     // Create trade record matching the orderbook trade format
     const tradeRecord = {
       _id: crypto.randomBytes(12).toString('hex'),
       pairId: pairId,
-      baseAssetSymbol: params.tokenOut,
-      quoteAssetSymbol: params.tokenIn,
+      baseAssetSymbol: baseSymbol,
+      quoteAssetSymbol: quoteSymbol,
       makerOrderId: null, // AMM trades don't have maker orders
       takerOrderId: null, // AMM trades don't have taker orders
       buyerUserId: params.sender, // User is buying tokenOut with tokenIn
       sellerUserId: 'AMM', // AMM is the seller
-      price: price.toString(),
-      quantity: params.amountOut.toString(),
-      volume: (price * params.amountOut / BigInt(1e8)).toString(), // volume = price * quantity
+      price: priceValue.toString(),
+      quantity: quantity.toString(),
+      volume: volume.toString(),
       timestamp: Date.now(),
       side: 'buy', // User is buying
       type: 'market', // AMM trades are market orders
       source: 'amm', // Mark as AMM source
       isMakerBuyer: false,
       feeAmount: '0', // Fees are handled in the pool swap
-      feeCurrency: params.tokenIn,
+      feeCurrency: quoteSymbol,
       makerFee: '0',
       takerFee: '0',
-      total: params.amountIn.toString()
+      total: volume.toString()
     };
 
     // Save to trades collection

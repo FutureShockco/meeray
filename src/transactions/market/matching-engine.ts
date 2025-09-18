@@ -3,7 +3,7 @@ import { OrderBook, OrderBookMatchResult } from './orderbook.js';
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import { adjustBalance } from '../../utils/account.js';
-import { toBigInt, toDbString } from '../../utils/bigint.js';
+import { toBigInt, toDbString, calculateTradeValue } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
 /**
@@ -38,16 +38,28 @@ async function distributeOrderbookFeesToLiquidityProviders(
     let newFeeGrowthGlobalA = toBigInt(pool.feeGrowthGlobalA || '0');
     let newFeeGrowthGlobalB = toBigInt(pool.feeGrowthGlobalB || '0');
 
-    // Distribute base token fees (assuming baseAsset is tokenA)
+    // Determine which pool token corresponds to which trading pair asset
+    const baseIsTokenA = pool.tokenA_symbol === baseAssetSymbol;
+    const quoteIsTokenA = pool.tokenA_symbol === quoteAssetSymbol;
+
+    // Distribute base token fees to the correct pool token
     if (baseTokenFee > 0n) {
       const feeGrowthDelta = (baseTokenFee * BigInt(1e18)) / totalLpTokens;
-      newFeeGrowthGlobalA = newFeeGrowthGlobalA + feeGrowthDelta;
+      if (baseIsTokenA) {
+        newFeeGrowthGlobalA = newFeeGrowthGlobalA + feeGrowthDelta;
+      } else {
+        newFeeGrowthGlobalB = newFeeGrowthGlobalB + feeGrowthDelta;
+      }
     }
 
-    // Distribute quote token fees (assuming quoteAsset is tokenB)
+    // Distribute quote token fees to the correct pool token
     if (quoteTokenFee > 0n) {
       const feeGrowthDelta = (quoteTokenFee * BigInt(1e18)) / totalLpTokens;
-      newFeeGrowthGlobalB = newFeeGrowthGlobalB + feeGrowthDelta;
+      if (quoteIsTokenA) {
+        newFeeGrowthGlobalA = newFeeGrowthGlobalA + feeGrowthDelta;
+      } else {
+        newFeeGrowthGlobalB = newFeeGrowthGlobalB + feeGrowthDelta;
+      }
     }
 
     // Update the pool's fee growth globals
@@ -407,7 +419,9 @@ class MatchingEngine {
         const quoteTokenIdentifier = pairDetails.quoteAssetSymbol;
         const tradePriceBigInt = toBigInt(trade.price);
         const tradeQuantityBigInt = toBigInt(trade.quantity);
-        const tradeValue = tradePriceBigInt * tradeQuantityBigInt;
+        
+        // Calculate trade value considering decimal differences between base and quote tokens
+        const tradeValue = calculateTradeValue(tradePriceBigInt, tradeQuantityBigInt, baseTokenIdentifier, quoteTokenIdentifier);
 
         // Apply 0.3% fee split between buyer and seller (0.15% each)
         const feeRate = BigInt(150); // 0.15% in basis points for each party

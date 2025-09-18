@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { PoolSwapData, LiquidityPoolData, PoolSwapResult } from './pool-interfaces.js';
 import { adjustBalance, getAccount, Account } from '../../utils/account.js';
-import { toBigInt, toDbString } from '../../utils/bigint.js';
+import { toBigInt, toDbString, calculateDecimalAwarePrice } from '../../utils/bigint.js';
 import { getOutputAmountBigInt, calculatePriceImpact } from '../../utils/pool.js';
 import mongo from '../../mongo.js';
 import { logEvent } from '../../utils/event-logger.js';
@@ -358,8 +358,8 @@ async function recordPoolSwapTrade(params: {
       return;
     }
     
-    // Calculate price (price = amountIn / amountOut, scaled appropriately)
-    const price = params.amountOut > 0n ? (params.amountIn * BigInt(1e8)) / params.amountOut : 0n;
+    // Calculate price considering token decimals for proper scaling
+    const price = calculateDecimalAwarePrice(params.amountIn, params.amountOut, params.tokenIn, params.tokenOut);
     
     // Create trade record matching the orderbook trade format
     const tradeRecord = {

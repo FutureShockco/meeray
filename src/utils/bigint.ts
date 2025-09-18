@@ -87,6 +87,63 @@ export function parseTokenAmount(value: string, symbol: string): bigint {
 }
 
 /**
+ * Calculate decimal-aware price for trading pairs
+ * @param amountIn Input token amount
+ * @param amountOut Output token amount
+ * @param tokenInSymbol Input token symbol
+ * @param tokenOutSymbol Output token symbol
+ * @returns Price scaled by 1e8 with proper decimal consideration
+ */
+export function calculateDecimalAwarePrice(
+    amountIn: bigint, 
+    amountOut: bigint, 
+    tokenInSymbol: string, 
+    tokenOutSymbol: string
+): bigint {
+    if (amountOut === 0n) return 0n;
+    
+    const tokenInDecimals = getTokenDecimals(tokenInSymbol);
+    const tokenOutDecimals = getTokenDecimals(tokenOutSymbol);
+    const decimalDifference = tokenOutDecimals - tokenInDecimals;
+    const scalingFactor = decimalDifference >= 0 ? 
+        BigInt(10 ** decimalDifference) : 
+        BigInt(1) / BigInt(10 ** (-decimalDifference));
+    
+    return (amountIn * scalingFactor * BigInt(1e8)) / amountOut;
+}
+
+/**
+ * Calculate trade value considering decimal differences between base and quote tokens
+ * Used by matching engine for correct volume calculations
+ * @param price Price scaled by 1e8
+ * @param quantity Quantity in base token units
+ * @param baseTokenSymbol Base token symbol
+ * @param quoteTokenSymbol Quote token symbol
+ * @returns Trade value in quote token units
+ */
+export function calculateTradeValue(
+    price: bigint,
+    quantity: bigint,
+    baseTokenSymbol: string,
+    quoteTokenSymbol: string
+): bigint {
+    const baseDecimals = getTokenDecimals(baseTokenSymbol);
+    const quoteDecimals = getTokenDecimals(quoteTokenSymbol);
+    const decimalDifference = quoteDecimals - baseDecimals;
+    
+    // Price is scaled by 1e8, adjust for decimal differences
+    if (decimalDifference >= 0) {
+        // Quote has more decimals than base
+        const scalingFactor = BigInt(10 ** decimalDifference);
+        return (price * quantity * scalingFactor) / BigInt(1e8);
+    } else {
+        // Base has more decimals than quote
+        const scalingFactor = BigInt(10 ** (-decimalDifference));
+        return (price * quantity) / (BigInt(1e8) * scalingFactor);
+    }
+}
+
+/**
  * Type utility for database conversions
  */
 export type BigIntToString<T> = {
