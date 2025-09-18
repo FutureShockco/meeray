@@ -455,13 +455,28 @@ async function executeOrderbookRoute(
       return { success: false, amountOut: BigInt(0), error: `Trading pair ${orderbookDetails.pairId} not found` };
     }
     
+    // Calculate the correct quantity based on order side
+    let orderQuantity: bigint;
+    if (orderbookDetails.side === OrderSide.BUY) {
+      // For buy orders, quantity should be the amount of base currency to buy
+      // Calculate: quantity = amountIn (quote) / price
+      const price = tradeData.price || orderbookDetails.price;
+      if (!price) {
+        return { success: false, amountOut: BigInt(0), error: 'Price required for buy orders' };
+      }
+      orderQuantity = amountIn / toBigInt(price);
+    } else {
+      // For sell orders, quantity is the amount of base currency to sell
+      orderQuantity = amountIn;
+    }
+
     // Create order (limit or market)
     const orderData: any = {
       userId: sender,
       pairId: orderbookDetails.pairId,
       type: orderType,
       side: orderbookDetails.side,
-      quantity: amountIn,
+      quantity: orderQuantity,
       baseAssetSymbol: pair.baseAssetSymbol,
       quoteAssetSymbol: pair.quoteAssetSymbol
     };

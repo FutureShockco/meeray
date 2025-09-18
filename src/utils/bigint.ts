@@ -146,18 +146,28 @@ export function calculateTradeValue(
 ): bigint {
     const baseDecimals = getTokenDecimals(baseTokenSymbol);
     const quoteDecimals = getTokenDecimals(quoteTokenSymbol);
+    
+    // Price is scaled by 1e8, so we need to:
+    // 1. Calculate the raw value: (price * quantity) / 1e8
+    // 2. Adjust for decimal differences between base and quote tokens
+    
+    // First, calculate the raw value (price is already scaled by 1e8)
+    let rawValue = (price * quantity) / BigInt(1e8);
+    
+    // Then adjust for decimal differences
     const decimalDifference = quoteDecimals - baseDecimals;
     
-    // Price is scaled by 1e8, adjust for decimal differences
-    if (decimalDifference >= 0) {
-        // Quote has more decimals than base
+    if (decimalDifference > 0) {
+        // Quote has more decimals than base, scale up the result
         const scalingFactor = BigInt(10 ** decimalDifference);
-        return (price * quantity * scalingFactor) / BigInt(1e8);
-    } else {
-        // Base has more decimals than quote
+        rawValue = rawValue * scalingFactor;
+    } else if (decimalDifference < 0) {
+        // Base has more decimals than quote, scale down the result
         const scalingFactor = BigInt(10 ** (-decimalDifference));
-        return (price * quantity) / (BigInt(1e8) * scalingFactor);
+        rawValue = rawValue / scalingFactor;
     }
+    
+    return rawValue;
 }
 
 /**
