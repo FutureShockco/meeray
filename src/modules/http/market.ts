@@ -352,7 +352,7 @@ router.get('/orderbook/:pairId', (async (req: Request, res: Response) => {
     // Get active orders for this pair
     const orders = await cache.findPromise('orders', { 
       pairId,
-      status: { $in: ['open', 'partial'] }
+      status: { $in: ['open', 'partially_filled'] }
     }) || [];
     
     // Separate buy and sell orders
