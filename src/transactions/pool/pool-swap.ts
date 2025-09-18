@@ -358,9 +358,6 @@ async function recordPoolSwapTrade(params: {
       return;
     }
     
-    // Calculate price considering token decimals for proper scaling
-    const price = calculateDecimalAwarePrice(params.amountIn, params.amountOut, params.tokenIn, params.tokenOut);
-    
     // Get the trading pair to determine correct base/quote assignment
     const pair = await cache.findOnePromise('tradingPairs', { _id: pairId });
     if (!pair) {
@@ -373,6 +370,7 @@ async function recordPoolSwapTrade(params: {
     let sellerUserId: string;
     let quantity: bigint;
     let volume: bigint;
+    let price: bigint;
     
     if (pair) {
       baseSymbol = pair.baseAssetSymbol;
@@ -386,6 +384,8 @@ async function recordPoolSwapTrade(params: {
         sellerUserId = 'POOL';
         quantity = params.amountOut; // Amount of base received
         volume = params.amountIn;    // Amount of quote spent
+        // Price = quote spent / base received = amountIn / amountOut
+        price = calculateDecimalAwarePrice(params.amountIn, params.amountOut, quoteSymbol, baseSymbol);
       } else if (params.tokenIn === baseSymbol) {
         // User is selling the base asset (tokenIn = base), it's a SELL
         tradeSide = 'sell';
@@ -393,6 +393,8 @@ async function recordPoolSwapTrade(params: {
         sellerUserId = params.sender;
         quantity = params.amountIn;  // Amount of base sold
         volume = params.amountOut;   // Amount of quote received
+        // Price = quote received / base sold = amountOut / amountIn
+        price = calculateDecimalAwarePrice(params.amountOut, params.amountIn, quoteSymbol, baseSymbol);
       } else {
         // Fallback to buy if we can't determine the direction
         logger.warn(`[pool-swap] Could not determine trade side for ${params.tokenIn} -> ${params.tokenOut}, defaulting to buy`);
@@ -401,6 +403,7 @@ async function recordPoolSwapTrade(params: {
         sellerUserId = 'POOL';
         quantity = params.amountOut;
         volume = params.amountIn;
+        price = calculateDecimalAwarePrice(params.amountIn, params.amountOut, quoteSymbol, baseSymbol);
       }
     } else {
       // Fallback when pair info is not available
@@ -411,6 +414,7 @@ async function recordPoolSwapTrade(params: {
       sellerUserId = 'POOL';
       quantity = params.amountOut;
       volume = params.amountIn;
+      price = calculateDecimalAwarePrice(params.amountIn, params.amountOut, quoteSymbol, baseSymbol);
     }
 
     // Create trade record matching the orderbook trade format
