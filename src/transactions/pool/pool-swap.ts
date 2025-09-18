@@ -371,6 +371,8 @@ async function recordPoolSwapTrade(params: {
     let baseSymbol, quoteSymbol, tradeSide: 'buy' | 'sell';
     let buyerUserId: string;
     let sellerUserId: string;
+    let quantity: bigint;
+    let volume: bigint;
     
     if (pair) {
       baseSymbol = pair.baseAssetSymbol;
@@ -382,17 +384,23 @@ async function recordPoolSwapTrade(params: {
         tradeSide = 'buy';
         buyerUserId = params.sender;
         sellerUserId = 'POOL';
+        quantity = params.amountOut; // Amount of base received
+        volume = params.amountIn;    // Amount of quote spent
       } else if (params.tokenIn === baseSymbol) {
         // User is selling the base asset (tokenIn = base), it's a SELL
         tradeSide = 'sell';
         buyerUserId = 'POOL';
         sellerUserId = params.sender;
+        quantity = params.amountIn;  // Amount of base sold
+        volume = params.amountOut;   // Amount of quote received
       } else {
         // Fallback to buy if we can't determine the direction
         logger.warn(`[pool-swap] Could not determine trade side for ${params.tokenIn} -> ${params.tokenOut}, defaulting to buy`);
         tradeSide = 'buy';
         buyerUserId = params.sender;
         sellerUserId = 'POOL';
+        quantity = params.amountOut;
+        volume = params.amountIn;
       }
     } else {
       // Fallback when pair info is not available
@@ -401,6 +409,8 @@ async function recordPoolSwapTrade(params: {
       tradeSide = 'buy';
       buyerUserId = params.sender;
       sellerUserId = 'POOL';
+      quantity = params.amountOut;
+      volume = params.amountIn;
     }
 
     // Create trade record matching the orderbook trade format
@@ -414,8 +424,8 @@ async function recordPoolSwapTrade(params: {
       buyerUserId: buyerUserId,
       sellerUserId: sellerUserId,
       price: price.toString(),
-      quantity: params.amountOut.toString(),
-      volume: (price * params.amountOut / BigInt(1e8)).toString(), // volume = price * quantity
+      quantity: quantity.toString(),
+      volume: volume.toString(),
       timestamp: Date.now(),
       side: tradeSide,
       type: 'market', // Pool swaps are market orders
@@ -425,7 +435,7 @@ async function recordPoolSwapTrade(params: {
       feeCurrency: quoteSymbol,
       makerFee: '0',
       takerFee: '0',
-      total: params.amountIn.toString()
+      total: volume.toString()
     };
 
     // Save to trades collection
