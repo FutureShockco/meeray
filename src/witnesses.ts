@@ -147,7 +147,7 @@ export const witnessesModule = {
                     continue;
                 }
 
-                let updatedVoteWeight = toBigInt(witnessAccount.totalVoteWeight || toDbString(BigInt(0)));
+                let updatedVoteWeight = toBigInt(witnessAccount.totalVoteWeight || BigInt(0));
 
                 // Subtract old vote weight if previously voted
                 if (oldVotedWitnesses.includes(witnessName)) {
