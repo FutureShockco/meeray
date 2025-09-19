@@ -15,7 +15,7 @@ const config = {
   witnessReward: 100000000, // 1 MRY
   farmReward: 100000000, // 1 MRY
   steemChainId: '0000000000000000000000000000000000000000000000000000000000000000',
-  steemStartBlock: process.env.NODE_ENV === 'development' ? 3681080 : 95762370,
+  steemStartBlock: process.env.NODE_ENV === 'development' ? 3742030 : 95762370,
   steemBlockDelay: 1,
   steemBlockMaxDelay: 6,
   b58Alphabet: '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz',
