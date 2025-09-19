@@ -2,6 +2,7 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import config from '../../config.js';
 import { witnessesModule } from '../../witnesses.js';
+import { toBigInt } from '../../utils/bigint.js';
 
 export async function validateTx(data: { target: string }, sender: string): Promise<boolean> {
   try {
@@ -23,8 +24,14 @@ export async function validateTx(data: { target: string }, sender: string): Prom
 
 export async function process(data: { target: string }, sender: string): Promise<boolean> {
   try {
+    const senderAccount = await cache.findOnePromise('accounts', { name: sender });
+    if (!senderAccount) {
+      logger.error(`[witness-vote:process] Sender account ${sender} not found`);
+      return false;
+    }
     const adjustedWitnessWeight = await witnessesModule.updateWitnessVoteWeights({
       sender,
+      balance: toBigInt(senderAccount.balances?.[config.nativeTokenSymbol]) ?? BigInt(0),
       targetWitness: data.target,
       isVote: true,
       isUnvote: false

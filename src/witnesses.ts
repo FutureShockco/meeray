@@ -8,6 +8,7 @@ import { adjustBalance } from './utils/account.js';
 
 type VoteWeightUpdate = {
     sender: string;
+    balance: bigint;
     targetWitness?: string;
     isVote?: boolean;
     isUnvote?: boolean;
@@ -101,15 +102,13 @@ export const witnessesModule = {
         return witnesses.slice(start, limit);
     },
 
-    updateWitnessVoteWeights: async ({ sender, targetWitness, isVote, isUnvote }: VoteWeightUpdate): Promise<boolean> => {
+    updateWitnessVoteWeights: async ({ sender, balance, targetWitness, isVote, isUnvote }: VoteWeightUpdate): Promise<boolean> => {
         try {
             const senderAccount = await cache.findOnePromise('accounts', { name: sender });
             if (!senderAccount) {
                 logger.error(`[witness-utils] Sender account ${sender} not found during vote weight update`);
                 return false;
             }
-
-            const balance = toBigInt(senderAccount.balances?.[config.nativeTokenSymbol] ?? "0");
 
             const oldVotedWitnesses: string[] = senderAccount.votedWitnesses || [];
             let newVotedWitnesses: string[] = [...oldVotedWitnesses];
