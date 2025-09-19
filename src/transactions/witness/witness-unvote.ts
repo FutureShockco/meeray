@@ -27,7 +27,6 @@ export async function process(data: { target: string }, sender: string, transact
     }
     const adjustedWitnessWeight = await witnessesModule.updateWitnessVoteWeights({
       sender,
-      balance: toBigInt(senderAccount.balances?.[config.nativeTokenSymbol]) ?? BigInt(0),
       targetWitness: data.target,
       isVote: false,
       isUnvote: true
