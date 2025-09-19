@@ -137,13 +137,8 @@ export const witnessesModule = {
                 $set: { votedWitnesses: newVotedWitnesses }
             });
 
-            // Determine witnesses to update
-            let allAffectedWitnesses: Set<string>;
-            if ((isVote || isUnvote) && targetWitness) {
-                allAffectedWitnesses = new Set([targetWitness]);
-            } else {
-                allAffectedWitnesses = new Set([...oldVotedWitnesses, ...newVotedWitnesses]);
-            }
+            // All affected witnesses: union of old and new
+            const allAffectedWitnesses = new Set([...oldVotedWitnesses, ...newVotedWitnesses]);
 
             for (const witnessName of allAffectedWitnesses) {
                 const witnessAccount = await cache.findOnePromise('accounts', { name: witnessName });
@@ -152,25 +147,23 @@ export const witnessesModule = {
                     continue;
                 }
 
-                const currentVoteWeight = toBigInt(witnessAccount.totalVoteWeight || toDbString(BigInt(0)));
-                let updatedVoteWeight = currentVoteWeight;
+                let updatedVoteWeight = toBigInt(witnessAccount.totalVoteWeight || toDbString(BigInt(0)));
 
-                if (isVote && targetWitness === witnessName) {
-                    updatedVoteWeight += newVoteWeightPerWitness;
-                    logger.debug(`[witness-utils] Voted ${witnessName}: ${currentVoteWeight} → ${updatedVoteWeight}`);
-                } else if (isUnvote && targetWitness === witnessName) {
+                // Subtract old vote weight if previously voted
+                if (oldVotedWitnesses.includes(witnessName)) {
                     updatedVoteWeight -= oldVoteWeightPerWitness;
-                    logger.debug(`[witness-utils] Unvoted ${witnessName}: ${currentVoteWeight} → ${updatedVoteWeight}`);
-                } else {
-                    // Generic recalculation case (balance changes, etc.)
-                    const wasVoted = oldVotedWitnesses.includes(witnessName);
-                    const isVoted = newVotedWitnesses.includes(witnessName);
-
-                    if (wasVoted) updatedVoteWeight -= oldVoteWeightPerWitness;
-                    if (isVoted) updatedVoteWeight += newVoteWeightPerWitness;
-
-                    logger.debug(`[witness-utils] Recalculated ${witnessName}: ${currentVoteWeight} → ${updatedVoteWeight}`);
                 }
+                // Add new vote weight if currently voted
+                if (newVotedWitnesses.includes(witnessName)) {
+                    updatedVoteWeight += newVoteWeightPerWitness;
+                }
+
+                // Prevent negative vote weight
+                if (updatedVoteWeight < BigInt(0)) {
+                    updatedVoteWeight = BigInt(0);
+                }
+
+                logger.debug(`[witness-utils] Set ${witnessName} totalVoteWeight to ${updatedVoteWeight}`);
 
                 await cache.updateOnePromise('accounts', { name: witnessName }, {
                     $set: { totalVoteWeight: toDbString(updatedVoteWeight) }
@@ -183,7 +176,4 @@ export const witnessesModule = {
             return false;
         }
     }
-
-
-
 };
