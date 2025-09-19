@@ -26,8 +26,8 @@ export async function process(data: { target: string }, sender: string): Promise
     const adjustedWitnessWeight = await witnessesModule.updateWitnessVoteWeights({
       sender,
       targetWitness: data.target,
-      isVote: false,
-      isUnvote: true
+      isVote: true,
+      isUnvote: false
     });
     if (!adjustedWitnessWeight) {
       logger.error(`[witness-unvote:process] Failed to adjust witness weights for unvote by ${sender} on ${data.target}`);
