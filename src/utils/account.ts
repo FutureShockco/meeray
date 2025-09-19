@@ -29,12 +29,24 @@ export async function adjustBalance(
             { name: accountId },
             { $set: { [`balances.${tokenSymbol}`]: toDbString(newBalance) } }
         );
-        // Adjust vote weights if native token changed, matching original share-diff logic
-        if (tokenSymbol === config.nativeTokenSymbol && BigInt(newBalance) > 0) {
-            const adjustedWitnessWeight = await witnessesModule.updateWitnessVoteWeights({ sender: accountId, targetWitness: undefined, isVote: false, isUnvote: false });
-            if (!adjustedWitnessWeight) {
-                logger.error(`[account-utils] Failed to adjust witness weights for ${accountId} after balance change of ${amount}`);
-                return false;
+        // Adjust vote weights if native token changed
+        if (tokenSymbol === config.nativeTokenSymbol && amount !== 0n) {
+            const voterAccount = account || (await getAccount(accountId));
+            const voted: string[] = (voterAccount as any)?.votedWitnesses || [];
+            const numVoted = BigInt(voted.length || 0);
+            if (numVoted > 0n) {
+                const beforeSharePerWitness = currentBalance / numVoted;
+                const afterSharePerWitness = newBalance / numVoted;
+                const diffPerWitness = afterSharePerWitness - beforeSharePerWitness;
+                if (diffPerWitness !== 0n) {
+                    for (const witnessName of voted) {
+                        const witnessAccount = await cache.findOnePromise('accounts', { name: witnessName });
+                        const currentVoteWeight = toBigInt(witnessAccount?.totalVoteWeight || toDbString(BigInt(0)));
+                        let updated = currentVoteWeight + diffPerWitness;
+                        if (updated < 0n) updated = 0n;
+                        await cache.updateOnePromise('accounts', { name: witnessName }, { $set: { totalVoteWeight: toDbString(updated) } });
+                    }
+                }
             }
         }
         logger.trace(`[account-utils] Updated balance for ${accountId}: ${tokenSymbol} ${currentBalance} -> ${newBalance}`);

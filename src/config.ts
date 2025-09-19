@@ -31,7 +31,7 @@ const config = {
   tokenPrecisionMax: 18,
   tokenPrecisionMin: 0,
   tokenMinSupply: 1,
-  tokenMaxSupply: 1000000000000000000,
+  tokenMaxSupply: '1000000000000000000',
   consensusRounds: 2,
   witnesses: 3,
   maxDrift: 300,

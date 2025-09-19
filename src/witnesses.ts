@@ -8,6 +8,7 @@ import { adjustBalance } from './utils/account.js';
 
 type VoteWeightUpdate = {
     sender: string;
+    balance: bigint;
     targetWitness?: string;
     isVote?: boolean;
     isUnvote?: boolean;
@@ -102,6 +103,7 @@ export const witnessesModule = {
     },
     updateWitnessVoteWeights: async ({
         sender,
+        balance,
         targetWitness,
         isVote,
         isUnvote
@@ -113,53 +115,78 @@ export const witnessesModule = {
                 return false;
             }
 
-            // --- Compute new voted witness list ---
-            let newVotedWitnesses: string[] = senderAccount.votedWitnesses || [];
+            const oldVotedWitnesses: string[] = senderAccount.votedWitnesses || [];
+            let newVotedWitnesses: string[] = [...oldVotedWitnesses];
 
-            if (isVote && targetWitness) {
-                if (!newVotedWitnesses.includes(targetWitness)) newVotedWitnesses.push(targetWitness);
+            // --- Adjust voted witnesses based on vote/unvote ---
+            if (isVote && targetWitness && !newVotedWitnesses.includes(targetWitness)) {
+                newVotedWitnesses.push(targetWitness);
             } else if (isUnvote && targetWitness) {
                 newVotedWitnesses = newVotedWitnesses.filter(w => w !== targetWitness);
             }
 
-            // --- Save new voted witness list ---
+            // Save updated voted list
             await cache.updateOnePromise('accounts', { name: sender }, {
                 $set: { votedWitnesses: newVotedWitnesses }
             });
 
-            // --- Recompute weights for all affected witnesses ---
-            const allWitnesses = new Set(newVotedWitnesses);
+            // --- Determine balances ---
+            const currentBalance = balance !== undefined
+                ? balance
+                : toBigInt(senderAccount.balances?.[config.nativeTokenSymbol] || 0n);
 
-            // Optional: include old witnesses to ensure cleanup if some were removed
-            if (senderAccount.votedWitnesses) {
-                for (const w of senderAccount.votedWitnesses) allWitnesses.add(w);
+            const oldBalance = senderAccount.previousBalance !== undefined
+                ? toBigInt(senderAccount.previousBalance)
+                : currentBalance;
+
+            // --- Compute per-witness shares ---
+            const oldShare = oldVotedWitnesses.length > 0 ? oldBalance / BigInt(oldVotedWitnesses.length) : 0n;
+            const newShare = newVotedWitnesses.length > 0 ? currentBalance / BigInt(newVotedWitnesses.length) : 0n;
+
+            const deltaMap: Map<string, bigint> = new Map();
+
+            // Subtract old share from old witnesses (only if votes changed)
+            if (JSON.stringify(oldVotedWitnesses) !== JSON.stringify(newVotedWitnesses)) {
+                for (const w of oldVotedWitnesses) {
+                    deltaMap.set(w, (deltaMap.get(w) || 0n) - oldShare);
+                }
             }
 
-            for (const witnessName of allWitnesses) {
+            // Add delta per witness based on balance change
+            for (const w of newVotedWitnesses) {
+                const delta = newShare - oldShare;
+                deltaMap.set(w, (deltaMap.get(w) || 0n) + delta);
+            }
+
+            // --- Apply deltas ---
+            for (const [witnessName, delta] of deltaMap.entries()) {
+                if (delta === 0n) continue;
+
                 const witnessAccount = await cache.findOnePromise('accounts', { name: witnessName });
-                if (!witnessAccount) {
-                    logger.error(`[witness-utils] Witness account ${witnessName} not found`);
-                    continue;
-                }
+                if (!witnessAccount) continue;
 
-                // Recompute totalVoteWeight by summing contributions of all voters for this witness
-                const voters = await cache.findPromise('accounts', { votedWitnesses: witnessName });
-                let totalVoteWeight = BigInt(0);
-                if (voters && voters.length > 0) {
-                    for (const voter of voters) {
-                        const voterBalance = toBigInt(voter.balances?.[config.nativeTokenSymbol] || 0n);
-                        const votesCount = voter.votedWitnesses?.length || 0;
-                        if (votesCount > 0) {
-                            totalVoteWeight += voterBalance / BigInt(votesCount);
-                        }
-                    }
+                let currentVoteWeight = toBigInt(witnessAccount.totalVoteWeight || 0n);
+                currentVoteWeight += delta;
+                if (currentVoteWeight < 0n) currentVoteWeight = 0n;
 
-                    await cache.updateOnePromise('accounts', { name: witnessName }, {
-                        $set: { totalVoteWeight: toDbString(totalVoteWeight) }
-                    });
+                await cache.updateOnePromise('accounts', { name: witnessName }, {
+                    $set: { totalVoteWeight: toDbString(currentVoteWeight) }
+                });
 
-                    logger.debug(`[witness-utils] Recomputed ${witnessName} totalVoteWeight = ${totalVoteWeight}`);
-                }
+                logger.info(`[witness-utils] Updated ${witnessName} totalVoteWeight: ${currentVoteWeight}`);
+            }
+
+            // --- Handle unassigned balance for accounts with no votes ---
+            if (newVotedWitnesses.length === 0) {
+                await cache.updateOnePromise('accounts', { name: sender }, {
+                    $set: { unassignedVoteWeight: toDbString(currentBalance) }
+                });
+                logger.info(`[witness-utils] Updated ${sender} unassignedVoteWeight: ${currentBalance}`);
+            } else {
+                // Clear unassigned weight if there are votes
+                await cache.updateOnePromise('accounts', { name: sender }, {
+                    $unset: { unassignedVoteWeight: "" }
+                });
             }
 
             return true;

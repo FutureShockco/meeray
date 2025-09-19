@@ -2,7 +2,7 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import config from '../../config.js';
 import { witnessesModule } from '../../witnesses.js';
-import { toBigInt } from '../../utils/bigint.js';
+import { toBigInt, toDbString } from '../../utils/bigint.js';
 
 export async function validateTx(data: { target: string }, sender: string): Promise<boolean> {
   try {
@@ -21,24 +21,46 @@ export async function validateTx(data: { target: string }, sender: string): Prom
 export async function process(data: { target: string }, sender: string, transactionId: string): Promise<boolean> {
   try {
     const senderAccount = await cache.findOnePromise('accounts', { name: sender });
-    if (!senderAccount) {
-      logger.error(`[witness-vote:process] Sender account ${sender} not found`);
-      return false;
-    }
-    const adjustedWitnessWeight = await witnessesModule.updateWitnessVoteWeights({
-      sender,
-      targetWitness: data.target,
-      isVote: false,
-      isUnvote: true
-    });
-    if (!adjustedWitnessWeight) {
-      logger.error(`[witness-unvote:process] Failed to adjust witness weights for unvote by ${sender} on ${data.target}`);
-      return false;
-    }
+    const votedWitnesses = senderAccount!.votedWitnesses || [];
+    const newVotedWitnesses = votedWitnesses.filter((w: string) => w !== data.target);
+    const balanceStr = senderAccount!.balances?.[config.nativeTokenSymbol] || BigInt(0);
+    const newVoteWeightBigIntCalculated = newVotedWitnesses.length > 0 ?
+      toBigInt(balanceStr) / BigInt(newVotedWitnesses.length) : BigInt(0);
+    const oldVoteWeightBigIntCalculated = votedWitnesses.length > 0 ?
+      toBigInt(balanceStr) / BigInt(votedWitnesses.length) : BigInt(0);
 
-    return true;
+    try {
+      await cache.updateOnePromise('accounts', { name: sender }, { $set: { votedWitnesses: newVotedWitnesses } });
+      if (newVotedWitnesses.length > 0) {
+        const adjustmentForRemainingBigInt = newVoteWeightBigIntCalculated - oldVoteWeightBigIntCalculated;
+
+        for (const witnessName of newVotedWitnesses) {
+          const witnessAccount = await cache.findOnePromise('accounts', { name: witnessName });
+          if (witnessAccount) {
+            const currentVoteWeightStr = witnessAccount.totalVoteWeight || BigInt(0);
+            const newVoteWeightBigInt = toBigInt(currentVoteWeightStr) + adjustmentForRemainingBigInt;
+            await cache.updateOnePromise('accounts', { name: witnessName }, { $set: { totalVoteWeight: toDbString(newVoteWeightBigInt) } });
+          } else {
+            logger.error(`[witness-unvote] Witness account ${witnessName} not found when trying to adjust totalVoteWeight during share increase.`);
+            throw new Error(`Witness ${witnessName} not found for vote weight adjustment.`);
+          }
+        }
+      }
+      const targetAccount = await cache.findOnePromise('accounts', { name: data.target });
+      const currentTotalVoteWeightStr = targetAccount!.totalVoteWeight || BigInt(0);
+      let newTotalVoteWeightBigInt = toBigInt(currentTotalVoteWeightStr) - oldVoteWeightBigIntCalculated;
+      if (newTotalVoteWeightBigInt < BigInt(0)) {
+        newTotalVoteWeightBigInt = BigInt(0);
+      }
+      await cache.updateOnePromise('accounts', { name: data.target }, { $set: { totalVoteWeight: toDbString(newTotalVoteWeightBigInt) } });
+      logger.debug(`Witness unvote from ${sender} to ${data.target} processed successfully`);
+      return true;
+    } catch (updateError: any) {
+      logger.error('Error updating accounts during witness unvote:', updateError);
+      return false;
+    }
   } catch (error: any) {
-    logger.error('[witness-unvote:process] Error processing witness unvote:', error);
+    logger.error('Error processing witness unvote:', error);
     return false;
   }
 } 

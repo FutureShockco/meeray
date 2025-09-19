@@ -196,18 +196,18 @@ export const mongo = {
         const masterAccount: Account = {
             name: config.masterName,
             created: new Date(),
-            balances: { [config.nativeTokenSymbol]: toDbString(BigInt(config.masterBalance)) },
+            balances: { [config.nativeTokenSymbol]: toDbString(config.masterBalance) },
             nfts: {},
-            totalVoteWeight: toDbString(BigInt(config.masterBalance)),
+            totalVoteWeight: toDbString(config.masterBalance),
             votedWitnesses: [config.masterName],
             witnessPublicKey: config.masterPublicKey
         };
         const nullAccount: Account = {
             name: config.burnAccountName,
             created: new Date(),
-            balances: { [config.nativeTokenSymbol]: toDbString(BigInt(0)) },
+            balances: { [config.nativeTokenSymbol]: toDbString(0) },
             nfts: {},
-            totalVoteWeight: toDbString(BigInt(0)),
+            totalVoteWeight: toDbString(0),
             votedWitnesses: [],
             witnessPublicKey: ''
         };

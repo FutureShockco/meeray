@@ -1,7 +1,7 @@
 // Maximum expected length for any BigInt value we'll handle
 // This allows for numbers up to 999,999,999,999,999,999,999,999,999,999 (30 digits)
 // Which is more than sufficient even for tokens with 18 decimal places
-const MAX_INTEGER_LENGTH = 30;
+const MAX_INTEGER_LENGTH = 32;
 
 // Mapping of token symbols to their decimal places for proper padding
 const TOKEN_DECIMALS: { [symbol: string]: number } = {};
@@ -42,14 +42,24 @@ export function toBigInt(value: string | bigint | number | null | undefined): bi
  * @param padLength Optional custom pad length
  * @returns A zero-padded string representation
  */
-export function toDbString(value: number | string | bigint, padLength = MAX_INTEGER_LENGTH): string {
-    // Convert to BigInt first
-    const bigValue = BigInt(value);
-    const str = bigValue.toString();
+export function toDbString(
+    value: number | string | bigint,
+    padLength = MAX_INTEGER_LENGTH
+): string {
+    const bigValue = toBigInt(value);       // Convert safely to BigInt
+    const isNegative = bigValue < 0n;
+    const absStr = (isNegative ? -bigValue : bigValue).toString();
 
-    return str.startsWith('-')
-        ? '-' + str.slice(1).padStart(padLength, '0')
-        : str.padStart(padLength, '0');
+    // Check if the number fits within padLength
+    if (absStr.length > padLength) {
+        throw new Error(`Value ${value} too large to fit in padLength=${padLength}`);
+    }
+
+    // Pad with leading zeros
+    const padded = absStr.padStart(padLength, '0');
+
+    // Prepend '-' if negative
+    return isNegative ? '-' + padded : padded;
 }
 
 /**
