@@ -94,7 +94,7 @@ export function parseTokenAmount(value: string, symbol: string): bigint {
  * @param amountOut Output token amount
  * @param tokenInSymbol Input token symbol
  * @param tokenOutSymbol Output token symbol
- * @returns Price scaled by 1e8 with proper decimal consideration
+ * @returns Price scaled with proper decimal consideration
  */
 export function calculateDecimalAwarePrice(
     amountIn: bigint,
@@ -115,11 +115,13 @@ export function calculateDecimalAwarePrice(
     if (decimalDifference >= 0) {
         // TokenOut has more decimals, scale up amountIn
         const scalingFactor = BigInt(10 ** decimalDifference);
-        price = (amountIn * scalingFactor * BigInt(1e8)) / amountOut;
+        const quoteDecimals = getTokenDecimals(tokenOutSymbol);
+        price = (amountIn * scalingFactor * BigInt(10 ** quoteDecimals)) / amountOut;
     } else {
         // TokenIn has more decimals, scale up amountOut
         const scalingFactor = BigInt(10 ** (-decimalDifference));
-        price = (amountIn * BigInt(1e8)) / (amountOut * scalingFactor);
+        const quoteDecimals = getTokenDecimals(tokenOutSymbol);
+        price = (amountIn * BigInt(10 ** quoteDecimals)) / (amountOut * scalingFactor);
     }
 
     // Ensure price is never negative (should never happen with positive inputs)
@@ -134,7 +136,7 @@ export function calculateDecimalAwarePrice(
 /**
  * Calculate trade value considering decimal differences between base and quote tokens
  * Used by matching engine for correct volume calculations
- * @param price Price scaled by 1e8
+ * @param price Price scaled with proper decimal consideration
  * @param quantity Quantity in base token units
  * @param baseTokenSymbol Base token symbol
  * @param quoteTokenSymbol Quote token symbol
@@ -146,15 +148,15 @@ export function calculateTradeValue(
     baseTokenSymbol: string,
     quoteTokenSymbol: string
 ): bigint {
+
     const baseDecimals = getTokenDecimals(baseTokenSymbol);
     const quoteDecimals = getTokenDecimals(quoteTokenSymbol);
 
-    // Price is scaled by 1e8, so we need to:
-    // 1. Calculate the raw value: (price * quantity) / 1e8
+    // Price is scaled by quote token decimals, so we need to:
+    // 1. Calculate the raw value: (price * quantity) / 10^quoteDecimals
     // 2. Adjust for decimal differences between base and quote tokens
 
-    // First, calculate the raw value (price is already scaled by 1e8)
-    let rawValue = (price * quantity) / BigInt(1e8);
+    let rawValue = (price * quantity) / (BigInt(10) ** BigInt(quoteDecimals));
 
     // Then adjust for decimal differences
     const decimalDifference = quoteDecimals - baseDecimals;

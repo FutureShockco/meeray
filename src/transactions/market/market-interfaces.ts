@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { BigIntToString, toBigInt, toDbString } from '../../utils/bigint.js';
+import { toBigInt, toDbString } from '../../utils/bigint.js';
 import logger from '../../logger.js';
 export enum OrderType {
   LIMIT = 'limit',
@@ -70,40 +70,56 @@ export interface OrderData {
 }
 
 // Helper function to create a new order with proper initialization
-export function createOrder(data: Partial<OrderData & { /* Allow extra fields like amount for flexible input */ amount?: bigint | string | number, expirationTimestamp?: bigint | number }>): OrderData {
-    const orderId = data._id || crypto.randomUUID();
-    // Quantity can be from data.quantity or data.amount (if provided as an alternative)
-    const quantityValue = data.quantity !== undefined ? toBigInt(data.quantity) :
-                          (data.amount !== undefined ? toBigInt(data.amount) : BigInt(0));
+export function createOrder(data: Partial<OrderData & { /* Allow extra fields like amount for flexible input */ amount?: bigint | string | number, expirationTimestamp?: bigint | number, tickSize?: bigint | string, lotSize?: bigint | string }>): OrderData {
+  const orderId = data._id || crypto.randomUUID();
+  // Quantity can be from data.quantity or data.amount (if provided as an alternative)
+  const quantityValue = data.quantity !== undefined ? toBigInt(data.quantity) :
+              (data.amount !== undefined ? toBigInt(data.amount) : BigInt(0));
 
-    let expiresAtValue: string | undefined = data.expiresAt;
-    if (data.expirationTimestamp !== undefined) {
-        expiresAtValue = new Date(Number(data.expirationTimestamp) * 1000).toISOString(); // Assuming seconds timestamp
-        if (data.expiresAt && data.expiresAt !== expiresAtValue) {
-            logger.warn('Both expiresAt (string) and expirationTimestamp (number) provided. Using expirationTimestamp.');
-        }
+  let expiresAtValue: string | undefined = data.expiresAt;
+  if (data.expirationTimestamp !== undefined) {
+    expiresAtValue = new Date(Number(data.expirationTimestamp) * 1000).toISOString(); // Assuming seconds timestamp
+    if (data.expiresAt && data.expiresAt !== expiresAtValue) {
+      logger.warn('Both expiresAt (string) and expirationTimestamp (number) provided. Using expirationTimestamp.');
     }
+  }
 
-    return {
-        _id: orderId,
-        userId: data.userId || '',
-        pairId: data.pairId || '',
-        baseAssetSymbol: data.baseAssetSymbol || '',
-        quoteAssetSymbol: data.quoteAssetSymbol || '',
-        side: data.side || OrderSide.BUY,
-        type: data.type || OrderType.LIMIT,
-        price: data.price !== undefined ? toBigInt(data.price) : undefined,
-        quantity: quantityValue,
-        filledQuantity: data.filledQuantity !== undefined ? toBigInt(data.filledQuantity) : BigInt(0),
-        status: data.status || OrderStatus.OPEN,
-        averageFillPrice: data.averageFillPrice !== undefined ? toBigInt(data.averageFillPrice) : undefined,
-        cumulativeQuoteValue: data.cumulativeQuoteValue !== undefined ? toBigInt(data.cumulativeQuoteValue) : undefined,
-        quoteOrderQty: data.quoteOrderQty !== undefined ? toBigInt(data.quoteOrderQty) : undefined,
-        createdAt: data.createdAt || new Date().toISOString(),
-        updatedAt: data.updatedAt || new Date().toISOString(),
-        timeInForce: data.timeInForce,
-        expiresAt: expiresAtValue, 
-    };
+  // Always store price and quantity as padded strings
+  const priceValue = data.price !== undefined ? toDbString(toBigInt(data.price)) : undefined;
+  const paddedQuantity = toDbString(quantityValue);
+  const paddedFilledQuantity = data.filledQuantity !== undefined ? toDbString(toBigInt(data.filledQuantity)) : toDbString(BigInt(0));
+  const paddedAverageFillPrice = data.averageFillPrice !== undefined ? toDbString(toBigInt(data.averageFillPrice)) : undefined;
+  const paddedCumulativeQuoteValue = data.cumulativeQuoteValue !== undefined ? toDbString(toBigInt(data.cumulativeQuoteValue)) : undefined;
+  const paddedQuoteOrderQty = data.quoteOrderQty !== undefined ? toDbString(toBigInt(data.quoteOrderQty)) : undefined;
+
+  return {
+    _id: orderId,
+    userId: data.userId || '',
+    pairId: data.pairId || '',
+    baseAssetSymbol: data.baseAssetSymbol || '',
+    quoteAssetSymbol: data.quoteAssetSymbol || '',
+    side: data.side || OrderSide.BUY,
+    type: data.type || OrderType.LIMIT,
+    price: priceValue,
+    quantity: paddedQuantity,
+    filledQuantity: paddedFilledQuantity,
+    status: data.status || OrderStatus.OPEN,
+    averageFillPrice: paddedAverageFillPrice,
+    cumulativeQuoteValue: paddedCumulativeQuoteValue,
+    quoteOrderQty: paddedQuoteOrderQty,
+    createdAt: data.createdAt || new Date().toISOString(),
+    updatedAt: data.updatedAt || new Date().toISOString(),
+    timeInForce: data.timeInForce,
+    expiresAt: expiresAtValue, 
+  };
+}
+
+// Utility to check tick/lot size alignment
+export function isAlignedToTickSize(value: bigint, tickSize: bigint): boolean {
+  return tickSize > 0n ? value % tickSize === 0n : true;
+}
+export function isAlignedToLotSize(value: bigint, lotSize: bigint): boolean {
+  return lotSize > 0n ? value % lotSize === 0n : true;
 }
 
 // Represents an executed trade between two orders

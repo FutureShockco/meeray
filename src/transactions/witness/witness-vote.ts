@@ -1,7 +1,7 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import config from '../../config.js';
-import { updateWitnessVoteWeights } from '../../utils/witness.js';
+import { witnessesModule } from '../../witnesses.js';
 
 export async function validateTx(data: { target: string }, sender: string): Promise<boolean> {
   try {
@@ -23,19 +23,17 @@ export async function validateTx(data: { target: string }, sender: string): Prom
 
 export async function process(data: { target: string }, sender: string): Promise<boolean> {
   try {
-    const senderAccount = await cache.findOnePromise('accounts', { name: sender });
-    const originalVotedWitnesses = [...(senderAccount?.votedWitnesses || [])];
-    const newVotedWitnesses = [...originalVotedWitnesses, data.target];
-
-    const success = await updateWitnessVoteWeights({
+    const adjustedWitnessWeight = await witnessesModule.updateWitnessVoteWeights({
       sender,
-      oldVotedWitnesses: originalVotedWitnesses,
-      newVotedWitnesses,
       targetWitness: data.target,
-      isVote: true
+      isVote: false,
+      isUnvote: true
     });
-
-    return success;
+    if (!adjustedWitnessWeight) {
+      logger.error(`[witness-unvote:process] Failed to adjust witness weights for unvote by ${sender} on ${data.target}`);
+      return false;
+    }
+    return true
   } catch (error: any) {
     logger.error('Error processing witness vote:', error);
     return false;

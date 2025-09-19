@@ -3,7 +3,7 @@ import { Transaction } from './transactions/index.js';
 import cache from './cache.js';
 import logger from './logger.js';
 import mongo from './mongo.js';
-import { AccountDoc } from './mongo.js';
+import { Account } from './mongo.js';
 import { toDbString } from './utils/bigint.js';
 import config from './config.js';
 
@@ -30,12 +30,12 @@ export async function upsertAccountsReferencedInTx(tx: ParsedTransaction | Trans
 
     logger.debug(`Ensuring account exists: ${username}`);
 
-    let accountFromCache: AccountDoc | undefined | null = cache.accounts[username] as (AccountDoc | undefined | null);
-    let accountFromDb: AccountDoc | null = null;
+    let accountFromCache: Account | undefined | null = cache.accounts[username] as (Account | undefined | null);
+    let accountFromDb: Account | null = null;
 
     if (!accountFromCache) {
       try {
-        accountFromDb = await mongo.getDb().collection<AccountDoc>('accounts').findOne({ name: username });
+        accountFromDb = await mongo.getDb().collection<Account>('accounts').findOne({ name: username });
         if (accountFromDb) {
           cache.accounts[username] = accountFromDb;
           logger.debug(`Cache updated for ${username} with data from DB.`);
@@ -49,7 +49,7 @@ export async function upsertAccountsReferencedInTx(tx: ParsedTransaction | Trans
     const finalAccountState = cache.accounts[username] || accountFromDb;
 
     if (!finalAccountState) {
-      const newAccountData: AccountDoc = {
+      const newAccountData: Account = {
         name: username,
         created: new Date(),
         balances: { [config.nativeTokenSymbol]: toDbString(BigInt(0)) },
@@ -58,7 +58,7 @@ export async function upsertAccountsReferencedInTx(tx: ParsedTransaction | Trans
         votedWitnesses: []
       };
       try {
-        const insertResult = await mongo.getDb().collection<AccountDoc>('accounts').insertOne(newAccountData);
+        const insertResult = await mongo.getDb().collection<Account>('accounts').insertOne(newAccountData);
         if (!insertResult.insertedId) {
           logger.error(`Failed to insert new account ${username} into DB, no insertedId returned.`);
           throw new Error(`DB insert failed for ${username}`);

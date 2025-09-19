@@ -123,8 +123,9 @@ export async function recordAMMTrade(params: {
                 adjustedQuantity = quantity * BigInt(10 ** (-decimalDifference));
             }
 
-            // Calculate price: (adjustedVolume * 1e8) / adjustedQuantity
-            priceValue = (adjustedVolume * BigInt(1e8)) / adjustedQuantity;
+            // Calculate price: (adjustedVolume * 10^quoteDecimals) / adjustedQuantity
+            const quoteDecimals = getTokenDecimals(quoteSymbol);
+            priceValue = (adjustedVolume * BigInt(10 ** quoteDecimals)) / adjustedQuantity;
 
             // Ensure price is never negative
             if (priceValue < 0n) {

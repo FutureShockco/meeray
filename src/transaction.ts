@@ -30,7 +30,6 @@ interface TransactionModule {
     isValid: (tx: TransactionInterface, ts: number, cb: ValidationCallback) => Promise<void>;
     isValidTxData: (tx: TransactionInterface, ts: number, legitUser: string, cb: ValidationCallback) => void;
     execute: (tx: TransactionInterface, ts: number, cb: ExecutionCallback) => void;
-    adjustWitnessWeight: (acc: any, newCoins: bigint) => Promise<boolean>;
 }
 
 const transaction: TransactionModule = {
@@ -200,59 +199,6 @@ const transaction: TransactionModule = {
                     cb(false, undefined);
                 });
     },
-
-    adjustWitnessWeight: async (acc: any, newCoins: bigint): Promise<boolean> => {
-        if (!acc.votedWitnesses || acc.votedWitnesses.length === 0 || !newCoins || newCoins === BigInt(0)) {
-            return true;
-        }
-
-        const balance_after_reward_str = acc.balances?.[config.nativeTokenSymbol] || toDbString(BigInt(0));
-        const balance_after_reward_bigint = toBigInt(balance_after_reward_str);
-        const balance_before_reward_bigint = balance_after_reward_bigint - newCoins;
-
-        const witness_share_before_reward_bigint = acc.votedWitnesses.length > 0 ?
-            balance_before_reward_bigint / BigInt(acc.votedWitnesses.length) : BigInt(0);
-
-        const witness_share_after_reward_bigint = acc.votedWitnesses.length > 0 ?
-            balance_after_reward_bigint / BigInt(acc.votedWitnesses.length) : BigInt(0);
-
-        const diff_per_witness_bigint = witness_share_after_reward_bigint - witness_share_before_reward_bigint;
-
-        if (diff_per_witness_bigint === BigInt(0)) {
-            return true;
-        }
-
-        const witnesses_to_update_names: string[] = [...acc.votedWitnesses];
-        if (witnesses_to_update_names.length === 0) {
-            return true;
-        }
-
-        try {
-            let allUpdatesSuccessful = true;
-            for (const witnessName of witnesses_to_update_names) {
-                const witnessAccount = await cache.findOnePromise('accounts', { name: witnessName });
-                if (witnessAccount) {
-                    const currentVoteWeightStr = witnessAccount.totalVoteWeight || toDbString(BigInt(0));
-                    const currentVoteWeightBigInt = toBigInt(currentVoteWeightStr);
-                    let newVoteWeightBigInt = currentVoteWeightBigInt + diff_per_witness_bigint;
-
-                    if (newVoteWeightBigInt < BigInt(0)) {
-                        newVoteWeightBigInt = BigInt(0);
-                    }
-                    await cache.updateOnePromise(
-                        'accounts',
-                        { name: witnessName },
-                        { $set: { totalVoteWeight: toDbString(newVoteWeightBigInt) } }
-                    );
-                } else {
-                    allUpdatesSuccessful = false;
-                }
-            }
-            return allUpdatesSuccessful;
-        } catch (err: any) {
-            return false;
-        }
-    }
 };
 
 

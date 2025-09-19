@@ -5,8 +5,8 @@ import validate from '../../validation/index.js';
 import { TokenData } from './token-interfaces.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { adjustBalance } from '../../utils/account.js';
-import transaction from '../../transaction.js';
 import { logEvent } from '../../utils/event-logger.js';
+import { witnessesModule } from '../../witnesses.js';
 
 export async function validateTx(data: TokenData, sender: string): Promise<boolean> {
   try {
@@ -116,7 +116,7 @@ export async function process(data: TokenData, sender: string, id: string): Prom
       logger.error(`[token-create:process] Failed to deduct token creation fee from ${sender}.`);
       return false;
     }
-    const adjustedWitnessWeight = await transaction.adjustWitnessWeight(sender, BigInt(senderAccount!.balances?.[config.nativeTokenSymbol]) - BigInt(config.tokenCreationFee));
+    const adjustedWitnessWeight = await witnessesModule.updateWitnessVoteWeights({ sender });
     if (!adjustedWitnessWeight) {
       logger.error(`[token-create:process] Failed to adjust witness weight for ${sender} after deducting token creation fee.`);
       return false;

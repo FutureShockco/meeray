@@ -11,7 +11,7 @@ import * as poolSwap from '../pool/pool-swap.js';
 import { PoolSwapResult } from '../pool/pool-interfaces.js';
 import { calculateExpectedAMMOutput } from '../../utils/pool.js';
 import { matchingEngine } from '../market/matching-engine.js';
-import { OrderType, OrderSide, createOrder } from '../market/market-interfaces.js';
+import { OrderType, OrderSide, createOrder, isAlignedToTickSize, isAlignedToLotSize } from '../market/market-interfaces.js';
 import { determineOrderSide, findTradingPairId, recordAMMTrade } from '../../utils/trade.js';
 
 export async function validateTx(data: HybridTradeData, sender: string): Promise<boolean> {
@@ -123,7 +123,7 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
       return false;
     }
 
-    const tokenInBalance = toBigInt(senderAccount.balances[data.tokenIn] || '0');
+    const tokenInBalance = toBigInt((senderAccount!.balances && senderAccount!.balances[data.tokenIn]) || '0');
     if (tokenInBalance < toBigInt(data.amountIn)) {
       logger.warn(`[hybrid-trade] Insufficient balance for ${data.tokenIn}. Required: ${data.amountIn}, Available: ${tokenInBalance}`);
       return false;
@@ -289,13 +289,33 @@ export async function process(data: HybridTradeData, sender: string, transaction
 
     for (const route of routes) {
       const routeAmountIn = (toBigInt(data.amountIn) * BigInt(route.allocation)) / BigInt(100);
-
       if (routeAmountIn <= BigInt(0)) {
         continue;
       }
 
-      let routeResult: { success: boolean; amountOut: bigint; error?: string };
+      // Enforce tick/lot size alignment for orderbook routes
+      if (route.type === 'ORDERBOOK') {
+        const obDetails = route.details as import('./market-interfaces.js').OrderbookRouteDetails;
+        const pair = await cache.findOnePromise('tradingPairs', { _id: obDetails.pairId });
+        if (!pair) {
+          logger.error(`[hybrid-trade] Trading pair ${obDetails.pairId} not found for tick/lot size check.`);
+          continue;
+        }
+        const tickSize = toBigInt(pair.tickSize);
+        const lotSize = toBigInt(pair.lotSize);
+        let price = obDetails.price !== undefined ? toBigInt(obDetails.price) : undefined;
+        let quantity = routeAmountIn;
+        if (price !== undefined && !isAlignedToTickSize(price, tickSize)) {
+          logger.warn(`[hybrid-trade] Order price ${price} is not aligned to tick size ${tickSize}. Rejecting order.`);
+          continue;
+        }
+        if (!isAlignedToLotSize(quantity, lotSize)) {
+          logger.warn(`[hybrid-trade] Order quantity ${quantity} is not aligned to lot size ${lotSize}. Rejecting order.`);
+          continue;
+        }
+      }
 
+      let routeResult: { success: boolean; amountOut: bigint; error?: string };
       if (route.type === 'AMM') {
         routeResult = await executeAMMRoute(route, data, routeAmountIn, sender, transactionId);
       } else {
@@ -460,19 +480,17 @@ async function executeOrderbookRoute(
     let orderQuantity: bigint;
     if (orderbookDetails.side === OrderSide.BUY) {
       // For buy orders, quantity should be the amount of base currency to buy
-      // Calculate: quantity = (amountIn * 1e8) / price
+      // Calculate: quantity = (amountIn * 10^quoteDecimals) / price
       // Then adjust for decimal differences between quote and base tokens
       if (!orderPrice) {
         return { success: false, amountOut: BigInt(0), error: 'Price required for buy orders' };
       }
 
-      // First calculate the raw quantity: (amountIn * 1e8) / price
-      const rawQuantity = (amountIn * BigInt(1e8)) / toBigInt(orderPrice);
-
-      // Then adjust for decimal differences
       const quoteDecimals = getTokenDecimals(pair.quoteAssetSymbol);
       const baseDecimals = getTokenDecimals(pair.baseAssetSymbol);
       const decimalDifference = quoteDecimals - baseDecimals;
+      // First calculate the raw quantity: (amountIn * 10^quoteDecimals) / price
+      const rawQuantity = (amountIn * BigInt(10 ** quoteDecimals)) / toBigInt(orderPrice);
 
       if (decimalDifference > 0) {
         // Quote has more decimals, scale down the result

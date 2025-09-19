@@ -2,9 +2,16 @@ import config from './config.js';
 import cache from './cache.js';
 import logger from './logger.js';
 import p2p from './p2p/index.js';
-import { toDbString } from './utils/bigint.js';
+import { toBigInt, toDbString } from './utils/bigint.js';
 import { adjustTokenSupply } from './utils/token.js';
 import { adjustBalance } from './utils/account.js';
+
+type VoteWeightUpdate = {
+    sender: string;
+    targetWitness?: string;
+    isVote?: boolean;
+    isUnvote?: boolean;
+};
 
 export const witnessesModule = {
 
@@ -93,4 +100,90 @@ export const witnessesModule = {
         }
         return witnesses.slice(start, limit);
     },
+
+    updateWitnessVoteWeights: async ({ sender, targetWitness, isVote, isUnvote }: VoteWeightUpdate): Promise<boolean> => {
+        try {
+            const senderAccount = await cache.findOnePromise('accounts', { name: sender });
+            if (!senderAccount) {
+                logger.error(`[witness-utils] Sender account ${sender} not found during vote weight update`);
+                return false;
+            }
+
+            const balance = toBigInt(senderAccount.balances?.[config.nativeTokenSymbol] ?? "0");
+
+            const oldVotedWitnesses: string[] = senderAccount.votedWitnesses || [];
+            let newVotedWitnesses: string[] = [...oldVotedWitnesses];
+
+            // Adjust witness list based on flags
+            if (isVote && targetWitness) {
+                if (!newVotedWitnesses.includes(targetWitness)) {
+                    newVotedWitnesses.push(targetWitness);
+                }
+            } else if (isUnvote && targetWitness) {
+                newVotedWitnesses = newVotedWitnesses.filter(w => w !== targetWitness);
+            }
+
+            // Compute per-witness weights
+            const oldVoteWeightPerWitness = oldVotedWitnesses.length > 0
+                ? balance / BigInt(oldVotedWitnesses.length)
+                : BigInt(0);
+
+            const newVoteWeightPerWitness = newVotedWitnesses.length > 0
+                ? balance / BigInt(newVotedWitnesses.length)
+                : BigInt(0);
+
+            // Save updated list
+            await cache.updateOnePromise('accounts', { name: sender }, {
+                $set: { votedWitnesses: newVotedWitnesses }
+            });
+
+            // Determine witnesses to update
+            let allAffectedWitnesses: Set<string>;
+            if ((isVote || isUnvote) && targetWitness) {
+                allAffectedWitnesses = new Set([targetWitness]);
+            } else {
+                allAffectedWitnesses = new Set([...oldVotedWitnesses, ...newVotedWitnesses]);
+            }
+
+            for (const witnessName of allAffectedWitnesses) {
+                const witnessAccount = await cache.findOnePromise('accounts', { name: witnessName });
+                if (!witnessAccount) {
+                    logger.error(`[witness-utils] Witness account ${witnessName} not found during vote weight adjustment`);
+                    continue;
+                }
+
+                const currentVoteWeight = toBigInt(witnessAccount.totalVoteWeight || toDbString(BigInt(0)));
+                let updatedVoteWeight = currentVoteWeight;
+
+                if (isVote && targetWitness === witnessName) {
+                    updatedVoteWeight += newVoteWeightPerWitness;
+                    logger.debug(`[witness-utils] Voted ${witnessName}: ${currentVoteWeight} → ${updatedVoteWeight}`);
+                } else if (isUnvote && targetWitness === witnessName) {
+                    updatedVoteWeight -= oldVoteWeightPerWitness;
+                    logger.debug(`[witness-utils] Unvoted ${witnessName}: ${currentVoteWeight} → ${updatedVoteWeight}`);
+                } else {
+                    // Generic recalculation case (balance changes, etc.)
+                    const wasVoted = oldVotedWitnesses.includes(witnessName);
+                    const isVoted = newVotedWitnesses.includes(witnessName);
+
+                    if (wasVoted) updatedVoteWeight -= oldVoteWeightPerWitness;
+                    if (isVoted) updatedVoteWeight += newVoteWeightPerWitness;
+
+                    logger.debug(`[witness-utils] Recalculated ${witnessName}: ${currentVoteWeight} → ${updatedVoteWeight}`);
+                }
+
+                await cache.updateOnePromise('accounts', { name: witnessName }, {
+                    $set: { totalVoteWeight: toDbString(updatedVoteWeight) }
+                });
+            }
+
+            return true;
+        } catch (error: any) {
+            logger.error(`[witness-utils] Error updating witness vote weights: ${error}`);
+            return false;
+        }
+    }
+
+
+
 };

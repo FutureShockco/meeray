@@ -298,20 +298,20 @@ router.get('/stats/:pairId', (async (req: Request, res: Response) => {
     res.json({
       pairId,
       pair,
-      volume24h: formatAmount(BigInt(Math.round(volume24h * 1e8)), pair.quoteAssetSymbol),
-      rawVolume24h: volume24h.toString(),
+  volume24h: formatAmount(BigInt(Math.round(volume24h * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol)))), pair.quoteAssetSymbol),
+  rawVolume24h: volume24h.toString(),
       tradeCount24h,
-      priceChange24h: formatAmount(BigInt(Math.round(priceChange24h * 1e8))),
-      rawPriceChange24h: priceChange24h.toString(),
+  priceChange24h: formatAmount(BigInt(Math.round(priceChange24h * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
+  rawPriceChange24h: priceChange24h.toString(),
       priceChange24hPercent,
       currentPrice: recentTrades[0] ? formatAmount(toBigInt(recentTrades[0].price || 0)) : '0.00000000',
       rawCurrentPrice: recentTrades[0] ? toBigInt(recentTrades[0].price || 0).toString() : '0',
-      highestBid: formatAmount(BigInt(Math.round(highestBid * 1e8))),
-      rawHighestBid: Math.round(highestBid * 1e8).toString(),
-      lowestAsk: formatAmount(BigInt(Math.round(lowestAsk * 1e8))),
-      rawLowestAsk: Math.round(lowestAsk * 1e8).toString(),
-      spread: formatAmount(BigInt(Math.round(spread * 1e8))),
-      rawSpread: Math.round(spread * 1e8).toString(),
+  highestBid: formatAmount(BigInt(Math.round(highestBid * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
+  rawHighestBid: Math.round(highestBid * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))).toString(),
+  lowestAsk: formatAmount(BigInt(Math.round(lowestAsk * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
+  rawLowestAsk: Math.round(lowestAsk * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))).toString(),
+  spread: formatAmount(BigInt(Math.round(spread * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
+  rawSpread: Math.round(spread * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))).toString(),
       spreadPercent,
       buyOrderCount: buyOrders.length,
       sellOrderCount: sellOrders.length,
@@ -373,7 +373,7 @@ router.get('/orderbook/:pairId', (async (req: Request, res: Response) => {
       const rawPrice = toBigInt(order.price || 0).toString();
       const rawQuantity = toBigInt(order.remainingQuantity || order.quantity).toString();
       
-      // Calculate total considering decimal differences (price is already scaled by 1e8)
+      // Calculate total considering decimal differences
       const rawTotalBigInt = calculateTradeValue(
         toBigInt(order.price || 0), 
         toBigInt(order.remainingQuantity || order.quantity),
@@ -400,7 +400,7 @@ router.get('/orderbook/:pairId', (async (req: Request, res: Response) => {
       const rawPrice = toBigInt(order.price || 0).toString();
       const rawQuantity = toBigInt(order.remainingQuantity || order.quantity).toString();
       
-      // Calculate total considering decimal differences (price is already scaled by 1e8)
+      // Calculate total considering decimal differences
       const rawTotalBigInt = calculateTradeValue(
         toBigInt(order.price || 0), 
         toBigInt(order.remainingQuantity || order.quantity),
@@ -430,8 +430,8 @@ router.get('/orderbook/:pairId', (async (req: Request, res: Response) => {
       timestamp: Date.now(),
       bids,
       asks,
-      spread: formatAmount(BigInt(Math.round(spread * 1e8))),
-      rawSpread: Math.round(spread * 1e8).toString(),
+  spread: formatAmount(BigInt(Math.round(spread * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
+  rawSpread: Math.round(spread * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))).toString(),
       spreadPercent,
       depth: {
         bids: bids.length,
@@ -485,7 +485,8 @@ router.get('/trades/:pairId', (async (req: Request, res: Response) => {
     const formattedTrades = trades.map(trade => {
       const priceBigInt = toBigInt(trade.price);
       const quantityBigInt = toBigInt(trade.quantity);
-      const volumeBigInt = trade.volume ? toBigInt(trade.volume) : (priceBigInt * quantityBigInt) / BigInt(1e8);
+  const quoteDecimals = getTokenDecimals(pair.quoteAssetSymbol);
+  const volumeBigInt = trade.volume ? toBigInt(trade.volume) : (priceBigInt * quantityBigInt) / (BigInt(10) ** BigInt(quoteDecimals));
       
       return {
         id: trade._id || trade.id,

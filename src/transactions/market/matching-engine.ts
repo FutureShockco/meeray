@@ -472,8 +472,8 @@ class MatchingEngine {
       orderId: takerOrder._id,
       side: takerOrder.side,
       type: takerOrder.type,
-      price: takerOrder.price ? toDbString(toBigInt(takerOrder.price)) : 'MARKET',
-      quantity: toDbString(toBigInt(takerOrder.quantity)),
+      price: takerOrder.price ? toDbString(takerOrder.price) : 'MARKET',
+      quantity: toDbString(takerOrder.quantity),
       baseAsset: pairDetails.baseAssetSymbol,
       quoteAsset: pairDetails.quoteAssetSymbol
     });
@@ -492,11 +492,11 @@ class MatchingEngine {
       const { _id, filledQuantity, quantity, status, averageFillPrice, cumulativeQuoteValue } = matchOutput.updatedMakerOrder;
       const makerRemainingQuantity = toBigInt(quantity) - toBigInt(filledQuantity);
       const updateSet = {
-        filledQuantity: toDbString(toBigInt(filledQuantity)), 
+        filledQuantity: toDbString(filledQuantity), 
         remainingQuantity: toDbString(makerRemainingQuantity),
         status,
-        averageFillPrice: averageFillPrice ? toDbString(toBigInt(averageFillPrice)) : undefined,
-        cumulativeQuoteValue: cumulativeQuoteValue ? toDbString(toBigInt(cumulativeQuoteValue)) : undefined,
+        averageFillPrice: averageFillPrice ? toDbString(averageFillPrice) : undefined,
+        cumulativeQuoteValue: cumulativeQuoteValue ? toDbString(cumulativeQuoteValue) : undefined,
         updatedAt: new Date().toISOString()
       };
       await cache.updateOnePromise('orders', { _id }, { $set: updateSet });

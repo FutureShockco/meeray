@@ -20,10 +20,10 @@ export interface StateDoc {
     headBlock?: number;
 }
 
-export interface AccountDoc {
+export interface Account {
     name: string;
     witnessPublicKey?: string;
-    balances?: Record<string, string>; // Store as padded strings
+    balances: { [tokenIdentifier: string]: string };
     nfts?: Record<string, any>;
     totalVoteWeight?: string; // Store as padded string
     votedWitnesses?: string[];
@@ -193,7 +193,7 @@ export const mongo = {
     insertMasterAndNullAccount: async (): Promise<void> => {
         const currentDb = mongo.getDb();
         logger.info('Inserting new master account: ' + config.masterName);
-        const masterAccount: AccountDoc = {
+        const masterAccount: Account = {
             name: config.masterName,
             created: new Date(),
             balances: { [config.nativeTokenSymbol]: toDbString(BigInt(config.masterBalance)) },
@@ -202,7 +202,7 @@ export const mongo = {
             votedWitnesses: [config.masterName],
             witnessPublicKey: config.masterPublicKey
         };
-        const nullAccount: AccountDoc = {
+        const nullAccount: Account = {
             name: config.burnAccountName,
             created: new Date(),
             balances: { [config.nativeTokenSymbol]: toDbString(BigInt(0)) },
@@ -211,8 +211,8 @@ export const mongo = {
             votedWitnesses: [],
             witnessPublicKey: ''
         };
-        await currentDb.collection<AccountDoc>('accounts').insertOne(masterAccount);
-        await currentDb.collection<AccountDoc>('accounts').insertOne(nullAccount);
+        await currentDb.collection<Account>('accounts').insertOne(masterAccount);
+        await currentDb.collection<Account>('accounts').insertOne(nullAccount);
     },
 
     insertBlockZero: async (): Promise<void> => {

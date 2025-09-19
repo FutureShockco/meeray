@@ -6,6 +6,7 @@ import { TokenTransferData } from './token-interfaces.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { adjustBalance } from '../../utils/account.js';
 import { logEvent } from '../../utils/event-logger.js';
+import { witnessesModule } from '../../witnesses.js';
 
 const BURN_ACCOUNT_NAME = config.burnAccountName || 'null';
 
@@ -65,6 +66,7 @@ export async function process(data: TokenTransferData, sender: string): Promise<
             logger.error(`[token-transfer:process] Failed to credit recipient ${data.to} for ${toBigInt(data.amount).toString()} ${data.symbol}`);
             return false;
         }
+
         await logEvent('token', 'transfer', sender, {
             symbol: data.symbol,
             from: sender,
