@@ -37,21 +37,8 @@ export interface FarmClaimRewardsData {
   staker: string;
 }
 
-export interface FarmData {
+export interface FarmData extends FarmCreateData {
   _id: string;               // Unique farm ID
-  name: string;
-  stakingToken: {
-    symbol: string;
-    issuer: string;
-  };
-  rewardToken: {
-    symbol: string;
-    issuer: string;
-  };
-  startTime: string;         // ISO date string
-  endTime: string;          // ISO date string
-  totalRewards: string | bigint;     // Total rewards to be distributed
-  rewardsPerBlock: string | bigint;  // Rewards distributed per block
   totalStaked: string | bigint;      // Total amount of staking tokens deposited
   minStakeAmount: string | bigint;   // Minimum amount that can be staked
   maxStakeAmount: string | bigint;   // Maximum amount that can be staked per user

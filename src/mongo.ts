@@ -155,6 +155,7 @@ export const mongo = {
             await mongo.insertMasterAndNullAccount();
             await mongo.insertBlockZero();
             await mongo.insertNativeTokens();
+            await mongo.insertNativeFarms();
         }
     },
 
@@ -345,30 +346,31 @@ export const mongo = {
         const currentDb = mongo.getDb();
         const nativeFarms: FarmData[] = [
             {
-                _id: 'FARM_MRY_MRY_MRY',
+                _id: 'FARM_MRY_MRY',
+                farmId: 'FARM_MRY_MRY',
                 name: 'MeeRay Farm',
                 stakingToken: {
                     symbol: 'MRY',
-                    issuer: 'MRY'
+                    issuer: 'echelon-node1'
                 },
                 rewardToken: {
                     symbol: 'MRY',
-                    issuer: 'MRY'
+                    issuer: 'echelon-node1'
                 },
                 startTime: new Date().toISOString(),
                 endTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-                totalRewards: '1000000000000000000',
-                rewardsPerBlock: '1000000000000000000',
-                minStakeAmount: '0',
-                maxStakeAmount: '0',
-                totalStaked: '0',
+                totalRewards: toDbString('1000000000000000000'),
+                rewardsPerBlock: toDbString('1000000000000000000'),
+                minStakeAmount: toDbString('0'),
+                maxStakeAmount: toDbString('0'),
+                totalStaked: toDbString('0'),
                 weight: 100,
                 isNativeFarm: true,
                 isActive: true,
                 status: 'active' as const,
                 createdAt: new Date().toISOString(),
                 lastUpdatedAt: new Date().toISOString(),
-                rewardsRemaining: '1000000000000000000'
+                rewardsRemaining: toDbString('1000000000000000000')
             }
         ];
         await currentDb.collection<FarmData>('farms').insertMany(nativeFarms);
