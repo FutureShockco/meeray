@@ -44,10 +44,10 @@ export const witnessesModule = {
     witnessRewards: async (name: string, block: any): Promise<string> => {
         const account = await cache.findOnePromise('accounts', { name: name })
         const reward = BigInt(config.read(block._id).witnessReward || 0);
-        if (reward > BigInt(0)) {
+        if (account && account.name && reward > BigInt(0)) {
             const rewardBigInt = BigInt(reward);
             logger.trace(`witnessRewards: Applying reward for ${name}: ${rewardBigInt.toString()}`);
-            const adjusted = await adjustBalance(account!.name!, config.nativeTokenSymbol, rewardBigInt);
+            const adjusted = await adjustBalance(account.name, config.nativeTokenSymbol, rewardBigInt);
             if (!adjusted) {
                 logger.error(`witnessRewards: Failed to adjust balance for ${account!.name} when distributing rewards.`);
                 return '0';

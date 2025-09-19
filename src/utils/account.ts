@@ -31,7 +31,7 @@ export async function adjustBalance(
         );
         // Adjust vote weights if native token changed, matching original share-diff logic
         if (tokenSymbol === config.nativeTokenSymbol && BigInt(newBalance) > 0) {
-            const adjustedWitnessWeight = await witnessesModule.updateWitnessVoteWeights({ sender: accountId })
+            const adjustedWitnessWeight = await witnessesModule.updateWitnessVoteWeights({ sender: accountId, isVote: false, isUnvote: false });
             if (!adjustedWitnessWeight) {
                 logger.error(`[account-utils] Failed to adjust witness weights for ${accountId} after balance change of ${amount}`);
                 return false;

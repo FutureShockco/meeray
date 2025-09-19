@@ -116,11 +116,7 @@ export async function process(data: TokenData, sender: string, id: string): Prom
       logger.error(`[token-create:process] Failed to deduct token creation fee from ${sender}.`);
       return false;
     }
-    const adjustedWitnessWeight = await witnessesModule.updateWitnessVoteWeights({ sender });
-    if (!adjustedWitnessWeight) {
-      logger.error(`[token-create:process] Failed to adjust witness weight for ${sender} after deducting token creation fee.`);
-      return false;
-    }
+
     await cache.insertOnePromise('tokens', tokenToStore);
     await logEvent('token', 'create', sender, {
       symbol: data.symbol,
