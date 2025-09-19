@@ -30,12 +30,11 @@ interface TransactionModule {
     isValid: (tx: TransactionInterface, ts: number, cb: ValidationCallback) => Promise<void>;
     isValidTxData: (tx: TransactionInterface, ts: number, legitUser: string, cb: ValidationCallback) => void;
     execute: (tx: TransactionInterface, ts: number, cb: ExecutionCallback) => void;
-    updateIntsAndNodeApprPromise: (account: any, ts: number, change: bigint) => Promise<boolean>;
-    adjustWitnessWeight: (acc: any, newCoins: bigint, cb: (success: boolean) => void) => void;
+    adjustWitnessWeight: (acc: any, newCoins: bigint) => Promise<boolean>;
 }
 
 const transaction: TransactionModule = {
-    pool: [], 
+    pool: [],
     eventConfirmation: new EventEmitter(),
     createHash: (tx: TransactionInterface): string => {
         return CryptoJS.SHA256(JSON.stringify({
@@ -43,7 +42,7 @@ const transaction: TransactionModule = {
             data: tx.data,
             sender: tx.sender,
             ts: tx.ts,
-            ref: (tx as any).ref 
+            ref: (tx as any).ref
         })).toString();
     },
     addToPool: async (txs: TransactionInterface[]): Promise<void> => {
@@ -127,7 +126,7 @@ const transaction: TransactionModule = {
             return;
         }
 
-        if (!validation.integer(tx.type, true, false) || !(tx.type in TransactionType)) { 
+        if (!validation.integer(tx.type, true, false) || !(tx.type in TransactionType)) {
             cb(false, 'invalid tx type');
             return;
         }
@@ -202,44 +201,30 @@ const transaction: TransactionModule = {
                 });
     },
 
-    updateIntsAndNodeApprPromise: function (account: any, ts: number, change: bigint): Promise<boolean> {
-        return new Promise<boolean>((resolve) => {
-            transaction.adjustWitnessWeight(account, change, () => resolve(true));
-        });
-    },
-
-    adjustWitnessWeight: async (acc: any, newCoins: bigint, cb: (success: boolean) => void): Promise<void> => {
+    adjustWitnessWeight: async (acc: any, newCoins: bigint): Promise<boolean> => {
         if (!acc.votedWitnesses || acc.votedWitnesses.length === 0 || !newCoins || newCoins === BigInt(0)) {
-            cb(true);
-            return;
+            return true;
         }
 
-        // This is the balance *after* the reward has been added by witnessRewards
         const balance_after_reward_str = acc.balances?.[config.nativeTokenSymbol] || toDbString(BigInt(0));
         const balance_after_reward_bigint = toBigInt(balance_after_reward_str);
-        
-        // Calculate the balance as it was *before* this reward was added
         const balance_before_reward_bigint = balance_after_reward_bigint - newCoins;
 
-        const witness_share_before_reward_bigint = acc.votedWitnesses.length > 0 ? 
+        const witness_share_before_reward_bigint = acc.votedWitnesses.length > 0 ?
             balance_before_reward_bigint / BigInt(acc.votedWitnesses.length) : BigInt(0);
-        
-        const witness_share_after_reward_bigint = acc.votedWitnesses.length > 0 ? 
+
+        const witness_share_after_reward_bigint = acc.votedWitnesses.length > 0 ?
             balance_after_reward_bigint / BigInt(acc.votedWitnesses.length) : BigInt(0);
 
         const diff_per_witness_bigint = witness_share_after_reward_bigint - witness_share_before_reward_bigint;
 
-        if (diff_per_witness_bigint === BigInt(0)) { 
-            cb(true);
-            return;
+        if (diff_per_witness_bigint === BigInt(0)) {
+            return true;
         }
 
         const witnesses_to_update_names: string[] = [...acc.votedWitnesses];
-        // Log with newCoins (now in smallest units)
-
-        if (witnesses_to_update_names.length === 0) { 
-            cb(true);
-            return;
+        if (witnesses_to_update_names.length === 0) {
+            return true;
         }
 
         try {
@@ -252,20 +237,20 @@ const transaction: TransactionModule = {
                     let newVoteWeightBigInt = currentVoteWeightBigInt + diff_per_witness_bigint;
 
                     if (newVoteWeightBigInt < BigInt(0)) {
-                        newVoteWeightBigInt = BigInt(0); 
+                        newVoteWeightBigInt = BigInt(0);
                     }
                     await cache.updateOnePromise(
                         'accounts',
-                        { name: witnessName }, 
+                        { name: witnessName },
                         { $set: { totalVoteWeight: toDbString(newVoteWeightBigInt) } }
                     );
                 } else {
-                    allUpdatesSuccessful = false; 
+                    allUpdatesSuccessful = false;
                 }
             }
-            cb(allUpdatesSuccessful);
+            return allUpdatesSuccessful;
         } catch (err: any) {
-            cb(false); 
+            return false;
         }
     }
 };

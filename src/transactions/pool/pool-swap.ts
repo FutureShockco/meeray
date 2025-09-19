@@ -1,119 +1,13 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
-import { PoolSwapData, LiquidityPoolData, PoolSwapResult } from './pool-interfaces.js';
+import { PoolSwapData, PoolSwapResult } from './pool-interfaces.js';
 import { adjustBalance, getAccount, Account } from '../../utils/account.js';
 import { toBigInt, toDbString, calculateDecimalAwarePrice } from '../../utils/bigint.js';
 import { getOutputAmountBigInt, calculatePriceImpact } from '../../utils/pool.js';
-import mongo from '../../mongo.js';
+import { findBestTradeRoute } from '../../utils/pool.js';
 import { logEvent } from '../../utils/event-logger.js';
 import crypto from 'crypto';
-
-// const SWAP_FEE_RATE = 0.003; // 0.3% swap fee - This constant is not used in the BigInt logic below which uses 997/1000 factor
-
-const NUMERIC_FIELDS_SWAP: Array<keyof PoolSwapData> = ['amountIn', 'minAmountOut'];
-
-// Route finding interfaces
-interface TradeHop {
-    poolId: string;
-    tokenIn: string;
-    tokenOut: string;
-    amountIn: string;
-    amountOut: string;
-    priceImpact: number;
-}
-
-interface TradeRoute {
-    hops: TradeHop[];
-    finalAmountIn: string;
-    finalAmountOut: string;
-}
-
-interface Pool {
-    _id: string;
-    tokenA_symbol: string;
-    tokenA_reserve: string;
-    tokenB_symbol: string;
-    tokenB_reserve: string;
-    // Note: Fee is always 0.3% (300 basis points) - no longer stored per pool
-}
-
-
-/**
- * Finds the best trade route from start token to end token
- */
-async function findBestTradeRoute(
-    startTokenSymbol: string,
-    endTokenSymbol: string,
-    initialAmountIn: bigint,
-    maxHops: number = 3
-): Promise<TradeRoute | null> {
-    const allPoolsFromDB: any[] = await mongo.getDb().collection('liquidityPools').find({}).toArray();
-    const allPools: Pool[] = allPoolsFromDB.map(p => ({
-        _id: p._id.toString(),
-        tokenA_symbol: p.tokenA_symbol,
-        tokenA_reserve: p.tokenA_reserve,
-        tokenB_symbol: p.tokenB_symbol,
-        tokenB_reserve: p.tokenB_reserve
-    }));
-
-    const routes: TradeRoute[] = [];
-    const queue: [string, TradeHop[], bigint][] = [[startTokenSymbol, [], initialAmountIn]];
-
-    while (queue.length > 0) {
-        const [currentTokenSymbol, currentPath, currentAmountIn] = queue.shift()!;
-        if (currentPath.length >= maxHops) continue;
-
-        for (const pool of allPools) {
-            let tokenInReserveStr: string, tokenOutReserveStr: string, nextTokenSymbol: string;
-
-            if (pool.tokenA_symbol === currentTokenSymbol) {
-                tokenInReserveStr = pool.tokenA_reserve;
-                tokenOutReserveStr = pool.tokenB_reserve;
-                nextTokenSymbol = pool.tokenB_symbol;
-            } else if (pool.tokenB_symbol === currentTokenSymbol) {
-                tokenInReserveStr = pool.tokenB_reserve;
-                tokenOutReserveStr = pool.tokenA_reserve;
-                nextTokenSymbol = pool.tokenA_symbol;
-            } else {
-                continue;
-            }
-
-            const tokenInReserve = toBigInt(tokenInReserveStr);
-            const tokenOutReserve = toBigInt(tokenOutReserveStr);
-            if (tokenInReserve <= 0n || tokenOutReserve <= 0n) continue;
-            if (currentPath.length > 0 && currentPath[currentPath.length - 1].tokenIn === nextTokenSymbol) continue;
-
-            const amountOutFromHop = getOutputAmountBigInt(currentAmountIn, tokenInReserve, tokenOutReserve);
-            if (amountOutFromHop <= 0n) continue;
-
-            const priceImpact = calculatePriceImpact(currentAmountIn, tokenInReserve);
-
-            const newHop: TradeHop = {
-                poolId: pool._id,
-                tokenIn: currentTokenSymbol,
-                tokenOut: nextTokenSymbol,
-                amountIn: currentAmountIn.toString(),
-                amountOut: amountOutFromHop.toString(),
-                priceImpact: priceImpact
-            };
-            const newPath = [...currentPath, newHop];
-
-            if (nextTokenSymbol === endTokenSymbol) {
-                routes.push({
-                    hops: newPath,
-                    finalAmountIn: initialAmountIn.toString(),
-                    finalAmountOut: amountOutFromHop.toString()
-                });
-            } else {
-                queue.push([nextTokenSymbol, newPath, amountOutFromHop]);
-            }
-        }
-    }
-
-    // Return the best route (highest output amount)
-    return routes.sort((a, b) => toBigInt(b.finalAmountOut) > toBigInt(a.finalAmountOut) ? 1 : -1)[0] || null;
-}
 
 export async function validateTx(data: PoolSwapData, sender: string): Promise<boolean> {
     try {
@@ -121,33 +15,19 @@ export async function validateTx(data: PoolSwapData, sender: string): Promise<bo
             logger.warn('[pool-swap] amountIn must be a positive BigInt.');
             return false;
         }
-
-        if (data.minAmountOut !== undefined && toBigInt(data.minAmountOut) <= 0n) {
+        if (data.minAmountOut !== undefined && !validate.bigint(data.minAmountOut, false, false)) {
             logger.warn('[pool-swap] minAmountOut, if provided, must be a positive BigInt.');
             return false;
         }
-        if (data.slippagePercent !== undefined) {
-            if (typeof data.slippagePercent !== 'number' || isNaN(data.slippagePercent)) {
-                logger.warn('[pool-swap] slippagePercent must be a valid number.');
-                return false;
-            }
-            if (data.slippagePercent < 0 || data.slippagePercent > 100) {
-                logger.warn('[pool-swap] slippagePercent must be between 0 and 100 percent.');
-                return false;
-            }
-        } else {
-            // Require slippagePercent for auto-route swaps
-            logger.warn('[pool-swap] slippagePercent is required for auto-route swaps.');
+        if (data.slippagePercent !== undefined && !validate.integer(data.slippagePercent, true, false, 100, 0)) {
+            logger.warn('[pool-swap] slippagePercent must be between 0 and 100 percent.');
             return false;
-
         }
-
         const traderAccount = await getAccount(sender);
         if (!traderAccount) {
             logger.warn(`[pool-swap] Trader account ${sender} not found.`);
             return false;
         }
-
         // Check if this is a routed swap or single-hop swap
         if (data.hops && data.hops.length > 0) {
             // Multi-hop routed swap
@@ -205,7 +85,7 @@ async function validateRoutedSwap(data: PoolSwapData, sender: string, traderAcco
     let currentAmountIn = data.amountIn;
     for (let i = 0; i < data.hops!.length; i++) {
         const hop = data.hops![i];
-        
+
         // Get pool data for this hop
         const poolFromDb = (await cache.findOnePromise('liquidityPools', { _id: hop.poolId }))!;
         if (!poolFromDb) {
@@ -215,7 +95,7 @@ async function validateRoutedSwap(data: PoolSwapData, sender: string, traderAcco
 
         // Verify token symbols match for this hop
         if (!((poolFromDb.tokenA_symbol === hop.tokenIn_symbol && poolFromDb.tokenB_symbol === hop.tokenOut_symbol) ||
-              (poolFromDb.tokenB_symbol === hop.tokenIn_symbol && poolFromDb.tokenA_symbol === hop.tokenOut_symbol))) {
+            (poolFromDb.tokenB_symbol === hop.tokenIn_symbol && poolFromDb.tokenA_symbol === hop.tokenOut_symbol))) {
             logger.warn(`[pool-swap] Token symbols do not match pool configuration for hop ${i + 1}.`);
             return false;
         }
@@ -271,16 +151,16 @@ async function validateAutoRouteSwap(data: PoolSwapData, sender: string, traderA
     // Apply slippage tolerance (same logic as execution)
     const slippagePercent = data.slippagePercent || 1.0;
     const expectedFinalOutput = toBigInt(bestRoute.finalAmountOut);
-    
+
     // Calculate minimum output (same logic as execution)
-    const finalMinAmountOut = data.minAmountOut || 
+    const finalMinAmountOut = data.minAmountOut ||
         (expectedFinalOutput * BigInt(10000 - Math.floor(slippagePercent * 100))) / BigInt(10000);
 
     // Validate each hop using the same calculation logic as execution
     let currentAmountIn = toBigInt(data.amountIn);
     for (let i = 0; i < bestRoute.hops.length; i++) {
         const hop = bestRoute.hops[i];
-        
+
         // Get current pool data (same as execution)
         const poolFromDb = (await cache.findOnePromise('liquidityPools', { _id: hop.poolId })) as { tokenA_symbol: string; tokenA_reserve: string; tokenB_symbol: string; tokenB_reserve: string };
         if (!poolFromDb) {
@@ -328,136 +208,136 @@ async function validateAutoRouteSwap(data: PoolSwapData, sender: string, traderA
 
 // Helper function to find trading pair ID regardless of token order
 async function findTradingPairId(tokenA: string, tokenB: string): Promise<string | null> {
-  // Try both orders: tokenA-tokenB and tokenB-tokenA
-  let pairId = `${tokenA}-${tokenB}`;
-  let tradingPair = await cache.findOnePromise('tradingPairs', { _id: pairId });
-  
-  if (!tradingPair) {
-    pairId = `${tokenB}-${tokenA}`;
-    tradingPair = await cache.findOnePromise('tradingPairs', { _id: pairId });
-  }
-  
-  return tradingPair ? pairId : null;
+    // Try both orders: tokenA-tokenB and tokenB-tokenA
+    let pairId = `${tokenA}-${tokenB}`;
+    let tradingPair = await cache.findOnePromise('tradingPairs', { _id: pairId });
+
+    if (!tradingPair) {
+        pairId = `${tokenB}-${tokenA}`;
+        tradingPair = await cache.findOnePromise('tradingPairs', { _id: pairId });
+    }
+
+    return tradingPair ? pairId : null;
 }
 
 // Helper function to record pool swaps as market trades
 async function recordPoolSwapTrade(params: {
-  poolId: string;
-  tokenIn: string;
-  tokenOut: string;
-  amountIn: bigint;
-  amountOut: bigint;
-  sender: string;
-  transactionId: string;
+    poolId: string;
+    tokenIn: string;
+    tokenOut: string;
+    amountIn: bigint;
+    amountOut: bigint;
+    sender: string;
+    transactionId: string;
 }): Promise<void> {
-  try {
-    // Find the correct trading pair ID regardless of token order
-    const pairId = await findTradingPairId(params.tokenIn, params.tokenOut);
-    if (!pairId) {
-      logger.debug(`[pool-swap] No trading pair found for ${params.tokenIn}-${params.tokenOut}, skipping trade record`);
-      return;
-    }
-    
-    // Get the trading pair to determine correct base/quote assignment
-    const pair = await cache.findOnePromise('tradingPairs', { _id: pairId });
-    if (!pair) {
-      logger.warn(`[pool-swap] Trading pair ${pairId} not found, using token symbols as-is`);
-    }
-    
-    // Determine correct base/quote mapping and trade side
-    let baseSymbol, quoteSymbol, tradeSide: 'buy' | 'sell';
-    let buyerUserId: string;
-    let sellerUserId: string;
-    let quantity: bigint;
-    let volume: bigint;
-    let price: bigint;
-    
-    if (pair) {
-      baseSymbol = pair.baseAssetSymbol;
-      quoteSymbol = pair.quoteAssetSymbol;
-      
-      // Determine trade side based on token direction
-      if (params.tokenOut === baseSymbol) {
-        // User is buying the base asset (tokenOut = base), it's a BUY
-        tradeSide = 'buy';
-        buyerUserId = params.sender;
-        sellerUserId = 'POOL';
-        quantity = params.amountOut; // Amount of base received
-        volume = params.amountIn;    // Amount of quote spent
-        // Price = quote spent / base received = amountIn / amountOut
-        price = calculateDecimalAwarePrice(params.amountIn, params.amountOut, quoteSymbol, baseSymbol);
-      } else if (params.tokenIn === baseSymbol) {
-        // User is selling the base asset (tokenIn = base), it's a SELL
-        tradeSide = 'sell';
-        buyerUserId = 'POOL';
-        sellerUserId = params.sender;
-        quantity = params.amountIn;  // Amount of base sold
-        volume = params.amountOut;   // Amount of quote received
-        // Price = quote received / base sold = amountOut / amountIn
-        price = calculateDecimalAwarePrice(params.amountOut, params.amountIn, quoteSymbol, baseSymbol);
-      } else {
-        // Fallback to buy if we can't determine the direction
-        logger.warn(`[pool-swap] Could not determine trade side for ${params.tokenIn} -> ${params.tokenOut}, defaulting to buy`);
-        tradeSide = 'buy';
-        buyerUserId = params.sender;
-        sellerUserId = 'POOL';
-        quantity = params.amountOut;
-        volume = params.amountIn;
-        price = calculateDecimalAwarePrice(params.amountIn, params.amountOut, quoteSymbol, baseSymbol);
-      }
-    } else {
-      // Fallback when pair info is not available
-      baseSymbol = params.tokenOut;
-      quoteSymbol = params.tokenIn;
-      tradeSide = 'buy';
-      buyerUserId = params.sender;
-      sellerUserId = 'POOL';
-      quantity = params.amountOut;
-      volume = params.amountIn;
-      price = calculateDecimalAwarePrice(params.amountIn, params.amountOut, quoteSymbol, baseSymbol);
-    }
-
-    // Create trade record matching the orderbook trade format
-    const tradeRecord = {
-      _id: crypto.randomBytes(12).toString('hex'),
-      pairId: pairId,
-      baseAssetSymbol: baseSymbol,
-      quoteAssetSymbol: quoteSymbol,
-      makerOrderId: null, // Pool swaps don't have maker orders
-      takerOrderId: null, // Pool swaps don't have taker orders
-      buyerUserId: buyerUserId,
-      sellerUserId: sellerUserId,
-      price: price.toString(),
-      quantity: quantity.toString(),
-      volume: volume.toString(),
-      timestamp: Date.now(),
-      side: tradeSide,
-      type: 'market', // Pool swaps are market orders
-      source: 'pool', // Mark as pool source
-      isMakerBuyer: false,
-      feeAmount: '0', // Fees are handled in the pool swap
-      feeCurrency: quoteSymbol,
-      makerFee: '0',
-      takerFee: '0',
-      total: volume.toString()
-    };
-
-    // Save to trades collection
-    await new Promise<void>((resolve, reject) => {
-      cache.insertOne('trades', tradeRecord, (err, result) => {
-        if (err || !result) {
-          logger.error(`[pool-swap] Failed to record trade: ${err}`);
-          reject(err);
-        } else {
-          resolve();
+    try {
+        // Find the correct trading pair ID regardless of token order
+        const pairId = await findTradingPairId(params.tokenIn, params.tokenOut);
+        if (!pairId) {
+            logger.debug(`[pool-swap] No trading pair found for ${params.tokenIn}-${params.tokenOut}, skipping trade record`);
+            return;
         }
-      });
-    });
 
-    logger.debug(`[pool-swap] Recorded trade: ${params.amountIn} ${params.tokenIn} -> ${params.amountOut} ${params.tokenOut} via pool ${params.poolId}`);
-  } catch (error) {
-    logger.error(`[pool-swap] Error recording trade: ${error}`);
-  }
+        // Get the trading pair to determine correct base/quote assignment
+        const pair = await cache.findOnePromise('tradingPairs', { _id: pairId });
+        if (!pair) {
+            logger.warn(`[pool-swap] Trading pair ${pairId} not found, using token symbols as-is`);
+        }
+
+        // Determine correct base/quote mapping and trade side
+        let baseSymbol, quoteSymbol, tradeSide: 'buy' | 'sell';
+        let buyerUserId: string;
+        let sellerUserId: string;
+        let quantity: bigint;
+        let volume: bigint;
+        let price: bigint;
+
+        if (pair) {
+            baseSymbol = pair.baseAssetSymbol;
+            quoteSymbol = pair.quoteAssetSymbol;
+
+            // Determine trade side based on token direction
+            if (params.tokenOut === baseSymbol) {
+                // User is buying the base asset (tokenOut = base), it's a BUY
+                tradeSide = 'buy';
+                buyerUserId = params.sender;
+                sellerUserId = 'POOL';
+                quantity = params.amountOut; // Amount of base received
+                volume = params.amountIn;    // Amount of quote spent
+                // Price = quote spent / base received = amountIn / amountOut
+                price = calculateDecimalAwarePrice(params.amountIn, params.amountOut, quoteSymbol, baseSymbol);
+            } else if (params.tokenIn === baseSymbol) {
+                // User is selling the base asset (tokenIn = base), it's a SELL
+                tradeSide = 'sell';
+                buyerUserId = 'POOL';
+                sellerUserId = params.sender;
+                quantity = params.amountIn;  // Amount of base sold
+                volume = params.amountOut;   // Amount of quote received
+                // Price = quote received / base sold = amountOut / amountIn
+                price = calculateDecimalAwarePrice(params.amountOut, params.amountIn, quoteSymbol, baseSymbol);
+            } else {
+                // Fallback to buy if we can't determine the direction
+                logger.warn(`[pool-swap] Could not determine trade side for ${params.tokenIn} -> ${params.tokenOut}, defaulting to buy`);
+                tradeSide = 'buy';
+                buyerUserId = params.sender;
+                sellerUserId = 'POOL';
+                quantity = params.amountOut;
+                volume = params.amountIn;
+                price = calculateDecimalAwarePrice(params.amountIn, params.amountOut, quoteSymbol, baseSymbol);
+            }
+        } else {
+            // Fallback when pair info is not available
+            baseSymbol = params.tokenOut;
+            quoteSymbol = params.tokenIn;
+            tradeSide = 'buy';
+            buyerUserId = params.sender;
+            sellerUserId = 'POOL';
+            quantity = params.amountOut;
+            volume = params.amountIn;
+            price = calculateDecimalAwarePrice(params.amountIn, params.amountOut, quoteSymbol, baseSymbol);
+        }
+
+        // Create trade record matching the orderbook trade format
+        const tradeRecord = {
+            _id: crypto.randomBytes(12).toString('hex'),
+            pairId: pairId,
+            baseAssetSymbol: baseSymbol,
+            quoteAssetSymbol: quoteSymbol,
+            makerOrderId: null, // Pool swaps don't have maker orders
+            takerOrderId: null, // Pool swaps don't have taker orders
+            buyerUserId: buyerUserId,
+            sellerUserId: sellerUserId,
+            price: price.toString(),
+            quantity: quantity.toString(),
+            volume: volume.toString(),
+            timestamp: Date.now(),
+            side: tradeSide,
+            type: 'market', // Pool swaps are market orders
+            source: 'pool', // Mark as pool source
+            isMakerBuyer: false,
+            feeAmount: '0', // Fees are handled in the pool swap
+            feeCurrency: quoteSymbol,
+            makerFee: '0',
+            takerFee: '0',
+            total: volume.toString()
+        };
+
+        // Save to trades collection
+        await new Promise<void>((resolve, reject) => {
+            cache.insertOne('trades', tradeRecord, (err, result) => {
+                if (err || !result) {
+                    logger.error(`[pool-swap] Failed to record trade: ${err}`);
+                    reject(err);
+                } else {
+                    resolve();
+                }
+            });
+        });
+
+        logger.debug(`[pool-swap] Recorded trade: ${params.amountIn} ${params.tokenIn} -> ${params.amountOut} ${params.tokenOut} via pool ${params.poolId}`);
+    } catch (error) {
+        logger.error(`[pool-swap] Error recording trade: ${error}`);
+    }
 }
 
 export async function process(data: PoolSwapData, sender: string, transactionId: string): Promise<boolean> {
@@ -514,7 +394,7 @@ async function processSingleHopSwap(data: PoolSwapData, sender: string, transact
     const totalLpTokens = toBigInt(poolFromDb.totalLpTokens);
     let newFeeGrowthGlobalA = toBigInt(poolFromDb.feeGrowthGlobalA || '0');
     let newFeeGrowthGlobalB = toBigInt(poolFromDb.feeGrowthGlobalB || '0');
-    
+
     if (totalLpTokens > 0n && feeAmount > 0n) {
         const feeGrowthDelta = (feeAmount * BigInt(1e18)) / totalLpTokens;
         if (tokenInIsA) {
@@ -573,25 +453,25 @@ async function processSingleHopSwap(data: PoolSwapData, sender: string, transact
 
     // Record the swap as a market trade
     await recordPoolSwapTrade({
-      poolId: data.poolId!,
-      tokenIn: tokenIn_symbol,
-      tokenOut: tokenOut_symbol,
-      amountIn: toBigInt(data.amountIn),
-      amountOut: amountOut,
-      sender: sender,
-      transactionId: transactionId
+        poolId: data.poolId!,
+        tokenIn: tokenIn_symbol,
+        tokenOut: tokenOut_symbol,
+        amountIn: toBigInt(data.amountIn),
+        amountOut: amountOut,
+        sender: sender,
+        transactionId: transactionId
     });
 
     // Log event
     await logEvent('defi', 'swap', sender, {
-      poolId: data.poolId,
-      tokenIn: tokenIn_symbol,
-      tokenOut: tokenOut_symbol,
-      amountIn: toDbString(toBigInt(data.amountIn)),
-      amountOut: toDbString(amountOut),
-      fee: toDbString(feeAmount),
-      tokenA_symbol: poolFromDb.tokenA_symbol,
-      tokenB_symbol: poolFromDb.tokenB_symbol
+        poolId: data.poolId,
+        tokenIn: tokenIn_symbol,
+        tokenOut: tokenOut_symbol,
+        amountIn: toDbString(toBigInt(data.amountIn)),
+        amountOut: toDbString(amountOut),
+        fee: toDbString(feeAmount),
+        tokenA_symbol: poolFromDb.tokenA_symbol,
+        tokenB_symbol: poolFromDb.tokenB_symbol
     }, transactionId);
 
     return true;
@@ -625,7 +505,7 @@ async function processSingleHopSwapWithResult(data: PoolSwapData, sender: string
         const totalLpTokens = toBigInt(poolFromDb.totalLpTokens);
         let newFeeGrowthGlobalA = toBigInt(poolFromDb.feeGrowthGlobalA || '0');
         let newFeeGrowthGlobalB = toBigInt(poolFromDb.feeGrowthGlobalB || '0');
-        
+
         if (totalLpTokens > 0n && feeAmount > 0n) {
             const feeGrowthDelta = (feeAmount * BigInt(1e18)) / totalLpTokens;
             if (tokenInIsA) {
@@ -680,13 +560,13 @@ async function processSingleHopSwapWithResult(data: PoolSwapData, sender: string
 
         // Record the swap as a market trade
         await recordPoolSwapTrade({
-          poolId: data.poolId!,
-          tokenIn: tokenIn_symbol,
-          tokenOut: tokenOut_symbol,
-          amountIn: toBigInt(data.amountIn),
-          amountOut: amountOut,
-          sender: sender,
-          transactionId: transactionId
+            poolId: data.poolId!,
+            tokenIn: tokenIn_symbol,
+            tokenOut: tokenOut_symbol,
+            amountIn: toBigInt(data.amountIn),
+            amountOut: amountOut,
+            sender: sender,
+            transactionId: transactionId
         });
 
         // Log event
@@ -735,7 +615,7 @@ async function processRoutedSwap(data: PoolSwapData, sender: string, transaction
         const totalLpTokens = toBigInt(poolFromDb.totalLpTokens);
         let newFeeGrowthGlobalA = toBigInt(poolFromDb.feeGrowthGlobalA || '0');
         let newFeeGrowthGlobalB = toBigInt(poolFromDb.feeGrowthGlobalB || '0');
-        
+
         if (totalLpTokens > 0n && feeAmount > 0n) {
             const feeGrowthDelta = (feeAmount * BigInt(1e18)) / totalLpTokens;
             if (tokenInIsA) {
@@ -816,13 +696,13 @@ async function processRoutedSwap(data: PoolSwapData, sender: string, transaction
 
     // Record the multi-hop swap as a market trade (overall trade from first token to last token)
     await recordPoolSwapTrade({
-      poolId: data.hops![0].poolId, // Use first hop's pool ID
-      tokenIn: data.hops![0].tokenIn_symbol,
-      tokenOut: data.hops![data.hops!.length - 1].tokenOut_symbol,
-      amountIn: toBigInt(data.amountIn),
-      amountOut: totalAmountOut,
-      sender: sender,
-      transactionId: transactionId
+        poolId: data.hops![0].poolId, // Use first hop's pool ID
+        tokenIn: data.hops![0].tokenIn_symbol,
+        tokenOut: data.hops![data.hops!.length - 1].tokenOut_symbol,
+        amountIn: toBigInt(data.amountIn),
+        amountOut: totalAmountOut,
+        sender: sender,
+        transactionId: transactionId
     });
 
     // Log event - get pool data for the first hop to access token symbols

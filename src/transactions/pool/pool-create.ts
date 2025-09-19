@@ -3,13 +3,12 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { PoolCreateData, LiquidityPoolData } from './pool-interfaces.js';
 import config from '../../config.js';
-import { convertToBigInt, convertToString } from '../../utils/bigint.js';
+import { convertToBigInt } from '../../utils/bigint.js';
 import { getLpTokenSymbol } from '../../utils/token.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
 
 const NUMERIC_FIELDS_POOL_CREATE: Array<keyof PoolCreateData> = [];
-const LIQUIDITY_POOL_NUMERIC_FIELDS: Array<keyof LiquidityPoolData> = ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens'];
 
 function generatePoolId(tokenA_symbol: string, tokenB_symbol: string): string {
   // Ensure canonical order to prevent duplicate pools (e.g., A-B vs B-A)
@@ -101,18 +100,15 @@ export async function process(data: PoolCreateData, sender: string, id: string):
     const poolDocumentApp: LiquidityPoolData = {
       _id: poolId,
       tokenA_symbol: tokenA_symbol,
-      tokenA_reserve: BigInt(0),
+      tokenA_reserve: toDbString(BigInt(0)),
       tokenB_symbol: tokenB_symbol,
-      tokenB_reserve: BigInt(0),
-      totalLpTokens: BigInt(0),
+      tokenB_reserve: toDbString(BigInt(0)),
+      totalLpTokens: toDbString(BigInt(0)),
       createdAt: new Date().toISOString(),
       status: 'ACTIVE'
     };
-
-    const poolDocumentDB = convertToString<LiquidityPoolData>(poolDocumentApp, LIQUIDITY_POOL_NUMERIC_FIELDS);
-
     const createSuccess = await new Promise<boolean>((resolve) => {
-      cache.insertOne('liquidityPools', poolDocumentDB, (err, result) => {
+      cache.insertOne('liquidityPools', poolDocumentApp, (err, result) => {
         if (err || !result) {
           logger.error(`[pool-create] Failed to insert pool ${poolId} into cache: ${err || 'no result'}`);
           resolve(false);

@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import config from '../../config.js';
 import { FarmCreateData, FarmData } from './farm-interfaces.js';
-import { convertToBigInt, convertToString, toDbString, BigIntMath } from '../../utils/bigint.js';
+import { convertToBigInt, toDbString, BigIntMath, toBigInt } from '../../utils/bigint.js';
 import { getAccount } from '../../utils/account.js';
 import mongo from '../../mongo.js';
 
@@ -182,9 +182,9 @@ export async function process(data: FarmCreateData, sender: string, id: string, 
         await cache.updateOnePromise('accounts', { name: vaultAccountName }, { $set: { [vaultBalanceKey]: toDbString(newVaultBal) } });
 
         // Determine if this is a native farm (rewards in MRY from system)
-        const isNativeFarm = farmData.rewardToken.symbol === config.nativeTokenSymbol && 
-                            farmData.rewardToken.issuer === config.masterName;
-        
+        const isNativeFarm = farmData.rewardToken.symbol === config.nativeTokenSymbol &&
+            farmData.rewardToken.issuer === config.masterName;
+
         // Set default weight based on farm type
         const farmWeight = farmData.weight !== undefined ? farmData.weight : (isNativeFarm ? 1 : 0);
 
@@ -205,16 +205,11 @@ export async function process(data: FarmCreateData, sender: string, id: string, 
             isActive: true,
             status: 'active',
             createdAt: new Date().toISOString(),
-                         // Track rewards remaining for capping claims
-             // Not in interface originally, but we can include as extra field
-             // @ts-ignore
-             rewardsRemaining: farmData.totalRewards
+            rewardsRemaining: toDbString(farmData.totalRewards)
         };
 
-        const NUMERIC_FIELDS_FARM_EXT: Array<any> = [...NUMERIC_FIELDS_FARM, 'rewardsRemaining'];
-        const farmDocumentDB = convertToString<FarmData>(farmDocument as any, NUMERIC_FIELDS_FARM_EXT as any);
         const insertSuccess = await new Promise<boolean>((resolve) => {
-            cache.insertOne('farms', farmDocumentDB, (err, result) => {
+            cache.insertOne('farms', farmDocument, (err, result) => {
                 if (err || !result) {
                     logger.error(`[farm-create] Failed to insert farm ${farmId} into cache: ${err || 'no result'}`);
                     resolve(false);

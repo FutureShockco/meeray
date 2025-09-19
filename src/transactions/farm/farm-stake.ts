@@ -4,61 +4,58 @@ import validate from '../../validation/index.js';
 import { FarmStakeData, FarmData, UserFarmPositionData } from './farm-interfaces.js';
 import { UserLiquidityPositionData } from '../pool/pool-interfaces.js';
 import { getAccount } from '../../utils/account.js';
-import { convertToBigInt, convertToString, toDbString, toBigInt } from '../../utils/bigint.js';
+import { toDbString, toBigInt } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
-const NUMERIC_FIELDS: Array<keyof FarmStakeData> = ['lpTokenAmount'];
 
 export async function validateTx(data: FarmStakeData, sender: string): Promise<boolean> {
   try {
-    // Convert string amounts to BigInt for validation
-    const stakeData = convertToBigInt<FarmStakeData>(data, NUMERIC_FIELDS);
 
-    if (!stakeData.farmId || !stakeData.staker || !stakeData.lpTokenAmount) {
+    if (!data.farmId || !data.staker || !data.lpTokenAmount) {
       logger.warn('[farm-stake] Invalid data: Missing required fields (farmId, staker, lpTokenAmount).');
       return false;
     }
 
-    if (sender !== stakeData.staker) {
+    if (sender !== data.staker) {
       logger.warn('[farm-stake] Sender must be the staker.');
       return false;
     }
 
-    if (!validate.string(stakeData.farmId, 64, 1)) {
+    if (!validate.string(data.farmId, 64, 1)) {
       logger.warn('[farm-stake] Invalid farmId format.');
       return false;
     }
 
-    if (!validate.bigint(stakeData.lpTokenAmount, false, false, BigInt(1))) {
+    if (!validate.bigint(data.lpTokenAmount, false, false, BigInt(1))) {
       logger.warn('[farm-stake] lpTokenAmount must be a positive number.');
       return false;
     }
 
-    const farm = await cache.findOnePromise('farms', { _id: stakeData.farmId }) as FarmData;
+    const farm = await cache.findOnePromise('farms', { _id: data.farmId }) as FarmData;
     if (!farm) {
-      logger.warn(`[farm-stake] Farm ${stakeData.farmId} not found.`);
+      logger.warn(`[farm-stake] Farm ${data.farmId} not found.`);
       return false;
     }
 
     // The farm.stakingToken.issuer is assumed to be the poolId where these LP tokens originate
     const poolIdForLp = farm.stakingToken.issuer;
-    const userLpPositionId = `${stakeData.staker}-${poolIdForLp}`;
+    const userLpPositionId = `${data.staker}-${poolIdForLp}`;
     const userLiquidityPosDB = await cache.findOnePromise('userLiquidityPositions', { _id: userLpPositionId }) as UserLiquidityPositionData | null;
-    
+
     // Convert string amounts to BigInt for comparison
     const userLiquidityPos = userLiquidityPosDB;
 
-    if (!userLiquidityPos || toBigInt(userLiquidityPos.lpTokenBalance) < toBigInt(stakeData.lpTokenAmount)) {
-      logger.warn(`[farm-stake] Staker ${stakeData.staker} has insufficient LP token balance for pool ${poolIdForLp} (LP tokens for farm ${stakeData.farmId}). Has ${userLiquidityPos?.lpTokenBalance || 0n}, needs ${stakeData.lpTokenAmount}`);
+    if (!userLiquidityPos || toBigInt(userLiquidityPos.lpTokenBalance) < toBigInt(data.lpTokenAmount)) {
+      logger.warn(`[farm-stake] Staker ${data.staker} has insufficient LP token balance for pool ${poolIdForLp} (LP tokens for farm ${data.farmId}). Has ${userLiquidityPos?.lpTokenBalance || 0n}, needs ${data.lpTokenAmount}`);
       return false;
     }
 
-    const stakerAccount = await getAccount(stakeData.staker);
+    const stakerAccount = await getAccount(data.staker);
     if (!stakerAccount) {
-      logger.warn(`[farm-stake] Staker account ${stakeData.staker} not found.`);
+      logger.warn(`[farm-stake] Staker account ${data.staker} not found.`);
       return false;
     }
-    
+
     return true;
   } catch (error) {
     logger.error(`[farm-stake] Error validating stake data for farm ${data.farmId} by ${sender}: ${error}`);
@@ -68,56 +65,55 @@ export async function validateTx(data: FarmStakeData, sender: string): Promise<b
 
 export async function process(data: FarmStakeData, sender: string, id: string, ts?: number): Promise<boolean> {
   try {
-    const stakeData = data;
-    const farm = await cache.findOnePromise('farms', { _id: stakeData.farmId }) as FarmData | null;
+    const farm = await cache.findOnePromise('farms', { _id: data.farmId }) as FarmData | null;
     // Validate farm timing and status using tx timestamp if provided
     const nowMs = ts ?? Date.now();
     if (!farm) return false;
     const farmStart = new Date(farm.startTime).getTime();
     const farmEnd = new Date(farm.endTime).getTime();
     if (farm.status !== 'active' || nowMs < farmStart || nowMs > farmEnd) {
-      logger.warn(`[farm-stake] Farm ${stakeData.farmId} not active at ts=${nowMs}.`);
+      logger.warn(`[farm-stake] Farm ${data.farmId} not active at ts=${nowMs}.`);
       return false;
     }
 
     // Enforce min/max stake constraints if set (0 means unlimited)
     const minStake = toBigInt((farm as any).minStakeAmount || '0');
     const maxStake = toBigInt((farm as any).maxStakeAmount || '0');
-    if (minStake > BigInt(0) && toBigInt(stakeData.lpTokenAmount) < minStake) {
-      logger.warn(`[farm-stake] Amount below minStakeAmount for farm ${stakeData.farmId}.`);
+    if (minStake > BigInt(0) && toBigInt(data.lpTokenAmount) < minStake) {
+      logger.warn(`[farm-stake] Amount below minStakeAmount for farm ${data.farmId}.`);
       return false;
     }
     const poolIdForLp = farm!.stakingToken.issuer;
-    const userLpSourcePositionId = `${stakeData.staker}-${poolIdForLp}`;
+    const userLpSourcePositionId = `${data.staker}-${poolIdForLp}`;
     const userLiquidityPosDB = await cache.findOnePromise('userLiquidityPositions', { _id: userLpSourcePositionId }) as UserLiquidityPositionData;
     const userLiquidityPos = userLiquidityPosDB;
 
-    if (!userLiquidityPos || userLiquidityPos.lpTokenBalance < stakeData.lpTokenAmount) {
-      logger.error(`[farm-stake] CRITICAL: Staker ${stakeData.staker} has insufficient LP balance for ${poolIdForLp} during processing.`);
+    if (!userLiquidityPos || userLiquidityPos.lpTokenBalance < data.lpTokenAmount) {
+      logger.error(`[farm-stake] CRITICAL: Staker ${data.staker} has insufficient LP balance for ${poolIdForLp} during processing.`);
       return false;
     }
 
     // 1. Decrease LP token balance from UserLiquidityPosition
-    const newLpBalanceInPool = toBigInt(userLiquidityPos.lpTokenBalance) - toBigInt(stakeData.lpTokenAmount);
+    const newLpBalanceInPool = toBigInt(userLiquidityPos.lpTokenBalance) - toBigInt(data.lpTokenAmount);
     await cache.updateOnePromise(
       'userLiquidityPositions',
       { _id: userLpSourcePositionId },
-      { 
-        $set: convertToString({ lpTokenBalance: newLpBalanceInPool }, ['lpTokenBalance']),
+      {
+        $set: { lpTokenBalance: toDbString(newLpBalanceInPool) },
         lastUpdatedAt: new Date().toISOString()
       }
     );
 
     // 2. Increase totalLpStaked in the Farm document
-    const currentFarm = await cache.findOnePromise('farms', { _id: stakeData.farmId });
+    const currentFarm = await cache.findOnePromise('farms', { _id: data.farmId });
     const currentTotalStaked = toBigInt(currentFarm?.totalStaked || '0');
-    const newTotalStaked = currentTotalStaked + toBigInt(stakeData.lpTokenAmount);
-    
+    const newTotalStaked = currentTotalStaked + toBigInt(data.lpTokenAmount);
+
     await cache.updateOnePromise(
       'farms',
-      { _id: stakeData.farmId },
-      { 
-        $set: { 
+      { _id: data.farmId },
+      {
+        $set: {
           totalStaked: toDbString(newTotalStaked),
           lastUpdatedAt: new Date().toISOString()
         }
@@ -125,7 +121,7 @@ export async function process(data: FarmStakeData, sender: string, id: string, t
     );
 
     // 3. Create or update UserFarmPosition
-    const userFarmPositionId = `${stakeData.staker}-${stakeData.farmId}`;
+    const userFarmPositionId = `${data.staker}-${data.farmId}`;
 
     const existingUserFarmPosDB = await cache.findOnePromise('userFarmPositions', { _id: userFarmPositionId }) as UserFarmPositionData | null;
     const existingUserFarmPos = existingUserFarmPosDB;
@@ -137,10 +133,7 @@ export async function process(data: FarmStakeData, sender: string, id: string, t
         { _id: userFarmPositionId },
         {
           $set: {
-            ...convertToString(
-              { stakedAmount: toBigInt(existingUserFarmPos.stakedAmount) + toBigInt(stakeData.lpTokenAmount) },
-              ['stakedAmount']
-            ),
+            stakedAmount: toDbString(toBigInt(existingUserFarmPos.stakedAmount) + toBigInt(data.lpTokenAmount)),
             lastUpdatedAt: new Date().toISOString()
           }
         }
@@ -149,20 +142,17 @@ export async function process(data: FarmStakeData, sender: string, id: string, t
       // Create new position
       const newUserFarmPosition: UserFarmPositionData = {
         _id: userFarmPositionId,
-        userId: stakeData.staker,
-        farmId: stakeData.farmId,
-        stakedAmount: stakeData.lpTokenAmount,
-        pendingRewards: BigInt(0),
+        userId: data.staker,
+        farmId: data.farmId,
+        stakedAmount: toDbString(data.lpTokenAmount),
+        pendingRewards: toDbString(0n),
         lastHarvestTime: new Date(nowMs).toISOString(),
         createdAt: new Date().toISOString(),
         lastUpdatedAt: new Date().toISOString()
       };
 
-      // Convert BigInt fields to strings for database storage with proper padding
-      const newUserFarmPositionDB = convertToString(newUserFarmPosition, ['stakedAmount', 'pendingRewards']);
-
       await new Promise<boolean>((resolve) => {
-        cache.insertOne('userFarmPositions', newUserFarmPositionDB, (err, success) => {
+        cache.insertOne('userFarmPositions', newUserFarmPosition, (err, success) => {
           if (err || !success) {
             logger.error(`[farm-stake] System error: Failed to insert user farm position ${userFarmPositionId}: ${err || 'insert not successful'}`);
             resolve(false);
@@ -173,13 +163,13 @@ export async function process(data: FarmStakeData, sender: string, id: string, t
       });
     }
 
-    logger.debug(`[farm-stake] Staker ${stakeData.staker} staked ${stakeData.lpTokenAmount} LP tokens (from pool ${poolIdForLp}) into farm ${stakeData.farmId}.`);
+    logger.debug(`[farm-stake] Staker ${data.staker} staked ${data.lpTokenAmount} LP tokens (from pool ${poolIdForLp}) into farm ${data.farmId}.`);
 
     // Log event
-    await logTransactionEvent('farm_stake', stakeData.staker, {
-      farmId: stakeData.farmId,
-      staker: stakeData.staker,
-      lpTokenAmount: toDbString(toBigInt(stakeData.lpTokenAmount)),
+    await logTransactionEvent('farm_stake', data.staker, {
+      farmId: data.farmId,
+      staker: data.staker,
+      lpTokenAmount: toDbString(data.lpTokenAmount),
       poolId: poolIdForLp,
       totalStaked: toDbString(newTotalStaked)
     });

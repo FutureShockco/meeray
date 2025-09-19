@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { FarmClaimRewardsData, FarmData, UserFarmPositionData } from './farm-interfaces.js';
 import { getAccount, adjustBalance } from '../../utils/account.js';
-import { toDbString, convertToString, toBigInt } from '../../utils/bigint.js';
+import { toDbString, toBigInt } from '../../utils/bigint.js';
 import config from '../../config.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 

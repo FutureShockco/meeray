@@ -25,6 +25,7 @@ const config = {
   tokenCreationFee: 10000000000, // 100 MRY
   nftCollectionCreationFee: 10000000000, // 100 MRY
   launchPadCreationFee: 10000000000, // 100 MRY
+  swapAndTradeFee: 300, // 0.3% in basis points
   tokenSymbolMaxLength: 10,
   tokenSymbolMinLength: 3,
   tokenPrecisionMax: 18,

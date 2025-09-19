@@ -36,18 +36,20 @@ export function toBigInt(value: string | bigint | number | null | undefined): bi
 }
 
 /**
- * Convert BigInt to a zero-padded string suitable for database storage
- * This ensures correct lexicographical sorting in MongoDB
- * @param value The BigInt value to convert
+ * Convert a value to BigInt and then to a zero-padded string suitable for database storage
+ * Ensures correct lexicographical sorting in MongoDB
+ * @param value The value to convert (number, string, or bigint)
  * @param padLength Optional custom pad length
  * @returns A zero-padded string representation
  */
-export function toDbString(value: bigint): string {
-    const str = value.toString();
-    // Ensure positive numbers are properly padded for lexicographical sorting
+export function toDbString(value: number | string | bigint, padLength = MAX_INTEGER_LENGTH): string {
+    // Convert to BigInt first
+    const bigValue = BigInt(value);
+    const str = bigValue.toString();
+
     return str.startsWith('-')
-        ? '-' + str.slice(1).padStart(MAX_INTEGER_LENGTH, '0')
-        : str.padStart(MAX_INTEGER_LENGTH, '0');
+        ? '-' + str.slice(1).padStart(padLength, '0')
+        : str.padStart(padLength, '0');
 }
 
 /**
@@ -64,7 +66,7 @@ export function formatTokenAmount(value: bigint, symbol: string): string {
     const str = value.toString().padStart(decimals + 1, '0');
     const integerPart = str.slice(0, -decimals) || '0';
     const decimalPart = str.slice(-decimals);
-    
+
     // Trim trailing zeros for better readability
     const trimmedDecimal = decimalPart.replace(/0+$/, '');
     return trimmedDecimal ? `${integerPart}.${trimmedDecimal}` : integerPart;
@@ -95,20 +97,20 @@ export function parseTokenAmount(value: string, symbol: string): bigint {
  * @returns Price scaled by 1e8 with proper decimal consideration
  */
 export function calculateDecimalAwarePrice(
-    amountIn: bigint, 
-    amountOut: bigint, 
-    tokenInSymbol: string, 
+    amountIn: bigint,
+    amountOut: bigint,
+    tokenInSymbol: string,
     tokenOutSymbol: string
 ): bigint {
     // Validate inputs - both must be positive
     if (amountOut <= 0n || amountIn <= 0n) return 0n;
-    
+
     const tokenInDecimals = getTokenDecimals(tokenInSymbol);
     const tokenOutDecimals = getTokenDecimals(tokenOutSymbol);
     const decimalDifference = tokenOutDecimals - tokenInDecimals;
-    
+
     let price: bigint;
-    
+
     // Handle decimal differences properly
     if (decimalDifference >= 0) {
         // TokenOut has more decimals, scale up amountIn
@@ -119,13 +121,13 @@ export function calculateDecimalAwarePrice(
         const scalingFactor = BigInt(10 ** (-decimalDifference));
         price = (amountIn * BigInt(1e8)) / (amountOut * scalingFactor);
     }
-    
+
     // Ensure price is never negative (should never happen with positive inputs)
     if (price < 0n) {
         console.error(`[calculateDecimalAwarePrice] CRITICAL: Negative price calculated! amountIn: ${amountIn}, amountOut: ${amountOut}, decimals: ${tokenInDecimals}/${tokenOutDecimals}`);
         return 0n;
     }
-    
+
     return price;
 }
 
@@ -146,17 +148,17 @@ export function calculateTradeValue(
 ): bigint {
     const baseDecimals = getTokenDecimals(baseTokenSymbol);
     const quoteDecimals = getTokenDecimals(quoteTokenSymbol);
-    
+
     // Price is scaled by 1e8, so we need to:
     // 1. Calculate the raw value: (price * quantity) / 1e8
     // 2. Adjust for decimal differences between base and quote tokens
-    
+
     // First, calculate the raw value (price is already scaled by 1e8)
     let rawValue = (price * quantity) / BigInt(1e8);
-    
+
     // Then adjust for decimal differences
     const decimalDifference = quoteDecimals - baseDecimals;
-    
+
     if (decimalDifference > 0) {
         // Quote has more decimals than base, scale up the result
         const scalingFactor = BigInt(10 ** decimalDifference);
@@ -166,7 +168,7 @@ export function calculateTradeValue(
         const scalingFactor = BigInt(10 ** (-decimalDifference));
         rawValue = rawValue / scalingFactor;
     }
-    
+
     return rawValue;
 }
 
@@ -204,50 +206,6 @@ export function convertToBigInt<T>(obj: BigIntToString<T>, numericFields: (keyof
         }
     }
     return result as T;
-}
-
-/**
- * Convert an object's BigInt fields to strings for database storage
- */
-export function convertToString<T>(obj: T, numericFields: (keyof T)[]): BigIntToString<T> {
-    const result = { ...obj };
-    for (const field of numericFields) {
-        if (obj[field] !== undefined && obj[field] !== null && typeof obj[field] === 'bigint') {
-            (result[field] as any) = toDbString(obj[field] as bigint);
-        }
-    }
-    return result as BigIntToString<T>;
-}
-
-/**
- * Recursively convert all BigInt fields in an object (and its nested objects/arrays) to strings.
- */
-export function convertAllBigIntToStringRecursive<T extends object>(obj: T): RecursiveBigIntToString<T> {
-    if (obj === null || typeof obj !== 'object') {
-        return obj as any; // Should not happen if T is constrained to object, but good for safety
-    }
-
-    const result: any = Array.isArray(obj) ? [] : {};
-
-    for (const key in obj) {
-        if (Object.prototype.hasOwnProperty.call(obj, key)) {
-            const value = obj[key];
-            if (typeof value === 'bigint') {
-                result[key] = toDbString(value);
-            } else if (Array.isArray(value)) {
-                result[key] = value.map(item =>
-                    typeof item === 'object' && item !== null
-                        ? convertAllBigIntToStringRecursive(item)
-                        : item
-                );
-            } else if (typeof value === 'object' && value !== null) {
-                result[key] = convertAllBigIntToStringRecursive(value as object);
-            } else {
-                result[key] = value;
-            }
-        }
-    }
-    return result as RecursiveBigIntToString<T>;
 }
 
 /**

@@ -80,3 +80,27 @@ export interface UserLiquidityPositionData {
   unclaimedFeesA?: string | bigint;  // Unclaimed fees in token A
   unclaimedFeesB?: string | bigint;  // Unclaimed fees in token B
 }
+
+
+export interface TradeHop {
+    poolId: string;
+    tokenIn: string;
+    tokenOut: string;
+    amountIn: string;
+    amountOut: string;
+    priceImpact: number;
+}
+
+export interface TradeRoute {
+    hops: TradeHop[];
+    finalAmountIn: string;
+    finalAmountOut: string;
+}
+
+export interface Pool {
+    _id: string;
+    tokenA_symbol: string;
+    tokenA_reserve: string;
+    tokenB_symbol: string;
+    tokenB_reserve: string;
+}

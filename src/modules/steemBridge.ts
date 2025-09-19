@@ -7,28 +7,14 @@ import logger from '../logger.js';
 const client = new SteemApiClient();
 
 
-type WithdrawStatus = 'pending' | 'processing' | 'done' | 'failed';
-interface WithdrawJobDoc {
+type WithdrawDepositStatus = 'pending' | 'processing' | 'done' | 'failed';
+interface WithdrawDepositData {
     _id?: any;
     to: string;
     amount: string;
     symbol: string;
-    memo: string;
-    status: WithdrawStatus;
-    attempts: number;
-    lastError?: string;
-    createdAt: string;
-    updatedAt: string;
-    txId: string;
-}
-
-type DepositStatus = 'pending' | 'processing' | 'done' | 'failed';
-interface DepositJobDoc {
-    _id?: any;
-    to: string;
-    amount: string;
-    symbol: string;
-    status: DepositStatus;
+    memo?: string;
+    status: WithdrawDepositStatus;
     attempts: number;
     lastError?: string;
     createdAt: string;
@@ -89,7 +75,7 @@ async function broadcastTokenMint(mintData: { symbol: string; to: string; amount
 export async function enqueueWithdraw(to: string, amount: string, symbol: string, memo: string): Promise<void> {
     const db = mongo.getDb();
     const now = new Date().toISOString();
-    const doc: WithdrawJobDoc = {
+    const doc: WithdrawDepositData = {
         to,
         amount,
         symbol,
@@ -100,13 +86,13 @@ export async function enqueueWithdraw(to: string, amount: string, symbol: string
         updatedAt: now,
         txId: ''
     };
-    await db.collection<WithdrawJobDoc>('withdrawals').insertOne(doc as any);
+    await db.collection<WithdrawDepositData>('withdrawals').insertOne(doc as any);
 }
 
 export async function enqueueDeposit(mintData: { symbol: string; to: string; amount: string }): Promise<void> {
     const db = mongo.getDb();
     const now = new Date().toISOString();
-    const doc: DepositJobDoc = {
+    const doc: WithdrawDepositData = {
         to: mintData.to,
         amount: mintData.amount,
         symbol: mintData.symbol,
@@ -116,7 +102,7 @@ export async function enqueueDeposit(mintData: { symbol: string; to: string; amo
         updatedAt: now,
         txId: ''
     };
-    await db.collection<DepositJobDoc>('deposits').insertOne(doc as any);
+    await db.collection<WithdrawDepositData>('deposits').insertOne(doc as any);
 }
 
 let workerStarted = false;
@@ -130,7 +116,7 @@ export function startWorker(): void {
     const db = mongo.getDb();
 
     const loop = async () => {
-        if (isProcessing) { setTimeout(loop, 400); return; } // keep heartbeat alive
+        if (isProcessing) { setTimeout(loop, 800); return; } // keep heartbeat alive
         isProcessing = true;
         let delay = 800; // default idle delay
         try {
@@ -145,18 +131,18 @@ export function startWorker(): void {
             );
 
             // Process withdrawals first
-            const withdrawJob = await db.collection<WithdrawJobDoc>('withdrawals').findOneAndUpdate(
+            const withdrawJob = await db.collection<WithdrawDepositData>('withdrawals').findOneAndUpdate(
                 { status: 'pending' },
                 { $set: { status: 'processing', updatedAt: new Date().toISOString() } },
                 { returnDocument: 'after' as any, sort: { createdAt: 1 } }
             );
             const withdrawDoc: any = (withdrawJob as any)?.value ?? withdrawJob;
-            const withdrawJobDoc: WithdrawJobDoc | null = (withdrawDoc && (withdrawDoc as any)._id) ? (withdrawDoc as WithdrawJobDoc) : null;
+            const withdrawJobDoc: WithdrawDepositData | null = (withdrawDoc && (withdrawDoc as any)._id) ? (withdrawDoc as WithdrawDepositData) : null;
 
             if (withdrawJobDoc) {
                 delay = 200; // have backlog, poll a bit faster
                 try {
-                    const tx = await transfer(withdrawJobDoc.to, withdrawJobDoc.amount, withdrawJobDoc.symbol, withdrawJobDoc.memo);
+                    const tx = await transfer(withdrawJobDoc.to, withdrawJobDoc.amount, withdrawJobDoc.symbol, withdrawJobDoc.memo ? withdrawJobDoc.memo : '');
                     await db.collection('withdrawals').updateOne(
                         { _id: (withdrawJobDoc as any)._id },
                         { $set: { status: 'done', updatedAt: new Date().toISOString(), txId: tx.id } }
@@ -169,13 +155,13 @@ export function startWorker(): void {
                 }
             } else {
                 // No withdrawals, check for deposits
-                const depositJob = await db.collection<DepositJobDoc>('deposits').findOneAndUpdate(
+                const depositJob = await db.collection<WithdrawDepositData>('deposits').findOneAndUpdate(
                     { status: 'pending' },
                     { $set: { status: 'processing', updatedAt: new Date().toISOString() } },
                     { returnDocument: 'after' as any, sort: { createdAt: 1 } }
                 );
                 const depositDoc: any = (depositJob as any)?.value ?? depositJob;
-                const depositJobDoc: DepositJobDoc | null = (depositDoc && (depositDoc as any)._id) ? (depositDoc as DepositJobDoc) : null;
+                const depositJobDoc: WithdrawDepositData | null = (depositDoc && (depositDoc as any)._id) ? (depositDoc as WithdrawDepositData) : null;
 
                 if (depositJobDoc) {
                     delay = 200; // have backlog, poll a bit faster

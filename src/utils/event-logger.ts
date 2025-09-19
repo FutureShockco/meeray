@@ -65,20 +65,20 @@ export async function logTransactionEvent(
         let finalActor: string;
         let finalEventData: any;
         let finalTransactionId: string | undefined;
-        
+
         // Detect legacy format: if action looks like an account name and eventDataOrActor is event data
-        const isLegacyFormat = action.length >= 3 && action.length <= 16 && 
-                              typeof eventDataOrActor === 'object' &&
-                              !originalTransactionIdOrEventData?.startsWith?.('token') &&
-                              !originalTransactionIdOrEventData?.startsWith?.('nft');
-        
+        const isLegacyFormat = action.length >= 3 && action.length <= 16 &&
+            typeof eventDataOrActor === 'object' &&
+            !originalTransactionIdOrEventData?.startsWith?.('token') &&
+            !originalTransactionIdOrEventData?.startsWith?.('nft');
+
         if (isLegacyFormat) {
             // Legacy format: logTransactionEvent('nft_mint', 'user123', {...data}, 'tx123')
             const legacyEventType = category;
             finalActor = action;
             finalEventData = eventDataOrActor;
             finalTransactionId = typeof originalTransactionIdOrEventData === 'string' ? originalTransactionIdOrEventData : legacyTransactionId;
-            
+
             // Parse legacy event type into category + action
             const parts = legacyEventType.split('_');
             if (parts.length >= 2) {
@@ -93,8 +93,8 @@ export async function logTransactionEvent(
             finalCategory = category;
             finalAction = action;
             finalActor = eventDataOrActor;
-            finalEventData = originalTransactionIdOrEventData && typeof originalTransactionIdOrEventData === 'object' ? 
-                           originalTransactionIdOrEventData : {};
+            finalEventData = originalTransactionIdOrEventData && typeof originalTransactionIdOrEventData === 'object' ?
+                originalTransactionIdOrEventData : {};
             finalTransactionId = typeof originalTransactionIdOrEventData === 'string' ? originalTransactionIdOrEventData : legacyTransactionId;
         }
 
@@ -173,5 +173,6 @@ export async function logEvent(
     eventData: any,
     transactionId?: string
 ): Promise<void> {
+    logger.info(`${category}:${action} transaction: ${JSON.stringify(eventData)} created successfully by ${actor}.`);
     return logTransactionEvent(category, action, actor, eventData, transactionId);
 } 

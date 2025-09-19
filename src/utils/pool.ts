@@ -1,3 +1,5 @@
+import cache from '../cache.js';
+import { Pool, TradeHop, TradeRoute } from '../transactions/pool/pool-interfaces.js';
 import { toBigInt } from './bigint.js';
 
 /**
@@ -28,7 +30,7 @@ export function getOutputAmountBigInt(
 
     const numerator = amountInAfterFee * outputReserve;
     const denominator = inputReserve + amountInAfterFee;
-    
+
     if (denominator === 0n) return 0n;
     return numerator / denominator;
 }
@@ -51,10 +53,10 @@ export function calculateExpectedAMMOutput(
     const reserveA = toBigInt(ammSource.reserveA || '0');
     const reserveB = toBigInt(ammSource.reserveB || '0');
     const tokenInIsA = tokenIn === ammSource.tokenA;
-    
+
     const inputReserve = tokenInIsA ? reserveA : reserveB;
     const outputReserve = tokenInIsA ? reserveB : reserveA;
-    
+
     return getOutputAmountBigInt(inputAmount, inputReserve, outputReserve);
 }
 
@@ -67,7 +69,83 @@ export function calculateExpectedAMMOutput(
  */
 export function calculatePriceImpact(amountIn: bigint, reserveIn: bigint): number {
     if (reserveIn === 0n || amountIn === 0n) return 0;
-    
+
     const impact = Number(amountIn) / Number(reserveIn);
     return Math.min(impact * 100, 100); // Cap at 100%
 }
+
+
+/**
+ * Finds the best trade route from start token to end token
+ */
+export async function findBestTradeRoute(
+    startTokenSymbol: string,
+    endTokenSymbol: string,
+    initialAmountIn: bigint,
+    maxHops: number = 3
+): Promise<TradeRoute | null> {
+    const allPoolsFromDB: any[] = await cache.findPromise('liquidityPools', {}) || [];
+    const allPools: Pool[] = allPoolsFromDB.map(p => ({
+        _id: p._id.toString(),
+        tokenA_symbol: p.tokenA_symbol,
+        tokenA_reserve: p.tokenA_reserve,
+        tokenB_symbol: p.tokenB_symbol,
+        tokenB_reserve: p.tokenB_reserve
+    }));
+
+    const routes: TradeRoute[] = [];
+    const queue: [string, TradeHop[], bigint][] = [[startTokenSymbol, [], initialAmountIn]];
+
+    while (queue.length > 0) {
+        const [currentTokenSymbol, currentPath, currentAmountIn] = queue.shift()!;
+        if (currentPath.length >= maxHops) continue;
+
+        for (const pool of allPools) {
+            let tokenInReserveStr: string, tokenOutReserveStr: string, nextTokenSymbol: string;
+
+            if (pool.tokenA_symbol === currentTokenSymbol) {
+                tokenInReserveStr = pool.tokenA_reserve;
+                tokenOutReserveStr = pool.tokenB_reserve;
+                nextTokenSymbol = pool.tokenB_symbol;
+            } else if (pool.tokenB_symbol === currentTokenSymbol) {
+                tokenInReserveStr = pool.tokenB_reserve;
+                tokenOutReserveStr = pool.tokenA_reserve;
+                nextTokenSymbol = pool.tokenA_symbol;
+            } else {
+                continue;
+            }
+
+            const tokenInReserve = toBigInt(tokenInReserveStr);
+            const tokenOutReserve = toBigInt(tokenOutReserveStr);
+            if (tokenInReserve <= 0n || tokenOutReserve <= 0n) continue;
+            if (currentPath.length > 0 && currentPath[currentPath.length - 1].tokenIn === nextTokenSymbol) continue;
+
+            const amountOutFromHop = getOutputAmountBigInt(currentAmountIn, tokenInReserve, tokenOutReserve);
+            if (amountOutFromHop <= 0n) continue;
+
+            const priceImpact = calculatePriceImpact(currentAmountIn, tokenInReserve);
+
+            const newHop: TradeHop = {
+                poolId: pool._id,
+                tokenIn: currentTokenSymbol,
+                tokenOut: nextTokenSymbol,
+                amountIn: currentAmountIn.toString(),
+                amountOut: amountOutFromHop.toString(),
+                priceImpact: priceImpact
+            };
+            const newPath = [...currentPath, newHop];
+
+            if (nextTokenSymbol === endTokenSymbol) {
+                routes.push({
+                    hops: newPath,
+                    finalAmountIn: initialAmountIn.toString(),
+                    finalAmountOut: amountOutFromHop.toString()
+                });
+            } else {
+                queue.push([nextTokenSymbol, newPath, amountOutFromHop]);
+            }
+        }
+    }
+    return routes.sort((a, b) => toBigInt(b.finalAmountOut) > toBigInt(a.finalAmountOut) ? 1 : -1)[0] || null;
+}
+

@@ -2,9 +2,8 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import { PoolAddLiquidityData, LiquidityPoolData, UserLiquidityPositionData } from './pool-interfaces.js';
 import { adjustBalance, getAccount } from '../../utils/account.js';
-import { convertToString, toBigInt, toDbString } from '../../utils/bigint.js';
+import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
-// event logger removed
 import { getLpTokenSymbol } from '../../utils/token.js';
 
 // Integer square root function for BigInt
@@ -19,12 +18,12 @@ function sqrt(value: bigint): bigint {
   // Binary search for square root
   let x = value;
   let y = (x + 1n) / 2n;
-  
+
   while (y < x) {
     x = y;
     y = (x + value / x) / 2n;
   }
-  
+
   return x;
 }
 
@@ -111,21 +110,21 @@ export async function validateTx(data: PoolAddLiquidityData, sender: string): Pr
       const difference = actualB > expectedTokenBAmount ? actualB - expectedTokenBAmount : expectedTokenBAmount - actualB;
       const maxDifference = (expectedTokenBAmount * tolerance) / BigInt(10000);
 
-          if (difference > maxDifference) {
-      logger.warn(`[pool-add-liquidity] Token amounts do not match current pool ratio. Expected B: ${expectedTokenBAmount}, Got: ${addLiquidityData.tokenB_amount}. Pool A reserve: ${pool.tokenA_reserve}, B reserve: ${pool.tokenB_reserve}, A amount: ${addLiquidityData.tokenA_amount}`);
+      if (difference > maxDifference) {
+        logger.warn(`[pool-add-liquidity] Token amounts do not match current pool ratio. Expected B: ${expectedTokenBAmount}, Got: ${addLiquidityData.tokenB_amount}. Pool A reserve: ${pool.tokenA_reserve}, B reserve: ${pool.tokenB_reserve}, A amount: ${addLiquidityData.tokenA_amount}`);
+        return false;
+      }
+    }
+
+    // Validate that the LP token exists for this pool
+    const lpTokenSymbol = getLpTokenSymbol(pool.tokenA_symbol, pool.tokenB_symbol);
+    const existingLpToken = await cache.findOnePromise('tokens', { _id: lpTokenSymbol });
+    if (!existingLpToken) {
+      logger.warn(`[pool-add-liquidity] LP token ${lpTokenSymbol} does not exist for pool ${addLiquidityData.poolId}. This suggests the pool was created before the LP token creation was fixed. Please contact support or recreate the pool.`);
       return false;
     }
-  }
 
-  // Validate that the LP token exists for this pool
-  const lpTokenSymbol = getLpTokenSymbol(pool.tokenA_symbol, pool.tokenB_symbol);
-  const existingLpToken = await cache.findOnePromise('tokens', { _id: lpTokenSymbol });
-  if (!existingLpToken) {
-    logger.warn(`[pool-add-liquidity] LP token ${lpTokenSymbol} does not exist for pool ${addLiquidityData.poolId}. This suggests the pool was created before the LP token creation was fixed. Please contact support or recreate the pool.`);
-    return false;
-  }
-
-  return true;
+    return true;
   } catch (error) {
     logger.error(`[pool-add-liquidity] Error validating add liquidity data for pool ${data.poolId} by ${sender}: ${error}`);
     return false;
@@ -168,20 +167,15 @@ export async function process(data: PoolAddLiquidityData, sender: string, id: st
       { _id: addLiquidityData.poolId },
       {
         $set: {
-          ...convertToString(
-            {
-              tokenA_reserve: toBigInt(pool.tokenA_reserve) + toBigInt(addLiquidityData.tokenA_amount),
-              tokenB_reserve: toBigInt(pool.tokenB_reserve) + toBigInt(addLiquidityData.tokenB_amount),
-              totalLpTokens: toBigInt(pool.totalLpTokens) + lpTokensToMint,
-              feeGrowthGlobalA: pool.feeGrowthGlobalA,
-              feeGrowthGlobalB: pool.feeGrowthGlobalB
-            },
-            ['tokenA_reserve', 'tokenB_reserve', 'totalLpTokens', 'feeGrowthGlobalA', 'feeGrowthGlobalB']
-          ),
-          lastUpdatedAt: new Date().toISOString()
-        }
+          tokenA_reserve: toDbString(toBigInt(pool.tokenA_reserve) + toBigInt(addLiquidityData.tokenA_amount)),
+          tokenB_reserve: toDbString(toBigInt(pool.tokenB_reserve) + toBigInt(addLiquidityData.tokenB_amount)),
+          totalLpTokens: toDbString(toBigInt(pool.totalLpTokens) + lpTokensToMint),
+          feeGrowthGlobalA: toDbString(pool.feeGrowthGlobalA),
+          feeGrowthGlobalB: toDbString(pool.feeGrowthGlobalB)
+        },
+        lastUpdatedAt: new Date().toISOString()
       }
-    );
+    )
 
     if (!poolUpdateSuccess) {
       logger.error(`[pool-add-liquidity] Failed to update pool ${addLiquidityData.poolId}. Add liquidity aborted.`);
@@ -217,16 +211,11 @@ export async function process(data: PoolAddLiquidityData, sender: string, id: st
         { _id: userPositionId },
         {
           $set: {
-            ...convertToString(
-              {
-                lpTokenBalance: existingUserPos.lpTokenBalance + lpTokensToMint,
-                feeGrowthEntryA: pool.feeGrowthGlobalA || BigInt(0),
-                feeGrowthEntryB: pool.feeGrowthGlobalB || BigInt(0),
-                unclaimedFeesA: newUnclaimedFeesA,
-                unclaimedFeesB: newUnclaimedFeesB
-              },
-              ['lpTokenBalance', 'feeGrowthEntryA', 'feeGrowthEntryB', 'unclaimedFeesA', 'unclaimedFeesB']
-            ),
+            lpTokenBalance: toDbString(existingUserPos.lpTokenBalance + lpTokensToMint),
+            feeGrowthEntryA: toDbString(pool.feeGrowthGlobalA || BigInt(0)),
+            feeGrowthEntryB: toDbString(pool.feeGrowthGlobalB || BigInt(0)),
+            unclaimedFeesA: toDbString(newUnclaimedFeesA),
+            unclaimedFeesB: toDbString(newUnclaimedFeesB),
             lastUpdatedAt: new Date().toISOString()
           }
         }
@@ -244,9 +233,8 @@ export async function process(data: PoolAddLiquidityData, sender: string, id: st
         createdAt: new Date().toISOString(),
         lastUpdatedAt: new Date().toISOString()
       };
-      const newUserPositionDB = convertToString(newUserPosition, ['lpTokenBalance', 'feeGrowthEntryA', 'feeGrowthEntryB', 'unclaimedFeesA', 'unclaimedFeesB']);
       userPosUpdateSuccess = await new Promise<boolean>((resolve) => {
-        cache.insertOne('userLiquidityPositions', newUserPositionDB, (err, success) => {
+        cache.insertOne('userLiquidityPositions', newUserPosition, (err, success) => {
           if (err || !success) {
             logger.error(`[pool-add-liquidity] Failed to insert new user position ${userPositionId}: ${err || 'insert not successful'}`);
             resolve(false);

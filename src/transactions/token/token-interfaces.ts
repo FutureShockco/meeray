@@ -3,7 +3,7 @@ export interface TokenData {
   _id?: string;
   symbol: string;
   name: string;
-  precision?: number;
+  precision: number;
   maxSupply: string | bigint;
   initialSupply?: string | bigint;
   currentSupply?: string | bigint;
@@ -16,23 +16,12 @@ export interface TokenData {
   createdAt?: string;
 }
 
-export interface TokenMintData {
-  symbol: string;
-  to: string;
-  amount: string | bigint;
-}
-
 export interface TokenTransferData {
   symbol: string;
   to: string;
   amount: string | bigint;
   from?: string;
   memo?: string;
-}
-
-export interface TokenBurnData {
-  symbol: string;
-  amount: string | bigint;
 }
 
 export interface TokenUpdateData {
