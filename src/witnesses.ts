@@ -158,7 +158,7 @@ export const witnessesModule = {
                         $set: { totalVoteWeight: toDbString(totalVoteWeight) }
                     });
 
-                    logger.info(`[witness-utils] Recomputed ${witnessName} totalVoteWeight = ${totalVoteWeight}`);
+                    logger.debug(`[witness-utils] Recomputed ${witnessName} totalVoteWeight = ${totalVoteWeight}`);
                 }
             }
 
