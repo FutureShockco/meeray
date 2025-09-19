@@ -101,73 +101,72 @@ export const witnessesModule = {
         }
         return witnesses.slice(start, limit);
     },
-
-    updateWitnessVoteWeights: async ({ sender, balance, targetWitness, isVote, isUnvote }: VoteWeightUpdate): Promise<boolean> => {
+    updateWitnessVoteWeights: async ({
+        sender,
+        balance,
+        targetWitness,
+        isVote,
+        isUnvote
+    }: VoteWeightUpdate): Promise<boolean> => {
         try {
             const senderAccount = await cache.findOnePromise('accounts', { name: sender });
             if (!senderAccount) {
-                logger.error(`[witness-utils] Sender account ${sender} not found during vote weight update`);
+                logger.error(`[witness-utils] Sender account ${sender} not found`);
                 return false;
             }
 
+            // --- Prepare old and new voted witness lists ---
             const oldVotedWitnesses: string[] = senderAccount.votedWitnesses || [];
             let newVotedWitnesses: string[] = [...oldVotedWitnesses];
 
-            // Adjust witness list based on flags
             if (isVote && targetWitness) {
-                if (!newVotedWitnesses.includes(targetWitness)) {
-                    newVotedWitnesses.push(targetWitness);
-                }
+                if (!newVotedWitnesses.includes(targetWitness)) newVotedWitnesses.push(targetWitness);
             } else if (isUnvote && targetWitness) {
                 newVotedWitnesses = newVotedWitnesses.filter(w => w !== targetWitness);
             }
 
-            // Compute per-witness weights
-            const oldVoteWeightPerWitness = oldVotedWitnesses.length > 0
-                ? balance / BigInt(oldVotedWitnesses.length)
-                : BigInt(0);
+            // Fetch previous per-witness contribution for this voter
+            const oldWeightPerWitness = toBigInt(senderAccount.voteWeightPerWitness || 0n);
 
-            const newVoteWeightPerWitness = newVotedWitnesses.length > 0
-                ? balance / BigInt(newVotedWitnesses.length)
-                : BigInt(0);
-
-            // Save updated list
-            await cache.updateOnePromise('accounts', { name: sender }, {
-                $set: { votedWitnesses: newVotedWitnesses }
-            });
-
-            // All affected witnesses: union of old and new
-            const allAffectedWitnesses = new Set([...oldVotedWitnesses, ...newVotedWitnesses]);
-
-            for (const witnessName of allAffectedWitnesses) {
+            // --- Step 1: Remove old contribution from each old witness ---
+            for (const witnessName of oldVotedWitnesses) {
                 const witnessAccount = await cache.findOnePromise('accounts', { name: witnessName });
-                if (!witnessAccount) {
-                    logger.error(`[witness-utils] Witness account ${witnessName} not found during vote weight adjustment`);
-                    continue;
-                }
+                if (!witnessAccount) continue;
 
-                let updatedVoteWeight = toBigInt(witnessAccount.totalVoteWeight || BigInt(0));
-
-                // Subtract old vote weight if previously voted
-                if (oldVotedWitnesses.includes(witnessName)) {
-                    updatedVoteWeight -= oldVoteWeightPerWitness;
-                }
-                // Add new vote weight if currently voted
-                if (newVotedWitnesses.includes(witnessName)) {
-                    updatedVoteWeight += newVoteWeightPerWitness;
-                }
-
-                // Prevent negative vote weight
-                if (updatedVoteWeight < BigInt(0)) {
-                    updatedVoteWeight = BigInt(0);
-                }
-
-                logger.debug(`[witness-utils] Set ${witnessName} totalVoteWeight to ${updatedVoteWeight}`);
+                let updatedVoteWeight = toBigInt(witnessAccount.totalVoteWeight || 0n);
+                updatedVoteWeight -= oldWeightPerWitness;
+                if (updatedVoteWeight < 0n) updatedVoteWeight = 0n;
 
                 await cache.updateOnePromise('accounts', { name: witnessName }, {
                     $set: { totalVoteWeight: toDbString(updatedVoteWeight) }
                 });
             }
+
+            // --- Step 2: Compute new per-witness contribution ---
+            const newWeightPerWitness = newVotedWitnesses.length > 0
+                ? balance / BigInt(newVotedWitnesses.length)
+                : 0n;
+
+            // --- Step 3: Add new contribution to each new witness ---
+            for (const witnessName of newVotedWitnesses) {
+                const witnessAccount = await cache.findOnePromise('accounts', { name: witnessName });
+                if (!witnessAccount) continue;
+
+                let updatedVoteWeight = toBigInt(witnessAccount.totalVoteWeight || 0n);
+                updatedVoteWeight += newWeightPerWitness;
+
+                await cache.updateOnePromise('accounts', { name: witnessName }, {
+                    $set: { totalVoteWeight: toDbString(updatedVoteWeight) }
+                });
+            }
+
+            // --- Step 4: Save updated voter info ---
+            await cache.updateOnePromise('accounts', { name: sender }, {
+                $set: {
+                    votedWitnesses: newVotedWitnesses,
+                    voteWeightPerWitness: toDbString(newWeightPerWitness)
+                }
+            });
 
             return true;
         } catch (error: any) {
