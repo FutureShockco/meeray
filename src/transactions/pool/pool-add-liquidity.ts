@@ -171,9 +171,9 @@ export async function process(data: PoolAddLiquidityData, sender: string, id: st
           tokenB_reserve: toDbString(toBigInt(pool.tokenB_reserve) + toBigInt(addLiquidityData.tokenB_amount)),
           totalLpTokens: toDbString(toBigInt(pool.totalLpTokens) + lpTokensToMint),
           feeGrowthGlobalA: toDbString(pool.feeGrowthGlobalA),
-          feeGrowthGlobalB: toDbString(pool.feeGrowthGlobalB)
-        },
-        lastUpdatedAt: new Date().toISOString()
+          feeGrowthGlobalB: toDbString(pool.feeGrowthGlobalB),
+          lastUpdatedAt: new Date().toISOString()
+        }
       }
     )
 

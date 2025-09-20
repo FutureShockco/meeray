@@ -37,6 +37,11 @@ export async function validateTx(data: FarmStakeData, sender: string): Promise<b
       return false;
     }
 
+    if(farm.status !== 'active') {
+      logger.warn(`[farm-stake] Farm ${data.farmId} is not active.`);
+      return false;
+    }
+
     // The farm.stakingToken.issuer is assumed to be the poolId where these LP tokens originate
     const poolIdForLp = farm.stakingToken.issuer;
     const userLpPositionId = `${data.staker}-${poolIdForLp}`;

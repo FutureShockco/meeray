@@ -359,8 +359,8 @@ export const mongo = {
                 },
                 startTime: new Date().toISOString(),
                 endTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-                totalRewards: toDbString('1000000000000000000'),
-                rewardsPerBlock: toDbString('1000000000000000000'),
+                totalRewards: toDbString('1000000000000000000000000000000'),
+                rewardsPerBlock: toDbString(config.farmReward),
                 minStakeAmount: toDbString('0'),
                 maxStakeAmount: toDbString('0'),
                 totalStaked: toDbString('0'),
@@ -370,7 +370,7 @@ export const mongo = {
                 status: 'active' as const,
                 createdAt: new Date().toISOString(),
                 lastUpdatedAt: new Date().toISOString(),
-                rewardsRemaining: toDbString('1000000000000000000')
+                rewardsRemaining: toDbString('1000000000000000000000000000000')
             }
         ];
         await currentDb.collection<FarmData>('farms').insertMany(nativeFarms);
