@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import config from '../../config.js';
 import validate from '../../validation/index.js';
 import { TokenData } from './token-interfaces.js';
-import { toDbString } from '../../utils/bigint.js';
+import { toDbString, setTokenDecimals } from '../../utils/bigint.js';
 import { adjustUserBalance } from '../../utils/account.js';
 import { logEvent } from '../../utils/event-logger.js';
 
@@ -55,6 +55,9 @@ export async function processTx(data: TokenData, sender: string, id: string): Pr
       logger.error(`[token-create:process] Failed to store new token ${data.symbol} in the database.`);
       return false;
     }
+    
+    // Configure decimal precision for BigInt calculations
+    setTokenDecimals(data.symbol, data.precision);
     const { logoUrl, websiteUrl, description, ...logToken } = tokenToStore;
     await logEvent('token', 'create', sender, logToken);
     return true;

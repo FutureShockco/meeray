@@ -1,6 +1,6 @@
 import cache from '../cache.js';
 import { LiquidityPoolData, Pool, TradeHop, TradeRoute } from '../transactions/pool/pool-interfaces.js';
-import { sqrt, toBigInt } from './bigint.js';
+import { sqrt, toBigInt, getTokenDecimals } from './bigint.js';
 
 /**
  * Generates a pool ID from token symbols
@@ -166,33 +166,81 @@ export async function findBestTradeRoute(
 // Calculate LP tokens to mint based on provided liquidity
 // For initial liquidity: uses geometric mean (sqrt of product) for fair distribution
 // For subsequent liquidity: uses proportional minting based on existing reserves
-export function calculateLpTokensToMint(tokenA_amount: bigint, tokenB_amount: bigint, pool: LiquidityPoolData): bigint {
-    const MINIMUM_LIQUIDITY = BigInt(1);
+// Normalizes token amounts to 18 decimals for consistent calculations like pro DEXs
+export function calculateLpTokensToMint(
+    tokenA_amount: bigint, 
+    tokenB_amount: bigint, 
+    pool: LiquidityPoolData
+): bigint {
+    const NORMALIZED_DECIMALS = 18; // Normalize to 18 decimals like most pro DEXs
+    
+    // Get token decimals for normalization
+    const tokenADecimals = getTokenDecimals(pool.tokenA_symbol);
+    const tokenBDecimals = getTokenDecimals(pool.tokenB_symbol);
+    
+    // Normalize amounts to 18 decimals for consistent calculation
+    const normalizedTokenA = normalizeToDecimals(tokenA_amount, tokenADecimals, NORMALIZED_DECIMALS);
+    const normalizedTokenB = normalizeToDecimals(tokenB_amount, tokenBDecimals, NORMALIZED_DECIMALS);
     
     // Initial liquidity provision
     if (toBigInt(pool.totalLpTokens) === BigInt(0)) {
-      const product = tokenA_amount * tokenB_amount;
-      const liquidity = sqrt(product);
-      
-      if (liquidity <= MINIMUM_LIQUIDITY) {
-        return BigInt(0); // Signal insufficient liquidity
-      }
-      
-      return liquidity - MINIMUM_LIQUIDITY; // Burn minimum liquidity
+        const product = normalizedTokenA * normalizedTokenB;
+        const liquidity = sqrt(product);
+        
+        // Adaptive minimum liquidity: Use smaller of 1000 or liquidity/1000
+        // This ensures small amounts can still provide liquidity
+        const BASE_MINIMUM = BigInt(1000);
+        const ADAPTIVE_MINIMUM = liquidity / BigInt(1000);
+        const MINIMUM_LIQUIDITY = ADAPTIVE_MINIMUM > BigInt(0) && ADAPTIVE_MINIMUM < BASE_MINIMUM 
+            ? ADAPTIVE_MINIMUM 
+            : BASE_MINIMUM;
+        
+        if (liquidity <= MINIMUM_LIQUIDITY) {
+            return BigInt(0); // Signal insufficient liquidity
+        }
+        
+        return liquidity - MINIMUM_LIQUIDITY; // Burn minimum liquidity
     }
-  
+    
     // For subsequent liquidity provisions, mint proportional to existing reserves
     const poolTotalLpTokens = toBigInt(pool.totalLpTokens);
     const poolTokenAReserve = toBigInt(pool.tokenA_reserve);
     const poolTokenBReserve = toBigInt(pool.tokenB_reserve);
-  
+    
     // Protect against division by zero
     if (poolTokenAReserve === BigInt(0) || poolTokenBReserve === BigInt(0)) {
-      return BigInt(0);
+        return BigInt(0);
     }
-  
-    const ratioA = (tokenA_amount * poolTotalLpTokens) / poolTokenAReserve;
-    const ratioB = (tokenB_amount * poolTotalLpTokens) / poolTokenBReserve;
-  
+    
+    // Normalize existing reserves for consistent ratio calculation
+    const normalizedReserveA = normalizeToDecimals(poolTokenAReserve, tokenADecimals, NORMALIZED_DECIMALS);
+    const normalizedReserveB = normalizeToDecimals(poolTokenBReserve, tokenBDecimals, NORMALIZED_DECIMALS);
+    
+    const ratioA = (normalizedTokenA * poolTotalLpTokens) / normalizedReserveA;
+    const ratioB = (normalizedTokenB * poolTotalLpTokens) / normalizedReserveB;
+    
     return ratioA < ratioB ? ratioA : ratioB;
-  }
+}
+
+/**
+ * Normalize token amount to target decimal places
+ * @param amount Token amount in its native decimals
+ * @param currentDecimals Current decimal places of the token
+ * @param targetDecimals Target decimal places to normalize to
+ * @returns Normalized amount
+ */
+function normalizeToDecimals(amount: bigint, currentDecimals: number, targetDecimals: number): bigint {
+    if (currentDecimals === targetDecimals) {
+        return amount;
+    }
+    
+    if (currentDecimals < targetDecimals) {
+        // Scale up - multiply by 10^(targetDecimals - currentDecimals)
+        const scaleFactor = BigInt(10 ** (targetDecimals - currentDecimals));
+        return amount * scaleFactor;
+    } else {
+        // Scale down - divide by 10^(currentDecimals - targetDecimals)
+        const scaleFactor = BigInt(10 ** (currentDecimals - targetDecimals));
+        return amount / scaleFactor;
+    }
+}

@@ -1,6 +1,5 @@
 import cache from '../cache.js';
 import logger from '../logger.js';
-import config from '../config.js';
 import settings from '../settings.js';
 import { toDbString } from './bigint.js';
 import { TokenData } from '../transactions/token/token-interfaces.js';

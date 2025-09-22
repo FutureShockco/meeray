@@ -173,11 +173,21 @@ export async function updatePoolReserves(
   tokenBAmount: string | bigint,
   lpTokensToMint: bigint
 ): Promise<boolean> {
-  const MINIMUM_LIQUIDITY = BigInt(1);
   const isInitialLiquidity = toBigInt(pool.totalLpTokens) === BigInt(0);
   
-  // For initial liquidity, add both minted tokens + burned minimum liquidity to total
-  const totalLpTokensToAdd = isInitialLiquidity ? lpTokensToMint + MINIMUM_LIQUIDITY : lpTokensToMint;
+  // For initial liquidity, calculate the actual minimum that was burned
+  let minimumLiquidityBurned = BigInt(0);
+  if (isInitialLiquidity) {
+    // Re-calculate what minimum was actually burned (adaptive)
+    const BASE_MINIMUM = BigInt(1000);
+    const totalLiquidity = lpTokensToMint + BASE_MINIMUM; // Approximate total before burn
+    const ADAPTIVE_MINIMUM = totalLiquidity / BigInt(1000);
+    minimumLiquidityBurned = ADAPTIVE_MINIMUM > BigInt(0) && ADAPTIVE_MINIMUM < BASE_MINIMUM 
+      ? ADAPTIVE_MINIMUM 
+      : BASE_MINIMUM;
+  }
+  
+  const totalLpTokensToAdd = isInitialLiquidity ? lpTokensToMint + minimumLiquidityBurned : lpTokensToMint;
   
   const poolUpdateSuccess = await cache.updateOnePromise(
     'liquidityPools',
