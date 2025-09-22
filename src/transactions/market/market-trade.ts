@@ -4,7 +4,7 @@ import validate from '../../validation/index.js';
 import { HybridTradeData, HybridTradeResult, HybridRoute } from './market-interfaces.js';
 import { liquidityAggregator } from './market-aggregator.js';
 import { getAccount, adjustUserBalance } from '../../utils/account.js';
-import { toBigInt, getTokenDecimals, calculateDecimalAwarePrice, toDbString } from '../../utils/bigint.js';
+import { toBigInt, getTokenDecimals } from '../../utils/bigint.js';
 
 // Import transaction processors for different route types
 import * as poolSwap from '../pool/pool-swap.js';
@@ -13,6 +13,7 @@ import { calculateExpectedAMMOutput } from '../../utils/pool.js';
 import { matchingEngine } from '../market/matching-engine.js';
 import { OrderType, OrderSide, createOrder, isAlignedToTickSize, isAlignedToLotSize } from '../market/market-interfaces.js';
 import { determineOrderSide, findTradingPairId, recordAMMTrade } from '../../utils/trade.js';
+import { processWithResult } from '../pool/pool-processor.js';
 
 export async function validateTx(data: HybridTradeData, sender: string): Promise<boolean> {
   try {
@@ -445,7 +446,7 @@ async function executeAMMRoute(
     }
 
     // Use the new processWithResult function to get the actual output amount
-    const swapResult: PoolSwapResult = await poolSwap.processWithResult(swapData, sender, transactionId);
+    const swapResult: PoolSwapResult = await processWithResult(swapData, sender, transactionId);
 
     if (!swapResult.success) {
       return { success: false, amountOut: BigInt(0), error: swapResult.error || 'AMM swap execution failed' };

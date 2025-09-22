@@ -1,11 +1,13 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
-import { LiquidityPoolData, UserLiquidityPositionData } from './pool-interfaces.js';
+import { LiquidityPoolData, PoolSwapData, PoolSwapResult, UserLiquidityPositionData } from './pool-interfaces.js';
 import { getLpTokenSymbol } from '../../utils/token.js';
-import { toBigInt, toDbString } from '../../utils/bigint.js';
+import { calculateDecimalAwarePrice, toBigInt, toDbString } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
 import { adjustUserBalance } from '../../utils/account.js';
-
+import crypto from 'crypto';
+import { findBestTradeRoute, getOutputAmountBigInt } from '../../utils/pool.js';
+import { Account } from '../../mongo.js';
 /**
  * Creates a liquidity pool in the database
  */
@@ -224,21 +226,21 @@ export async function updateUserLiquidityPosition(
   const userPositionId = `${user}-${poolId}`;
   const existingUserPosDB = await cache.findOnePromise('userLiquidityPositions', { _id: userPositionId }) as UserLiquidityPositionData | null;
 
-    const existingUserPos = existingUserPosDB ? {
-      ...existingUserPosDB,
-      lpTokenBalance: toBigInt(existingUserPosDB.lpTokenBalance),
-      feeGrowthEntryA: toBigInt(existingUserPosDB.feeGrowthEntryA || '0'),
-      feeGrowthEntryB: toBigInt(existingUserPosDB.feeGrowthEntryB || '0'),
-      unclaimedFeesA: toBigInt(existingUserPosDB.unclaimedFeesA || '0'),
-      unclaimedFeesB: toBigInt(existingUserPosDB.unclaimedFeesB || '0'),
-    } : null;
+  const existingUserPos = existingUserPosDB ? {
+    ...existingUserPosDB,
+    lpTokenBalance: toBigInt(existingUserPosDB.lpTokenBalance),
+    feeGrowthEntryA: toBigInt(existingUserPosDB.feeGrowthEntryA || '0'),
+    feeGrowthEntryB: toBigInt(existingUserPosDB.feeGrowthEntryB || '0'),
+    unclaimedFeesA: toBigInt(existingUserPosDB.unclaimedFeesA || '0'),
+    unclaimedFeesB: toBigInt(existingUserPosDB.unclaimedFeesB || '0'),
+  } : null;
 
   let userPosUpdateSuccess = false;
 
   if (existingUserPos) {
     // Calculate unclaimed fees before updating position
-      const deltaA = toBigInt(pool.feeGrowthGlobalA || '0') - toBigInt(existingUserPos.feeGrowthEntryA || '0');
-      const deltaB = toBigInt(pool.feeGrowthGlobalB || '0') - toBigInt(existingUserPos.feeGrowthEntryB || '0');
+    const deltaA = toBigInt(pool.feeGrowthGlobalA || '0') - toBigInt(existingUserPos.feeGrowthEntryA || '0');
+    const deltaB = toBigInt(pool.feeGrowthGlobalB || '0') - toBigInt(existingUserPos.feeGrowthEntryB || '0');
     const newUnclaimedFeesA = (existingUserPos.unclaimedFeesA || BigInt(0)) + (deltaA * existingUserPos.lpTokenBalance) / BigInt(1e18);
     const newUnclaimedFeesB = (existingUserPos.unclaimedFeesB || BigInt(0)) + (deltaB * existingUserPos.lpTokenBalance) / BigInt(1e18);
 
@@ -315,4 +317,151 @@ export async function creditLpTokens(
   }
 
   return true;
+}
+
+
+// Helper function to find trading pair ID regardless of token order
+export async function findTradingPairId(tokenA: string, tokenB: string): Promise<string | null> {
+  // Try multiple patterns: hyphen and underscore, both orders
+  const patterns = [
+    `${tokenA}-${tokenB}`,   // tokenA-tokenB (hyphen)
+    `${tokenB}-${tokenA}`,   // tokenB-tokenA (hyphen)
+    `${tokenA}_${tokenB}`,   // tokenA_tokenB (underscore)
+    `${tokenB}_${tokenA}`    // tokenB_tokenA (underscore)
+  ];
+
+  for (const pairId of patterns) {
+    const tradingPair = await cache.findOnePromise('tradingPairs', { _id: pairId });
+    if (tradingPair) {
+      return pairId;
+    }
+  }
+
+  return null;
+}
+
+// Helper function to record pool swaps as market trades
+export async function recordPoolSwapTrade(params: {
+  poolId: string;
+  tokenIn: string;
+  tokenOut: string;
+  amountIn: bigint;
+  amountOut: bigint;
+  sender: string;
+  transactionId: string;
+}): Promise<void> {
+  try {
+    // Find the correct trading pair ID regardless of token order
+    const pairId = await findTradingPairId(params.tokenIn, params.tokenOut);
+    if (!pairId) {
+      logger.debug(`[pool-swap] No trading pair found for ${params.tokenIn}-${params.tokenOut}, skipping trade record`);
+      return;
+    }
+
+    // Get the trading pair to determine correct base/quote assignment
+    const pair = await cache.findOnePromise('tradingPairs', { _id: pairId });
+    if (!pair) {
+      logger.warn(`[pool-swap] Trading pair ${pairId} not found, using token symbols as-is`);
+    }
+
+    // Determine correct base/quote mapping and trade side
+    let baseSymbol, quoteSymbol, tradeSide: 'buy' | 'sell';
+    let buyerUserId: string;
+    let sellerUserId: string;
+    let quantity: bigint;
+    let volume: bigint;
+    let price: bigint;
+
+    if (pair) {
+      baseSymbol = pair.baseAssetSymbol;
+      quoteSymbol = pair.quoteAssetSymbol;
+
+      // Determine trade side based on token direction
+      if (params.tokenOut === baseSymbol) {
+        // User is buying the base asset (tokenOut = base), it's a BUY
+        tradeSide = 'buy';
+        buyerUserId = params.sender;
+        sellerUserId = 'POOL';
+        quantity = params.amountOut; // Amount of base received
+        volume = params.amountIn;    // Amount of quote spent
+        // Price = quote spent / base received = amountIn / amountOut
+        price = calculateDecimalAwarePrice(params.amountIn, params.amountOut, quoteSymbol, baseSymbol);
+      } else if (params.tokenIn === baseSymbol) {
+        // User is selling the base asset (tokenIn = base), it's a SELL
+        tradeSide = 'sell';
+        buyerUserId = 'POOL';
+        sellerUserId = params.sender;
+        quantity = params.amountIn;  // Amount of base sold
+        volume = params.amountOut;   // Amount of quote received
+        // Price = quote received / base sold = amountOut / amountIn
+        price = calculateDecimalAwarePrice(params.amountOut, params.amountIn, quoteSymbol, baseSymbol);
+      } else {
+        // Fallback to buy if we can't determine the direction
+        logger.warn(`[pool-swap] Could not determine trade side for ${params.tokenIn} -> ${params.tokenOut}, defaulting to buy`);
+        tradeSide = 'buy';
+        buyerUserId = params.sender;
+        sellerUserId = 'POOL';
+        quantity = params.amountOut;
+        volume = params.amountIn;
+        price = calculateDecimalAwarePrice(params.amountIn, params.amountOut, quoteSymbol, baseSymbol);
+      }
+    } else {
+      // Fallback when pair info is not available
+      baseSymbol = params.tokenOut;
+      quoteSymbol = params.tokenIn;
+      tradeSide = 'buy';
+      buyerUserId = params.sender;
+      sellerUserId = 'POOL';
+      quantity = params.amountOut;
+      volume = params.amountIn;
+      price = calculateDecimalAwarePrice(params.amountIn, params.amountOut, quoteSymbol, baseSymbol);
+    }
+
+    // Create trade record matching the orderbook trade format with deterministic ID
+    const tradeId = crypto.createHash('sha256')
+      .update(`${pairId}-${params.tokenIn}-${params.tokenOut}-${params.sender}-${params.transactionId}-${params.amountOut}`)
+      .digest('hex')
+      .substring(0, 16);
+    const tradeRecord = {
+      _id: tradeId,
+      pairId: pairId,
+      baseAssetSymbol: baseSymbol,
+      quoteAssetSymbol: quoteSymbol,
+      makerOrderId: null, // Pool swaps don't have maker orders
+      takerOrderId: null, // Pool swaps don't have taker orders
+      buyerUserId: buyerUserId,
+      sellerUserId: sellerUserId,
+      price: price.toString(),
+      quantity: quantity.toString(),
+      volume: volume.toString(),
+      timestamp: Date.now(),
+      side: tradeSide,
+      type: 'market', // Pool swaps are market orders
+      source: 'pool', // Mark as pool source
+      isMakerBuyer: false,
+      feeAmount: '0', // Fees are handled in the pool swap
+      feeCurrency: quoteSymbol,
+      makerFee: '0',
+      takerFee: '0',
+      total: volume.toString()
+    };
+
+    // Save to trades collection
+    await new Promise<void>((resolve, reject) => {
+      cache.insertOne('trades', tradeRecord, (err, result) => {
+        if (err || !result) {
+          logger.error(`[pool-swap] Failed to record trade: ${err}`);
+          logger.error(`[pool-swap] Trade record that failed:`, JSON.stringify(tradeRecord, null, 2));
+          reject(err);
+        } else {
+          logger.debug(`[pool-swap] Successfully recorded trade ${tradeRecord._id}`);
+          resolve();
+        }
+      });
+    });
+
+    logger.debug(`[pool-swap] Recorded trade: ${params.amountIn} ${params.tokenIn} -> ${params.amountOut} ${params.tokenOut} via pool ${params.poolId}`);
+  } catch (error) {
+    logger.error(`[pool-swap] Error recording trade: ${error}`);
+  }
 }
