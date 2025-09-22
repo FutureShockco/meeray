@@ -369,8 +369,8 @@ router.get('/positions/user/:userId', (async (req: Request, res: Response) => {
     const { userId } = req.params;
     const { limit, skip } = getPagination(req);
     try {
-        const positionsFromDB = await cache.findPromise('userLiquidityPositions', { provider: userId }, { limit, skip, sort: { _id: 1 } });
-        const total = await mongo.getDb().collection('userLiquidityPositions').countDocuments({ provider: userId });
+        const positionsFromDB = await cache.findPromise('userLiquidityPositions', { user: userId }, { limit, skip, sort: { _id: 1 } });
+        const total = await mongo.getDb().collection('userLiquidityPositions').countDocuments({ user: userId });
         const positions = (positionsFromDB || []).map(transformUserLiquidityPositionData);
         res.json({ data: positions, total, limit, skip });
     } catch (error: any) {
@@ -393,7 +393,7 @@ router.get('/positions/pool/:poolId', (async (req: Request, res: Response) => {
     }
 }) as RequestHandler);
 
-// Get specific position by its composite ID (provider-poolId)
+// Get specific position by its composite ID (user-poolId)
 router.get('/positions/:positionId', (async (req: Request, res: Response) => {
     const { positionId } = req.params;
     try {

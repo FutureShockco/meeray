@@ -451,9 +451,8 @@ export const mongo = {
             logger.debug('[DB Indexes] Creating indexes for userLiquidityPositions collection...');
             const userLiquidityPositionsCollection = currentDb.collection('userLiquidityPositions');
             await userLiquidityPositionsCollection.createIndex({ _id: 1 }); // provider-poolId is _id
-            await userLiquidityPositionsCollection.createIndex({ provider: 1 });
             await userLiquidityPositionsCollection.createIndex({ poolId: 1 });
-            await userLiquidityPositionsCollection.createIndex({ provider: 1, poolId: 1 }); // Compound for specific lookup
+            await userLiquidityPositionsCollection.createIndex({ user: 1, poolId: 1 }); // Compound for specific lookup
             logger.debug('[DB Indexes] Finished creating indexes for userLiquidityPositions collection.');
 
             // Trading Pairs (formerly markets)

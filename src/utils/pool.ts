@@ -167,12 +167,18 @@ export async function findBestTradeRoute(
 // For initial liquidity: uses geometric mean (sqrt of product) for fair distribution
 // For subsequent liquidity: uses proportional minting based on existing reserves
 export function calculateLpTokensToMint(tokenA_amount: bigint, tokenB_amount: bigint, pool: LiquidityPoolData): bigint {
+    const MINIMUM_LIQUIDITY = BigInt(1);
+    
     // Initial liquidity provision
     if (toBigInt(pool.totalLpTokens) === BigInt(0)) {
-      // For first liquidity provision, mint LP tokens equal to geometric mean of provided amounts
-      // Use geometric mean for fair initial distribution
       const product = tokenA_amount * tokenB_amount;
-      return sqrt(product);
+      const liquidity = sqrt(product);
+      
+      if (liquidity <= MINIMUM_LIQUIDITY) {
+        return BigInt(0); // Signal insufficient liquidity
+      }
+      
+      return liquidity - MINIMUM_LIQUIDITY; // Burn minimum liquidity
     }
   
     // For subsequent liquidity provisions, mint proportional to existing reserves
@@ -180,9 +186,13 @@ export function calculateLpTokensToMint(tokenA_amount: bigint, tokenB_amount: bi
     const poolTokenAReserve = toBigInt(pool.tokenA_reserve);
     const poolTokenBReserve = toBigInt(pool.tokenB_reserve);
   
+    // Protect against division by zero
+    if (poolTokenAReserve === BigInt(0) || poolTokenBReserve === BigInt(0)) {
+      return BigInt(0);
+    }
+  
     const ratioA = (tokenA_amount * poolTotalLpTokens) / poolTokenAReserve;
     const ratioB = (tokenB_amount * poolTotalLpTokens) / poolTokenBReserve;
   
-    // Use the minimum ratio to ensure proportional liquidity provision
     return ratioA < ratioB ? ratioA : ratioB;
   }

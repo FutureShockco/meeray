@@ -124,7 +124,7 @@ export async function processTx(data: FarmUnstakeData, sender: string, id: strin
       // Create new position for returning LP tokens
       const newUserLiquidityPos: UserLiquidityPositionData = {
         _id: userLpDestinationPositionId,
-        provider: data.staker,
+        user: data.staker,
         poolId: poolIdForLp,
         lpTokenBalance: toDbString(data.lpTokenAmount),
         createdAt: new Date().toISOString(),

@@ -173,6 +173,12 @@ export async function updatePoolReserves(
   tokenBAmount: string | bigint,
   lpTokensToMint: bigint
 ): Promise<boolean> {
+  const MINIMUM_LIQUIDITY = BigInt(1);
+  const isInitialLiquidity = toBigInt(pool.totalLpTokens) === BigInt(0);
+  
+  // For initial liquidity, add both minted tokens + burned minimum liquidity to total
+  const totalLpTokensToAdd = isInitialLiquidity ? lpTokensToMint + MINIMUM_LIQUIDITY : lpTokensToMint;
+  
   const poolUpdateSuccess = await cache.updateOnePromise(
     'liquidityPools',
     { _id: poolId },
@@ -180,7 +186,7 @@ export async function updatePoolReserves(
       $set: {
         tokenA_reserve: toDbString(toBigInt(pool.tokenA_reserve) + toBigInt(tokenAAmount)),
         tokenB_reserve: toDbString(toBigInt(pool.tokenB_reserve) + toBigInt(tokenBAmount)),
-        totalLpTokens: toDbString(toBigInt(pool.totalLpTokens) + lpTokensToMint),
+        totalLpTokens: toDbString(toBigInt(pool.totalLpTokens) + totalLpTokensToAdd),
         feeGrowthGlobalA: toDbString(pool.feeGrowthGlobalA || BigInt(0)),
         feeGrowthGlobalB: toDbString(pool.feeGrowthGlobalB || BigInt(0)),
         lastUpdatedAt: new Date().toISOString()

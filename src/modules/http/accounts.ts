@@ -159,7 +159,7 @@ router.get('/:name/transactions', async (req: Request, res: Response) => {
                 { 'data.issuer': name },
                 { 'data.buyer': name },
                 { 'data.seller': name },
-                { 'data.provider': name } 
+                { 'data.user': name } 
                 // Add other relevant fields that might signify user involvement in a transaction
             ]
         };
