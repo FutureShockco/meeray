@@ -302,7 +302,6 @@ export interface HybridQuote {
     priceImpact: number;
     details: any;
   }>;
-  totalGas?: string;                 // Estimated gas cost
   warning?: string;                  // Any warnings about the quote
 }
 

@@ -119,7 +119,6 @@ router.post('/quote', (async (req: Request, res: Response) => {
         rawAmountOut: route.amountOut,
         details: route.details
       })),
-      estimatedGas: '0.001', // Placeholder
       recommendation: getBestRouteRecommendation(quote)
     };
 
@@ -486,17 +485,25 @@ router.get('/trades/:pairId', (async (req: Request, res: Response) => {
       const priceBigInt = toBigInt(trade.price);
       const quantityBigInt = toBigInt(trade.quantity);
       const quoteDecimals = getTokenDecimals(pair.quoteAssetSymbol);
+      // Use the volume from the trade record if available, otherwise calculate it
       const volumeBigInt = trade.volume ? toBigInt(trade.volume) : (priceBigInt * quantityBigInt) / (BigInt(10) ** BigInt(quoteDecimals));
 
+      // Determine correct price formatting based on trade side
+      // For buy trades: price is in quote token units (TESTS per MRY)
+      // For sell trades: price is in base token units (MRY per TESTS)
+      const priceTokenSymbol = (trade.side === 'buy') ? pair.baseAssetSymbol : pair.quoteAssetSymbol;
+      
       return {
         id: trade._id || trade.id,
         timestamp: trade.timestamp,
-        price: formatAmount(priceBigInt),
+        price: formatAmount(priceBigInt, priceTokenSymbol),
         rawPrice: priceBigInt.toString(),
         quantity: formatAmount(quantityBigInt, pair.baseAssetSymbol),
         rawQuantity: quantityBigInt.toString(),
-        volume: formatAmount(volumeBigInt, pair.quoteAssetSymbol),
+        volume: formatAmount(volumeBigInt, priceTokenSymbol === pair.baseAssetSymbol ? pair.quoteAssetSymbol : pair.baseAssetSymbol),
         rawVolume: volumeBigInt.toString(),
+        total: formatAmount(volumeBigInt, pair.quoteAssetSymbol),
+        rawTotal: volumeBigInt.toString(),
         side: trade.side || 'unknown', // 'buy' or 'sell'
         type: trade.type || 'market', // 'market', 'limit', etc.
         source: trade.source || 'unknown' // 'pool', 'orderbook', 'hybrid'

@@ -503,6 +503,15 @@ async function executeOrderbookRoute(
     // Get the price for this order
     const orderPrice = tradeData.price || orderbookDetails.price;
     logger.info(`[executeOrderbookRoute] Order price: ${orderPrice}, tradeData.price: ${tradeData.price}, orderbookDetails.price: ${orderbookDetails.price}`);
+    
+    // Debug price formatting
+    if (orderPrice) {
+      const quoteDecimals = getTokenDecimals(pair.quoteAssetSymbol);
+      const baseDecimals = getTokenDecimals(pair.baseAssetSymbol);
+      logger.info(`[executeOrderbookRoute] Price formatting debug: raw=${orderPrice}, quoteDecimals=${quoteDecimals}, baseDecimals=${baseDecimals}`);
+      logger.info(`[executeOrderbookRoute] Price formatted with quote decimals: ${Number(orderPrice) / Math.pow(10, quoteDecimals)}`);
+      logger.info(`[executeOrderbookRoute] Price formatted with base decimals: ${Number(orderPrice) / Math.pow(10, baseDecimals)}`);
+    }
 
     // Calculate the correct quantity based on order side
     let orderQuantity: bigint;
