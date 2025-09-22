@@ -11,7 +11,6 @@ interface IWitnessStats {
   last?: number; // Assuming this refers to the last block number produced
 }
 
-
 interface IWitnessIndexer {
   witnesses: Record<string, Partial<IWitnessStats>>;
   updates: { witnesses: string[] };
@@ -134,4 +133,4 @@ const indexer: IWitnessIndexer = {
 };
 
 export const witnessesStats = indexer;
-export default witnessesStats; 
+export default witnessesStats;

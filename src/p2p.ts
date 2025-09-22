@@ -94,7 +94,6 @@ export const p2p = {
     lastEmergencyDiscovery: 0,
     lastPeerListConnection: 0,
 
-
     init: async (): Promise<void> => {
         p2p.generateNodeId();
         const server = new WebSocketServer({ host: p2p_host, port: p2p_port });
@@ -382,7 +381,6 @@ export const p2p = {
                     p2p.handleNewBlock(ws, message);
                     break;
 
-
                 case MessageType.BLOCK_CONF_ROUND:
                     p2p.handleBlockConfRound(ws, message);
                     break;
@@ -533,7 +531,6 @@ export const p2p = {
                 logger.warn('MongoDB query failed for block', blockId, ':', mongoError.message);
             }
         }
-
 
     },
 
@@ -814,7 +811,6 @@ export const p2p = {
             socket.node_status.origin_block === config.originHash
         );
 
-
         if (peersAhead.length === 0) {
             p2p.recovering = false;
             return;
@@ -822,7 +818,6 @@ export const p2p = {
 
         const champion = peersAhead[Math.floor(Math.random() * peersAhead.length)];
         const nextBlock = (p2p.recovering as number) + 1;
-
 
         if (nextBlock <= champion.node_status!.head_block) {
             p2p.recovering = nextBlock;
@@ -999,4 +994,4 @@ export const p2p = {
     }
 };
 
-export default p2p; 
+export default p2p;

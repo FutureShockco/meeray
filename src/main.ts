@@ -105,7 +105,6 @@ export async function main() {
         // Ensure isResumingRebuild correctly identifies actual resumption (rebuildResumeBlock > 0)
         const isResumingRebuild = process.env.REBUILD_STATE === '1' && rebuildResumeBlock > 0;
 
-
         if (process.env.REBUILD_STATE === '1') {
             if (process.env.REBUILD_NO_VALIDATE === '1') {
                 logger.warn('Rebuilding without validation. Only use this if you know what you are doing!');
@@ -218,7 +217,6 @@ async function startDaemon(cfg: any) {
         chain.schedule = witnessesModule.witnessSchedule(block)
     }
 
-
     http.init();
     p2p.init();
     p2p.connect(settings.peers, true);
@@ -268,4 +266,4 @@ main().catch(error => {
     process.exit(1);
 });
 
-export default main; 
+export default main;

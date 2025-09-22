@@ -21,7 +21,6 @@ export const mongoUrl: string = process.env.MONGO_URL || 'mongodb://localhost:27
 export const mongoDb: string = process.env.MONGO_DB || 'meeray';
 export const useNotification: boolean = process.env.USE_NOTIFICATION === 'true';
 
-
 export default {
     steemBridgeEnabled,
     steemBridgeAccount,
@@ -39,5 +38,3 @@ export default {
     mongoDb,
     useNotification,
 };
-
-

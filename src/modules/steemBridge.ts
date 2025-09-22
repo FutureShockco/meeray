@@ -6,7 +6,6 @@ import config from '../config.js';
 import logger from '../logger.js';
 const client = new SteemApiClient();
 
-
 type WithdrawDepositStatus = 'pending' | 'processing' | 'done' | 'failed';
 interface WithdrawDepositData {
     _id?: any;

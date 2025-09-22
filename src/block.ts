@@ -8,7 +8,6 @@ import { isValidSignature } from './crypto.js';
 import steem from './steem.js';
 import p2p from './p2p/index.js';
 
-
 export class Block {
     _id!: number;
     blockNum: number;
@@ -54,7 +53,6 @@ export class Block {
         if (hash) this.hash = hash;
     }
 }
-
 
 export function calculateHashForBlock(
     blockData: Block,
@@ -240,4 +238,3 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
         return true;
     }
 }
-

@@ -238,7 +238,6 @@ export const mining = {
                 }
         }
 
-
         if (mineInMs !== null) {
             mineInMs -= (new Date().getTime() - block.timestamp);
             // Add larger buffer for backup witnesses to account for processing delays
@@ -312,7 +311,6 @@ export const mining = {
                 }
             }
 
-
             chain.worker = setTimeout(function () {
                 mining.mineBlock(function (error, finalBlock) {
                     // Clean up mining attempt when done (success or failure)
@@ -327,4 +325,4 @@ export const mining = {
     },
 };
 
-export default mining; 
+export default mining;

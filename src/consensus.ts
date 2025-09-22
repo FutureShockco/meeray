@@ -35,8 +35,6 @@ export interface Consensus {
     rejectCollisionAndWait: (collisionHeight: number) => void;
 }
 
-
-
 // Function to process collected blocks after collision window
 const processSyncCollisionWindow = (height: number) => {
     const pendingBlocks = syncPendingBlocks[height];
@@ -566,4 +564,4 @@ export const consensus: Consensus = {
     },
 };
 
-export default consensus; 
+export default consensus;

@@ -49,4 +49,4 @@ export const notifications = {
     }
 };
 
-export default notifications; 
+export default notifications;

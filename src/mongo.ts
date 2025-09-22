@@ -302,7 +302,6 @@ export const mongo = {
         await currentDb.collection<TokenData>('tokens').insertOne(nativeTokenToStoreSTEEM);
         logger.info('Native token STEEM inserted.');
 
-
         // --- SBD ---
         setTokenDecimals('SBD', 3);
 
@@ -339,7 +338,6 @@ export const mongo = {
         };
         await currentDb.collection<TokenData>('tokens').insertOne(nativeTokenToStoreSBD);
         logger.info('Native token SBD inserted.');
-
 
     },
     insertNativeFarms: async (): Promise<void> => {

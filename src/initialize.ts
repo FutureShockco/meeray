@@ -17,4 +17,4 @@ export async function initializeModules() {
   }
 }
 
-export default initializeModules; 
+export default initializeModules;

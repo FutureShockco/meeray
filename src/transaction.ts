@@ -16,7 +16,6 @@ type ValidationCallback = (isValid: boolean, error?: string) => void;
 
 type ExecutionCallback = (executed: boolean, distributed?: number) => void;
 
-
 interface TransactionModule {
     pool: TransactionInterface[];
     eventConfirmation: EventEmitter;
@@ -70,7 +69,6 @@ const transaction: TransactionModule = {
 
         logr.info(`Added ${added} new transactions to pool (new size: ${transaction.pool.length})`);
     },
-
 
     isPoolFull: (): boolean => {
         if (transaction.pool.length >= MAX_MEMPOOL_SIZE) {
@@ -152,7 +150,6 @@ const transaction: TransactionModule = {
         delete newTx.signature
         delete newTx.hash
 
-
         transaction.isValidTxData(tx, ts, tx.sender, function (isValid, error) {
             cb(isValid, error)
         })
@@ -200,6 +197,5 @@ const transaction: TransactionModule = {
                 });
     },
 };
-
 
 export default transaction;

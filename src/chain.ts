@@ -22,7 +22,6 @@ const SYNC_MODE_BROADCAST_INTERVAL_BLOCKS = 3; // Broadcast every 3 blocks in sy
 const NORMAL_MODE_BROADCAST_INTERVAL_BLOCKS = 6; // Broadcast every 6 blocks in normal mode
 const REPLAY_OUTPUT = process.env.REPLAY_OUTPUT ? parseInt(process.env.REPLAY_OUTPUT) : 1000;
 
-
 export const chain = {
     blocksToRebuild: [] as any[],
     restoredBlocks: 0,
@@ -542,4 +541,4 @@ export const chain = {
     },
 };
 
-export default chain; 
+export default chain;

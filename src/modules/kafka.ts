@@ -125,4 +125,4 @@ export async function disconnectKafkaProducer(): Promise<void> {
 // For an optional module, it's often better to initialize explicitly when needed.
 // initializeKafkaProducer().catch(err => {
 //    logger.error('[kafka-producer] Auto-initialization failed on module load.', err);
-// }); 
+// });

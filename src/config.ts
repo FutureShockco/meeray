@@ -72,4 +72,4 @@ function read(blockNum: number): typeof config {
   return { ...config, ...finalConfig };
 }
 
-export default { ...config, history, read }; 
+export default { ...config, history, read };

@@ -5,7 +5,6 @@ import logger from './logger.js';
 import config from './config.js';
 import chain from './chain.js';
 
-
 const isRebuild = process.env.REBUILD_STATE === '1';
 
 export const blocks: any = {
@@ -215,4 +214,4 @@ export const blocks: any = {
     }
 };
 
-export default blocks; 
+export default blocks;

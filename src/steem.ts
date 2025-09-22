@@ -20,8 +20,6 @@ const syncManager = new SyncManager(apiClient);
 const blockProcessor = new BlockProcessor(apiClient);
 const networkStatus = new NetworkStatusManager();
 
-
-
 const initSteemSync = (blockNum: number): void => {
     if (steemBlockPollingInterval) {
         clearInterval(steemBlockPollingInterval);
@@ -47,7 +45,6 @@ const initSteemSync = (blockNum: number): void => {
             if (behindBlocks > 0) {
                 blockProcessor.prefetchBlocks(lastProcessedSteemBlock + 1, syncManager.isInSyncMode());
             }
-
 
             if (behindBlocks > config.steemBlockMaxDelay && !syncManager.isInSyncMode()) {
                 logger.info(`Already ${behindBlocks} blocks behind, entering sync mode immediately`);
@@ -218,7 +215,6 @@ const checkNetworkSyncStatus = async (): Promise<void> => {
     }
 };
 
-
 // Cleanup on exit
 process.on('SIGINT', cleanup);
 
@@ -259,4 +255,4 @@ const steemModule = {
     isNetworkReadyToExitSyncMode: () => syncManager.shouldExitSyncMode(chain?.getLatestBlock()?._id || 0)
 };
 
-export default steemModule; 
+export default steemModule;

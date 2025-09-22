@@ -11,7 +11,6 @@ import witnessesStats from './witnessesStats.js';
 import { Db, Filter, Document as MongoDocument, UpdateFilter, FindOptions, ObjectId } from 'mongodb';
 import mongo from './mongo.js';
 
-
 interface BasicCacheDoc extends MongoDocument {
     _id?: ObjectId | string | number; // Flexible _id for state, etc.
     name?: string; // Primarily for 'accounts'
@@ -715,7 +714,6 @@ const cache: CacheType = {
             }
             allOpsDoneCallback(err ?? null, results as any[]);
         };
-
 
         if (typeof cb === 'function') {
             executeAllOperations();

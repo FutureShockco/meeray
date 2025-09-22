@@ -36,4 +36,4 @@ export class ProcessingQueue {
     }
 }
 
-export default ProcessingQueue; 
+export default ProcessingQueue;

@@ -33,7 +33,6 @@ export interface SteemBlockResult {
     timestamp: number;
 }
 
-
 export interface ParsedTransaction {
     type: number;
     data: any;
@@ -222,7 +221,6 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                             txType = TransactionType.LAUNCHPAD_UPDATE_WHITELIST;
                             break;
 
-
                         case 'market_cancel_order':
                             txType = TransactionType.MARKET_CANCEL_ORDER;
                             break;
@@ -292,4 +290,4 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
     return { transactions: txs, timestamp: new Date(steemBlock.timestamp + 'Z').getTime() };
 };
 
-export default parseSteemTransactions; 
+export default parseSteemTransactions;
