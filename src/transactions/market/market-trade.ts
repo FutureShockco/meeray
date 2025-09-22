@@ -480,28 +480,15 @@ async function executeOrderbookRoute(
     let orderQuantity: bigint;
     if (orderbookDetails.side === OrderSide.BUY) {
       // For buy orders, quantity should be the amount of base currency to buy
-      // Calculate: quantity = (amountIn * 10^quoteDecimals) / price
-      // Then adjust for decimal differences between quote and base tokens
+      // Correct formula: quantity = (amountIn * 10^baseDecimals) / price
       if (!orderPrice) {
         return { success: false, amountOut: BigInt(0), error: 'Price required for buy orders' };
       }
 
-      const quoteDecimals = getTokenDecimals(pair.quoteAssetSymbol);
       const baseDecimals = getTokenDecimals(pair.baseAssetSymbol);
-      const decimalDifference = quoteDecimals - baseDecimals;
-      // First calculate the raw quantity: (amountIn * 10^quoteDecimals) / price
-      const rawQuantity = (amountIn * BigInt(10 ** quoteDecimals)) / toBigInt(orderPrice);
-
-      if (decimalDifference > 0) {
-        // Quote has more decimals, scale down the result
-        orderQuantity = rawQuantity / BigInt(10 ** decimalDifference);
-      } else if (decimalDifference < 0) {
-        // Base has more decimals, scale up the result
-        orderQuantity = rawQuantity * BigInt(10 ** (-decimalDifference));
-      } else {
-        // Same decimals, no adjustment needed
-        orderQuantity = rawQuantity;
-      }
+      // amountIn is in quote token's smallest units
+      // price is in quote token units per base token, scaled by quote decimals
+      orderQuantity = (amountIn * BigInt(10 ** baseDecimals)) / toBigInt(orderPrice);
     } else {
       // For sell orders, quantity is the amount of base currency to sell
       orderQuantity = amountIn;

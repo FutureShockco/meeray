@@ -14,15 +14,15 @@ const router = express.Router();
 router.get('/sources/:tokenA/:tokenB', (async (req: Request, res: Response) => {
   try {
     const { tokenA, tokenB } = req.params;
-    
+
     if (!tokenA || !tokenB) {
-      return res.status(400).json({ 
-        message: 'Both tokenA and tokenB are required' 
+      return res.status(400).json({
+        message: 'Both tokenA and tokenB are required'
       });
     }
-    
+
     const sources = await liquidityAggregator.getLiquiditySources(tokenA, tokenB);
-    
+
     // Transform for API response
     const transformedSources = sources.map(source => ({
       type: source.type,
@@ -46,7 +46,7 @@ router.get('/sources/:tokenA/:tokenB', (async (req: Request, res: Response) => {
         rawAskDepth: source.askDepth?.toString()
       })
     }));
-    
+
     res.json({
       tokenA,
       tokenB,
@@ -57,9 +57,9 @@ router.get('/sources/:tokenA/:tokenB', (async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     logger.error('Error fetching liquidity sources:', error);
-    res.status(500).json({ 
-      message: 'Error fetching liquidity sources', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Error fetching liquidity sources',
+      error: error.message
     });
   }
 }) as RequestHandler);
@@ -71,13 +71,13 @@ router.get('/sources/:tokenA/:tokenB', (async (req: Request, res: Response) => {
 router.post('/quote', (async (req: Request, res: Response) => {
   try {
     const { tokenIn, tokenOut, amountIn, maxSlippagePercent } = req.body;
-    
+
     if (!tokenIn || !tokenOut || !amountIn) {
-      return res.status(400).json({ 
-        message: 'tokenIn, tokenOut, and amountIn are required' 
+      return res.status(400).json({
+        message: 'tokenIn, tokenOut, and amountIn are required'
       });
     }
-    
+
     // Validate amountIn
     let amountInBigInt: bigint;
     try {
@@ -86,26 +86,26 @@ router.post('/quote', (async (req: Request, res: Response) => {
         throw new Error('Amount must be positive');
       }
     } catch (error) {
-      return res.status(400).json({ 
-        message: 'Invalid amountIn: must be a positive number' 
+      return res.status(400).json({
+        message: 'Invalid amountIn: must be a positive number'
       });
     }
-    
+
     const tradeData: HybridTradeData = {
       tokenIn,
       tokenOut,
       amountIn: amountInBigInt,
       maxSlippagePercent
     };
-    
+
     const quote = await liquidityAggregator.getBestQuote(tradeData);
-    
+
     if (!quote) {
-      return res.status(404).json({ 
-        message: 'No liquidity available for this trade pair' 
+      return res.status(404).json({
+        message: 'No liquidity available for this trade pair'
       });
     }
-    
+
     // Add formatted amounts and additional info
     const enhancedQuote = {
       ...quote,
@@ -122,13 +122,13 @@ router.post('/quote', (async (req: Request, res: Response) => {
       estimatedGas: '0.001', // Placeholder
       recommendation: getBestRouteRecommendation(quote)
     };
-    
+
     res.json(enhancedQuote);
   } catch (error: any) {
     logger.error('Error getting hybrid quote:', error);
-    res.status(500).json({ 
-      message: 'Error getting trade quote', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Error getting trade quote',
+      error: error.message
     });
   }
 }) as RequestHandler);
@@ -140,48 +140,48 @@ router.post('/quote', (async (req: Request, res: Response) => {
 router.post('/compare', (async (req: Request, res: Response) => {
   try {
     const { tokenIn, tokenOut, amountIn } = req.body;
-    
+
     if (!tokenIn || !tokenOut || !amountIn) {
-      return res.status(400).json({ 
-        message: 'tokenIn, tokenOut, and amountIn are required' 
+      return res.status(400).json({
+        message: 'tokenIn, tokenOut, and amountIn are required'
       });
     }
-    
+
     const tradeData: HybridTradeData = {
       tokenIn,
       tokenOut,
       amountIn: toBigInt(amountIn)
     };
-    
+
     // Get all sources
     const sources = await liquidityAggregator.getLiquiditySources(tokenIn, tokenOut);
-    
+
     // Separate AMM and orderbook sources
     const ammSources = sources.filter(s => s.type === 'AMM');
     const orderbookSources = sources.filter(s => s.type === 'ORDERBOOK');
-    
+
     // Get quotes for each type
     const comparison = {
       amm: {
         available: ammSources.length > 0,
         sources: ammSources.length,
         bestQuote: null as any,
-        totalLiquidity: ammSources.reduce((sum, s) => 
+        totalLiquidity: ammSources.reduce((sum, s) =>
           sum + Number(s.reserveA || 0) + Number(s.reserveB || 0), 0)
       },
       orderbook: {
         available: orderbookSources.length > 0,
         sources: orderbookSources.length,
         bestQuote: null as any,
-        totalDepth: orderbookSources.reduce((sum, s) => 
+        totalDepth: orderbookSources.reduce((sum, s) =>
           sum + Number(s.bidDepth || 0) + Number(s.askDepth || 0), 0)
       },
       recommendation: 'hybrid' as 'amm' | 'orderbook' | 'hybrid'
     };
-    
+
     // This would be enhanced with actual quote calculations
     // For now, returning structure
-    
+
     res.json({
       tokenIn,
       tokenOut,
@@ -192,9 +192,9 @@ router.post('/compare', (async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     logger.error('Error comparing liquidity sources:', error);
-    res.status(500).json({ 
-      message: 'Error comparing liquidity sources', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Error comparing liquidity sources',
+      error: error.message
     });
   }
 }) as RequestHandler);
@@ -227,7 +227,7 @@ router.get('/stats', (async (req: Request, res: Response) => {
         { pair: 'BTC/USDT', volume24h: '98,765.43', trades: 156 }
       ]
     };
-    
+
     res.json({
       stats,
       timestamp: new Date().toISOString(),
@@ -235,9 +235,9 @@ router.get('/stats', (async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     logger.error('Error fetching hybrid stats:', error);
-    res.status(500).json({ 
-      message: 'Error fetching statistics', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Error fetching statistics',
+      error: error.message
     });
   }
 }) as RequestHandler);
@@ -249,25 +249,25 @@ router.get('/stats', (async (req: Request, res: Response) => {
 router.get('/stats/:pairId', (async (req: Request, res: Response) => {
   try {
     const { pairId } = req.params;
-    
+
     // Check if trading pair exists
     const pair = await cache.findOnePromise('tradingPairs', { _id: pairId });
     if (!pair) {
       return res.status(404).json({ message: 'Trading pair not found' });
     }
-    
+
     // Get trades for this pair
-    const trades = await cache.findPromise('trades', { pairId }, 
+    const trades = await cache.findPromise('trades', { pairId },
       { sort: { timestamp: -1 }, limit: 100 }) || [];
-    
+
     // Calculate 24h statistics
     const now = Date.now();
     const oneDayAgo = now - (24 * 60 * 60 * 1000);
     const recentTrades = trades.filter(trade => trade.timestamp > oneDayAgo);
-    
+
     const volume24h = recentTrades.reduce((sum, trade) => sum + Number(toBigInt(trade.volume || 0)), 0);
     const tradeCount24h = recentTrades.length;
-    
+
     // Get price statistics
     let priceChange24h = 0;
     let priceChange24hPercent = 0;
@@ -279,39 +279,39 @@ router.get('/stats/:pairId', (async (req: Request, res: Response) => {
         priceChange24hPercent = (priceChange24h / oldestPrice) * 100;
       }
     }
-    
+
     // Get current orders for this pair
     const orders = await cache.findPromise('orders', { pairId }) || [];
-    const buyOrders = orders.filter(order => order.side === 'buy' && 
+    const buyOrders = orders.filter(order => order.side === 'buy' &&
       (order.status === 'open' || order.status === 'partial'));
-    const sellOrders = orders.filter(order => order.side === 'sell' && 
+    const sellOrders = orders.filter(order => order.side === 'sell' &&
       (order.status === 'open' || order.status === 'partial'));
-    
+
     // Calculate spread
-    const highestBid = buyOrders.length > 0 ? 
+    const highestBid = buyOrders.length > 0 ?
       Math.max(...buyOrders.map(order => Number(toBigInt(order.price || 0)))) : 0;
-    const lowestAsk = sellOrders.length > 0 ? 
+    const lowestAsk = sellOrders.length > 0 ?
       Math.min(...sellOrders.map(order => Number(toBigInt(order.price || 0)))) : 0;
     const spread = lowestAsk > 0 && highestBid > 0 ? lowestAsk - highestBid : 0;
     const spreadPercent = highestBid > 0 ? (spread / highestBid) * 100 : 0;
-    
+
     res.json({
       pairId,
       pair,
-  volume24h: formatAmount(BigInt(Math.round(volume24h * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol)))), pair.quoteAssetSymbol),
-  rawVolume24h: volume24h.toString(),
+      volume24h: formatAmount(BigInt(Math.round(volume24h * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol)))), pair.quoteAssetSymbol),
+      rawVolume24h: volume24h.toString(),
       tradeCount24h,
-  priceChange24h: formatAmount(BigInt(Math.round(priceChange24h * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
-  rawPriceChange24h: priceChange24h.toString(),
+      priceChange24h: formatAmount(BigInt(Math.round(priceChange24h * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
+      rawPriceChange24h: priceChange24h.toString(),
       priceChange24hPercent,
       currentPrice: recentTrades[0] ? formatAmount(toBigInt(recentTrades[0].price || 0)) : '0.00000000',
       rawCurrentPrice: recentTrades[0] ? toBigInt(recentTrades[0].price || 0).toString() : '0',
-  highestBid: formatAmount(BigInt(Math.round(highestBid * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
-  rawHighestBid: Math.round(highestBid * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))).toString(),
-  lowestAsk: formatAmount(BigInt(Math.round(lowestAsk * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
-  rawLowestAsk: Math.round(lowestAsk * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))).toString(),
-  spread: formatAmount(BigInt(Math.round(spread * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
-  rawSpread: Math.round(spread * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))).toString(),
+      highestBid: formatAmount(BigInt(Math.round(highestBid * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
+      rawHighestBid: Math.round(highestBid * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))).toString(),
+      lowestAsk: formatAmount(BigInt(Math.round(lowestAsk * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
+      rawLowestAsk: Math.round(lowestAsk * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))).toString(),
+      spread: formatAmount(BigInt(Math.round(spread * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
+      rawSpread: Math.round(spread * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))).toString(),
       spreadPercent,
       buyOrderCount: buyOrders.length,
       sellOrderCount: sellOrders.length,
@@ -327,9 +327,9 @@ router.get('/stats/:pairId', (async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     logger.error('Error fetching pair stats:', error);
-    res.status(500).json({ 
-      message: 'Error fetching pair stats', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Error fetching pair stats',
+      error: error.message
     });
   }
 }) as RequestHandler);
@@ -342,48 +342,48 @@ router.get('/orderbook/:pairId', (async (req: Request, res: Response) => {
   try {
     const { pairId } = req.params;
     const { depth = 20 } = req.query; // Default to 20 levels
-    
+
     // Check if trading pair exists
     const pair = await cache.findOnePromise('tradingPairs', { _id: pairId });
     if (!pair) {
       return res.status(404).json({ message: 'Trading pair not found' });
     }
-    
+
     // Get active orders for this pair
-    const orders = await cache.findPromise('orders', { 
+    const orders = await cache.findPromise('orders', {
       pairId,
       status: { $in: ['open', 'partially_filled'] }
     }) || [];
-    
+
     // Separate buy and sell orders
     const buyOrders = orders
       .filter(order => order.side === 'buy')
       .sort((a, b) => Number(toBigInt(b.price || 0)) - Number(toBigInt(a.price || 0))) // Highest price first
       .slice(0, Number(depth));
-    
+
     const sellOrders = orders
       .filter(order => order.side === 'sell')
       .sort((a, b) => Number(toBigInt(a.price || 0)) - Number(toBigInt(b.price || 0))) // Lowest price first
       .slice(0, Number(depth));
-    
+
     // Format orderbook data
     const bids = buyOrders.map(order => {
       const price = formatAmount(toBigInt(order.price || 0));
       const quantity = formatAmount(toBigInt(order.remainingQuantity || order.quantity), pair.baseAssetSymbol);
       const rawPrice = toBigInt(order.price || 0).toString();
       const rawQuantity = toBigInt(order.remainingQuantity || order.quantity).toString();
-      
+
       // Calculate total considering decimal differences
       const rawTotalBigInt = calculateTradeValue(
-        toBigInt(order.price || 0), 
+        toBigInt(order.price || 0),
         toBigInt(order.remainingQuantity || order.quantity),
         pair.baseAssetSymbol,
         pair.quoteAssetSymbol
       );
-      
+
       const total = formatAmount(rawTotalBigInt, pair.quoteAssetSymbol);
       const rawTotal = rawTotalBigInt.toString();
-      
+
       return {
         price,
         rawPrice,
@@ -399,18 +399,18 @@ router.get('/orderbook/:pairId', (async (req: Request, res: Response) => {
       const quantity = formatAmount(toBigInt(order.remainingQuantity || order.quantity), pair.baseAssetSymbol);
       const rawPrice = toBigInt(order.price || 0).toString();
       const rawQuantity = toBigInt(order.remainingQuantity || order.quantity).toString();
-      
+
       // Calculate total considering decimal differences
       const rawTotalBigInt = calculateTradeValue(
-        toBigInt(order.price || 0), 
+        toBigInt(order.price || 0),
         toBigInt(order.remainingQuantity || order.quantity),
         pair.baseAssetSymbol,
         pair.quoteAssetSymbol
       );
-      
+
       const total = formatAmount(rawTotalBigInt, pair.quoteAssetSymbol);
       const rawTotal = rawTotalBigInt.toString();
-      
+
       return {
         price,
         rawPrice,
@@ -430,8 +430,8 @@ router.get('/orderbook/:pairId', (async (req: Request, res: Response) => {
       timestamp: Date.now(),
       bids,
       asks,
-  spread: formatAmount(BigInt(Math.round(spread * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
-  rawSpread: Math.round(spread * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))).toString(),
+      spread: formatAmount(BigInt(Math.round(spread * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
+      rawSpread: Math.round(spread * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))).toString(),
       spreadPercent,
       depth: {
         bids: bids.length,
@@ -440,9 +440,9 @@ router.get('/orderbook/:pairId', (async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     logger.error('Error fetching orderbook:', error);
-    res.status(500).json({ 
-      message: 'Error fetching orderbook', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Error fetching orderbook',
+      error: error.message
     });
   }
 }) as RequestHandler);
@@ -455,39 +455,39 @@ router.get('/trades/:pairId', (async (req: Request, res: Response) => {
   try {
     const { pairId } = req.params;
     const { limit = 50, since, before } = req.query;
-    
+
     // Check if trading pair exists
     const pair = await cache.findOnePromise('tradingPairs', { _id: pairId });
     if (!pair) {
       return res.status(404).json({ message: 'Trading pair not found' });
     }
-    
+
     // Build query filter
     const filter: any = { pairId };
-    
+
     // Add time range filters if provided
     if (since) {
       filter.timestamp = { $gte: Number(since) };
     }
     if (before) {
-      filter.timestamp = filter.timestamp ? 
-        { ...filter.timestamp, $lt: Number(before) } : 
+      filter.timestamp = filter.timestamp ?
+        { ...filter.timestamp, $lt: Number(before) } :
         { $lt: Number(before) };
     }
-    
+
     // Get trades for this pair
     const trades = await cache.findPromise('trades', filter, {
       sort: { timestamp: -1 }, // Most recent first
       limit: Math.min(Number(limit), 500) // Cap at 500 trades
     }) || [];
-    
+
     // Format trade data with proper decimal handling
     const formattedTrades = trades.map(trade => {
       const priceBigInt = toBigInt(trade.price);
       const quantityBigInt = toBigInt(trade.quantity);
-  const quoteDecimals = getTokenDecimals(pair.quoteAssetSymbol);
-  const volumeBigInt = trade.volume ? toBigInt(trade.volume) : (priceBigInt * quantityBigInt) / (BigInt(10) ** BigInt(quoteDecimals));
-      
+      const quoteDecimals = getTokenDecimals(pair.quoteAssetSymbol);
+      const volumeBigInt = trade.volume ? toBigInt(trade.volume) : (priceBigInt * quantityBigInt) / (BigInt(10) ** BigInt(quoteDecimals));
+
       return {
         id: trade._id || trade.id,
         timestamp: trade.timestamp,
@@ -502,7 +502,7 @@ router.get('/trades/:pairId', (async (req: Request, res: Response) => {
         source: trade.source || 'unknown' // 'pool', 'orderbook', 'hybrid'
       };
     });
-    
+
     // Calculate summary statistics
     const volume24h = formattedTrades
       .filter(trade => trade.timestamp > Date.now() - (24 * 60 * 60 * 1000))
@@ -515,9 +515,9 @@ router.get('/trades/:pairId', (async (req: Request, res: Response) => {
       highFormatted: formatAmount(BigInt(Math.max(...formattedTrades.map(t => Number(t.rawPrice))))),
       lowFormatted: formatAmount(BigInt(Math.min(...formattedTrades.map(t => Number(t.rawPrice))))),
       latestFormatted: formattedTrades[0] ? formattedTrades[0].price : '0.00000000'
-    } : { 
-      high: 0, 
-      low: 0, 
+    } : {
+      high: 0,
+      low: 0,
       latest: 0,
       highFormatted: '0.00000000',
       lowFormatted: '0.00000000',
@@ -541,9 +541,9 @@ router.get('/trades/:pairId', (async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     logger.error('Error fetching trades:', error);
-    res.status(500).json({ 
-      message: 'Error fetching trades', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Error fetching trades',
+      error: error.message
     });
   }
 }) as RequestHandler);
@@ -575,11 +575,11 @@ router.get('/health', (async (req: Request, res: Response) => {
         }
       }
     };
-    
+
     res.json(health);
   } catch (error: any) {
     logger.error('Error checking hybrid system health:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       status: 'unhealthy',
       error: error.message,
       timestamp: new Date().toISOString()
@@ -603,11 +603,11 @@ function formatAmount(amount: bigint, tokenSymbol?: string): string {
 
 function getBestRouteRecommendation(quote: any): string {
   if (quote.routes.length === 1) {
-    return quote.routes[0].type === 'AMM' ? 
-      'Single AMM pool provides best price' : 
+    return quote.routes[0].type === 'AMM' ?
+      'Single AMM pool provides best price' :
       'Orderbook provides best price';
   }
-  
+
   return 'Hybrid routing across multiple sources provides optimal execution';
 }
 
@@ -626,9 +626,9 @@ router.get('/pairs', (async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     logger.error('Error fetching trading pairs:', error);
-    res.status(500).json({ 
-      message: 'Error fetching trading pairs', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Error fetching trading pairs',
+      error: error.message
     });
   }
 }) as RequestHandler);
@@ -641,17 +641,17 @@ router.get('/pairs/:pairId', (async (req: Request, res: Response) => {
   try {
     const { pairId } = req.params;
     const pair = await cache.findOnePromise('tradingPairs', { _id: pairId });
-    
+
     if (!pair) {
       return res.status(404).json({ message: 'Trading pair not found' });
     }
-    
+
     res.json(pair);
   } catch (error: any) {
     logger.error('Error fetching trading pair:', error);
-    res.status(500).json({ 
-      message: 'Error fetching trading pair', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Error fetching trading pair',
+      error: error.message
     });
   }
 }) as RequestHandler);
@@ -664,7 +664,7 @@ router.get('/orders/pair/:pairId', (async (req: Request, res: Response) => {
   try {
     const { pairId } = req.params;
     const orders = await cache.findPromise('orders', { pairId });
-    
+
     res.json({
       pairId,
       orders: orders || [],
@@ -672,9 +672,9 @@ router.get('/orders/pair/:pairId', (async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     logger.error('Error fetching orders for pair:', error);
-    res.status(500).json({ 
-      message: 'Error fetching orders', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Error fetching orders',
+      error: error.message
     });
   }
 }) as RequestHandler);
@@ -687,7 +687,7 @@ router.get('/orders/user/:userId', (async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
     const { status } = req.query;
-    
+
     // Build filter - by default exclude cancelled and rejected orders
     const filter: any = { userId };
     if (status) {
@@ -695,9 +695,9 @@ router.get('/orders/user/:userId', (async (req: Request, res: Response) => {
     } else {
       filter.status = { $nin: ['cancelled', 'rejected'] };
     }
-    
+
     const orders = await cache.findPromise('orders', filter);
-    
+
     res.json({
       userId,
       orders: orders || [],
@@ -705,9 +705,9 @@ router.get('/orders/user/:userId', (async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     logger.error('Error fetching user orders:', error);
-    res.status(500).json({ 
-      message: 'Error fetching user orders', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Error fetching user orders',
+      error: error.message
     });
   }
 }) as RequestHandler);
@@ -720,31 +720,31 @@ router.get('/orders/:userId', (async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
     const { pairId, status, side, limit = 100 } = req.query;
-    
+
     // Build query filter
     const filter: any = { userId };
-    
+
     if (pairId) {
       filter.pairId = pairId;
     }
-    
+
     if (status) {
       filter.status = status;
     } else {
       // By default, exclude cancelled and rejected orders
       filter.status = { $nin: ['cancelled', 'rejected'] };
     }
-    
+
     if (side) {
       filter.side = side;
     }
-    
+
     // Get orders with optional filtering
     const orders = await cache.findPromise('orders', filter, {
       sort: { timestamp: -1 }, // Most recent first
       limit: Math.min(Number(limit), 500) // Cap at 500 orders
     }) || [];
-    
+
     // Get trading pair information for proper decimal formatting
     const pairIds = [...new Set(orders.map(order => order.pairId))];
     const pairs = await Promise.all(
@@ -760,7 +760,7 @@ router.get('/orders/:userId', (async (req: Request, res: Response) => {
       const pair = pairMap[order.pairId];
       const baseSymbol = pair?.baseAssetSymbol || 'UNKNOWN';
       const quoteSymbol = pair?.quoteAssetSymbol || 'UNKNOWN';
-      
+
       return {
         id: order._id || order.id,
         pairId: order.pairId,
@@ -779,7 +779,7 @@ router.get('/orders/:userId', (async (req: Request, res: Response) => {
         lastUpdateTime: order.lastUpdateTime
       };
     });
-    
+
     // Calculate summary statistics
     const summary = {
       totalOrders: formattedOrders.length,
@@ -790,7 +790,7 @@ router.get('/orders/:userId', (async (req: Request, res: Response) => {
       buyOrders: formattedOrders.filter(o => o.side === 'buy').length,
       sellOrders: formattedOrders.filter(o => o.side === 'sell').length
     };
-    
+
     res.json({
       userId,
       pairId: pairId || 'all',
@@ -806,9 +806,9 @@ router.get('/orders/:userId', (async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     logger.error('Error fetching user orders:', error);
-    res.status(500).json({ 
-      message: 'Error fetching user orders', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Error fetching user orders',
+      error: error.message
     });
   }
 }) as RequestHandler);
