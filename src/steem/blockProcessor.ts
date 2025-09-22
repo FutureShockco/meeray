@@ -51,7 +51,12 @@ class BlockProcessor {
             this.resetConsecutiveErrors();
 
             if (steemBlockResult.transactions.length > 0) {
-                transaction.addToPool(steemBlockResult.transactions);
+                transaction.addToPool(
+                    steemBlockResult.transactions.map((tx, idx) => ({
+                        ...tx,
+                        id: tx.hash ?? `${blockNum}-${idx}`
+                    }))
+                );
             }
 
             this.processingBlocks = this.processingBlocks.filter(b => b !== blockNum);

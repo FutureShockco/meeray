@@ -13,21 +13,15 @@ import { toBigInt, toDbString } from '../../utils/bigint.js';
 import validate from '../../validation/index.js';
 import config from '../../config.js';
 
-function generateLaunchpadId(userId: string, tokenSymbol: string, transactionId?: string): string {
+function generateLaunchpadId(sender: string, tokenSymbol: string, transactionId?: string): string {
   const txId = transactionId || 'no-tx';
   return `pad-${crypto.createHash('sha256')
-    .update(`${userId}_${tokenSymbol}_${txId}`)
+    .update(`${sender}_${tokenSymbol}_${txId}`)
     .digest('hex')
     .substring(0, 12)}`;
 }
 
-export async function validateTx(data: LaunchpadLaunchTokenData, sender: string): Promise<boolean> {
-  logger.debug(`[launchpad-launch-token] Validating launch request from ${sender}`);
-
-  if (sender !== data.userId) {
-    logger.warn('[launchpad-launch-token] Sender must match userId for the launch request.');
-    return false;
-  }
+export async function validateTx(data: LaunchpadLaunchTokenData, sender: string, transactionId?: string, timestamp?: number): Promise<boolean> {
 
   if (!data.tokenName || !data.tokenSymbol || !data.totalSupply) {
     logger.warn('[launchpad-launch-token] Missing core token information: tokenName, tokenSymbol, totalSupply.');
