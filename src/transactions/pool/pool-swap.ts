@@ -209,16 +209,22 @@ async function validateAutoRouteSwap(data: PoolSwapData, sender: string, traderA
 
 // Helper function to find trading pair ID regardless of token order
 async function findTradingPairId(tokenA: string, tokenB: string): Promise<string | null> {
-    // Try both orders: tokenA-tokenB and tokenB-tokenA
-    let pairId = `${tokenA}-${tokenB}`;
-    let tradingPair = await cache.findOnePromise('tradingPairs', { _id: pairId });
+    // Try multiple patterns: hyphen and underscore, both orders
+    const patterns = [
+        `${tokenA}-${tokenB}`,   // tokenA-tokenB (hyphen)
+        `${tokenB}-${tokenA}`,   // tokenB-tokenA (hyphen)
+        `${tokenA}_${tokenB}`,   // tokenA_tokenB (underscore)
+        `${tokenB}_${tokenA}`    // tokenB_tokenA (underscore)
+    ];
 
-    if (!tradingPair) {
-        pairId = `${tokenB}-${tokenA}`;
-        tradingPair = await cache.findOnePromise('tradingPairs', { _id: pairId });
+    for (const pairId of patterns) {
+        const tradingPair = await cache.findOnePromise('tradingPairs', { _id: pairId });
+        if (tradingPair) {
+            return pairId;
+        }
     }
 
-    return tradingPair ? pairId : null;
+    return null;
 }
 
 // Helper function to record pool swaps as market trades
@@ -332,8 +338,10 @@ async function recordPoolSwapTrade(params: {
             cache.insertOne('trades', tradeRecord, (err, result) => {
                 if (err || !result) {
                     logger.error(`[pool-swap] Failed to record trade: ${err}`);
+                    logger.error(`[pool-swap] Trade record that failed:`, JSON.stringify(tradeRecord, null, 2));
                     reject(err);
                 } else {
+                    logger.debug(`[pool-swap] Successfully recorded trade ${tradeRecord._id}`);
                     resolve();
                 }
             });

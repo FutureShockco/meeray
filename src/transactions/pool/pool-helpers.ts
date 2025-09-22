@@ -18,10 +18,10 @@ export async function createLiquidityPool(
     const poolDocument: LiquidityPoolData = {
       _id: poolId,
       tokenA_symbol,
-      tokenA_reserve: toDbString(BigInt(0)),
+      tokenA_reserve: toDbString(0),
       tokenB_symbol,
-      tokenB_reserve: toDbString(BigInt(0)),
-      totalLpTokens: toDbString(BigInt(0)),
+      tokenB_reserve: toDbString(0),
+      totalLpTokens: toDbString(0),
       createdAt: new Date().toISOString(),
       status: 'ACTIVE'
     };
@@ -50,7 +50,7 @@ export async function createLpToken(
 ): Promise<boolean> {
   try {
     const lpTokenSymbol = getLpTokenSymbol(tokenA_symbol, tokenB_symbol);
-    
+
     const existingLpToken = await cache.findOnePromise('tokens', { _id: lpTokenSymbol });
     if (existingLpToken) {
       logger.debug(`[pool-helpers] LP token ${lpTokenSymbol} already exists`);
@@ -60,11 +60,11 @@ export async function createLpToken(
     const lpToken = {
       _id: lpTokenSymbol,
       symbol: lpTokenSymbol,
-      name: `LP Token for ${tokenA_symbol}-${tokenB_symbol}`,
+      name: `LP Token for ${tokenA_symbol}_${tokenB_symbol}`,
       issuer: 'null',
       precision: 18,
-      maxSupply: toDbString(BigInt(1000000000000000000)), // Large max supply
-      currentSupply: toDbString(BigInt(0)),
+      maxSupply: toDbString(1000000000000000000), // Large max supply
+      currentSupply: toDbString(0),
       mintable: false,
       burnable: false,
       description: `Liquidity provider token for pool ${poolId}`,
@@ -174,7 +174,7 @@ export async function updatePoolReserves(
   lpTokensToMint: bigint
 ): Promise<boolean> {
   const isInitialLiquidity = toBigInt(pool.totalLpTokens) === BigInt(0);
-  
+
   // For initial liquidity, calculate the actual minimum that was burned
   let minimumLiquidityBurned = BigInt(0);
   if (isInitialLiquidity) {
@@ -182,13 +182,13 @@ export async function updatePoolReserves(
     const BASE_MINIMUM = BigInt(1000);
     const totalLiquidity = lpTokensToMint + BASE_MINIMUM; // Approximate total before burn
     const ADAPTIVE_MINIMUM = totalLiquidity / BigInt(1000);
-    minimumLiquidityBurned = ADAPTIVE_MINIMUM > BigInt(0) && ADAPTIVE_MINIMUM < BASE_MINIMUM 
-      ? ADAPTIVE_MINIMUM 
+    minimumLiquidityBurned = ADAPTIVE_MINIMUM > BigInt(0) && ADAPTIVE_MINIMUM < BASE_MINIMUM
+      ? ADAPTIVE_MINIMUM
       : BASE_MINIMUM;
   }
-  
+
   const totalLpTokensToAdd = isInitialLiquidity ? lpTokensToMint + minimumLiquidityBurned : lpTokensToMint;
-  
+
   const poolUpdateSuccess = await cache.updateOnePromise(
     'liquidityPools',
     { _id: poolId },
@@ -197,8 +197,8 @@ export async function updatePoolReserves(
         tokenA_reserve: toDbString(toBigInt(pool.tokenA_reserve) + toBigInt(tokenAAmount)),
         tokenB_reserve: toDbString(toBigInt(pool.tokenB_reserve) + toBigInt(tokenBAmount)),
         totalLpTokens: toDbString(toBigInt(pool.totalLpTokens) + totalLpTokensToAdd),
-        feeGrowthGlobalA: toDbString(pool.feeGrowthGlobalA || BigInt(0)),
-        feeGrowthGlobalB: toDbString(pool.feeGrowthGlobalB || BigInt(0)),
+        feeGrowthGlobalA: toDbString(pool.feeGrowthGlobalA || '0'),
+        feeGrowthGlobalB: toDbString(pool.feeGrowthGlobalB || '0'),
         lastUpdatedAt: new Date().toISOString()
       }
     }
@@ -223,25 +223,25 @@ export async function updateUserLiquidityPosition(
 ): Promise<boolean> {
   const userPositionId = `${user}-${poolId}`;
   const existingUserPosDB = await cache.findOnePromise('userLiquidityPositions', { _id: userPositionId }) as UserLiquidityPositionData | null;
-  
-  const existingUserPos = existingUserPosDB ? {
-    ...existingUserPosDB,
-    lpTokenBalance: toBigInt(existingUserPosDB.lpTokenBalance),
-    feeGrowthEntryA: toBigInt(existingUserPosDB.feeGrowthEntryA || '0'),
-    feeGrowthEntryB: toBigInt(existingUserPosDB.feeGrowthEntryB || '0'),
-    unclaimedFeesA: toBigInt(existingUserPosDB.unclaimedFeesA || '0'),
-    unclaimedFeesB: toBigInt(existingUserPosDB.unclaimedFeesB || '0'),
-  } : null;
+
+    const existingUserPos = existingUserPosDB ? {
+      ...existingUserPosDB,
+      lpTokenBalance: toBigInt(existingUserPosDB.lpTokenBalance),
+      feeGrowthEntryA: toBigInt(existingUserPosDB.feeGrowthEntryA || '0'),
+      feeGrowthEntryB: toBigInt(existingUserPosDB.feeGrowthEntryB || '0'),
+      unclaimedFeesA: toBigInt(existingUserPosDB.unclaimedFeesA || '0'),
+      unclaimedFeesB: toBigInt(existingUserPosDB.unclaimedFeesB || '0'),
+    } : null;
 
   let userPosUpdateSuccess = false;
 
   if (existingUserPos) {
     // Calculate unclaimed fees before updating position
-    const deltaA = toBigInt(pool.feeGrowthGlobalA || '0') - toBigInt(existingUserPos.feeGrowthEntryA || '0');
-    const deltaB = toBigInt(pool.feeGrowthGlobalB || '0') - toBigInt(existingUserPos.feeGrowthEntryB || '0');
+      const deltaA = toBigInt(pool.feeGrowthGlobalA || '0') - toBigInt(existingUserPos.feeGrowthEntryA || '0');
+      const deltaB = toBigInt(pool.feeGrowthGlobalB || '0') - toBigInt(existingUserPos.feeGrowthEntryB || '0');
     const newUnclaimedFeesA = (existingUserPos.unclaimedFeesA || BigInt(0)) + (deltaA * existingUserPos.lpTokenBalance) / BigInt(1e18);
     const newUnclaimedFeesB = (existingUserPos.unclaimedFeesB || BigInt(0)) + (deltaB * existingUserPos.lpTokenBalance) / BigInt(1e18);
-    
+
     userPosUpdateSuccess = await cache.updateOnePromise(
       'userLiquidityPositions',
       { _id: userPositionId },
@@ -269,7 +269,7 @@ export async function updateUserLiquidityPosition(
       createdAt: new Date().toISOString(),
       lastUpdatedAt: new Date().toISOString()
     };
-    
+
     userPosUpdateSuccess = await new Promise<boolean>((resolve) => {
       cache.insertOne('userLiquidityPositions', newUserPosition, (err, success) => {
         if (err || !success) {
@@ -302,7 +302,7 @@ export async function creditLpTokens(
 ): Promise<boolean> {
   const lpTokenSymbol = getLpTokenSymbol(tokenASymbol, tokenBSymbol);
   const existingLpToken = await cache.findOnePromise('tokens', { _id: lpTokenSymbol });
-  
+
   if (!existingLpToken) {
     logger.error(`[pool-helpers] LP token ${lpTokenSymbol} does not exist for pool ${poolId}. This should be created during pool creation.`);
     return false;

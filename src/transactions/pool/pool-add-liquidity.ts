@@ -60,8 +60,8 @@ export async function processTx(data: PoolAddLiquidityData, sender: string, id: 
     // Prepare pool data with fee accounting fields
     const pool = {
       ...poolDB,
-      feeGrowthGlobalA: toBigInt(poolDB.feeGrowthGlobalA || '0'),
-      feeGrowthGlobalB: toBigInt(poolDB.feeGrowthGlobalB || '0')
+      feeGrowthGlobalA: toBigInt(poolDB.feeGrowthGlobalA || 0),
+      feeGrowthGlobalB: toBigInt(poolDB.feeGrowthGlobalB || 0)
     };
 
     // Debit tokens from the provider's account
