@@ -213,14 +213,12 @@ export async function process(data: HybridTradeData, sender: string, transaction
         // Check if AMM output meets minAmountOut requirement
         if (data.minAmountOut && toBigInt(quote.amountOut) < toBigInt(data.minAmountOut)) {
           // AMM output too low - use orderbook as limit order with calculated price
-          // Calculate price considering different token decimals
-          const calculatedPrice = calculateDecimalAwarePrice(
-            toBigInt(data.amountIn),
-            toBigInt(data.minAmountOut),
-            data.tokenIn,
-            data.tokenOut
-          );
-          logger.info(`[hybrid-trade] AMM output ${quote.amountOut} below minAmountOut ${data.minAmountOut}. Routing to orderbook as limit order at calculated price ${calculatedPrice} (considering token decimals)`);
+          // Calculate price in quote asset's smallest units per 1 base asset, scaling numerator for precision
+          const quoteDecimals = getTokenDecimals(data.tokenIn);
+          const baseDecimals = getTokenDecimals(data.tokenOut);
+          // price = (amountIn * 10^(quoteDecimals + baseDecimals)) / minAmountOut
+          const calculatedPrice = (toBigInt(data.amountIn) * BigInt(10 ** (quoteDecimals + baseDecimals))) / toBigInt(data.minAmountOut);
+          logger.info(`[hybrid-trade] AMM output ${quote.amountOut} below minAmountOut ${data.minAmountOut}. Routing to orderbook as limit order at calculated price ${calculatedPrice} (quote+base decimals: ${quoteDecimals}+${baseDecimals})`);
 
           // Find the correct trading pair ID regardless of token order
           const pairId = await findTradingPairId(data.tokenIn, data.tokenOut);
@@ -474,27 +472,31 @@ async function executeOrderbookRoute(
 
     // Get the price for this order
     const orderPrice = tradeData.price || orderbookDetails.price;
-    logger.debug(`[executeOrderbookRoute] Order price: ${orderPrice}, tradeData.price: ${tradeData.price}, orderbookDetails.price: ${orderbookDetails.price}`);
+    logger.info(`[executeOrderbookRoute] Order price: ${orderPrice}, tradeData.price: ${tradeData.price}, orderbookDetails.price: ${orderbookDetails.price}`);
 
     // Calculate the correct quantity based on order side
     let orderQuantity: bigint;
     if (orderbookDetails.side === OrderSide.BUY) {
       // For buy orders, quantity should be the amount of base currency to buy
-      // Correct formula: quantity = (amountIn * 10^baseDecimals) / price
+      // Universal formula for any decimals:
+      // quantity = (amountIn * 10^(baseDecimals)) / price
+      // where amountIn is in quote token's smallest units, price is in quote token's smallest units per base token
       if (!orderPrice) {
         return { success: false, amountOut: BigInt(0), error: 'Price required for buy orders' };
       }
 
       const baseDecimals = getTokenDecimals(pair.baseAssetSymbol);
-      // amountIn is in quote token's smallest units
-      // price is in quote token units per base token, scaled by quote decimals
-      orderQuantity = (amountIn * BigInt(10 ** baseDecimals)) / toBigInt(orderPrice);
+      const quoteDecimals = getTokenDecimals(pair.quoteAssetSymbol);
+      // This formula works for any decimals:
+  // Universal formula for any decimals:
+  // quantity = (amountIn * 10^(baseDecimals + quoteDecimals)) / (orderPrice * 10^quoteDecimals)
+  orderQuantity = (amountIn * BigInt(10 ** (baseDecimals + quoteDecimals))) / (toBigInt(orderPrice) * BigInt(10 ** quoteDecimals));
     } else {
       // For sell orders, quantity is the amount of base currency to sell
       orderQuantity = amountIn;
     }
 
-    logger.debug(`[executeOrderbookRoute] Order quantity: ${orderQuantity}, amountIn: ${amountIn}, orderPrice: ${orderPrice}`);
+    logger.info(`[executeOrderbookRoute] Order quantity: ${orderQuantity}, amountIn: ${amountIn}, orderPrice: ${orderPrice}`);
 
     // Create order (limit or market)
     const orderData: any = {
@@ -510,7 +512,7 @@ async function executeOrderbookRoute(
     // Add price for limit orders (from tradeData or route details)
     if (orderType === OrderType.LIMIT) {
       orderData.price = orderPrice;
-      logger.debug(`[executeOrderbookRoute] Setting order price to: ${orderData.price}`);
+      logger.info(`[executeOrderbookRoute] Setting order price to: ${orderData.price}`);
     }
 
     const createdOrder = createOrder(orderData);
