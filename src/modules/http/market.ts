@@ -265,7 +265,8 @@ router.get('/stats/:pairId', (async (req: Request, res: Response) => {
     const oneDayAgo = now - (24 * 60 * 60 * 1000);
     const recentTrades = trades.filter(trade => trade.timestamp > oneDayAgo);
 
-    const volume24h = recentTrades.reduce((sum, trade) => sum + Number(toBigInt(trade.volume || 0)), 0);
+    // Sum as bigint in smallest units
+    const volume24h = recentTrades.reduce((sum, trade) => sum + toBigInt(trade.volume || 0), 0n);
     const tradeCount24h = recentTrades.length;
 
     // Get price statistics
@@ -281,7 +282,7 @@ router.get('/stats/:pairId', (async (req: Request, res: Response) => {
     }
 
     // Get current orders for this pair
-    const orders = await cache.findPromise('orders', { pairId }) || [];
+  const orders = await cache.findPromise('orders', { pairId }, { sort: { timestamp: -1 } }) || [];
     const buyOrders = orders.filter(order => order.side === 'buy' &&
       (order.status === 'open' || order.status === 'partial'));
     const sellOrders = orders.filter(order => order.side === 'sell' &&
@@ -298,7 +299,7 @@ router.get('/stats/:pairId', (async (req: Request, res: Response) => {
     res.json({
       pairId,
       pair,
-      volume24h: formatAmount(BigInt(Math.round(volume24h * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol)))), pair.quoteAssetSymbol),
+      volume24h: formatAmount(volume24h, pair.quoteAssetSymbol),
       rawVolume24h: volume24h.toString(),
       tradeCount24h,
       priceChange24h: formatAmount(BigInt(Math.round(priceChange24h * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
@@ -426,7 +427,7 @@ router.get('/orderbook/:pairId', (async (req: Request, res: Response) => {
 
     res.json({
       pairId,
-      timestamp: Date.now(),
+      timestamp: new Date().toISOString(),
       bids,
       asks,
       spread: formatAmount(BigInt(Math.round(spread * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
@@ -505,7 +506,7 @@ router.get('/trades/:pairId', (async (req: Request, res: Response) => {
     // Calculate summary statistics
     const volume24h = formattedTrades
       .filter(trade => trade.timestamp > Date.now() - (24 * 60 * 60 * 1000))
-      .reduce((sum, trade) => sum + Number(trade.rawVolume), 0);
+      .reduce((sum, trade) => sum + toBigInt(trade.rawVolume), 0n);
 
     const priceRange = formattedTrades.length > 0 ? {
       high: Math.max(...formattedTrades.map(t => Number(t.rawPrice))),
@@ -528,10 +529,10 @@ router.get('/trades/:pairId', (async (req: Request, res: Response) => {
       trades: formattedTrades,
       summary: {
         count: formattedTrades.length,
-        volume24h: formatAmount(BigInt(Math.round(volume24h)), pair.quoteAssetSymbol),
-        rawVolume24h: Math.round(volume24h).toString(),
+        volume24h: formatAmount(volume24h, pair.quoteAssetSymbol),
+        rawVolume24h: volume24h.toString(),
         priceRange,
-        timestamp: Date.now()
+        timestamp: new Date().toISOString()
       },
       pagination: {
         limit: Number(limit),
@@ -664,7 +665,7 @@ router.get('/pairs/:pairId', (async (req: Request, res: Response) => {
 router.get('/orders/pair/:pairId', (async (req: Request, res: Response) => {
   try {
     const { pairId } = req.params;
-    const orders = await cache.findPromise('orders', { pairId });
+  const orders = await cache.findPromise('orders', { pairId }, { sort: { timestamp: -1 } });
 
     res.json({
       pairId,
@@ -698,10 +699,10 @@ router.get('/orders/user/:userId', (async (req: Request, res: Response) => {
 
     if (status === 'active') {
       filter.status = { $in: ['open', 'partially_filled'] };
-    } 
+    }
     else if (status) {
       filter.status = status;
-    } 
+    }
     else {
       // By default, exclude cancelled and rejected orders
       filter.status = { $in: ['cancelled', 'rejected', 'expired', 'filled'] };
@@ -773,7 +774,7 @@ router.get('/orders/user/:userId', (async (req: Request, res: Response) => {
         side: side || null,
         limit: Number(limit)
       },
-      timestamp: Date.now()
+      timestamp: new Date().toISOString()
     });
   } catch (error: any) {
     logger.error('Error fetching user orders:', error);

@@ -434,7 +434,7 @@ export async function recordPoolSwapTrade(params: {
       price: price.toString(),
       quantity: quantity.toString(),
       volume: volume.toString(),
-      timestamp: Date.now(),
+      timestamp: new Date().toISOString(),
       side: tradeSide,
       type: 'market', // Pool swaps are market orders
       source: 'pool', // Mark as pool source

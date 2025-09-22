@@ -88,11 +88,15 @@ export async function recordAMMTrade(params: {
                 // User bought base asset with quote asset
                 quantity = params.amountOut; // Amount of base received
                 volume = params.amountIn;    // Amount of quote spent
+                // Price = quote spent / base received = amountIn / amountOut
+                // calculateDecimalAwarePrice(amountIn, amountOut, tokenInSymbol, tokenOutSymbol)
                 priceValue = calculateDecimalAwarePrice(params.amountIn, params.amountOut, quoteSymbol, baseSymbol);
             } else {
                 // User sold base asset for quote asset
                 quantity = params.amountIn;  // Amount of base sold
                 volume = params.amountOut;   // Amount of quote received
+                // Price = quote received / base sold = amountOut / amountIn
+                // calculateDecimalAwarePrice(amountIn, amountOut, tokenInSymbol, tokenOutSymbol)
                 priceValue = calculateDecimalAwarePrice(params.amountOut, params.amountIn, quoteSymbol, baseSymbol);
             }
         } else {
@@ -101,31 +105,30 @@ export async function recordAMMTrade(params: {
             quoteSymbol = params.tokenIn;
             quantity = params.amountOut;
             volume = params.amountIn;
+            // Price = quote spent / base received = amountIn / amountOut
             priceValue = calculateDecimalAwarePrice(params.amountIn, params.amountOut, quoteSymbol, baseSymbol);
         }
 
-        // Ensure price is not zero - if it is, calculate a simple price
+        // Ensure price is not zero - if it is, recalculate using the correct formula
         if (priceValue === 0n && quantity > 0n && volume > 0n) {
-            // Calculate price considering decimal differences
+            // Recalculate price using the same logic as calculateDecimalAwarePrice
+            // but with the correct token order based on the trade direction
             const tokenInDecimals = getTokenDecimals(params.tokenIn);
             const tokenOutDecimals = getTokenDecimals(params.tokenOut);
             const decimalDifference = tokenOutDecimals - tokenInDecimals;
 
-            // Adjust for decimal differences in the calculation
-            let adjustedVolume = volume;
-            let adjustedQuantity = quantity;
-
-            if (decimalDifference > 0) {
-                // TokenOut has more decimals, scale up volume
-                adjustedVolume = volume * BigInt(10 ** decimalDifference);
-            } else if (decimalDifference < 0) {
-                // TokenIn has more decimals, scale up quantity
-                adjustedQuantity = quantity * BigInt(10 ** (-decimalDifference));
+            // Calculate price using the same formula as calculateDecimalAwarePrice
+            if (decimalDifference >= 0) {
+                // TokenOut has more decimals, scale up amountIn (volume)
+                const scalingFactor = BigInt(10 ** decimalDifference);
+                const quoteDecimals = getTokenDecimals(quoteSymbol);
+                priceValue = (volume * scalingFactor * BigInt(10 ** quoteDecimals)) / quantity;
+            } else {
+                // TokenIn has more decimals, scale up amountOut (quantity)
+                const scalingFactor = BigInt(10 ** (-decimalDifference));
+                const quoteDecimals = getTokenDecimals(quoteSymbol);
+                priceValue = (volume * BigInt(10 ** quoteDecimals)) / (quantity * scalingFactor);
             }
-
-            // Calculate price: (adjustedVolume * 10^quoteDecimals) / adjustedQuantity
-            const quoteDecimals = getTokenDecimals(quoteSymbol);
-            priceValue = (adjustedVolume * BigInt(10 ** quoteDecimals)) / adjustedQuantity;
 
             // Ensure price is never negative
             if (priceValue < 0n) {
@@ -133,7 +136,7 @@ export async function recordAMMTrade(params: {
                 priceValue = 0n;
             }
 
-            logger.warn(`[recordAMMTrade] Price was 0, using decimal-aware calculation: ${priceValue} for ${volume} ${quoteSymbol}/${quantity} ${baseSymbol} (decimals: ${tokenInDecimals}/${tokenOutDecimals})`);
+            logger.warn(`[recordAMMTrade] Price was 0, using corrected calculation: ${priceValue} for ${volume} ${quoteSymbol}/${quantity} ${baseSymbol} (decimals: ${tokenInDecimals}/${tokenOutDecimals})`);
         }
 
         // Debug logging
@@ -182,6 +185,10 @@ export async function recordAMMTrade(params: {
             .update(`${pairId}_${params.tokenIn}_${params.tokenOut}_${params.sender}_${params.transactionId}_${params.amountOut}`)
             .digest('hex')
             .substring(0, 16);
+        
+        logger.debug(`[recordAMMTrade] Generated trade ID: ${tradeId}`);
+        logger.debug(`[recordAMMTrade] Price value: ${priceValue}, Quantity: ${quantity}, Volume: ${volume}`);
+        
         const tradeRecord = {
             _id: tradeId,
             pairId: pairId,
@@ -194,7 +201,7 @@ export async function recordAMMTrade(params: {
             price: toDbString(priceValue), // Use toDbString for proper BigInt conversion
             quantity: toDbString(quantity),
             volume: toDbString(volume),
-            timestamp: Date.now(),
+            timestamp: new Date().toISOString(),
             side: tradeSide,
             type: 'market', // AMM trades are market orders
             source: 'pool', // Mark as pool source (changed from 'amm' to match your data)
@@ -205,14 +212,21 @@ export async function recordAMMTrade(params: {
             takerFee: '0',
             total: toDbString(volume)
         };
+        
+        logger.debug(`[recordAMMTrade] Trade record created: ${JSON.stringify(tradeRecord, null, 2)}`);
 
         // Save to trades collection
         await new Promise<void>((resolve, reject) => {
             cache.insertOne('trades', tradeRecord, (err, result) => {
-                if (err || !result) {
-                    logger.error(`[recordAMMTrade] Failed to record AMM trade: ${err}`);
+                logger.debug(`[recordAMMTrade] Cache insertOne callback - err: ${err}, result: ${result}`);
+                if (err) {
+                    logger.error(`[recordAMMTrade] Database error recording AMM trade: ${err}`);
                     reject(err);
+                } else if (!result) {
+                    logger.warn(`[recordAMMTrade] Trade record already exists (duplicate), skipping insertion`);
+                    resolve(); // Don't treat duplicates as errors
                 } else {
+                    logger.debug(`[recordAMMTrade] Successfully recorded AMM trade`);
                     resolve();
                 }
             });

@@ -248,7 +248,13 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
           } else {
             // User wants to sell base token for quote token  
             // For sell orders, amountIn is base token, minAmountOut is quote token
-            // We need price in quote per base, so: price = minAmountOut per amountIn
+            // We need price in quote per base, so: price = minAmountOut / amountIn
+            // But we need to scale to the correct decimal precision for the orderbook
+            const quoteDecimals = getTokenDecimals(pair.quoteAssetSymbol);
+            
+            // Calculate the price in the smallest units of both tokens
+            // price = (minAmountOut in quote units) / (amountIn in base units)
+            // Then scale to the orderbook's expected precision
             calculatedPrice = (toBigInt(data.minAmountOut) * BigInt(10 ** baseDecimals)) / toBigInt(data.amountIn);
           }
 
@@ -517,6 +523,7 @@ async function executeOrderbookRoute(
       orderQuantity = (amountIn * BigInt(10 ** baseDecimals)) / toBigInt(orderPrice);
     } else {
       // For sell orders, quantity is the amount of base currency to sell
+      // amountIn is the amount of base token (MRY) the user wants to sell
       orderQuantity = amountIn;
     }
 

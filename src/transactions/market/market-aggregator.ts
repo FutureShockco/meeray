@@ -31,6 +31,8 @@ export class LiquidityAggregator {
     const pools: LiquiditySource[] = [];
 
     try {
+      logger.debug(`[LiquidityAggregator] Searching for AMM pools with tokens: ${tokenA}/${tokenB}`);
+      
       // Find pools containing both tokens
       const poolsData = await cache.findPromise('liquidityPools', {
         $or: [
@@ -39,7 +41,15 @@ export class LiquidityAggregator {
         ]
       }) as LiquidityPoolData[];
 
+      logger.debug(`[LiquidityAggregator] Found ${poolsData?.length || 0} pools in database`);
+
       for (const pool of poolsData || []) {
+        const reserveA = toBigInt(pool.tokenA_reserve);
+        const reserveB = toBigInt(pool.tokenB_reserve);
+        const hasLiquidity = reserveA > 0n && reserveB > 0n;
+        
+        logger.debug(`[LiquidityAggregator] Pool ${pool._id}: ${pool.tokenA_symbol}(${reserveA})/${pool.tokenB_symbol}(${reserveB}) - Has liquidity: ${hasLiquidity}`);
+        
         // Include pools even with 0 reserves for routing purposes
         // They can still be used for price discovery and routing
         pools.push({
@@ -49,7 +59,7 @@ export class LiquidityAggregator {
           tokenB: pool.tokenB_symbol,
           reserveA: pool.tokenA_reserve,
           reserveB: pool.tokenB_reserve,
-          hasLiquidity: toBigInt(pool.tokenA_reserve) > 0n && toBigInt(pool.tokenB_reserve) > 0n
+          hasLiquidity: hasLiquidity
         });
       }
 
@@ -122,6 +132,11 @@ export class LiquidityAggregator {
 
       // Filter valid quotes
       const validQuotes = quotes.filter(q => q !== null);
+      
+      logger.debug(`[LiquidityAggregator] Found ${validQuotes.length} valid quotes out of ${quotes.length} total sources`);
+      validQuotes.forEach((quote, index) => {
+        logger.debug(`[LiquidityAggregator] Quote ${index + 1}: ${quote.type} - Output: ${quote.amountOut}, Price Impact: ${quote.priceImpact}`);
+      });
 
       if (validQuotes.length === 0) {
         logger.warn(`[LiquidityAggregator] No valid quotes found`);
@@ -157,6 +172,8 @@ export class LiquidityAggregator {
    * Get quote from AMM pool
    */
   private async getAMMQuote(source: LiquiditySource, tradeData: HybridTradeData): Promise<any | null> {
+    logger.debug(`[LiquidityAggregator] Processing AMM quote for pool ${source.id}: ${source.tokenA}/${source.tokenB}`);
+    
     // Check if pool has liquidity
     if (!source.hasLiquidity) {
       logger.debug(`[LiquidityAggregator] Pool ${source.id} has no liquidity yet`);
@@ -171,20 +188,41 @@ export class LiquidityAggregator {
     const reserveIn = tokenInIsA ? toBigInt(source.reserveA!) : toBigInt(source.reserveB!);
     const reserveOut = tokenInIsA ? toBigInt(source.reserveB!) : toBigInt(source.reserveA!);
 
+    logger.info(`[LiquidityAggregator] Pool ${source.id} reserves: ${reserveIn} ${source.tokenA}, ${reserveOut} ${source.tokenB}`);
+    logger.info(`[LiquidityAggregator] Trade direction: ${tradeData.tokenIn} -> ${tradeData.tokenOut}, amountIn: ${amountIn}`);
+    logger.info(`[LiquidityAggregator] Token direction: tokenInIsA=${tokenInIsA}, reserveIn=${reserveIn}, reserveOut=${reserveOut}`);
+
     // Additional safety check for reserves
     if (reserveIn <= 0n || reserveOut <= 0n) {
       logger.debug(`[LiquidityAggregator] Pool ${source.id} has insufficient reserves: ${reserveIn}/${reserveOut}`);
       return null;
     }
 
+    // Check if the input amount is reasonable compared to reserves
+    const inputRatio = Number(amountIn) / Number(reserveIn);
+    if (inputRatio > 0.1) { // More than 10% of the pool
+      logger.warn(`[LiquidityAggregator] Large trade detected: ${amountIn} is ${(inputRatio * 100).toFixed(2)}% of pool reserve ${reserveIn}. This may cause high slippage.`);
+    }
+
     // Calculate output using constant product formula with fees (fixed 0.3% fee)
-    const amountInWithFee = amountIn * BigInt(9700); // 10000 - 300 = 9700 for 0.3% fee
+    const feeMultiplier = BigInt(9700); // 10000 - 300 = 9700 for 0.3% fee
+    const feeDivisor = BigInt(10000);
+    const amountInWithFee = (amountIn * feeMultiplier) / feeDivisor;
+    
+    if (amountInWithFee <= 0n) return null;
+    
     const numerator = amountInWithFee * reserveOut;
-    const denominator = (reserveIn * BigInt(10000)) + amountInWithFee;
+    const denominator = reserveIn + amountInWithFee;
+    
+    if (denominator === 0n) return null;
+    
     const amountOut = numerator / denominator;
 
     // Calculate price impact
     const priceImpact = Number(amountIn) / Number(reserveIn);
+
+    logger.info(`[LiquidityAggregator] Pool ${source.id} calculated output: ${amountOut} ${tradeData.tokenOut} for input: ${amountIn} ${tradeData.tokenIn}`);
+    logger.info(`[LiquidityAggregator] Pool ${source.id} calculation details: amountInWithFee=${amountInWithFee}, numerator=${numerator}, denominator=${denominator}`);
 
     return {
       type: 'AMM',
@@ -241,11 +279,28 @@ export class LiquidityAggregator {
    * Find optimal route combination
    */
   private findOptimalRoute(quotes: any[], tradeData: HybridTradeData): HybridQuote {
-    // For now, pick the best single route
-    // TODO: Implement more sophisticated route splitting
-    const bestQuote = quotes.reduce((best, current) =>
-      toBigInt(current.amountOut) > toBigInt(best.amountOut) ? current : best
-    );
+    // Prioritize AMM pools over orderbook for better liquidity and price discovery
+    const ammQuotes = quotes.filter(q => q.type === 'AMM');
+    const orderbookQuotes = quotes.filter(q => q.type === 'ORDERBOOK');
+    
+    let bestQuote: any;
+    
+    if (ammQuotes.length > 0) {
+      // If AMM pools are available, use the best AMM quote
+      bestQuote = ammQuotes.reduce((best, current) =>
+        toBigInt(current.amountOut) > toBigInt(best.amountOut) ? current : best
+      );
+      logger.debug(`[LiquidityAggregator] Selected AMM route with output: ${bestQuote.amountOut}`);
+    } else if (orderbookQuotes.length > 0) {
+      // Fallback to orderbook if no AMM pools available
+      bestQuote = orderbookQuotes.reduce((best, current) =>
+        toBigInt(current.amountOut) > toBigInt(best.amountOut) ? current : best
+      );
+      logger.debug(`[LiquidityAggregator] Selected orderbook route with output: ${bestQuote.amountOut}`);
+    } else {
+      // This should not happen as we filter valid quotes earlier
+      throw new Error('No valid quotes available');
+    }
 
     return {
       amountIn: tradeData.amountIn.toString(),
