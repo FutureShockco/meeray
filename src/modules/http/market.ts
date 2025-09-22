@@ -496,7 +496,7 @@ router.get('/trades/:pairId', (async (req: Request, res: Response) => {
       return {
         id: trade._id || trade.id,
         timestamp: trade.timestamp,
-        price: formatAmount(priceBigInt, priceTokenSymbol),
+        price: formatAmount(priceBigInt, pair.baseAssetSymbol),
         rawPrice: priceBigInt.toString(),
         quantity: formatAmount(quantityBigInt, pair.baseAssetSymbol),
         rawQuantity: quantityBigInt.toString(),
