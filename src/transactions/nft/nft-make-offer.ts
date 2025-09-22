@@ -13,7 +13,7 @@ import crypto from 'crypto';
 function generateOfferId(targetType: string, targetId: string, offerBy: string, timestamp?: number): string {
   const ts = timestamp || Date.now();
   return crypto.createHash('sha256')
-    .update(`${targetType}-${targetId}-${offerBy}-${ts}`)
+    .update(`${targetType}_${targetId}_${offerBy}_${ts}`)
     .digest('hex')
     .substring(0, 16);
 }

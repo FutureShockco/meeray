@@ -116,7 +116,7 @@ export class OrderBook {
             const tradePrice = toBigInt(makerOrder.price!);
             // Generate deterministic trade ID based on the order matching
             const tradeId = crypto.createHash('sha256')
-                .update(`${this.pairId}-${makerOrder._id}-${takerOrder._id}-${quantityToTrade}-${tradePrice}`)
+                .update(`${this.pairId}_${makerOrder._id}_${takerOrder._id}_${quantityToTrade}_${tradePrice}`)
                 .digest('hex')
                 .substring(0, 16);
             const trade: TradeData = {

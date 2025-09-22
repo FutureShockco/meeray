@@ -28,7 +28,7 @@ export async function validateTx(data: FarmClaimRewardsData, sender: string): Pr
       return false;
     }
 
-    const userFarmPositionId = `${data.staker}-${data.farmId}`;
+    const userFarmPositionId = `${data.staker}_${data.farmId}`;
     const userFarmPos = await cache.findOnePromise('userFarmPositions', { _id: userFarmPositionId }) as UserFarmPositionData | null;
     if (!userFarmPos) { // User must have a position to claim rewards
       logger.warn(`[farm-claim-rewards] Staker ${data.staker} has no staking position in farm ${data.farmId}.`);
@@ -52,7 +52,7 @@ export async function validateTx(data: FarmClaimRewardsData, sender: string): Pr
 export async function processTx(data: FarmClaimRewardsData, sender: string, id: string, ts?: number): Promise<boolean> {
   try {
     const farm = (await cache.findOnePromise('farms', { _id: data.farmId }) as FarmData);
-    const userFarmPositionId = `${data.staker}-${data.farmId}`;
+    const userFarmPositionId = `${data.staker}_${data.farmId}`;
     const userFarmPos = (await cache.findOnePromise('userFarmPositions', { _id: userFarmPositionId }) as UserFarmPositionData);
 
     // Use Steem tx timestamp if provided to make replays deterministic

@@ -34,7 +34,7 @@ export async function createLiquidityPool(
       return false;
     }
 
-    logger.debug(`[pool-helpers] Liquidity Pool ${poolId} (${tokenA_symbol}-${tokenB_symbol}) created successfully`);
+    logger.debug(`[pool-helpers] Liquidity Pool ${poolId} (${tokenA_symbol}_${tokenB_symbol}) created successfully`);
     return true;
   } catch (error) {
     logger.error(`[pool-helpers] Error creating liquidity pool ${poolId}: ${error}`);
@@ -223,7 +223,7 @@ export async function updateUserLiquidityPosition(
   lpTokensToMint: bigint,
   pool: LiquidityPoolData
 ): Promise<boolean> {
-  const userPositionId = `${user}-${poolId}`;
+  const userPositionId = `${user}_${poolId}`;
   const existingUserPosDB = await cache.findOnePromise('userLiquidityPositions', { _id: userPositionId }) as UserLiquidityPositionData | null;
 
   const existingUserPos = existingUserPosDB ? {
@@ -324,8 +324,8 @@ export async function creditLpTokens(
 export async function findTradingPairId(tokenA: string, tokenB: string): Promise<string | null> {
   // Try multiple patterns: hyphen and underscore, both orders
   const patterns = [
-    `${tokenA}-${tokenB}`,   // tokenA-tokenB (hyphen)
-    `${tokenB}-${tokenA}`,   // tokenB-tokenA (hyphen)
+    `${tokenA}_${tokenB}`,   // tokenA-tokenB (hyphen)
+    `${tokenB}_${tokenA}`,   // tokenB-tokenA (hyphen)
     `${tokenA}_${tokenB}`,   // tokenA_tokenB (underscore)
     `${tokenB}_${tokenA}`    // tokenB_tokenA (underscore)
   ];
@@ -354,7 +354,7 @@ export async function recordPoolSwapTrade(params: {
     // Find the correct trading pair ID regardless of token order
     const pairId = await findTradingPairId(params.tokenIn, params.tokenOut);
     if (!pairId) {
-      logger.debug(`[pool-swap] No trading pair found for ${params.tokenIn}-${params.tokenOut}, skipping trade record`);
+      logger.debug(`[pool-swap] No trading pair found for ${params.tokenIn}_${params.tokenOut}, skipping trade record`);
       return;
     }
 
@@ -419,7 +419,7 @@ export async function recordPoolSwapTrade(params: {
 
     // Create trade record matching the orderbook trade format with deterministic ID
     const tradeId = crypto.createHash('sha256')
-      .update(`${pairId}-${params.tokenIn}-${params.tokenOut}-${params.sender}-${params.transactionId}-${params.amountOut}`)
+      .update(`${pairId}_${params.tokenIn}_${params.tokenOut}_${params.sender}_${params.transactionId}_${params.amountOut}`)
       .digest('hex')
       .substring(0, 16);
     const tradeRecord = {

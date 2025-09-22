@@ -42,7 +42,7 @@ export async function validateTx(data: NFTUpdateMetadataData, sender: string): P
     }
 
     // Check if NFT exists and sender is the owner
-    const fullInstanceId = `${data.collectionSymbol}-${data.instanceId}`;
+    const fullInstanceId = `${data.collectionSymbol}_${data.instanceId}`;
     const nft = await cache.findOnePromise('nfts', { _id: fullInstanceId }) as NFTTokenData | null;
     
     if (!nft) {
@@ -64,14 +64,14 @@ export async function validateTx(data: NFTUpdateMetadataData, sender: string): P
 
     return true;
   } catch (error) {
-    logger.error(`[nft-update] Error validating NFT update for ${data.collectionSymbol}-${data.instanceId} by ${sender}: ${error}`);
+    logger.error(`[nft-update] Error validating NFT update for ${data.collectionSymbol}_${data.instanceId} by ${sender}: ${error}`);
     return false;
   }
 }
 
 export async function processTx(data: NFTUpdateMetadataData, sender: string, id: string): Promise<boolean> {
   try {
-    const fullInstanceId = `${data.collectionSymbol}-${data.instanceId}`;
+    const fullInstanceId = `${data.collectionSymbol}_${data.instanceId}`;
     
     // Fetch NFT to confirm current owner again before proceeding
     const nft = await cache.findOnePromise('nfts', { _id: fullInstanceId }) as NFTTokenData | null;
@@ -122,7 +122,7 @@ export async function processTx(data: NFTUpdateMetadataData, sender: string, id:
 
     return true;
   } catch (error) {
-    logger.error(`[nft-update] Error processing NFT update for ${data.collectionSymbol}-${data.instanceId} by ${sender}: ${error}`);
+    logger.error(`[nft-update] Error processing NFT update for ${data.collectionSymbol}_${data.instanceId} by ${sender}: ${error}`);
     return false;
   }
 } 

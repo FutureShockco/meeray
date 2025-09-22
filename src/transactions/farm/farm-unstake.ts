@@ -37,7 +37,7 @@ export async function validateTx(data: FarmUnstakeData, sender: string): Promise
       return false;
     }
 
-    const userFarmPositionId = `${data.staker}-${data.farmId}`;
+    const userFarmPositionId = `${data.staker}_${data.farmId}`;
     const userFarmPosDB = await cache.findOnePromise('userFarmPositions', { _id: userFarmPositionId }) as UserFarmPositionData | null;
     const userFarmPos = userFarmPosDB;
 
@@ -71,7 +71,7 @@ export async function processTx(data: FarmUnstakeData, sender: string, id: strin
     }
 
     // Optional: prevent unstake below minStake if desired for residuals. Not enforcing here.
-    const userFarmPositionId = `${data.staker}-${data.farmId}`;
+    const userFarmPositionId = `${data.staker}_${data.farmId}`;
     const userFarmPos = (await cache.findOnePromise('userFarmPositions', { _id: userFarmPositionId }) as UserFarmPositionData);
 
     // 1. Decrease staked amount in UserFarmPosition
@@ -105,7 +105,7 @@ export async function processTx(data: FarmUnstakeData, sender: string, id: strin
 
     // 3. Return LP tokens to user's liquidity position
     const poolIdForLp = farm.stakingToken.issuer;
-    const userLpDestinationPositionId = `${data.staker}-${poolIdForLp}`;
+    const userLpDestinationPositionId = `${data.staker}_${poolIdForLp}`;
 
     const existingUserLiquidityPos = await cache.findOnePromise('userLiquidityPositions', { _id: userLpDestinationPositionId }) as UserLiquidityPositionData | null;
 

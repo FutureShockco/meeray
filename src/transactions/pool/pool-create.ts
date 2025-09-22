@@ -41,7 +41,7 @@ export async function processTx(data: PoolData, sender: string, id: string): Pro
       return false;
     }
 
-    logger.debug(`[pool-create] Liquidity Pool ${poolId} (${data.tokenA_symbol}-${data.tokenB_symbol}, Fee: 0.3%) created by ${sender}. LP Token: ${lpTokenSymbol}`);
+    logger.debug(`[pool-create] Liquidity Pool ${poolId} (${data.tokenA_symbol}_${data.tokenB_symbol}, Fee: 0.3%) created by ${sender}. LP Token: ${lpTokenSymbol}`);
 
     // Create the LP token
     const lpTokenSuccess = await createLpToken(data.tokenA_symbol, data.tokenB_symbol, poolId);

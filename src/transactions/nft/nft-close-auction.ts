@@ -151,7 +151,7 @@ export async function processTx(data: CloseAuctionData, sender: string, id: stri
     }
 
     // 3. Transfer NFT ownership
-    const fullInstanceId = `${listing.collectionId}-${listing.tokenId}`;
+    const fullInstanceId = `${listing.collectionId}_${listing.tokenId}`;
     const updateNftOwnerSuccess = await cache.updateOnePromise(
       'nfts',
       { _id: fullInstanceId, owner: listing.seller },

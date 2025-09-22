@@ -184,7 +184,7 @@ router.get('/positions/:positionId', (async (req: Request, res: Response) => {
 // Get a specific user's farm position in a specific farm
 router.get('/positions/user/:userId/farm/:farmId', (async (req: Request, res: Response) => {
     const { userId, farmId } = req.params;
-    const positionId = `${userId}-${farmId}`; // Construct the _id for userFarmPositions
+    const positionId = `${userId}_${farmId}`; // Construct the _id for userFarmPositions
     try {
         const positionFromDB = await cache.findOnePromise('userFarmPositions', { _id: positionId });
         if (!positionFromDB) {

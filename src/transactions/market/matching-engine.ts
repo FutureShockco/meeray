@@ -24,7 +24,7 @@ async function distributeOrderbookFeesToLiquidityProviders(
     
     if (!pool) {
       // No AMM pool exists for this pair - fees are burned
-      logger.debug(`[MatchingEngine] No AMM pool found for ${baseAssetSymbol}-${quoteAssetSymbol}, orderbook fees burned`);
+      logger.debug(`[MatchingEngine] No AMM pool found for ${baseAssetSymbol}_${quoteAssetSymbol}, orderbook fees burned`);
       return;
     }
 

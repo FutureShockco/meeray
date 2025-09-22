@@ -45,7 +45,7 @@ export async function validateTx(data: NftAcceptBidData, sender: string): Promis
     }
 
     // Validate NFT and collection
-    const fullInstanceId = `${listing.collectionId}-${listing.tokenId}`;
+    const fullInstanceId = `${listing.collectionId}_${listing.tokenId}`;
     const nft = await cache.findOnePromise('nfts', { _id: fullInstanceId }) as NftInstance | null;
     if (!nft || nft.owner !== listing.seller) {
       logger.warn('[nft-accept-bid] NFT not found or owner mismatch.');
@@ -84,7 +84,7 @@ export async function processTx(data: NftAcceptBidData, sender: string, id: stri
     }
 
     // Transfer NFT
-    const fullInstanceId = `${listing.collectionId}-${listing.tokenId}`;
+    const fullInstanceId = `${listing.collectionId}_${listing.tokenId}`;
     if (!await cache.updateOnePromise('nfts', { _id: fullInstanceId, owner: listing.seller },
       { $set: { owner: bid.bidder, lastTransferredAt: new Date().toISOString() } })) {
       return false;

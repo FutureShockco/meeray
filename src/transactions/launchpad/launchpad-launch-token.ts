@@ -16,7 +16,7 @@ import config from '../../config.js';
 function generateLaunchpadId(userId: string, tokenSymbol: string, transactionId?: string): string {
   const txId = transactionId || 'no-tx';
   return `pad-${crypto.createHash('sha256')
-    .update(`${userId}-${tokenSymbol}-${txId}`)
+    .update(`${userId}_${tokenSymbol}_${txId}`)
     .digest('hex')
     .substring(0, 12)}`;
 }

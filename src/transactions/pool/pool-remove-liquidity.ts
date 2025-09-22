@@ -30,7 +30,7 @@ export async function validateTx(data: PoolRemoveLiquidityData, sender: string):
         logger.warn(`[pool-remove-liquidity] Pool ${data.poolId} has no liquidity to remove.`);
         return false;
     }
-    const userLpPositionId = `${sender}-${data.poolId}`;
+    const userLpPositionId = `${sender}_${data.poolId}`;
     const userPosition = await cache.findOnePromise('userLiquidityPositions', { _id: userLpPositionId }) as UserLiquidityPositionData | null;
     if (!userPosition) {
       logger.warn(`[pool-remove-liquidity] User ${sender} has no LP position for pool ${data.poolId}.`);
@@ -51,7 +51,7 @@ export async function validateTx(data: PoolRemoveLiquidityData, sender: string):
 export async function processTx(data: PoolRemoveLiquidityData, sender: string, transactionId: string): Promise<boolean> {
   try {
     const pool = (await cache.findOnePromise('liquidityPools', { _id: data.poolId }) as LiquidityPoolData); // validateTx guarantees existence
-    const userLpPositionId = `${sender}-${data.poolId}`;
+    const userLpPositionId = `${sender}_${data.poolId}`;
     const userPosition = (await cache.findOnePromise('userLiquidityPositions', { _id: userLpPositionId }) as UserLiquidityPositionData); // validateTx guarantees existence
 
     const tokenAAmountToReturn = (toBigInt(data.lpTokenAmount) * toBigInt(pool.tokenA_reserve)) / toBigInt(pool.totalLpTokens);

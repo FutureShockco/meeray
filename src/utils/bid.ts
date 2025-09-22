@@ -9,7 +9,7 @@ import crypto from 'crypto';
 export function generateBidId(listingId: string, bidder: string, timestamp?: number): string {
   const ts = timestamp || Date.now();
   return crypto.createHash('sha256')
-    .update(`${listingId}-${bidder}-${ts}`)
+    .update(`${listingId}_${bidder}_${ts}`)
     .digest('hex')
     .substring(0, 16);
 }

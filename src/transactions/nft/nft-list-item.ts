@@ -11,7 +11,7 @@ import { toBigInt, toDbString } from '../../utils/bigint.js'; // Import toBigInt
 
 // Helper to generate a unique listing ID
 function generateListingId(collectionSymbol: string, instanceId: string, seller: string): string {
-  return `${collectionSymbol}-${instanceId}-${seller}`;
+  return `${collectionSymbol}_${instanceId}_${seller}`;
 }
 
 export async function validateTx(data: NftListPayload, sender: string): Promise<boolean> {
@@ -106,7 +106,7 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
         return false;
     }
 
-    const fullInstanceId = `${data.collectionSymbol}-${data.instanceId}`;
+    const fullInstanceId = `${data.collectionSymbol}_${data.instanceId}`;
     const nft = await cache.findOnePromise('nfts', { _id: fullInstanceId }) as NftInstance | null;
 
     if (!nft) {
@@ -138,7 +138,7 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
 
     return true;
   } catch (error) {
-    logger.error(`[nft-list-item] Error validating NFT listing payload for ${data.collectionSymbol}-${data.instanceId} by ${sender}: ${error}`);
+    logger.error(`[nft-list-item] Error validating NFT listing payload for ${data.collectionSymbol}_${data.instanceId} by ${sender}: ${error}`);
     return false;
   }
 }
@@ -188,14 +188,14 @@ export async function processTx(data: NftListPayload, sender: string, id: string
     }
 
     const listingTypeStr = data.listingType || 'FIXED_PRICE';
-    logger.debug(`[nft-list-item] NFT ${data.collectionSymbol}-${data.instanceId} listed by ${sender} as ${listingTypeStr} for ${data.price} ${data.paymentTokenSymbol}. Listing ID: ${listingId}`);
+    logger.debug(`[nft-list-item] NFT ${data.collectionSymbol}_${data.instanceId} listed by ${sender} as ${listingTypeStr} for ${data.price} ${data.paymentTokenSymbol}. Listing ID: ${listingId}`);
 
     // Log event
     await logEvent('nft', 'listed', sender, {
       listingId,
       collectionSymbol: data.collectionSymbol,
       instanceId: data.instanceId,
-      fullInstanceId: `${data.collectionSymbol}-${data.instanceId}`,
+      fullInstanceId: `${data.collectionSymbol}_${data.instanceId}`,
       seller: sender,
       price: toDbString(priceAsBigInt),
       paymentTokenSymbol: data.paymentTokenSymbol,
@@ -210,7 +210,7 @@ export async function processTx(data: NftListPayload, sender: string, id: string
     return listingId; // Return the ID of the created listing
 
   } catch (error) {
-    logger.error(`[nft-list-item] Error processing NFT listing for ${data.collectionSymbol}-${data.instanceId} by ${sender}: ${error}`);
+    logger.error(`[nft-list-item] Error processing NFT listing for ${data.collectionSymbol}_${data.instanceId} by ${sender}: ${error}`);
     return null;
   }
 }

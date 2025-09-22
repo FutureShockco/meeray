@@ -33,8 +33,8 @@ export async function determineOrderSide(tokenIn: string, tokenOut: string, pair
  */
 export async function findTradingPairId(tokenA: string, tokenB: string): Promise<string | null> {
     // Try both possible combinations
-    const pairId1 = `${tokenA}-${tokenB}`;
-    const pairId2 = `${tokenB}-${tokenA}`;
+    const pairId1 = `${tokenA}_${tokenB}`;
+    const pairId2 = `${tokenB}_${tokenA}`;
 
     // Check if either pair exists
     const pair1 = await cache.findOnePromise('tradingPairs', { _id: pairId1 });
@@ -66,7 +66,7 @@ export async function recordAMMTrade(params: {
         // Find the correct trading pair ID regardless of token order
         const pairId = await findTradingPairId(params.tokenIn, params.tokenOut);
         if (!pairId) {
-            logger.warn(`[recordAMMTrade] No trading pair found for ${params.tokenIn}-${params.tokenOut}, skipping trade record`);
+            logger.warn(`[recordAMMTrade] No trading pair found for ${params.tokenIn}_${params.tokenOut}, skipping trade record`);
             return;
         }
 
@@ -179,7 +179,7 @@ export async function recordAMMTrade(params: {
 
         // Create trade record matching the orderbook trade format with deterministic ID
         const tradeId = crypto.createHash('sha256')
-            .update(`${pairId}-${params.tokenIn}-${params.tokenOut}-${params.sender}-${params.transactionId}-${params.amountOut}`)
+            .update(`${pairId}_${params.tokenIn}_${params.tokenOut}_${params.sender}_${params.transactionId}_${params.amountOut}`)
             .digest('hex')
             .substring(0, 16);
         const tradeRecord = {

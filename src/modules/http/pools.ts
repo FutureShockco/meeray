@@ -412,7 +412,7 @@ router.get('/positions/:positionId', (async (req: Request, res: Response) => {
 // Get a specific user's liquidity position in a specific pool
 router.get('/positions/user/:userId/pool/:poolId', (async (req: Request, res: Response) => {
     const { userId, poolId } = req.params;
-    const positionId = `${userId}-${poolId}`;
+    const positionId = `${userId}_${poolId}`;
     try {
         const positionFromDB = await cache.findOnePromise('userLiquidityPositions', { _id: positionId });
         if (!positionFromDB) {

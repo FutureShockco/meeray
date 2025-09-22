@@ -111,7 +111,7 @@ export async function processTx(data: NFTMintData, sender: string, id: string): 
     const nftIndex = collection.nextIndex;
     
     // Create globally unique NFT ID: COLLECTION-TOKENID
-    const fullInstanceId = `${data.collectionSymbol}-${tokenId}`;  // e.g., "PUNKS-1", "CATS-1"
+    const fullInstanceId = `${data.collectionSymbol}_${tokenId}`;  // e.g., "PUNKS-1", "CATS-1"
 
     // Check if NFT with this ID already exists (shouldn't happen with sequential indexing, but safety check)
     const existingNft = await cache.findOnePromise('nfts', { _id: fullInstanceId });

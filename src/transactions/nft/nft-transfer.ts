@@ -50,7 +50,7 @@ export async function validateTx(data: NFTTransferData, sender: string): Promise
         return false;
     }
 
-    const fullInstanceId = `${data.collectionSymbol}-${data.instanceId}`;
+    const fullInstanceId = `${data.collectionSymbol}_${data.instanceId}`;
     const nft = await cache.findOnePromise('nfts', { _id: fullInstanceId }) as NftInstance | null;
 
     if (!nft) {
@@ -107,7 +107,7 @@ export async function processTx(data: NFTTransferData, sender: string, id: strin
     return false;
   }
   
-  const fullInstanceId = `${data.collectionSymbol}-${data.instanceId}`;
+  const fullInstanceId = `${data.collectionSymbol}_${data.instanceId}`;
   let originalNftOwner: string | null = null; // No manual rollback needed; block-level rollback will discard changes
 
   try {

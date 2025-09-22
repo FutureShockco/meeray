@@ -44,7 +44,7 @@ export async function validateTx(data: FarmStakeData, sender: string): Promise<b
 
     // The farm.stakingToken.issuer is assumed to be the poolId where these LP tokens originate
     const poolIdForLp = farm.stakingToken.issuer;
-    const userLpPositionId = `${data.staker}-${poolIdForLp}`;
+    const userLpPositionId = `${data.staker}_${poolIdForLp}`;
     const userLiquidityPosDB = await cache.findOnePromise('userLiquidityPositions', { _id: userLpPositionId }) as UserLiquidityPositionData | null;
 
     // Convert string amounts to BigInt for comparison
@@ -89,7 +89,7 @@ export async function processTx(data: FarmStakeData, sender: string, id: string,
       return false;
     }
     const poolIdForLp = farm!.stakingToken.issuer;
-    const userLpSourcePositionId = `${data.staker}-${poolIdForLp}`;
+    const userLpSourcePositionId = `${data.staker}_${poolIdForLp}`;
     const userLiquidityPosDB = await cache.findOnePromise('userLiquidityPositions', { _id: userLpSourcePositionId }) as UserLiquidityPositionData;
     const userLiquidityPos = userLiquidityPosDB;
 
@@ -126,7 +126,7 @@ export async function processTx(data: FarmStakeData, sender: string, id: string,
     );
 
     // 3. Create or update UserFarmPosition
-    const userFarmPositionId = `${data.staker}-${data.farmId}`;
+    const userFarmPositionId = `${data.staker}_${data.farmId}`;
 
     const existingUserFarmPosDB = await cache.findOnePromise('userFarmPositions', { _id: userFarmPositionId }) as UserFarmPositionData | null;
     const existingUserFarmPos = existingUserFarmPosDB;

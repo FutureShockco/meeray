@@ -82,7 +82,7 @@ function generateOrderId(
   const priceStr = price ? price.toString() : 'market';
   const txId = transactionId || 'no-tx';
   return crypto.createHash('sha256')
-    .update(`${userId}-${pairId}-${side}-${type}-${quantity}-${priceStr}-${txId}`)
+    .update(`${userId}_${pairId}_${side}_${type}_${quantity}_${priceStr}_${txId}`)
     .digest('hex')
     .substring(0, 16);
 }
