@@ -213,13 +213,7 @@ export async function process(data: HybridTradeData, sender: string, transaction
         // Check if AMM output meets minAmountOut requirement
         if (data.minAmountOut && toBigInt(quote.amountOut) < toBigInt(data.minAmountOut)) {
           // AMM output too low - use orderbook as limit order with calculated price
-          // Calculate price in quote asset's smallest units per 1 base asset, scaling numerator for precision
-          const quoteDecimals = getTokenDecimals(data.tokenIn);
-          const baseDecimals = getTokenDecimals(data.tokenOut);
-          // price = (amountIn * 10^(quoteDecimals + baseDecimals)) / minAmountOut
-          const calculatedPrice = (toBigInt(data.amountIn) * BigInt(10 ** (quoteDecimals + baseDecimals))) / toBigInt(data.minAmountOut);
-          logger.info(`[hybrid-trade] AMM output ${quote.amountOut} below minAmountOut ${data.minAmountOut}. Routing to orderbook as limit order at calculated price ${calculatedPrice} (quote+base decimals: ${quoteDecimals}+${baseDecimals})`);
-
+          
           // Find the correct trading pair ID regardless of token order
           const pairId = await findTradingPairId(data.tokenIn, data.tokenOut);
           if (!pairId) {
@@ -227,8 +221,37 @@ export async function process(data: HybridTradeData, sender: string, transaction
             return false;
           }
 
+          // Get the trading pair to determine correct base/quote assignment
+          const pair = await cache.findOnePromise('tradingPairs', { _id: pairId });
+          if (!pair) {
+            logger.error(`[hybrid-trade] Trading pair ${pairId} not found`);
+            return false;
+          }
+
           // Determine the correct order side
           const orderSide = await determineOrderSide(data.tokenIn, data.tokenOut, pairId);
+          
+          // Calculate price based on the user's desired exchange rate
+          // Price should be: how much quote token per unit of base token
+          const baseDecimals = getTokenDecimals(pair.baseAssetSymbol);
+          const quoteDecimals = getTokenDecimals(pair.quoteAssetSymbol);
+          
+          let calculatedPrice: bigint;
+          
+          if (orderSide === OrderSide.BUY) {
+            // User wants to buy base token with quote token
+            // From orderbook formula: quantity = (amountIn * 10^baseDecimals) / orderPrice
+            // Rearranging: orderPrice = (amountIn * 10^baseDecimals) / quantity
+            // where quantity is the desired amount of base token (minAmountOut)
+            calculatedPrice = (toBigInt(data.amountIn) * BigInt(10 ** baseDecimals)) / toBigInt(data.minAmountOut);
+          } else {
+            // User wants to sell base token for quote token  
+            // For sell orders, amountIn is base token, minAmountOut is quote token
+            // We need price in quote per base, so: price = minAmountOut per amountIn
+            calculatedPrice = (toBigInt(data.minAmountOut) * BigInt(10 ** baseDecimals)) / toBigInt(data.amountIn);
+          }
+
+          logger.info(`[hybrid-trade] AMM output ${quote.amountOut} below minAmountOut ${data.minAmountOut}. Routing to orderbook as ${orderSide} order at calculated price ${calculatedPrice} (base: ${pair.baseAssetSymbol}=${baseDecimals} decimals, quote: ${pair.quoteAssetSymbol}=${quoteDecimals} decimals)`);
 
           routes = [{
             type: 'ORDERBOOK',
@@ -488,9 +511,9 @@ async function executeOrderbookRoute(
       const baseDecimals = getTokenDecimals(pair.baseAssetSymbol);
       const quoteDecimals = getTokenDecimals(pair.quoteAssetSymbol);
       // This formula works for any decimals:
-  // Universal formula for any decimals:
-  // quantity = (amountIn * 10^(baseDecimals + quoteDecimals)) / (orderPrice * 10^quoteDecimals)
-  orderQuantity = (amountIn * BigInt(10 ** (baseDecimals + quoteDecimals))) / (toBigInt(orderPrice) * BigInt(10 ** quoteDecimals));
+  // With price in quoteDecimals, use:
+  // quantity = (amountIn * 10^baseDecimals) / orderPrice
+  orderQuantity = (amountIn * BigInt(10 ** baseDecimals)) / toBigInt(orderPrice);
     } else {
       // For sell orders, quantity is the amount of base currency to sell
       orderQuantity = amountIn;

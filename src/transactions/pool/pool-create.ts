@@ -168,23 +168,18 @@ export async function process(data: PoolCreateData, sender: string, id: string):
       // Generate trading pair ID (same format as market system)
       const pairId = `${tokenA_symbol}-${tokenB_symbol}`;
       
-      // Set reasonable defaults for trading parameters (as BigInt first, then convert to DB strings)
-      const tickSize = BigInt(1000);           // 0.001 (adjustable based on token precision)
-      const lotSize = BigInt(1000 );         // 0.001 (adjustable based on token precision)
-      const minNotional = BigInt(1000);      // 0.001 (adjustable based on token   value)
-      const minTradeAmount = BigInt(1000);   // 0.001 (adjustable based on token value)
-      const maxTradeAmount = BigInt(1000000000000); // 1,000,000 (adjustable based on token value)
+      const maxTradeAmount = BigInt(1000000000000000000000000000000); // 1,000,000,000 (adjustable based on token value)
       
       // Create trading pair document
       const tradingPairDB = {
         _id: pairId,
         baseAssetSymbol: tokenA_symbol,
         quoteAssetSymbol: tokenB_symbol,
-        tickSize: toDbString(tickSize),
-        lotSize: toDbString(lotSize),
-        minNotional: toDbString(minNotional),
+        tickSize: toDbString(1),
+        lotSize: toDbString(1),
+        minNotional: toDbString(1),
         status: 'TRADING',
-        minTradeAmount: toDbString(minTradeAmount),
+        minTradeAmount: toDbString(1),
         maxTradeAmount: toDbString(maxTradeAmount),
         createdAt: new Date().toISOString()
       };
@@ -208,10 +203,10 @@ export async function process(data: PoolCreateData, sender: string, id: string):
           pairId,
           baseAssetSymbol: tokenA_symbol,
           quoteAssetSymbol: tokenB_symbol,
-          tickSize: toDbString(tickSize),
-          lotSize: toDbString(lotSize),
-          minNotional: toDbString(minNotional),
-          minTradeAmount: toDbString(minTradeAmount),
+          tickSize: toDbString(1),
+          lotSize: toDbString(1),
+          minNotional: toDbString(1),
+          minTradeAmount: toDbString(1),
           maxTradeAmount: toDbString(maxTradeAmount),
           initialStatus: 'TRADING',
           createdAt: new Date().toISOString(),

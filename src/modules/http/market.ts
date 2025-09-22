@@ -317,7 +317,7 @@ router.get('/stats/:pairId', (async (req: Request, res: Response) => {
       sellOrderCount: sellOrders.length,
       recentTrades: trades.slice(0, 10).map(trade => ({
         ...trade,
-        price: formatAmount(toBigInt(trade.price || 0)),
+        price: formatAmount(toBigInt(trade.price || 0), pair.quoteAssetSymbol),
         rawPrice: toBigInt(trade.price || 0).toString(),
         quantity: formatAmount(toBigInt(trade.quantity || 0), pair.baseAssetSymbol),
         rawQuantity: toBigInt(trade.quantity || 0).toString(),
@@ -595,6 +595,8 @@ function formatAmount(amount: bigint, tokenSymbol?: string): string {
   if (tokenSymbol) {
     const decimals = getTokenDecimals(tokenSymbol);
     const divisor = Math.pow(10, decimals);
+    // For price, if the symbol is used for price display, force to use quote asset decimals (3 for TESTS)
+    // If you want to force fewer decimals for price, you can clamp or set a max here
     return (Number(amount) / divisor).toFixed(decimals);
   }
   // Fallback to 8 decimals for backward compatibility
