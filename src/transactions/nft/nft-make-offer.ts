@@ -3,8 +3,8 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { NftMakeOfferData, NftOffer } from './nft-market-interfaces.js';
 import { NftInstance, CachedNftCollectionForTransfer } from './nft-transfer.js';
-import { adjustBalance, getAccount } from '../../utils/account.js';
-import { getTokenByIdentifier } from '../../utils/token.js';
+import { adjustUserBalance, getAccount } from '../../utils/account.js';
+import { getToken } from '../../utils/token.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
 import crypto from 'crypto';
@@ -42,7 +42,7 @@ export async function validateTx(data: NftMakeOfferData, sender: string): Promis
     }
 
     // Validate payment token
-    const paymentToken = await getTokenByIdentifier(data.paymentTokenSymbol, data.paymentTokenIssuer);
+    const paymentToken = await getToken(data.paymentTokenSymbol);
     if (!paymentToken) {
       logger.warn(`[nft-make-offer] Payment token ${data.paymentTokenSymbol}${data.paymentTokenIssuer ? '@'+data.paymentTokenIssuer : ''} not found.`);
       return false;
@@ -150,7 +150,7 @@ export async function processTx(data: NftMakeOfferData, sender: string, id: stri
     if (existingOffer) {
       // Release escrowed funds from previous offer
       const previousEscrowAmount = toBigInt(existingOffer.escrowedAmount);
-      await adjustBalance(sender, paymentTokenIdentifier, previousEscrowAmount);
+      await adjustUserBalance(sender, paymentTokenIdentifier, previousEscrowAmount);
       
       // Cancel the previous offer
       await cache.updateOnePromise(
@@ -161,7 +161,7 @@ export async function processTx(data: NftMakeOfferData, sender: string, id: stri
     }
 
     // Escrow funds for new offer
-    if (!await adjustBalance(sender, paymentTokenIdentifier, -offerAmount)) {
+    if (!await adjustUserBalance(sender, paymentTokenIdentifier, -offerAmount)) {
       logger.error(`[nft-make-offer] Failed to escrow ${offerAmount} ${paymentTokenIdentifier} from ${sender}.`);
       return false;
     }
@@ -203,7 +203,7 @@ export async function processTx(data: NftMakeOfferData, sender: string, id: stri
 
     if (!insertSuccess) {
       // Rollback escrow
-      await adjustBalance(sender, paymentTokenIdentifier, offerAmount);
+      await adjustUserBalance(sender, paymentTokenIdentifier, offerAmount);
       logger.error(`[nft-make-offer] Failed to insert offer document.`);
       return false;
     }

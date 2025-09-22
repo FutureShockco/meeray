@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { NFTCollectionCreateData } from './nft-interfaces.js';
 import config from '../../config.js';
-import { adjustBalance } from '../../utils/account.js';
+import { adjustUserBalance } from '../../utils/account.js';
 import { logEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: NFTCollectionCreateData, sender: string): Promise<boolean> {
@@ -179,7 +179,7 @@ export async function processTx(data: NFTCollectionCreateData, sender: string, i
       return false;
     }
 
-    const deductSuccess = await adjustBalance(sender, config.nativeTokenSymbol, BigInt(-config.nftCollectionCreationFee));
+    const deductSuccess = await adjustUserBalance(sender, config.nativeTokenSymbol, BigInt(-config.nftCollectionCreationFee));
     if (!deductSuccess) {
       logger.error(`[nft-create-collection] Failed to deduct ${config.nftCollectionCreationFee} of ${config.nativeTokenSymbol} from ${sender}.`);
       return false;

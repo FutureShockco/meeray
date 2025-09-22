@@ -1,6 +1,6 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
-import { adjustBalance } from '../../utils/account.js';
+import { adjustUserBalance } from '../../utils/account.js';
 import { toBigInt } from '../../utils/bigint.js';
 import { LaunchpadStatus } from './launchpad-interfaces.js';
 
@@ -33,7 +33,7 @@ export async function processTx(data: LaunchpadRefundPresaleData, sender: string
     for (const p of participants) {
       const amt = toBigInt(p.quoteAmountContributed || '0');
       if (amt > BigInt(0)) {
-        const ok = await adjustBalance(p.userId, quoteId, amt);
+        const ok = await adjustUserBalance(p.userId, quoteId, amt);
         if (!ok) {
           logger.error(`[launchpad-refund-presale] Failed refund for ${p.userId}`);
           return false;

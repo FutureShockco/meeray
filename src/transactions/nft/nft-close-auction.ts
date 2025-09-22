@@ -3,8 +3,8 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { CloseAuctionData, NftBid, NFTListingData } from './nft-market-interfaces.js';
 import { NftInstance, CachedNftCollectionForTransfer } from './nft-transfer.js';
-import { adjustBalance } from '../../utils/account.js';
-import { getTokenByIdentifier } from '../../utils/token.js';
+import { adjustUserBalance } from '../../utils/account.js';
+import { getToken } from '../../utils/token.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { getHighestBid, releaseEscrowedFunds } from '../../utils/bid.js';
 import { logEvent } from '../../utils/event-logger.js';
@@ -123,7 +123,7 @@ export async function processTx(data: CloseAuctionData, sender: string, id: stri
       return false;
     }
 
-    const paymentToken = (await getTokenByIdentifier(listing.paymentToken.symbol, listing.paymentToken.issuer))!;
+    const paymentToken = (await getToken(listing.paymentToken.symbol))!;
 
     const paymentTokenIdentifier = `${paymentToken.symbol}${paymentToken.issuer ? '@' + paymentToken.issuer : ''}`;
     const royaltyBps = toBigInt(collection.royaltyBps || 0);
@@ -136,14 +136,14 @@ export async function processTx(data: CloseAuctionData, sender: string, id: stri
     logger.debug(`[nft-close-auction] Processing auction close: Bid=${bidAmount}, Royalty=${royaltyAmount}, SellerGets=${sellerProceeds}`);
 
     // 1. Pay seller their proceeds
-    if (!await adjustBalance(listing.seller, paymentTokenIdentifier, sellerProceeds)) {
+    if (!await adjustUserBalance(listing.seller, paymentTokenIdentifier, sellerProceeds)) {
       logger.error(`[nft-close-auction] Failed to pay seller ${listing.seller} proceeds of ${sellerProceeds}.`);
       return false;
     }
 
     // 2. Pay royalty to creator (if applicable)
     if (royaltyAmount > 0n && collection.creator && collection.creator !== listing.seller) {
-      if (!await adjustBalance(collection.creator, paymentTokenIdentifier, royaltyAmount)) {
+      if (!await adjustUserBalance(collection.creator, paymentTokenIdentifier, royaltyAmount)) {
         logger.error(`[nft-close-auction] Failed to pay royalty ${royaltyAmount} to creator ${collection.creator}.`);
         return false;
       }

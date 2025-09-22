@@ -2,7 +2,7 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { LaunchpadClaimTokensData, LaunchpadStatus, TokenDistributionRecipient, VestingState } from './launchpad-interfaces.js';
-import { getAccount, adjustBalance } from '../../utils/account.js';
+import { getAccount, adjustUserBalance } from '../../utils/account.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
 import { calculateVestedAmount, calculateUserAllocation, parseSteemTimestamp } from '../../utils/vesting.js';
@@ -213,7 +213,7 @@ export async function processTx(data: LaunchpadClaimTokensData, sender: string, 
     }
 
     // Mint tokens to user account
-    const success = await adjustBalance(data.userId, launchpad.mainTokenId, tokensToMint);
+    const success = await adjustUserBalance(data.userId, launchpad.mainTokenId, tokensToMint);
     if (!success) {
       logger.error(`[launchpad-claim-tokens] Failed to mint ${tokensToMint} tokens to ${data.userId}.`);
       return false;

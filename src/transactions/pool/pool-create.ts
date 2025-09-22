@@ -11,48 +11,17 @@ import { createLiquidityPool, createLpToken, createTradingPair } from './pool-he
 
 export async function validateTx(data: PoolData, sender: string): Promise<boolean> {
   try {
-    if (!data.tokenA_symbol || !data.tokenB_symbol) {
-      logger.warn('[pool-create] Invalid data: Missing required token symbols.');
+    if (!validate.validatePoolTokens(data)) {
       return false;
     }
 
-    if (!validate.string(data.tokenA_symbol, 10, 3, config.tokenSymbolAllowedChars)) {
-      logger.warn(`[pool-create] Invalid tokenA_symbol: ${data.tokenA_symbol}.`);
-      return false;
-    }
-    if (!validate.string(data.tokenB_symbol, 10, 3, config.tokenSymbolAllowedChars)) {
-      logger.warn(`[pool-create] Invalid tokenB_symbol: ${data.tokenB_symbol}.`);
-      return false;
-    }
-
-    if (data.tokenA_symbol === data.tokenB_symbol) {
-      logger.warn('[pool-create] Cannot create a pool with the same token on both sides.');
-      return false;
-    }
-
-    const tokenAExists = await cache.findOnePromise('tokens', { _id: data.tokenA_symbol });
-    if (!tokenAExists) {
-      logger.warn(`[pool-create] Token A (${data.tokenA_symbol}) not found.`);
-      return false;
-    }
-    const tokenBExists = await cache.findOnePromise('tokens', { _id: data.tokenB_symbol });
-    if (!tokenBExists) {
-      logger.warn(`[pool-create] Token B (${data.tokenB_symbol}) not found.`);
+    if (!await validate.tokenExists(data.tokenA_symbol) || !await validate.tokenExists(data.tokenB_symbol)) {
       return false;
     }
 
     const poolId = generatePoolId(data.tokenA_symbol, data.tokenB_symbol);
-    const existingPool = await cache.findOnePromise('liquidityPools', { _id: poolId });
-    if (existingPool) {
-      logger.warn(`[pool-create] Liquidity pool with ID ${poolId} already exists.`);
-      return false;
-    }
 
-    const creatorAccount = await cache.findOnePromise('accounts', { name: sender });
-    if (!creatorAccount) {
-      logger.warn(`[pool-create] Creator account ${sender} not found.`);
-      return false;
-    }
+    if (await validate.poolExists(poolId)) return false;
 
     return true;
   } catch (error) {

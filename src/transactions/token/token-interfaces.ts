@@ -1,4 +1,3 @@
-
 export interface TokenData {
   _id?: string;
   symbol: string;

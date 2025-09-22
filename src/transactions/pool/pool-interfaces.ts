@@ -14,14 +14,12 @@ export interface PoolData {
 
 export interface PoolAddLiquidityData {
   poolId: string;             // Identifier of the liquidity pool
-  provider: string;           // Account providing the liquidity
   tokenA_amount: string | bigint;      // Amount of token A to add
   tokenB_amount: string | bigint;      // Amount of token B to add
 }
 
 export interface PoolRemoveLiquidityData {
   poolId: string;             // Identifier of the liquidity pool
-  provider: string;           // Account removing the liquidity
   lpTokenAmount: string | bigint;      // Amount of LP tokens to burn
 }
 
@@ -66,10 +64,10 @@ export interface LiquidityPoolData {
 
 // Represents a user's share in a liquidity pool
 export interface UserLiquidityPositionData {
-  _id: string;                // e.g., providerAddress-poolId
-  provider: string;           // Account name of the liquidity provider
+  _id: string;                // e.g., userAccount-poolId
+  user: string;               // Account name of the liquidity provider
   poolId: string;
-  lpTokenBalance: string | bigint;     // Amount of LP tokens held by this provider for this pool
+  lpTokenBalance: string | bigint;     // Amount of LP tokens held by this user for this pool
   createdAt: string;          // ISO Date string
   lastUpdatedAt?: string;     // ISO Date string
 

@@ -2,7 +2,7 @@ import { OrderData, TradeData, TradingPairData, OrderStatus, OrderSide, OrderTyp
 import { OrderBook, OrderBookMatchResult } from './orderbook.js';
 import logger from '../../logger.js';
 import cache from '../../cache.js';
-import { adjustBalance } from '../../utils/account.js';
+import { adjustUserBalance } from '../../utils/account.js';
 import { toBigInt, toDbString, calculateTradeValue } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 import { generatePoolId } from '../../utils/pool.js';
@@ -427,10 +427,10 @@ class MatchingEngine {
         // Apply trades with fees
         // Seller: loses base tokens, gains quote tokens minus fee
         // Buyer: gains base tokens minus fee, loses quote tokens
-        const adjSellerBase = await adjustBalance(trade.sellerUserId, baseTokenIdentifier, -tradeQuantityBigInt);
-        const adjBuyerBase = await adjustBalance(trade.buyerUserId, baseTokenIdentifier, tradeQuantityBigInt - baseTokenFee);
-        const adjSellerQuote = await adjustBalance(trade.sellerUserId, quoteTokenIdentifier, tradeValue - quoteTokenFee);
-        const adjBuyerQuote = await adjustBalance(trade.buyerUserId, quoteTokenIdentifier, -tradeValue);
+        const adjSellerBase = await adjustUserBalance(trade.sellerUserId, baseTokenIdentifier, -tradeQuantityBigInt);
+        const adjBuyerBase = await adjustUserBalance(trade.buyerUserId, baseTokenIdentifier, tradeQuantityBigInt - baseTokenFee);
+        const adjSellerQuote = await adjustUserBalance(trade.sellerUserId, quoteTokenIdentifier, tradeValue - quoteTokenFee);
+        const adjBuyerQuote = await adjustUserBalance(trade.buyerUserId, quoteTokenIdentifier, -tradeValue);
 
         // Distribute orderbook fees to corresponding AMM pool liquidity providers
         // This creates a unified economic model where all trading activity benefits liquidity providers

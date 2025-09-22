@@ -2,7 +2,7 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { NftCancelBidData, NftBid } from './nft-market-interfaces.js';
-import { getTokenByIdentifier } from '../../utils/token.js';
+import { getToken } from '../../utils/token.js';
 import { toBigInt } from '../../utils/bigint.js';
 import { releaseEscrowedFunds } from '../../utils/bid.js';
 import { logEvent } from '../../utils/event-logger.js';
@@ -37,7 +37,7 @@ export async function processTx(data: NftCancelBidData, sender: string, id: stri
     const bid = await cache.findOnePromise('nftBids', { _id: data.bidId }) as NftBid;
     
     // Release escrowed funds
-    const paymentToken = await getTokenByIdentifier(bid.paymentToken.symbol, bid.paymentToken.issuer);
+    const paymentToken = await getToken(bid.paymentToken.symbol);
     if (!paymentToken) {
       logger.error(`[nft-cancel-bid] Payment token not found: ${bid.paymentToken.symbol}`);
       return false;

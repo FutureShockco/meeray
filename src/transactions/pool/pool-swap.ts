@@ -2,7 +2,7 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { PoolSwapData, PoolSwapResult } from './pool-interfaces.js';
-import { adjustBalance, getAccount } from '../../utils/account.js';
+import { adjustUserBalance, getAccount } from '../../utils/account.js';
 import { Account } from '../../mongo.js';
 import { toBigInt, toDbString, calculateDecimalAwarePrice } from '../../utils/bigint.js';
 import { getOutputAmountBigInt } from '../../utils/pool.js';
@@ -420,12 +420,12 @@ async function processSingleHopSwap(data: PoolSwapData, sender: string, transact
     const newReserveOut = reserveOut - amountOut;
 
     // Update user balances
-    const deductSuccess = await adjustBalance(sender, tokenIn_symbol, -toBigInt(data.amountIn));
+    const deductSuccess = await adjustUserBalance(sender, tokenIn_symbol, -toBigInt(data.amountIn));
     if (!deductSuccess) {
         logger.error(`[pool-swap] Failed to deduct ${data.amountIn} ${tokenIn_symbol} from ${sender}.`);
         return false;
     }
-    const creditSuccess = await adjustBalance(sender, tokenOut_symbol, amountOut);
+    const creditSuccess = await adjustUserBalance(sender, tokenOut_symbol, amountOut);
     if (!creditSuccess) {
         logger.error(`[pool-swap] Failed to credit ${amountOut} ${tokenOut_symbol} to ${sender}.`);
         return false;
@@ -530,11 +530,11 @@ async function processSingleHopSwapWithResult(data: PoolSwapData, sender: string
         const newReserveOut = reserveOut - amountOut;
 
         // Update user balances
-        const deductSuccess = await adjustBalance(sender, tokenIn_symbol, -toBigInt(data.amountIn));
+        const deductSuccess = await adjustUserBalance(sender, tokenIn_symbol, -toBigInt(data.amountIn));
         if (!deductSuccess) {
             return { success: false, amountOut: BigInt(0), error: `Failed to deduct ${data.amountIn} ${tokenIn_symbol} from ${sender}` };
         }
-        const creditSuccess = await adjustBalance(sender, tokenOut_symbol, amountOut);
+        const creditSuccess = await adjustUserBalance(sender, tokenOut_symbol, amountOut);
         if (!creditSuccess) {
             return { success: false, amountOut: BigInt(0), error: `Failed to credit ${amountOut} ${tokenOut_symbol} to ${sender}` };
         }
@@ -641,12 +641,12 @@ async function processRoutedSwap(data: PoolSwapData, sender: string, transaction
         const newReserveOut = reserveOut - amountOut;
 
         // Update user balances for this hop
-        const deductSuccess = await adjustBalance(sender, tokenIn_symbol, -currentAmountIn);
+        const deductSuccess = await adjustUserBalance(sender, tokenIn_symbol, -currentAmountIn);
         if (!deductSuccess) {
             logger.error(`[pool-swap] Failed to deduct ${currentAmountIn} ${tokenIn_symbol} from ${sender} in hop ${i + 1}.`);
             return false;
         }
-        const creditSuccess = await adjustBalance(sender, tokenOut_symbol, amountOut);
+        const creditSuccess = await adjustUserBalance(sender, tokenOut_symbol, amountOut);
         if (!creditSuccess) {
             logger.error(`[pool-swap] Failed to credit ${amountOut} ${tokenOut_symbol} to ${sender} in hop ${i + 1}.`);
             return false;

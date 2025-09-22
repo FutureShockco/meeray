@@ -3,6 +3,7 @@ import logger from '../logger.js';
 import config from '../config.js';
 import settings from '../settings.js';
 import { toDbString } from './bigint.js';
+import { TokenData } from '../transactions/token/token-interfaces.js';
 
 export interface Token {
     _id: string;                // Typically the symbol
@@ -14,51 +15,31 @@ export interface Token {
     currentSupply: bigint;      // Current circulating supply
 }
 
-export async function getTokenByIdentifier(symbol: string, issuer?: string): Promise<Token | null> {
-    logger.debug(`[token-utils] Fetching token: ${symbol}${issuer ? '@' + issuer : ''}`);
-    if (symbol === config.nativeTokenSymbol) {
-        return {
-            _id: config.nativeTokenSymbol,
-            symbol: config.nativeTokenSymbol,
-            name: `${config.nativeTokenSymbol} (Native)`,
-            precision: 8n,
-            issuer: undefined,
-            maxSupply: 0n,
-            currentSupply: 0n,
-        } as Token;
-    }
-    const query: any = { _id: symbol };
-    if (issuer) {
-        query.issuer = issuer;
-    }
-    const tokenDoc = await cache.findOnePromise('tokens', query);
-    if (tokenDoc) {
-        return tokenDoc as Token;
-    }
-    logger.warn(`[token-utils] Token ${symbol}${issuer ? '@' + issuer : ''} not found in 'tokens' collection.`);
-    return null;
+export async function getToken(symbol: string): Promise<TokenData | null> {
+    return await cache.findOnePromise('tokens', { symbod: symbol }) as TokenData | null;
 }
-
 
 export function getLpTokenSymbol(tokenA_symbol: string, tokenB_symbol: string): string {
     const [token1, token2] = [tokenA_symbol, tokenB_symbol].sort();
     return `LP_${token1}_${token2}`;
-} 
+}
 
-export async function adjustTokenSupply(tokenIdentifier: string, amount: bigint): Promise<boolean> {
-    const token = await cache.findOnePromise('tokens', { symbol: tokenIdentifier });
+export async function adjustTokenSupply(tokenSymbol: string, amount: bigint): Promise<bigint | null> {
+    const token = await cache.findOnePromise('tokens', { symbol: tokenSymbol });
     if (!token) {
-        logger.error(`[token-utils] Token ${tokenIdentifier} not found`);
-        return false;
+        logger.error(`[token-utils] Token ${tokenSymbol} not found`);
+        return null;
     }
     const newSupply = BigInt(token.currentSupply) + amount;
-    const updateResult = await cache.updateOnePromise('tokens', { symbol: tokenIdentifier }, { $set: { currentSupply: toDbString(newSupply) } });
+    const updateResult = await cache.updateOnePromise('tokens', { symbol: tokenSymbol }, { $set: { currentSupply: toDbString(newSupply) } });
     if (!updateResult) {
-        logger.error(`[token-utils] Failed to update token supply for ${tokenIdentifier}`);
-        return false;
+        logger.error(`[token-utils] Failed to update token supply for ${tokenSymbol}`);
+        return null;
     }
-    return true;
-} 
+    return newSupply;
+}
+
+
 
 /**
  * Checks whether a token is issued by this node's configured bridge account

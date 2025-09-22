@@ -4,7 +4,7 @@ import logger from './logger.js';
 import p2p from './p2p/index.js';
 import { toBigInt, toDbString } from './utils/bigint.js';
 import { adjustTokenSupply } from './utils/token.js';
-import { adjustBalance } from './utils/account.js';
+import { adjustUserBalance } from './utils/account.js';
 
 type VoteWeightUpdate = {
     sender: string;
@@ -48,15 +48,16 @@ export const witnessesModule = {
         if (account && account.name && reward > BigInt(0)) {
             const rewardBigInt = BigInt(reward);
             logger.trace(`witnessRewards: Applying reward for ${name}: ${rewardBigInt.toString()}`);
-            const adjusted = await adjustBalance(account.name, config.nativeTokenSymbol, rewardBigInt);
+            const adjusted = await adjustUserBalance(account.name, config.nativeTokenSymbol, rewardBigInt);
             if (!adjusted) {
                 logger.error(`witnessRewards: Failed to adjust balance for ${account!.name} when distributing rewards.`);
                 return '0';
             }
             try {
                 const success = await adjustTokenSupply(config.nativeTokenSymbol, rewardBigInt);
-                if (!success) {
+                if (success === null) {
                     logger.error(`witnessRewards: Failed to update token supply for ${config.nativeTokenSymbol}`);
+                    return '0';
                 }
                 logger.trace(`witnessRewards: Distributed reward (${rewardBigInt.toString()} smallest units) to witness ${name}`);
                 return toDbString(rewardBigInt);

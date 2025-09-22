@@ -2,7 +2,7 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { LaunchpadParticipatePresaleData, LaunchpadStatus } from './launchpad-interfaces.js';
-import { getAccount, adjustBalance } from '../../utils/account.js';
+import { getAccount, adjustUserBalance } from '../../utils/account.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
 
@@ -82,7 +82,7 @@ export async function processTx(dataDb: LaunchpadParticipatePresaleData, sender:
     const presaleDetails = launchpad.presaleDetailsSnapshot!;
     const contributionTokenIdentifier = presaleDetails.quoteAssetForPresaleSymbol;
 
-    const balanceAdjusted = await adjustBalance(sender, contributionTokenIdentifier, -toBigInt(data.contributionAmount));
+    const balanceAdjusted = await adjustUserBalance(sender, contributionTokenIdentifier, -toBigInt(data.contributionAmount));
     if (!balanceAdjusted) {
         logger.error(`[launchpad-participate-presale] Failed to deduct ${data.contributionAmount} ${contributionTokenIdentifier} from ${sender} for launchpad ${data.launchpadId}.`);
         return false;

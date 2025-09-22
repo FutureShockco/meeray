@@ -2,8 +2,8 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { NftCancelOfferData, NftOffer } from './nft-market-interfaces.js';
-import { adjustBalance } from '../../utils/account.js';
-import { getTokenByIdentifier } from '../../utils/token.js';
+import { adjustUserBalance } from '../../utils/account.js';
+import { getToken } from '../../utils/token.js';
 import { toBigInt } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
 
@@ -37,7 +37,7 @@ export async function processTx(data: NftCancelOfferData, sender: string, id: st
     const offer = await cache.findOnePromise('nftOffers', { _id: data.offerId }) as NftOffer;
     
     // Release escrowed funds
-    const paymentToken = await getTokenByIdentifier(offer.paymentToken.symbol, offer.paymentToken.issuer);
+    const paymentToken = await getToken(offer.paymentToken.symbol);
     if (!paymentToken) {
       logger.error(`[nft-cancel-offer] Payment token not found: ${offer.paymentToken.symbol}`);
       return false;
@@ -46,7 +46,7 @@ export async function processTx(data: NftCancelOfferData, sender: string, id: st
     const paymentTokenIdentifier = `${paymentToken.symbol}${paymentToken.issuer ? '@' + paymentToken.issuer : ''}`;
     const escrowAmount = toBigInt(offer.escrowedAmount);
 
-    if (!await adjustBalance(sender, paymentTokenIdentifier, escrowAmount)) {
+    if (!await adjustUserBalance(sender, paymentTokenIdentifier, escrowAmount)) {
       logger.error(`[nft-cancel-offer] Failed to release escrowed funds for offer ${data.offerId}.`);
       return false;
     }

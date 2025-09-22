@@ -3,8 +3,8 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { NftBuyPayload, NFTListingData, NftBid } from './nft-market-interfaces.js';
 import { NftInstance, CachedNftCollectionForTransfer } from './nft-transfer.js';
-import { adjustBalance, getAccount } from '../../utils/account.js';
-import { getTokenByIdentifier } from '../../utils/token.js';
+import { adjustUserBalance, getAccount } from '../../utils/account.js';
+import { getToken } from '../../utils/token.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
 import { generateBidId, getHighestBid, validateBidAmount, escrowBidFunds, releaseEscrowedFunds, updateListingWithBid } from '../../utils/bid.js';
@@ -22,7 +22,7 @@ export async function validateTx(data: NftBuyPayload, sender: string): Promise<b
       return false;
     }
 
-    const paymentToken = await getTokenByIdentifier(listing.paymentToken.symbol, listing.paymentToken.issuer);
+    const paymentToken = await getToken(listing.paymentToken.symbol);
     if (!paymentToken) {
       logger.warn(`[nft-buy-item] Payment token not found.`);
       return false;
@@ -99,7 +99,7 @@ export async function processTx(data: NftBuyPayload, sender: string, id: string)
 async function executeImmediatePurchase(listing: NFTListingData, buyer: string, amount: bigint, transactionId: string): Promise<boolean> {
   try {
     const collection = await cache.findOnePromise('nftCollections', { _id: listing.collectionId }) as (CachedNftCollectionForTransfer & { royaltyBps?: number });
-    const paymentToken = (await getTokenByIdentifier(listing.paymentToken.symbol, listing.paymentToken.issuer))!;
+    const paymentToken = (await getToken(listing.paymentToken.symbol))!;
     const paymentTokenIdentifier = `${paymentToken.symbol}${paymentToken.issuer ? '@' + paymentToken.issuer : ''}`;
 
     const royaltyBps = toBigInt(collection.royaltyBps || 0);
@@ -107,10 +107,10 @@ async function executeImmediatePurchase(listing: NFTListingData, buyer: string, 
     const sellerProceeds = amount - royaltyAmount;
 
     // Execute transfers
-    if (!await adjustBalance(buyer, paymentTokenIdentifier, -amount)) return false;
-    if (!await adjustBalance(listing.seller, paymentTokenIdentifier, sellerProceeds)) return false;
+    if (!await adjustUserBalance(buyer, paymentTokenIdentifier, -amount)) return false;
+    if (!await adjustUserBalance(listing.seller, paymentTokenIdentifier, sellerProceeds)) return false;
     if (royaltyAmount > 0n && collection.creator) {
-      if (!await adjustBalance(collection.creator, paymentTokenIdentifier, royaltyAmount)) return false;
+      if (!await adjustUserBalance(collection.creator, paymentTokenIdentifier, royaltyAmount)) return false;
     }
 
     // Transfer NFT
@@ -142,7 +142,7 @@ async function executeImmediatePurchase(listing: NFTListingData, buyer: string, 
 
 async function submitBid(listing: NFTListingData, bidder: string, bidAmount: bigint, transactionId: string): Promise<boolean> {
   try {
-    const paymentToken = await getTokenByIdentifier(listing.paymentToken.symbol, listing.paymentToken.issuer);
+    const paymentToken = await getToken(listing.paymentToken.symbol);
     if (!paymentToken) return false;
     
     const paymentTokenIdentifier = `${paymentToken.symbol}${paymentToken.issuer ? '@' + paymentToken.issuer : ''}`;

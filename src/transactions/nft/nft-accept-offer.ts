@@ -3,8 +3,8 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { NftAcceptOfferData, NftOffer } from './nft-market-interfaces.js';
 import { NftInstance, CachedNftCollectionForTransfer } from './nft-transfer.js';
-import { adjustBalance } from '../../utils/account.js';
-import { getTokenByIdentifier } from '../../utils/token.js';
+import { adjustUserBalance } from '../../utils/account.js';
+import { getToken } from '../../utils/token.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
 
@@ -111,7 +111,7 @@ export async function processTx(data: NftAcceptOfferData, sender: string, id: st
     const collection = await cache.findOnePromise('nftCollections', { _id: collectionSymbol }) as (CachedNftCollectionForTransfer & { royaltyBps?: number });
     
     // Get payment token
-    const paymentToken = await getTokenByIdentifier(offer.paymentToken.symbol, offer.paymentToken.issuer);
+    const paymentToken = await getToken(offer.paymentToken.symbol);
     if (!paymentToken) {
       logger.error(`[nft-accept-offer] Payment token not found: ${offer.paymentToken.symbol}`);
       return false;
@@ -127,14 +127,14 @@ export async function processTx(data: NftAcceptOfferData, sender: string, id: st
 
     // Execute payments
     // Note: Offer amount is already escrowed from offerBy, so we don't need to deduct from them again
-    if (!await adjustBalance(sender, paymentTokenIdentifier, sellerProceeds)) {
+    if (!await adjustUserBalance(sender, paymentTokenIdentifier, sellerProceeds)) {
       logger.error(`[nft-accept-offer] Failed to pay seller ${sender} proceeds of ${sellerProceeds}.`);
       return false;
     }
 
     // Pay royalty to creator (if applicable)
     if (royaltyAmount > 0n && collection.creator && collection.creator !== sender) {
-      if (!await adjustBalance(collection.creator, paymentTokenIdentifier, royaltyAmount)) {
+      if (!await adjustUserBalance(collection.creator, paymentTokenIdentifier, royaltyAmount)) {
         logger.error(`[nft-accept-offer] Failed to pay royalty ${royaltyAmount} to creator ${collection.creator}.`);
         return false;
       }

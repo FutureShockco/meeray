@@ -3,8 +3,8 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { NftAcceptBidData, NftBid, NFTListingData } from './nft-market-interfaces.js';
 import { NftInstance, CachedNftCollectionForTransfer } from './nft-transfer.js';
-import { adjustBalance, getAccount } from '../../utils/account.js';
-import { getTokenByIdentifier } from '../../utils/token.js';
+import { adjustUserBalance, getAccount } from '../../utils/account.js';
+import { getToken } from '../../utils/token.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { releaseEscrowedFunds } from '../../utils/bid.js';
 import { logEvent } from '../../utils/event-logger.js';
@@ -70,7 +70,7 @@ export async function processTx(data: NftAcceptBidData, sender: string, id: stri
     const listing = await cache.findOnePromise('nftListings', { _id: data.listingId }) as NFTListingData;
     const bid = await cache.findOnePromise('nftBids', { _id: data.bidId }) as NftBid;
     const collection = await cache.findOnePromise('nftCollections', { _id: listing.collectionId }) as (CachedNftCollectionForTransfer & { royaltyBps?: number });
-    const paymentToken = (await getTokenByIdentifier(listing.paymentToken.symbol, listing.paymentToken.issuer))!;
+    const paymentToken = (await getToken(listing.paymentToken.symbol))!;
 
     const paymentTokenIdentifier = `${paymentToken.symbol}${paymentToken.issuer ? '@' + paymentToken.issuer : ''}`;
     const bidAmount = toBigInt(bid.bidAmount);
@@ -78,9 +78,9 @@ export async function processTx(data: NftAcceptBidData, sender: string, id: stri
     const sellerProceeds = bidAmount - royaltyAmount;
 
     // Execute payments
-    if (!await adjustBalance(listing.seller, paymentTokenIdentifier, sellerProceeds)) return false;
+    if (!await adjustUserBalance(listing.seller, paymentTokenIdentifier, sellerProceeds)) return false;
     if (royaltyAmount > 0n && collection.creator && collection.creator !== listing.seller) {
-      if (!await adjustBalance(collection.creator, paymentTokenIdentifier, royaltyAmount)) return false;
+      if (!await adjustUserBalance(collection.creator, paymentTokenIdentifier, royaltyAmount)) return false;
     }
 
     // Transfer NFT

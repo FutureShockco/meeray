@@ -2,19 +2,15 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { PoolRemoveLiquidityData, LiquidityPoolData, UserLiquidityPositionData } from './pool-interfaces.js';
-import { adjustBalance } from '../../utils/account.js';
+import { adjustUserBalance } from '../../utils/account.js';
 import { toDbString, toBigInt } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
 import { getLpTokenSymbol } from '../../utils/token.js';
 
 export async function validateTx(data: PoolRemoveLiquidityData, sender: string): Promise<boolean> {
   try {
-    if (!data.poolId || !data.provider || data.lpTokenAmount === undefined) {
-      logger.warn('[pool-remove-liquidity] Invalid data: Missing required fields (poolId, provider, lpTokenAmount).');
-      return false;
-    }
-    if (sender !== data.provider) {
-      logger.warn('[pool-remove-liquidity] Sender must be the liquidity provider whose LP tokens are being burned.');
+    if (!data.poolId || data.lpTokenAmount === undefined) {
+      logger.warn('[pool-remove-liquidity] Invalid data: Missing required fields (poolId, lpTokenAmount).');
       return false;
     }
     if (!validate.string(data.poolId, 64, 1)) {
@@ -34,14 +30,14 @@ export async function validateTx(data: PoolRemoveLiquidityData, sender: string):
         logger.warn(`[pool-remove-liquidity] Pool ${data.poolId} has no liquidity to remove.`);
         return false;
     }
-    const userLpPositionId = `${data.provider}-${data.poolId}`;
+    const userLpPositionId = `${sender}-${data.poolId}`;
     const userPosition = await cache.findOnePromise('userLiquidityPositions', { _id: userLpPositionId }) as UserLiquidityPositionData | null;
     if (!userPosition) {
-      logger.warn(`[pool-remove-liquidity] Provider ${data.provider} has no LP position for pool ${data.poolId}.`);
+      logger.warn(`[pool-remove-liquidity] User ${sender} has no LP position for pool ${data.poolId}.`);
       return false;
     }
     if (toBigInt(userPosition.lpTokenBalance) < toBigInt(data.lpTokenAmount)) {
-      logger.warn(`[pool-remove-liquidity] Provider ${data.provider} has insufficient LP token balance for pool ${data.poolId}. Has ${userPosition.lpTokenBalance}, needs ${data.lpTokenAmount}`);
+      logger.warn(`[pool-remove-liquidity] User ${sender} has insufficient LP token balance for pool ${data.poolId}. Has ${userPosition.lpTokenBalance}, needs ${data.lpTokenAmount}`);
       return false;
     }
     // TODO: Optional server-side validation for minTokenA_amount and minTokenB_amount from dataDb if needed
@@ -55,7 +51,7 @@ export async function validateTx(data: PoolRemoveLiquidityData, sender: string):
 export async function processTx(data: PoolRemoveLiquidityData, sender: string, transactionId: string): Promise<boolean> {
   try {
     const pool = (await cache.findOnePromise('liquidityPools', { _id: data.poolId }) as LiquidityPoolData); // validateTx guarantees existence
-    const userLpPositionId = `${data.provider}-${data.poolId}`;
+    const userLpPositionId = `${sender}-${data.poolId}`;
     const userPosition = (await cache.findOnePromise('userLiquidityPositions', { _id: userLpPositionId }) as UserLiquidityPositionData); // validateTx guarantees existence
 
     const tokenAAmountToReturn = (toBigInt(data.lpTokenAmount) * toBigInt(pool.tokenA_reserve)) / toBigInt(pool.totalLpTokens);
@@ -105,29 +101,29 @@ export async function processTx(data: PoolRemoveLiquidityData, sender: string, t
 
     // After updating userLiquidityPositions, debit LP tokens from user account
     const lpTokenSymbol = getLpTokenSymbol(pool.tokenA_symbol, pool.tokenB_symbol);
-    const debitLPSuccess = await adjustBalance(data.provider, lpTokenSymbol, -toBigInt(data.lpTokenAmount));
+    const debitLPSuccess = await adjustUserBalance(sender, lpTokenSymbol, -toBigInt(data.lpTokenAmount));
     if (!debitLPSuccess) {
-        logger.error(`[pool-remove-liquidity] Failed to debit LP tokens (${lpTokenSymbol}) from ${data.provider}.`);
+        logger.error(`[pool-remove-liquidity] Failed to debit LP tokens (${lpTokenSymbol}) from ${sender}.`);
         return false;
     }
 
-    // Credit the provider's account with the withdrawn tokens
-    const creditASuccess = await adjustBalance(data.provider, pool.tokenA_symbol, tokenAAmountToReturn);
+    // Credit the user's account with the withdrawn tokens
+    const creditASuccess = await adjustUserBalance(sender, pool.tokenA_symbol, tokenAAmountToReturn);
     if (!creditASuccess) {
-        logger.error(`[pool-remove-liquidity] CRITICAL: Failed to credit ${tokenAAmountToReturn} ${pool.tokenA_symbol} to ${data.provider}.`);
+        logger.error(`[pool-remove-liquidity] CRITICAL: Failed to credit ${tokenAAmountToReturn} ${pool.tokenA_symbol} to ${sender}.`);
         return false; 
     }
 
-    const creditBSuccess = await adjustBalance(data.provider, pool.tokenB_symbol, tokenBAmountToReturn);
+    const creditBSuccess = await adjustUserBalance(sender, pool.tokenB_symbol, tokenBAmountToReturn);
     if (!creditBSuccess) {
-        logger.error(`[pool-remove-liquidity] CRITICAL: Failed to credit ${tokenBAmountToReturn} ${pool.tokenB_symbol} to ${data.provider}.`);
+        logger.error(`[pool-remove-liquidity] CRITICAL: Failed to credit ${tokenBAmountToReturn} ${pool.tokenB_symbol} to ${sender}.`);
         return false;
     }
 
-    logger.debug(`[pool-remove-liquidity] ${data.provider} removed liquidity from pool ${data.poolId} by burning ${data.lpTokenAmount} LP tokens. Received ${tokenAAmountToReturn} ${pool.tokenA_symbol} and ${tokenBAmountToReturn} ${pool.tokenB_symbol}.`);
+    logger.debug(`[pool-remove-liquidity] ${sender} removed liquidity from pool ${data.poolId} by burning ${data.lpTokenAmount} LP tokens. Received ${tokenAAmountToReturn} ${pool.tokenA_symbol} and ${tokenBAmountToReturn} ${pool.tokenB_symbol}.`);
 
     // Log event
-    await logEvent('defi', 'liquidity_removed', data.provider, {
+    await logEvent('defi', 'liquidity_removed', sender, {
       poolId: data.poolId,
       tokenAAmount: toDbString(tokenAAmountToReturn),
       tokenBAmount: toDbString(tokenBAmountToReturn),

@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { HybridTradeData, HybridTradeResult, HybridRoute } from './market-interfaces.js';
 import { liquidityAggregator } from './market-aggregator.js';
-import { getAccount, adjustBalance } from '../../utils/account.js';
+import { getAccount, adjustUserBalance } from '../../utils/account.js';
 import { toBigInt, getTokenDecimals, calculateDecimalAwarePrice, toDbString } from '../../utils/bigint.js';
 
 // Import transaction processors for different route types
@@ -547,7 +547,7 @@ async function executeOrderbookRoute(
     } else {
       deductToken = pair.baseAssetSymbol;
     }
-    const deductionSuccess = await adjustBalance(sender, deductToken, -amountIn);
+    const deductionSuccess = await adjustUserBalance(sender, deductToken, -amountIn);
     if (!deductionSuccess) {
       logger.warn(`[executeOrderbookRoute] Failed to deduct ${amountIn} ${deductToken} from user ${sender}`);
       return { success: false, amountOut: BigInt(0), error: `Insufficient balance for ${deductToken}` };

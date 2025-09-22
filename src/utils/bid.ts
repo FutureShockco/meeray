@@ -2,7 +2,7 @@ import logger from '../logger.js';
 import cache from '../cache.js';
 import { NftBid, NFTListingData } from '../transactions/nft/nft-market-interfaces.js';
 import { toBigInt, toDbString } from './bigint.js';
-import { adjustBalance } from './account.js';
+import { adjustUserBalance } from './account.js';
 import crypto from 'crypto';
 
 // Helper to generate a unique bid ID
@@ -169,7 +169,7 @@ export async function escrowBidFunds(
   paymentTokenIdentifier: string
 ): Promise<boolean> {
   try {
-    const success = await adjustBalance(bidder, paymentTokenIdentifier, -amount);
+    const success = await adjustUserBalance(bidder, paymentTokenIdentifier, -amount);
     if (success) {
       logger.debug(`[bid-utils] Escrowed ${amount} ${paymentTokenIdentifier} from ${bidder}`);
     }
@@ -187,7 +187,7 @@ export async function releaseEscrowedFunds(
   paymentTokenIdentifier: string
 ): Promise<boolean> {
   try {
-    const success = await adjustBalance(bidder, paymentTokenIdentifier, amount);
+    const success = await adjustUserBalance(bidder, paymentTokenIdentifier, amount);
     if (success) {
       logger.debug(`[bid-utils] Released ${amount} ${paymentTokenIdentifier} to ${bidder}`);
     }

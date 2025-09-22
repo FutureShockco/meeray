@@ -2,7 +2,7 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { MarketCancelOrderData, OrderData, OrderStatus, OrderSide } from './market-interfaces.js';
-import { getAccount, adjustBalance } from '../../utils/account.js';
+import { getAccount, adjustUserBalance } from '../../utils/account.js';
 import { matchingEngine } from './matching-engine.js';
 import { toBigInt, calculateTradeValue } from '../../utils/bigint.js';
 
@@ -124,7 +124,7 @@ export async function processTx(data: MarketCancelOrderData, sender: string, id:
             }
 
             if (amountToReturn > BigInt(0)) {
-                await adjustBalance(sender, tokenToReturn, amountToReturn);
+                await adjustUserBalance(sender, tokenToReturn, amountToReturn);
             }
         }
 

@@ -1,6 +1,6 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
-import { getAccount, adjustBalance } from '../../utils/account.js';
+import { getAccount, adjustUserBalance } from '../../utils/account.js';
 import crypto from 'crypto';
 import { logEvent } from '../../utils/event-logger.js';
 import {

@@ -2,7 +2,7 @@ import logger from '../../logger.js';
 import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { FarmClaimRewardsData, FarmData, UserFarmPositionData } from './farm-interfaces.js';
-import { getAccount, adjustBalance } from '../../utils/account.js';
+import { getAccount, adjustUserBalance } from '../../utils/account.js';
 import { toDbString, toBigInt } from '../../utils/bigint.js';
 import config from '../../config.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
@@ -103,13 +103,13 @@ export async function processTx(data: FarmClaimRewardsData, sender: string, id: 
     const rewardSymbol = farm.rewardToken.symbol;
     const vaultAccountName = (farm as any).vaultAccount as string | undefined;
     if (vaultAccountName) {
-      const debitVaultOk = await adjustBalance(vaultAccountName, rewardSymbol, -pendingRewards);
+      const debitVaultOk = await adjustUserBalance(vaultAccountName, rewardSymbol, -pendingRewards);
       if (!debitVaultOk) {
         logger.error(`[farm-claim-rewards] Failed to debit vault ${vaultAccountName} for ${pendingRewards} ${rewardSymbol}.`);
         return false;
       }
     }
-    const creditOk = await adjustBalance(data.staker, rewardSymbol, pendingRewards);
+    const creditOk = await adjustUserBalance(data.staker, rewardSymbol, pendingRewards);
     if (!creditOk) {
       logger.error(`[farm-claim-rewards] Failed to credit rewards for ${data.staker} in ${rewardSymbol}.`);
       return false;
