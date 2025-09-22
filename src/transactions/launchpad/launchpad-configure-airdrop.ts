@@ -110,7 +110,7 @@ export async function processTx(data: LaunchpadConfigureAirdropData, sender: str
     // Convert recipients to database format
     const recipientsForDb = data.recipients.map(recipient => ({
       username: recipient.username,
-      amount: toDbString(toBigInt(recipient.amount)),
+      amount: toDbString(recipient.amount),
       claimed: false
     }));
 

@@ -62,7 +62,7 @@ export async function processTx(data: NftDelistPayload, sender: string, id: stri
       collectionId: listing.collectionId,
       tokenId: listing.tokenId,
       fullInstanceId: `${listing.collectionId}_${listing.tokenId}`,
-      price: toDbString(toBigInt(listing.price)),
+      price: toDbString(listing.price),
       paymentTokenSymbol: listing.paymentToken.symbol,
       paymentTokenIssuer: listing.paymentToken.issuer,
       listingType: listing.listingType,
@@ -76,4 +76,4 @@ export async function processTx(data: NftDelistPayload, sender: string, id: stri
     logger.error(`[nft-delist-item] Error processing NFT delist for listing ${data.listingId} by ${sender}: ${error}`);
     return false;
   }
-} 
+}

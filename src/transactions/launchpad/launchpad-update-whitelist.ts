@@ -11,15 +11,30 @@ export interface LaunchpadUpdateWhitelistData {
 
 export async function validateTx(data: LaunchpadUpdateWhitelistData, sender: string): Promise<boolean> {
   try {
-    if (sender !== data.userId) return false;
+    if (sender !== data.userId) {
+      logger.error(`[launchpad-update-whitelist] validate failed: sender mismatch (sender=${sender} data.userId=${data.userId})`);
+      return false;
+    }
+
     const lp = await cache.findOnePromise('launchpads', { _id: data.launchpadId });
-    if (!lp) return false;
+    if (!lp) {
+      logger.error(`[launchpad-update-whitelist] validate failed: launchpad not found (launchpadId=${data.launchpadId})`);
+      return false;
+    }
+
     if (['ADD','REMOVE','REPLACE'].includes(data.action)) {
-      if (!Array.isArray(data.addresses) || data.addresses.length === 0) return false;
+      if (!Array.isArray(data.addresses) || data.addresses.length === 0) {
+        logger.error('[launchpad-update-whitelist] validate failed: addresses missing or not an array for action requiring addresses');
+        return false;
+      }
       for (const addr of data.addresses) {
-        if (!validate.string(addr, 16, 3)) return false;
+        if (!validate.string(addr, 16, 3)) {
+          logger.error(`[launchpad-update-whitelist] validate failed: invalid address in addresses array (address=${addr})`);
+          return false;
+        }
       }
     }
+
     return true;
   } catch (e) {
     logger.error('[launchpad-update-whitelist] validate error', e);
@@ -62,5 +77,3 @@ export async function processTx(data: LaunchpadUpdateWhitelistData, sender: stri
     return false;
   }
 }
-
-

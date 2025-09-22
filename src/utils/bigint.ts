@@ -419,4 +419,3 @@ export function sqrt(value: bigint): bigint {
   
     return x;
   }
-  

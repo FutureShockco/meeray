@@ -168,7 +168,6 @@ export async function validateAutoRouteSwap(data: PoolSwapData, sender: string, 
     return true;
 }
 
-
 /**
  * Process swap and return detailed result including output amount
  * This is used by the hybrid trading system
@@ -279,7 +278,7 @@ export async function processSingleHopSwap(data: PoolSwapData, sender: string, t
         poolId: data.poolId,
         tokenIn: tokenIn_symbol,
         tokenOut: tokenOut_symbol,
-        amountIn: toDbString(toBigInt(data.amountIn)),
+        amountIn: toDbString(data.amountIn),
         amountOut: toDbString(amountOut),
         fee: toDbString(feeAmount),
         tokenA_symbol: poolFromDb.tokenA_symbol,
@@ -386,7 +385,7 @@ export async function processSingleHopSwapWithResult(data: PoolSwapData, sender:
             poolId: data.poolId,
             tokenIn: tokenIn_symbol,
             tokenOut: tokenOut_symbol,
-            amountIn: toDbString(toBigInt(data.amountIn)),
+            amountIn: toDbString(data.amountIn),
             amountOut: toDbString(amountOut),
             fee: toDbString(feeAmount),
             tokenA_symbol: poolFromDb.tokenA_symbol,
@@ -523,7 +522,7 @@ export async function processRoutedSwap(data: PoolSwapData, sender: string, tran
         poolId: data.hops![0].poolId, // Use the first hop's poolId instead of data.poolId
         tokenIn: data.hops![0].tokenIn_symbol,
         tokenOut: data.hops![data.hops!.length - 1].tokenOut_symbol,
-        amountIn: toDbString(toBigInt(data.amountIn)),
+        amountIn: toDbString(data.amountIn),
         amountOut: toDbString(totalAmountOut),
         fee: toDbString(totalAmountOut * BigInt(10000) / toBigInt(data.amountIn)),
         tokenA_symbol: firstPoolData?.tokenA_symbol || data.hops![0].tokenIn_symbol,

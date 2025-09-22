@@ -71,4 +71,4 @@ export async function processTx(data: TokenTransferData, sender: string, id: str
         logger.error(`[token-transfer:process] Error processing transfer: ${error}`);
         return false;
     }
-} 
+}

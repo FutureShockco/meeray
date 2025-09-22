@@ -67,4 +67,4 @@ export async function processTx(data: TokenUpdateData, sender: string, id: strin
         logger.error(`[token-update:process] Error updating token ${data.symbol}: ${error}`);
         return false;
     }
-} 
+}

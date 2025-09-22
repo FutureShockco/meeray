@@ -22,4 +22,4 @@ export default function validateBigInt(value: string | bigint, allowZero = false
     if (minValue !== undefined && numValue < minValue) return false;
 
     return true;
-} 
+}

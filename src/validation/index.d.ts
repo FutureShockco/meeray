@@ -32,9 +32,6 @@ export interface ValidateModule {
     validateLpTokenExists: (tokenASymbol: string, tokenBSymbol: string, poolId: string) => Promise<boolean>;
 }
 
-
 declare const validate: ValidateModule;
 
-
-
-export default validate; 
+export default validate;

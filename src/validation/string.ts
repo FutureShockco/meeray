@@ -39,4 +39,4 @@ const validateString = (
     return true;
 };
 
-export default validateString; 
+export default validateString;

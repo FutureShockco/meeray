@@ -89,12 +89,12 @@ export async function processTx(data: LaunchpadConfigurePresaleData, sender: str
     // Convert BigInt fields to strings for storage
     const presaleDetailsForDb = {
       ...data.presaleDetails,
-      pricePerToken: toDbString(toBigInt(data.presaleDetails.pricePerToken)),
-      minContributionPerUser: toDbString(toBigInt(data.presaleDetails.minContributionPerUser)),
-      maxContributionPerUser: toDbString(toBigInt(data.presaleDetails.maxContributionPerUser)),
-      hardCap: toDbString(toBigInt(data.presaleDetails.hardCap)),
+      pricePerToken: toDbString(data.presaleDetails.pricePerToken),
+      minContributionPerUser: toDbString(data.presaleDetails.minContributionPerUser),
+      maxContributionPerUser: toDbString(data.presaleDetails.maxContributionPerUser),
+      hardCap: toDbString(data.presaleDetails.hardCap),
       softCap: data.presaleDetails.softCap !== undefined 
-        ? toDbString(toBigInt(data.presaleDetails.softCap)) 
+        ? toDbString(data.presaleDetails.softCap) 
         : undefined,
     };
 
@@ -120,8 +120,8 @@ export async function processTx(data: LaunchpadConfigurePresaleData, sender: str
 
     await logEvent('launchpad', 'presale_configured', sender, {
       launchpadId: data.launchpadId,
-      hardCap: toDbString(toBigInt(data.presaleDetails.hardCap)),
-      pricePerToken: toDbString(toBigInt(data.presaleDetails.pricePerToken))
+      hardCap: toDbString(data.presaleDetails.hardCap),
+      pricePerToken: toDbString(data.presaleDetails.pricePerToken)
     });
 
     logger.debug(`[launchpad-configure-presale] Presale configured for ${data.launchpadId}`);

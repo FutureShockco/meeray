@@ -291,4 +291,4 @@ class BlockProcessor {
     }
 }
 
-export default BlockProcessor; 
+export default BlockProcessor;

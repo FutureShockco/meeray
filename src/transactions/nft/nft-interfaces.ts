@@ -137,4 +137,4 @@ export interface NFTUpdateCollectionData {
         externalUrl?: string;
         [key: string]: any;
     };
-} 
+}

@@ -50,5 +50,3 @@ export async function processTx(data: LaunchpadRefundPresaleData, sender: string
     return false;
   }
 }
-
-

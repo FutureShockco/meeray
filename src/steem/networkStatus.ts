@@ -298,4 +298,4 @@ class NetworkStatusManager {
     }
 }
 
-export default NetworkStatusManager; 
+export default NetworkStatusManager;

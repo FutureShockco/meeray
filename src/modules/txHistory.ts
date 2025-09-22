@@ -50,4 +50,4 @@ const txHistory = {
   },
 };
 
-export default txHistory; 
+export default txHistory;

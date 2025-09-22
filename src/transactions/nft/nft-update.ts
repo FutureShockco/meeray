@@ -125,4 +125,4 @@ export async function processTx(data: NFTUpdateMetadataData, sender: string, id:
     logger.error(`[nft-update] Error processing NFT update for ${data.collectionSymbol}_${data.instanceId} by ${sender}: ${error}`);
     return false;
   }
-} 
+}

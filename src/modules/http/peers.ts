@@ -11,4 +11,4 @@ router.get('/', async (req: Request, res: Response) => {
     res.json({ success: true, peers });
 });
 
-export default router; 
+export default router;

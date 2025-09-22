@@ -314,4 +314,4 @@ class SyncManager {
     }
 }
 
-export default SyncManager; 
+export default SyncManager;

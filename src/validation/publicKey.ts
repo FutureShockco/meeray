@@ -22,4 +22,4 @@ const validatePublicKey = (
     return true;
 };
 
-export default validatePublicKey; 
+export default validatePublicKey;

@@ -38,8 +38,6 @@ export async function adjustTokenSupply(tokenSymbol: string, amount: bigint): Pr
     return newSupply;
 }
 
-
-
 /**
  * Checks whether a token is issued by this node's configured bridge account
  */

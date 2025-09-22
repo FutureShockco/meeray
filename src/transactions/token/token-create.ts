@@ -65,4 +65,4 @@ export async function processTx(data: TokenData, sender: string, id: string): Pr
     logger.error(`[token-create:process] Error processing token creation for ${data.symbol} by ${sender}: ${error}`);
     return false;
   }
-} 
+}

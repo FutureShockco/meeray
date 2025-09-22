@@ -45,4 +45,4 @@ export async function processTx(data: TokenTransferData, sender: string): Promis
         logger.error(`[token-mint:process] Error: ${error}`);
         return false;
     }
-} 
+}

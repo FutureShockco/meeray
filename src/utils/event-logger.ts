@@ -175,4 +175,4 @@ export async function logEvent(
 ): Promise<void> {
     logger.info(`${category}:${action} transaction: ${JSON.stringify(eventData)} created successfully by ${actor}.`);
     return logTransactionEvent(category, action, actor, eventData, transactionId);
-} 
+}

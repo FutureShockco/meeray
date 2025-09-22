@@ -38,4 +38,4 @@ const validateInteger = (
     return true;
 };
 
-export default validateInteger; 
+export default validateInteger;

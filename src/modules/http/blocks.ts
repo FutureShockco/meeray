@@ -192,4 +192,4 @@ router.get('/:height/transactions', (async (req: Request, res: Response) => {
     }
 }) as RequestHandler);
 
-export default router; 
+export default router;

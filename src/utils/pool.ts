@@ -87,7 +87,6 @@ export function calculatePriceImpact(amountIn: bigint, reserveIn: bigint): numbe
     return Math.min(impact * 100, 100); // Cap at 100%
 }
 
-
 /**
  * Finds the best trade route from start token to end token
  */
@@ -161,7 +160,6 @@ export async function findBestTradeRoute(
     }
     return routes.sort((a, b) => toBigInt(b.finalAmountOut) > toBigInt(a.finalAmountOut) ? 1 : -1)[0] || null;
 }
-
 
 // Calculate LP tokens to mint based on provided liquidity
 // For initial liquidity: uses geometric mean (sqrt of product) for fair distribution

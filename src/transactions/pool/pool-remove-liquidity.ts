@@ -127,7 +127,7 @@ export async function processTx(data: PoolRemoveLiquidityData, sender: string, t
       poolId: data.poolId,
       tokenAAmount: toDbString(tokenAAmountToReturn),
       tokenBAmount: toDbString(tokenBAmountToReturn),
-      lpTokensBurned: toDbString(toBigInt(data.lpTokenAmount))
+      lpTokensBurned: toDbString(data.lpTokenAmount)
     }, transactionId);
 
     return true;

@@ -76,5 +76,3 @@ export async function processTx(data: LaunchpadUpdateStatusData, sender: string)
     return false;
   }
 }
-
-

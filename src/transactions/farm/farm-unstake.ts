@@ -7,7 +7,6 @@ import { getAccount } from '../../utils/account.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
-
 export async function validateTx(data: FarmUnstakeData, sender: string): Promise<boolean> {
   try {
 
@@ -149,7 +148,7 @@ export async function processTx(data: FarmUnstakeData, sender: string, id: strin
     await logTransactionEvent('farm_unstake', data.staker, {
       farmId: data.farmId,
       staker: data.staker,
-      lpTokenAmount: toDbString(toBigInt(data.lpTokenAmount)),
+      lpTokenAmount: toDbString(data.lpTokenAmount),
       poolId: poolIdForLp,
       totalStaked: toDbString(newTotalStaked)
     });
@@ -159,4 +158,4 @@ export async function processTx(data: FarmUnstakeData, sender: string, id: strin
     logger.error(`[farm-unstake] Error processing unstake for farm ${data.farmId} by ${sender}: ${error}`);
     return false;
   }
-} 
+}

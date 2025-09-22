@@ -201,10 +201,10 @@ export async function processTx(data: NftListPayload, sender: string, id: string
       paymentTokenSymbol: data.paymentTokenSymbol,
       paymentTokenIssuer: data.paymentTokenIssuer,
       listingType: listingTypeStr,
-      reservePrice: data.reservePrice ? toDbString(toBigInt(data.reservePrice)) : undefined,
+      reservePrice: data.reservePrice ? toDbString(data.reservePrice) : undefined,
       auctionEndTime: data.auctionEndTime,
       allowBuyNow: data.allowBuyNow || false,
-      minimumBidIncrement: data.minimumBidIncrement ? toDbString(toBigInt(data.minimumBidIncrement)) : toDbString(toBigInt('100000'))
+      minimumBidIncrement: data.minimumBidIncrement ? toDbString(data.minimumBidIncrement) : toDbString('100000')
     });
 
     return listingId; // Return the ID of the created listing

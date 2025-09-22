@@ -6,7 +6,6 @@ import { getAccount, adjustUserBalance } from '../../utils/account.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
 
-
 export async function validateTx(dataDb: LaunchpadParticipatePresaleData, sender: string): Promise<boolean> {
   const data = dataDb; // No conversion needed with single interface
   logger.debug(`[launchpad-participate-presale] Validating participation from ${sender} for launchpad ${data.launchpadId}: amount ${data.contributionAmount}`);
@@ -97,7 +96,7 @@ export async function processTx(dataDb: LaunchpadParticipatePresaleData, sender:
     } else {
         updatedParticipantsList.push({
             userId: data.userId,
-            quoteAmountContributed: toDbString(toBigInt(data.contributionAmount)),
+            quoteAmountContributed: toDbString(data.contributionAmount),
             claimed: false
         });
     }
@@ -118,14 +117,13 @@ export async function processTx(dataDb: LaunchpadParticipatePresaleData, sender:
         return false;
     }
 
-
     logger.debug(`[launchpad-participate-presale] Participation processed for ${data.contributionAmount}.`);
 
     // Log event
     await logEvent('launchpad', 'participation', sender, {
       launchpadId: data.launchpadId,
       userId: data.userId,
-      contributionAmount: toDbString(toBigInt(data.contributionAmount)),
+      contributionAmount: toDbString(data.contributionAmount),
       quoteAssetSymbol: presaleDetails.quoteAssetForPresaleSymbol,
       totalQuoteRaised: toDbString(newTotalRaised),
       isNewParticipant: participantIndex === -1
@@ -137,4 +135,4 @@ export async function processTx(dataDb: LaunchpadParticipatePresaleData, sender:
     logger.error(`[launchpad-participate-presale] Error processing participation: ${error}`);
     return false;
   }
-} 
+}

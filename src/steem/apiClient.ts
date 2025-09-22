@@ -129,4 +129,4 @@ class SteemApiClient {
     }
 }
 
-export default SteemApiClient; 
+export default SteemApiClient;

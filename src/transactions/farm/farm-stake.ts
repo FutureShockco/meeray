@@ -7,7 +7,6 @@ import { getAccount } from '../../utils/account.js';
 import { toDbString, toBigInt } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 
-
 export async function validateTx(data: FarmStakeData, sender: string): Promise<boolean> {
   try {
 
@@ -184,4 +183,4 @@ export async function processTx(data: FarmStakeData, sender: string, id: string,
     logger.error(`[farm-stake] Error processing stake for farm ${data.farmId} by ${sender}: ${error}`);
     return false;
   }
-} 
+}

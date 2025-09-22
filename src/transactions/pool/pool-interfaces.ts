@@ -78,7 +78,6 @@ export interface UserLiquidityPositionData {
   unclaimedFeesB?: string | bigint;  // Unclaimed fees in token B
 }
 
-
 export interface TradeHop {
     poolId: string;
     tokenIn: string;

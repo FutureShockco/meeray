@@ -8,7 +8,6 @@ import { getLpTokenSymbol } from '../../utils/token.js';
 import { logEvent } from '../../utils/event-logger.js';
 import { createLiquidityPool, createLpToken, createTradingPair } from './pool-helpers.js';
 
-
 export async function validateTx(data: PoolData, sender: string): Promise<boolean> {
   try {
     if (!validate.validatePoolTokens(data)) {
@@ -71,4 +70,4 @@ export async function processTx(data: PoolData, sender: string, id: string): Pro
     logger.error(`[pool-create] Error processing pool creation by ${sender}: ${error}`);
     return false;
   }
-} 
+}

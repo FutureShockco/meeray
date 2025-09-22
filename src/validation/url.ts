@@ -54,5 +54,4 @@ function validateLogoUrl(value: string, maxLength = 2048): boolean {
     }
 }
 
-
-export { validateUrl, validateLogoUrl }; 
+export { validateUrl, validateLogoUrl };

@@ -319,7 +319,6 @@ export async function creditLpTokens(
   return true;
 }
 
-
 // Helper function to find trading pair ID regardless of token order
 export async function findTradingPairId(tokenA: string, tokenB: string): Promise<string | null> {
   // Try multiple patterns: hyphen and underscore, both orders

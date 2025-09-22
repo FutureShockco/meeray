@@ -13,4 +13,4 @@ export function generateDeterministicId(...components: string[]): string {
     throw new Error('Cannot generate ID from only empty or invalid components.');
   }
   return validComponents.sort().join('_');
-} 
+}

@@ -41,9 +41,6 @@ interface TradeRoute {
     finalAmountOut: string; // Padded BigInt string (final amount out for the whole route)
 }
 
-
-
-
 /**
  * Finds all possible trade routes from a start token to an end token using BigInt.
  */
@@ -698,6 +695,5 @@ router.get('/:poolId/analytics', (async (req: Request, res: Response) => {
         res.status(500).json({ message: 'Error fetching pool analytics', error: error.message });
     }
 }) as RequestHandler);
-
 
 export default router;

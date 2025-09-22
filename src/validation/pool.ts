@@ -34,7 +34,6 @@ export const validatePoolTokens = (data: any): boolean => {
     return true;
 };
 
-
 /**
  * Validates that the required fields are present in pool add liquidity data
  * @param data Pool add liquidity data
@@ -49,7 +48,6 @@ export const validatePoolAddLiquidityFields = (data: any, sender: string): boole
 
     return true;
 };
-
 
 /**
  * Validates that the user has sufficient token balances
@@ -124,7 +122,6 @@ export const validatePoolRatioTolerance = (
 
     return true;
 };
-
 
 /**
  * Validates that a pool exists

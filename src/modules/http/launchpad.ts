@@ -373,4 +373,4 @@ router.get('/:launchpadId/settlement-preview', (async (req: Request, res: Respon
     }
 }) as RequestHandler);
 
-export default router; 
+export default router;

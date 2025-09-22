@@ -128,7 +128,6 @@ export async function processTx(data: MarketCancelOrderData, sender: string, id:
             }
         }
 
-
         logger.info(`[market-cancel-order] Successfully cancelled order ${data.orderId} for user ${sender}`);
         return true;
 

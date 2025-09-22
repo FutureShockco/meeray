@@ -16,4 +16,4 @@ const validateBoolean = (
     return true;
 };
 
-export default validateBoolean; 
+export default validateBoolean;

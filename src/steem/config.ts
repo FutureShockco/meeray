@@ -54,4 +54,4 @@ const steemConfig: SteemConfig = {
     ]
 };
 
-export default steemConfig; 
+export default steemConfig;

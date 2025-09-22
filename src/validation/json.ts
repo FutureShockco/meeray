@@ -22,4 +22,4 @@ const validateJson = (
     return true;
 };
 
-export default validateJson; 
+export default validateJson;

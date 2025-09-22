@@ -32,5 +32,3 @@ export async function processTx(data: LaunchpadSetMainTokenData, sender: string)
     return false;
   }
 }
-
-

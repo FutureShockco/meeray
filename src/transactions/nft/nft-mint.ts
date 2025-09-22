@@ -87,8 +87,6 @@ export async function validateTx(data: NFTMintData, sender: string): Promise<boo
         return false;
     }
 
-
-
     const ownerAccount = await cache.findOnePromise('accounts', { name: data.owner });
     if (!ownerAccount) {
       logger.warn(`[nft-mint] Owner account ${data.owner} not found.`);
@@ -179,4 +177,4 @@ export async function processTx(data: NFTMintData, sender: string, id: string): 
     logger.error(`[nft-mint] Error processing NFT mint for ${data.collectionSymbol} by ${sender}: ${error}`);
     return false;
   }
-} 
+}

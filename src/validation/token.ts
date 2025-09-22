@@ -21,7 +21,6 @@ export const tokenSymbols = (symbols: any[] | any): boolean => {
     return true;
 };
 
-
 /**
  * Validates a transfer of tokens
  * @param sender Sender account name
@@ -201,6 +200,5 @@ export const canMintToken = async (sender: string, symbol: string, amount: strin
 
     return true
 }
-
 
 export default { tokenSymbols, newToken, tokenExists, isIssuer, canMintToken };

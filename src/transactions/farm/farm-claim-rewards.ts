@@ -156,4 +156,4 @@ export async function processTx(data: FarmClaimRewardsData, sender: string, id: 
     logger.error(`[farm-claim-rewards] Error processing reward claim for farm ${data.farmId} by ${sender}: ${error}`);
     return false;
   }
-} 
+}

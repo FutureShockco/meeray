@@ -63,4 +63,4 @@ export async function processTx(data: { target: string }, sender: string, transa
     logger.error('Error processing witness unvote:', error);
     return false;
   }
-} 
+}

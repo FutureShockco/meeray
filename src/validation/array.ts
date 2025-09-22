@@ -21,4 +21,4 @@ const validateArray = (
     return true;
 };
 
-export default validateArray; 
+export default validateArray;

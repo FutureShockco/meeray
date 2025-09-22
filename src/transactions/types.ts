@@ -140,4 +140,4 @@ export const transactions: { [key: number]: string } = {
   [TransactionType.NFT_MAKE_OFFER]: 'nft_make_offer',
   [TransactionType.NFT_ACCEPT_OFFER]: 'nft_accept_offer',
   [TransactionType.NFT_CANCEL_OFFER]: 'nft_cancel_offer'
-}; 
+};

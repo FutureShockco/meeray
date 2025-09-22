@@ -414,7 +414,6 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
     const actualPriceImpact = results.length > 0 ?
       Number(totalAmountIn - totalAmountOut) / Number(totalAmountIn) : 0;
 
-
     logger.debug(`[hybrid-trade] Hybrid trade completed: ${totalAmountIn} ${data.tokenIn} -> ${totalAmountOut} ${data.tokenOut}`);
     return true;
 
@@ -604,4 +603,3 @@ async function executeOrderbookRoute(
     return { success: false, amountOut: BigInt(0), error: `Orderbook route error: ${error}` };
   }
 }
-

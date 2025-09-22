@@ -18,7 +18,6 @@ export interface NFTListingPurchaseData {
     buyer: string;         // Buyer's address
 }
 
-
 export interface NFTListingData {
     _id: string;           // Listing ID: hash(collectionId, tokenId, seller, timestamp)
     collectionId: string;  // Collection ID
@@ -44,7 +43,6 @@ export interface NFTListingData {
     currentHighestBidder?: string;             // Current highest bidder
     totalBids?: number;                        // Total number of bids placed
 }
-
 
 export interface NFTSaleData {
     _id: string;          // Sale ID: hash(listingId, buyer, timestamp)
@@ -189,4 +187,4 @@ export interface NftCancelOfferData {
 // Event interfaces for market activities could also be defined here later.
 // export interface NftItemListedEvent { ... }
 // export interface NftItemSoldEvent { ... }
-// export interface NftItemDelistedEvent { ... } 
+// export interface NftItemDelistedEvent { ... }

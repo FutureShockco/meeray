@@ -61,4 +61,4 @@ export default {
     groups,
     groupsInv,
     parameters
-}; 
+};

@@ -87,4 +87,4 @@ const validation: ValidationModule = {
     validateLpTokenExists
 };
 
-export default validation; 
+export default validation;

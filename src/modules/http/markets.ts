@@ -2,5 +2,3 @@
 import router from './market.js';
 
 export default router;
-
-

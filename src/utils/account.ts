@@ -4,7 +4,6 @@ import { toDbString } from './bigint.js';
 import config from '../config.js';
 import { Account } from "../mongo.js";
 
-
 export async function getAccount(accountId: string): Promise<Account | null> {
     return await cache.findOnePromise('accounts', { name: accountId }) as Account | null;
 }

@@ -138,4 +138,4 @@ export async function processTx(launchData: LaunchpadLaunchTokenData, sender: st
     logger.error(`[launchpad-launch-token] Error processing launch request by ${sender}: ${error}`);
     return false;
   }
-} 
+}

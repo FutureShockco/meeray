@@ -134,8 +134,6 @@ export async function discoverTransactionHandlers() {
   }
 }
 
-
-
 // EXPORT the transactionHandlers map
 export { transactionHandlers };
 
@@ -178,4 +176,4 @@ export async function processTransaction(tx: Transaction): Promise<{ success: bo
     const errorMessage = error instanceof Error ? error.message : String(error);
     return { success: false, error: `internal error during validation: ${errorMessage}` };
   }
-} 
+}

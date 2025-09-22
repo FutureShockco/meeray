@@ -48,4 +48,4 @@ export async function processTx(data: TokenTransferData, sender: string): Promis
         logger.error(`[token-transfer:process] Error processing transfer: ${error}`);
         return false;
     }
-} 
+}

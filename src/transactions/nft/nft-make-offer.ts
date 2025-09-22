@@ -193,7 +193,7 @@ export async function processTx(data: NftMakeOfferData, sender: string, id: stri
     }
 
     if (data.floorPrice) {
-      offerDocument.floorPrice = toDbString(toBigInt(data.floorPrice));
+      offerDocument.floorPrice = toDbString(data.floorPrice);
     }
 
     // Insert offer

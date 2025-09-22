@@ -212,4 +212,4 @@ export async function processTx(data: NFTCollectionCreateData, sender: string, i
     logger.error(`[nft-create-collection] Error processing collection creation for ${data.symbol} by ${sender}: ${error}`);
     return false;
   }
-} 
+}

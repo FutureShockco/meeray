@@ -92,7 +92,7 @@ export async function processTx(data: LaunchpadConfigureTokenomicsData, sender: 
     // Convert tokenomics for storage
     const tokenomicsForDb = {
       ...data.tokenomics,
-      totalSupply: toDbString(toBigInt(data.tokenomics.totalSupply)),
+      totalSupply: toDbString(data.tokenomics.totalSupply),
     };
 
     const update = {

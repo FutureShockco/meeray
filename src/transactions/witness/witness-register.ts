@@ -35,4 +35,4 @@ export async function processTx(data: { pub: string }, sender: string, transacti
     logger.error(`[witness-register:process] Error processing witness register: ${error}`);
     return false;
   }
-} 
+}

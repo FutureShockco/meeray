@@ -56,5 +56,3 @@ export async function processTx(data: LaunchpadFinalizePresaleData, sender: stri
     return false;
   }
 }
-
-

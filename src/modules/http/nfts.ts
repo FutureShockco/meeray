@@ -84,7 +84,6 @@ const transformNftListingData = (listingData: any): any => {
         delete transformed._id;
     }
 
-
     const priceFields = ['price', 'startingPrice', 'currentPrice', 'endingPrice', 'royaltyFeeAmount'];
     for (const field of priceFields) {
         if (transformed[field] !== undefined && transformed[field] !== null) {
@@ -1932,4 +1931,4 @@ router.get('/marketplace/stats', (async (req: Request, res: Response) => {
     }
 }) as RequestHandler);
 
-export default router; 
+export default router;
