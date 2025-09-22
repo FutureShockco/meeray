@@ -48,12 +48,18 @@ export class RecoveryManager {
         const champion = peersAhead[Math.floor(Math.random() * peersAhead.length)];
         const nextBlock = (this.state.recovering as number) + 1;
 
-        if (nextBlock <= champion.node_status!.head_block) {
+        // Ensure champion has node_status before proceeding
+        if (!champion.node_status) {
+            logger.warn('[P2P] Champion peer has no node_status, skipping recovery');
+            return;
+        }
+
+        if (nextBlock <= champion.node_status.head_block) {
             this.state.recovering = nextBlock;
             SocketManager.sendJSON(champion, { t: MessageType.QUERY_BLOCK, d: nextBlock });
             this.state.recoveringBlocks.push(nextBlock);
 
-            logger.trace(`Querying block #${nextBlock} from peer (head: ${champion.node_status!.head_block})`);
+            logger.trace(`Querying block #${nextBlock} from peer (head: ${champion.node_status.head_block})`);
 
             if (nextBlock % 2) {
                 this.recover();

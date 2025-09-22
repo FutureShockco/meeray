@@ -266,10 +266,16 @@ export class MessageHandler {
         const wsIndex = this.state.sockets.indexOf(ws);
         if (wsIndex === -1) return;
 
+        // Ensure node_status exists before updating
+        if (!this.state.sockets[wsIndex].node_status) {
+            logger.warn(`[P2P] Received NEW_BLOCK from peer without node_status, ignoring block ${block._id}. This can happen during initial connection before NODE_STATUS message is received.`);
+            return;
+        }
+
         // Update peer's head block info
-        this.state.sockets[wsIndex].node_status!.head_block = block._id;
-        this.state.sockets[wsIndex].node_status!.head_block_hash = block.hash;
-        this.state.sockets[wsIndex].node_status!.previous_block_hash = block.phash;
+        this.state.sockets[wsIndex].node_status.head_block = block._id;
+        this.state.sockets[wsIndex].node_status.head_block_hash = block.hash;
+        this.state.sockets[wsIndex].node_status.previous_block_hash = block.phash;
 
         if (this.state.recovering) return;
 
