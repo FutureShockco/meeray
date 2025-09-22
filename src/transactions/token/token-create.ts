@@ -85,7 +85,7 @@ export async function validateTx(data: TokenData, sender: string): Promise<boole
   }
 }
 
-export async function process(data: TokenData, sender: string, id: string): Promise<boolean> {
+export async function processTx(data: TokenData, sender: string, id: string): Promise<boolean> {
   try {
     const initialSupply = toBigInt(data.initialSupply || 0);
     const tokenToStore: TokenData = {

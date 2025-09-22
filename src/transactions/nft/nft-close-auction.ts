@@ -82,7 +82,7 @@ export async function validateTx(data: CloseAuctionData, sender: string): Promis
   }
 }
 
-export async function process(data: CloseAuctionData, sender: string, id: string): Promise<boolean> {
+export async function processTx(data: CloseAuctionData, sender: string, id: string): Promise<boolean> {
   try {
     // Re-fetch listing for processing
     const listing = await cache.findOnePromise('nftListings', { _id: data.listingId }) as NFTListingData;

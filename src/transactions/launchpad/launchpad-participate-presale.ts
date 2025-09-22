@@ -73,7 +73,7 @@ export async function validateTx(dataDb: LaunchpadParticipatePresaleData, sender
   return true;
 }
 
-export async function process(dataDb: LaunchpadParticipatePresaleData, sender: string, transactionId: string): Promise<boolean> {
+export async function processTx(dataDb: LaunchpadParticipatePresaleData, sender: string, transactionId: string): Promise<boolean> {
   const data = dataDb; // No conversion needed with single interface
   logger.debug(`[launchpad-participate-presale] Processing participation from ${sender} for ${data.launchpadId}: amount ${data.contributionAmount}`);
   try {

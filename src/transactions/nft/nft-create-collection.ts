@@ -123,7 +123,7 @@ export async function validateTx(data: NFTCollectionCreateData, sender: string):
   }
 }
 
-export async function process(data: NFTCollectionCreateData, sender: string, id: string): Promise<boolean> {
+export async function processTx(data: NFTCollectionCreateData, sender: string, id: string): Promise<boolean> {
   try {
     const existingCollection = await cache.findOnePromise('nftCollections', { _id: data.symbol });
     if (existingCollection) {

@@ -53,7 +53,7 @@ export async function validateTx(data: LaunchpadUpdateStatusData, sender: string
   }
 }
 
-export async function process(data: LaunchpadUpdateStatusData, sender: string): Promise<boolean> {
+export async function processTx(data: LaunchpadUpdateStatusData, sender: string): Promise<boolean> {
   try {
     const launchpad = await cache.findOnePromise('launchpads', { _id: data.launchpadId });
     if (!launchpad) return false;

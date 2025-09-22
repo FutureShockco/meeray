@@ -78,7 +78,7 @@ export async function validateTx(data: NftBuyPayload, sender: string): Promise<b
   }
 }
 
-export async function process(data: NftBuyPayload, sender: string, id: string): Promise<boolean> {
+export async function processTx(data: NftBuyPayload, sender: string, id: string): Promise<boolean> {
   try {
     const listing = await cache.findOnePromise('nftListings', { _id: data.listingId, status: 'active' }) as NFTListingData;
     const bidAmount = data.bidAmount ? toBigInt(data.bidAmount) : toBigInt(listing.price);

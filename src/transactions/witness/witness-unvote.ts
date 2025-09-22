@@ -18,7 +18,7 @@ export async function validateTx(data: { target: string }, sender: string): Prom
   }
 }
 
-export async function process(data: { target: string }, sender: string, transactionId: string): Promise<boolean> {
+export async function processTx(data: { target: string }, sender: string, transactionId: string): Promise<boolean> {
   try {
     const senderAccount = await cache.findOnePromise('accounts', { name: sender });
     const votedWitnesses = senderAccount!.votedWitnesses || [];

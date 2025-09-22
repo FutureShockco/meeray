@@ -398,3 +398,25 @@ export const BigIntMath = {
         return parseTokenAmount(value, symbol);
     }
 }; 
+
+// Integer square root function for BigInt
+export function sqrt(value: bigint): bigint {
+    if (value < 0n) {
+      throw new Error('Cannot calculate square root of negative number');
+    }
+    if (value < 2n) {
+      return value;
+    }
+  
+    // Binary search for square root
+    let x = value;
+    let y = (x + 1n) / 2n;
+  
+    while (y < x) {
+      x = y;
+      y = (x + value / x) / 2n;
+    }
+  
+    return x;
+  }
+  

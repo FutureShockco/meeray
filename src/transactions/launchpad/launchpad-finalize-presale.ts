@@ -22,7 +22,7 @@ export async function validateTx(data: LaunchpadFinalizePresaleData, sender: str
   }
 }
 
-export async function process(data: LaunchpadFinalizePresaleData, sender: string): Promise<boolean> {
+export async function processTx(data: LaunchpadFinalizePresaleData, sender: string): Promise<boolean> {
   try {
     const lp = await cache.findOnePromise('launchpads', { _id: data.launchpadId });
     if (!lp || !lp.presale || !lp.presaleDetailsSnapshot) return false;

@@ -51,7 +51,7 @@ export async function validateTx(data: TokenTransferData, sender: string): Promi
     }
 }
 
-export async function process(data: TokenTransferData, sender: string, id: string): Promise<boolean> {
+export async function processTx(data: TokenTransferData, sender: string, id: string): Promise<boolean> {
     try {
         const adjustedSender = await adjustBalance(sender, data.symbol, -toBigInt(data.amount));
         if (!adjustedSender) {

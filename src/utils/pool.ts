@@ -1,6 +1,19 @@
 import cache from '../cache.js';
-import { Pool, TradeHop, TradeRoute } from '../transactions/pool/pool-interfaces.js';
-import { toBigInt } from './bigint.js';
+import { LiquidityPoolData, Pool, TradeHop, TradeRoute } from '../transactions/pool/pool-interfaces.js';
+import { sqrt, toBigInt } from './bigint.js';
+
+/**
+ * Generates a pool ID from token symbols
+ * This is used across pool swaps and market trades for consistency
+ * 
+ * @param tokenA_symbol - Symbol of token A
+ * @param tokenB_symbol - Symbol of token B
+ * @returns Pool ID
+ */
+export function generatePoolId(tokenA_symbol: string, tokenB_symbol: string): string {
+    const [token1, token2] = [tokenA_symbol, tokenB_symbol].sort();
+    return `${token1}_${token2}`;
+}
 
 /**
  * Calculates the output amount for a swap using the constant product formula
@@ -149,3 +162,27 @@ export async function findBestTradeRoute(
     return routes.sort((a, b) => toBigInt(b.finalAmountOut) > toBigInt(a.finalAmountOut) ? 1 : -1)[0] || null;
 }
 
+
+// Calculate LP tokens to mint based on provided liquidity
+// For initial liquidity: uses geometric mean (sqrt of product) for fair distribution
+// For subsequent liquidity: uses proportional minting based on existing reserves
+export function calculateLpTokensToMint(tokenA_amount: bigint, tokenB_amount: bigint, pool: LiquidityPoolData): bigint {
+    // Initial liquidity provision
+    if (toBigInt(pool.totalLpTokens) === BigInt(0)) {
+      // For first liquidity provision, mint LP tokens equal to geometric mean of provided amounts
+      // Use geometric mean for fair initial distribution
+      const product = tokenA_amount * tokenB_amount;
+      return sqrt(product);
+    }
+  
+    // For subsequent liquidity provisions, mint proportional to existing reserves
+    const poolTotalLpTokens = toBigInt(pool.totalLpTokens);
+    const poolTokenAReserve = toBigInt(pool.tokenA_reserve);
+    const poolTokenBReserve = toBigInt(pool.tokenB_reserve);
+  
+    const ratioA = (tokenA_amount * poolTotalLpTokens) / poolTokenAReserve;
+    const ratioB = (tokenB_amount * poolTotalLpTokens) / poolTokenBReserve;
+  
+    // Use the minimum ratio to ensure proportional liquidity provision
+    return ratioA < ratioB ? ratioA : ratioB;
+  }

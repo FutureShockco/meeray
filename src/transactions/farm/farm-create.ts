@@ -124,7 +124,7 @@ export async function validateTx(data: FarmCreateData, sender: string): Promise<
     }
 }
 
-export async function process(data: FarmCreateData, sender: string, id: string, ts?: number): Promise<boolean> {
+export async function processTx(data: FarmCreateData, sender: string, id: string, ts?: number): Promise<boolean> {
     try {
         const farmId = generateFarmId(data.stakingToken.symbol, data.rewardToken.symbol);
 

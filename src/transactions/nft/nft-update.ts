@@ -69,7 +69,7 @@ export async function validateTx(data: NFTUpdateMetadataData, sender: string): P
   }
 }
 
-export async function process(data: NFTUpdateMetadataData, sender: string, id: string): Promise<boolean> {
+export async function processTx(data: NFTUpdateMetadataData, sender: string, id: string): Promise<boolean> {
   try {
     const fullInstanceId = `${data.collectionSymbol}-${data.instanceId}`;
     

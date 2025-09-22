@@ -98,7 +98,7 @@ export async function validateTx(data: NFTTransferData, sender: string): Promise
   }
 }
 
-export async function process(data: NFTTransferData, sender: string, id: string): Promise<boolean> {
+export async function processTx(data: NFTTransferData, sender: string, id: string): Promise<boolean> {
   const isBurning = data.to === BURN_ACCOUNT_NAME;
   
   // Ensure required fields are present

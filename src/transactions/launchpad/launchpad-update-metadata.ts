@@ -56,7 +56,7 @@ export async function validateTx(data: LaunchpadUpdateMetadataData, sender: stri
   return true;
 }
 
-export async function process(data: LaunchpadUpdateMetadataData, sender: string, transactionId: string): Promise<boolean> {
+export async function processTx(data: LaunchpadUpdateMetadataData, sender: string, transactionId: string): Promise<boolean> {
   logger.debug(`[launchpad-update-metadata] Processing metadata update from ${sender} for ${data.launchpadId}`);
   
   try {

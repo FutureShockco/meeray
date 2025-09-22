@@ -47,7 +47,7 @@ export async function validateTx(data: TokenUpdateData, sender: string): Promise
   }
 }
 
-export async function process(data: TokenUpdateData, sender: string, id: string): Promise<boolean> {
+export async function processTx(data: TokenUpdateData, sender: string, id: string): Promise<boolean> {
   try {
     const token = await cache.findOnePromise('tokens', { _id: data.symbol });
     if (!token) {

@@ -83,7 +83,7 @@ export async function validateTx(data: LaunchpadConfigureTokenomicsData, sender:
   return true;
 }
 
-export async function process(data: LaunchpadConfigureTokenomicsData, sender: string, transactionId: string): Promise<boolean> {
+export async function processTx(data: LaunchpadConfigureTokenomicsData, sender: string, transactionId: string): Promise<boolean> {
   logger.debug(`[launchpad-configure-tokenomics] Processing tokenomics config from ${sender} for ${data.launchpadId}`);
   
   try {

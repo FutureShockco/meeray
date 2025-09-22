@@ -32,7 +32,7 @@ export async function validateTx(data: NftCancelOfferData, sender: string): Prom
   }
 }
 
-export async function process(data: NftCancelOfferData, sender: string, id: string): Promise<boolean> {
+export async function processTx(data: NftCancelOfferData, sender: string, id: string): Promise<boolean> {
   try {
     const offer = await cache.findOnePromise('nftOffers', { _id: data.offerId }) as NftOffer;
     

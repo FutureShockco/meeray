@@ -84,7 +84,7 @@ export async function validateTx(data: LaunchpadLaunchTokenData, sender: string)
   return true;
 }
 
-export async function process(launchData: LaunchpadLaunchTokenData, sender: string, transactionId: string): Promise<boolean> {
+export async function processTx(launchData: LaunchpadLaunchTokenData, sender: string, transactionId: string): Promise<boolean> {
   logger.debug(`[launchpad-launch-token] Processing launch request from ${sender}`);
   
   try {

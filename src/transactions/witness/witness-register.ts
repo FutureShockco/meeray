@@ -20,7 +20,7 @@ export async function validateTx(data: { pub: string }, sender: string): Promise
   }
 }
 
-export async function process(data: { pub: string }, sender: string, transactionId: string): Promise<boolean> {
+export async function processTx(data: { pub: string }, sender: string, transactionId: string): Promise<boolean> {
   try {
     await cache.updateOnePromise('accounts', { name: sender }, { $set: { witnessPublicKey: data.pub } });
     try {

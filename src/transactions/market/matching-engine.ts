@@ -5,6 +5,7 @@ import cache from '../../cache.js';
 import { adjustBalance } from '../../utils/account.js';
 import { toBigInt, toDbString, calculateTradeValue } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
+import { generatePoolId } from '../../utils/pool.js';
 
 /**
  * Distributes orderbook trading fees to AMM pool liquidity providers
@@ -18,7 +19,7 @@ async function distributeOrderbookFeesToLiquidityProviders(
 ): Promise<void> {
   try {
     // Find the corresponding AMM pool for this trading pair
-    const poolId = generatePoolIdFromTokens(baseAssetSymbol, quoteAssetSymbol);
+    const poolId = generatePoolId(baseAssetSymbol, quoteAssetSymbol);
     const pool = await cache.findOnePromise('liquidityPools', { _id: poolId });
     
     if (!pool) {
@@ -76,14 +77,6 @@ async function distributeOrderbookFeesToLiquidityProviders(
   }
 }
 
-/**
- * Generate pool ID from token symbols (same logic as pool creation)
- */
-function generatePoolIdFromTokens(tokenA_symbol: string, tokenB_symbol: string): string {
-  // Ensure canonical order to prevent duplicate pools (e.g., A-B vs B-A)
-  const [token1, token2] = [tokenA_symbol, tokenB_symbol].sort();
-  return `${token1}_${token2}`;
-}
 
 /**
  * Result returned by the MatchingEngine after processing an order.

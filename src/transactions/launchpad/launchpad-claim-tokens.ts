@@ -94,7 +94,7 @@ export async function validateTx(data: LaunchpadClaimTokensData, sender: string,
   return true;
 }
 
-export async function process(data: LaunchpadClaimTokensData, sender: string, transactionId: string, blockTimestamp: string): Promise<boolean> {
+export async function processTx(data: LaunchpadClaimTokensData, sender: string, transactionId: string, blockTimestamp: string): Promise<boolean> {
   logger.debug(`[launchpad-claim-tokens] Processing claim from ${sender} for ${data.launchpadId}, type ${data.allocationType}`);
   
   try {

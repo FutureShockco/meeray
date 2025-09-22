@@ -80,7 +80,7 @@ export async function validateTx(data: LaunchpadConfigurePresaleData, sender: st
   return true;
 }
 
-export async function process(data: LaunchpadConfigurePresaleData, sender: string, transactionId: string): Promise<boolean> {
+export async function processTx(data: LaunchpadConfigurePresaleData, sender: string, transactionId: string): Promise<boolean> {
   logger.debug(`[launchpad-configure-presale] Processing presale config from ${sender} for ${data.launchpadId}`);
   
   try {

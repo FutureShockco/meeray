@@ -59,7 +59,7 @@ export async function validateTx(data: FarmUnstakeData, sender: string): Promise
   }
 }
 
-export async function process(data: FarmUnstakeData, sender: string, id: string, ts?: number): Promise<boolean> {
+export async function processTx(data: FarmUnstakeData, sender: string, id: string, ts?: number): Promise<boolean> {
   try {
     const farm = (await cache.findOnePromise('farms', { _id: data.farmId }) as FarmData);
     const nowMs = ts ?? Date.now();

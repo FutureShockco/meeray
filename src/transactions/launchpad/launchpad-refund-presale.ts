@@ -23,7 +23,7 @@ export async function validateTx(data: LaunchpadRefundPresaleData, sender: strin
   }
 }
 
-export async function process(data: LaunchpadRefundPresaleData, sender: string): Promise<boolean> {
+export async function processTx(data: LaunchpadRefundPresaleData, sender: string): Promise<boolean> {
   try {
     const lp = await cache.findOnePromise('launchpads', { _id: data.launchpadId });
     if (!lp || !lp.presale || !lp.presaleDetailsSnapshot) return false;

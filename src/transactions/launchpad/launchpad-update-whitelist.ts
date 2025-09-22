@@ -27,7 +27,7 @@ export async function validateTx(data: LaunchpadUpdateWhitelistData, sender: str
   }
 }
 
-export async function process(data: LaunchpadUpdateWhitelistData, sender: string): Promise<boolean> {
+export async function processTx(data: LaunchpadUpdateWhitelistData, sender: string): Promise<boolean> {
   try {
     const lp = await cache.findOnePromise('launchpads', { _id: data.launchpadId });
     if (!lp) return false;

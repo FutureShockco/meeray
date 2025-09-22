@@ -49,7 +49,7 @@ export async function validateTx(data: FarmClaimRewardsData, sender: string): Pr
   }
 }
 
-export async function process(data: FarmClaimRewardsData, sender: string, id: string, ts?: number): Promise<boolean> {
+export async function processTx(data: FarmClaimRewardsData, sender: string, id: string, ts?: number): Promise<boolean> {
   try {
     const farm = (await cache.findOnePromise('farms', { _id: data.farmId }) as FarmData);
     const userFarmPositionId = `${data.staker}-${data.farmId}`;

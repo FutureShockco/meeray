@@ -102,7 +102,7 @@ export async function validateTx(data: NFTMintData, sender: string): Promise<boo
   }
 }
 
-export async function process(data: NFTMintData, sender: string, id: string): Promise<boolean> {
+export async function processTx(data: NFTMintData, sender: string, id: string): Promise<boolean> {
   try {
     const collection = await cache.findOnePromise('nftCollections', { _id: data.collectionSymbol }) as CachedNftCollection;
 

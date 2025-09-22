@@ -195,7 +195,7 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
   }
 }
 
-export async function process(data: HybridTradeData, sender: string, transactionId: string): Promise<boolean> {
+export async function processTx(data: HybridTradeData, sender: string, transactionId: string): Promise<boolean> {
   try {
     logger.debug(`[hybrid-trade] Processing hybrid trade from ${sender}: ${data.amountIn} ${data.tokenIn} -> ${data.tokenOut}`);
 

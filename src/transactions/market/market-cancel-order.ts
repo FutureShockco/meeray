@@ -64,7 +64,7 @@ export async function validateTx(data: MarketCancelOrderData, sender: string): P
     }
 }
 
-export async function process(data: MarketCancelOrderData, sender: string, id: string): Promise<boolean> {
+export async function processTx(data: MarketCancelOrderData, sender: string, id: string): Promise<boolean> {
     try {
         logger.debug(`[market-cancel-order] Processing cancellation from ${sender} for order ${data.orderId}`);
 

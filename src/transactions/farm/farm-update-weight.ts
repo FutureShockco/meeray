@@ -57,7 +57,7 @@ export async function validateTx(data: FarmUpdateWeightData, sender: string): Pr
   return true;
 }
 
-export async function process(data: FarmUpdateWeightData, sender: string, transactionId: string): Promise<boolean> {
+export async function processTx(data: FarmUpdateWeightData, sender: string, transactionId: string): Promise<boolean> {
   logger.debug(`[farm-update-weight] Processing weight update from ${sender} for farm ${data.farmId}`);
   
   try {

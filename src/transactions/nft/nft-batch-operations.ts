@@ -1,9 +1,9 @@
 import logger from '../../logger.js';
 import { NftBatchPayload } from './nft-market-interfaces.js';
-import { validateTx as validateListTx, process as processList } from './nft-list-item.js';
-import { validateTx as validateDelistTx, process as processDelist } from './nft-delist-item.js';
-import { validateTx as validateBuyTx, process as processBuy } from './nft-buy-item.js';
-import { validateTx as validateTransferTx, process as processTransfer } from './nft-transfer.js';
+import { validateTx as validateListTx, processTx as processList } from './nft-list-item.js';
+import { validateTx as validateDelistTx, processTx as processDelist } from './nft-delist-item.js';
+import { validateTx as validateBuyTx, processTx as processBuy } from './nft-buy-item.js';
+import { validateTx as validateTransferTx, processTx as processTransfer } from './nft-transfer.js';
 
 export async function validateTx(data: NftBatchPayload, sender: string): Promise<boolean> {
   try {
@@ -51,7 +51,7 @@ export async function validateTx(data: NftBatchPayload, sender: string): Promise
   }
 }
 
-export async function process(data: NftBatchPayload, sender: string, id: string): Promise<boolean> {
+export async function processTx(data: NftBatchPayload, sender: string, id: string): Promise<boolean> {
   try {
     const isAtomic = data.atomic !== false;
     

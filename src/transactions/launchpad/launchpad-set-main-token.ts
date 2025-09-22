@@ -21,7 +21,7 @@ export async function validateTx(data: LaunchpadSetMainTokenData, sender: string
   }
 }
 
-export async function process(data: LaunchpadSetMainTokenData, sender: string): Promise<boolean> {
+export async function processTx(data: LaunchpadSetMainTokenData, sender: string): Promise<boolean> {
   try {
     const ok = await cache.updateOnePromise('launchpads', { _id: data.launchpadId }, {
       $set: { mainTokenId: data.mainTokenId, updatedAt: new Date().toISOString() }

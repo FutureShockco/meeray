@@ -134,7 +134,7 @@ export async function validateTx(data: NftMakeOfferData, sender: string): Promis
   }
 }
 
-export async function process(data: NftMakeOfferData, sender: string, id: string): Promise<boolean> {
+export async function processTx(data: NftMakeOfferData, sender: string, id: string): Promise<boolean> {
   try {
     const offerAmount = toBigInt(data.offerAmount);
     const paymentTokenIdentifier = `${data.paymentTokenSymbol}${data.paymentTokenIssuer ? '@' + data.paymentTokenIssuer : ''}`;

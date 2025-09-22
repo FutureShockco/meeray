@@ -101,7 +101,7 @@ export async function validateTx(data: LaunchpadConfigureAirdropData, sender: st
   return true;
 }
 
-export async function process(data: LaunchpadConfigureAirdropData, sender: string, transactionId: string): Promise<boolean> {
+export async function processTx(data: LaunchpadConfigureAirdropData, sender: string, transactionId: string): Promise<boolean> {
   logger.debug(`[launchpad-configure-airdrop] Processing airdrop config from ${sender} for ${data.launchpadId}`);
   
   try {

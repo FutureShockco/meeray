@@ -52,7 +52,7 @@ export async function validateTx(data: PoolRemoveLiquidityData, sender: string):
   }
 }
 
-export async function process(data: PoolRemoveLiquidityData, sender: string, transactionId: string): Promise<boolean> {
+export async function processTx(data: PoolRemoveLiquidityData, sender: string, transactionId: string): Promise<boolean> {
   try {
     const pool = (await cache.findOnePromise('liquidityPools', { _id: data.poolId }) as LiquidityPoolData); // validateTx guarantees existence
     const userLpPositionId = `${data.provider}-${data.poolId}`;

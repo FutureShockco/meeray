@@ -345,7 +345,7 @@ async function recordPoolSwapTrade(params: {
     }
 }
 
-export async function process(data: PoolSwapData, sender: string, transactionId: string): Promise<boolean> {
+export async function processTx(data: PoolSwapData, sender: string, transactionId: string): Promise<boolean> {
     // Determine the type of swap and process accordingly
     if (data.hops && data.hops.length > 0) {
         // Multi-hop routed swap

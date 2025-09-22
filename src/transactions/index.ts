@@ -11,12 +11,13 @@ export interface Transaction {
   sender: string;
   data: any;
   signature?: string;
+  id: string;          // Unique transaction ID
   ts?: number;
 }
 
 // Define transaction handler interface
 interface TransactionHandler<T> {
-  validate: (data: T, sender: string) => Promise<boolean>;
+  validate: (data: T, sender: string, id: string, ts?: number) => Promise<boolean>;
   // ts is optional to preserve backward compatibility; when provided, it is the tx timestamp from Steem
   process: (data: T, sender: string, id: string, ts?: number) => Promise<boolean>;
 }
@@ -40,7 +41,7 @@ async function searchForHandlers(dirPath: string) {
       await searchForHandlers(filePath);
     } else if ((file.endsWith('.ts') || file.endsWith('.js')) && !file.endsWith('.d.ts')) {
       // Skip the index file itself and utility files
-      if (file === 'index.ts' || file === 'index.js' || file.includes('interfaces') || file === 'orderbook.ts' || file === 'orderbook.js' || file === 'matching-engine.ts' || file === 'matching-engine.js' || file === 'market-aggregator.ts' || file === 'market-aggregator.js' || file === 'types.ts' || file === 'types.js') {
+      if (file === 'index.ts' || file === 'index.js' || file.includes('interfaces') || file.includes('helpers') || file === 'orderbook.ts' || file === 'orderbook.js' || file === 'matching-engine.ts' || file === 'matching-engine.js' || file === 'market-aggregator.ts' || file === 'market-aggregator.js' || file === 'types.ts' || file === 'types.js') {
         logger.trace(`Skipping index, interface, or utility files: ${filePath}`);
         continue;
       }
@@ -50,7 +51,7 @@ async function searchForHandlers(dirPath: string) {
         const module = await import(pathToFileURL(filePath).href);
 
         // Check if the file exports validate and process functions
-        if (module.validateTx && module.process) {
+        if (module.validateTx && module.processTx) {
           // Extract transaction type from filename (e.g., witness-vote.ts -> WITNESS_VOTE)
           const typeName = file
             .replace(/\.(ts|js)$/, '')
@@ -65,7 +66,7 @@ async function searchForHandlers(dirPath: string) {
           if (txType !== undefined) {
             transactionHandlers[txType] = {
               validate: module.validateTx,
-              process: module.process
+              process: module.processTx
             };
             logger.trace(`Registered transaction handler for ${typeName} (type ${txType})`);
           } else {
@@ -94,7 +95,7 @@ async function searchForHandlers(dirPath: string) {
               if (altType !== undefined) {
                 transactionHandlers[altType] = {
                   validate: module.validateTx,
-                  process: module.process
+                  process: module.processTx
                 };
                 logger.debug(`Registered transaction handler for ${typeName} using alternative mapping: ${altName} (type ${altType})`);
                 found = true;
@@ -160,7 +161,7 @@ export async function processTransaction(tx: Transaction): Promise<{ success: bo
     }
 
     // Validate the transaction
-    const isValid = await handler.validate(tx.data, tx.sender);
+    const isValid = await handler.validate(tx.data, tx.sender, tx.id, tx.ts);
     if (!isValid) {
       logger.warn(`Transaction validation failed for ${tx.type}`);
       // Provide a more specific error if the handler.validate itself throws or returns a string error

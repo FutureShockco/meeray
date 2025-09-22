@@ -7,10 +7,9 @@ export interface PoolSwapResult {
   error?: string;
 }
 
-export interface PoolCreateData {
+export interface PoolData {
   tokenA_symbol: string;      // Symbol of the first token in the pair
   tokenB_symbol: string;      // Symbol of the second token in the pair
-  // Fee tier is now fixed at 0.3% (300 basis points) - no longer configurable
 }
 
 export interface PoolAddLiquidityData {

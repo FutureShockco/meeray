@@ -68,7 +68,7 @@ export async function validateTx(data: FarmStakeData, sender: string): Promise<b
   }
 }
 
-export async function process(data: FarmStakeData, sender: string, id: string, ts?: number): Promise<boolean> {
+export async function processTx(data: FarmStakeData, sender: string, id: string, ts?: number): Promise<boolean> {
   try {
     const farm = await cache.findOnePromise('farms', { _id: data.farmId }) as FarmData | null;
     // Validate farm timing and status using tx timestamp if provided
