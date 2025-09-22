@@ -365,10 +365,9 @@ router.get('/orderbook/:pairId', (async (req: Request, res: Response) => {
       .filter(order => order.side === 'sell')
       .sort((a, b) => Number(toBigInt(a.price || 0)) - Number(toBigInt(b.price || 0))) // Lowest price first
       .slice(0, Number(depth));
-
     // Format orderbook data
     const bids = buyOrders.map(order => {
-      const price = formatAmount(toBigInt(order.price || 0));
+      const price = formatAmount(toBigInt(order.price || 0), pair.quoteAssetSymbol);
       const quantity = formatAmount(toBigInt(order.remainingQuantity || order.quantity), pair.baseAssetSymbol);
       const rawPrice = toBigInt(order.price || 0).toString();
       const rawQuantity = toBigInt(order.remainingQuantity || order.quantity).toString();
@@ -395,7 +394,7 @@ router.get('/orderbook/:pairId', (async (req: Request, res: Response) => {
     });
 
     const asks = sellOrders.map(order => {
-      const price = formatAmount(toBigInt(order.price || 0));
+      const price = formatAmount(toBigInt(order.price || 0), pair.quoteAssetSymbol);
       const quantity = formatAmount(toBigInt(order.remainingQuantity || order.quantity), pair.baseAssetSymbol);
       const rawPrice = toBigInt(order.price || 0).toString();
       const rawQuantity = toBigInt(order.remainingQuantity || order.quantity).toString();
@@ -682,43 +681,10 @@ router.get('/orders/pair/:pairId', (async (req: Request, res: Response) => {
 }) as RequestHandler);
 
 /**
- * Get orders for a user
- * GET /market/orders/user/:userId
- */
-router.get('/orders/user/:userId', (async (req: Request, res: Response) => {
-  try {
-    const { userId } = req.params;
-    const { status } = req.query;
-
-    // Build filter - by default exclude cancelled and rejected orders
-    const filter: any = { userId };
-    if (status) {
-      filter.status = status;
-    } else {
-      filter.status = { $nin: ['cancelled', 'rejected'] };
-    }
-
-    const orders = await cache.findPromise('orders', filter);
-
-    res.json({
-      userId,
-      orders: orders || [],
-      total: orders?.length || 0
-    });
-  } catch (error: any) {
-    logger.error('Error fetching user orders:', error);
-    res.status(500).json({
-      message: 'Error fetching user orders',
-      error: error.message
-    });
-  }
-}) as RequestHandler);
-
-/**
  * Get orders for a specific user with optional pair filtering
  * GET /market/orders/:userId?pairId=PAIR_ID
  */
-router.get('/orders/:userId', (async (req: Request, res: Response) => {
+router.get('/orders/user/:userId', (async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
     const { pairId, status, side, limit = 100 } = req.query;
@@ -730,11 +696,15 @@ router.get('/orders/:userId', (async (req: Request, res: Response) => {
       filter.pairId = pairId;
     }
 
-    if (status) {
+    if (status === 'active') {
+      filter.status = { $in: ['open', 'partially_filled'] };
+    } 
+    else if (status) {
       filter.status = status;
-    } else {
+    } 
+    else {
       // By default, exclude cancelled and rejected orders
-      filter.status = { $nin: ['cancelled', 'rejected'] };
+      filter.status = { $in: ['cancelled', 'rejected', 'expired', 'filled'] };
     }
 
     if (side) {
@@ -762,13 +732,12 @@ router.get('/orders/:userId', (async (req: Request, res: Response) => {
       const pair = pairMap[order.pairId];
       const baseSymbol = pair?.baseAssetSymbol || 'UNKNOWN';
       const quoteSymbol = pair?.quoteAssetSymbol || 'UNKNOWN';
-
       return {
         id: order._id || order.id,
         pairId: order.pairId,
         side: order.side,
         type: order.type,
-        price: order.price ? formatAmount(toBigInt(order.price)) : null,
+        price: order.price ? formatAmount(toBigInt(order.price), quoteSymbol) : null,
         rawPrice: order.price ? toBigInt(order.price).toString() : null,
         quantity: formatAmount(toBigInt(order.quantity), baseSymbol),
         rawQuantity: toBigInt(order.quantity).toString(),

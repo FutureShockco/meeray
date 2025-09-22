@@ -298,9 +298,13 @@ async function recordPoolSwapTrade(params: {
             price = calculateDecimalAwarePrice(params.amountIn, params.amountOut, quoteSymbol, baseSymbol);
         }
 
-        // Create trade record matching the orderbook trade format
+        // Create trade record matching the orderbook trade format with deterministic ID
+        const tradeId = crypto.createHash('sha256')
+            .update(`${pairId}-${params.tokenIn}-${params.tokenOut}-${params.sender}-${params.transactionId}-${params.amountOut}`)
+            .digest('hex')
+            .substring(0, 16);
         const tradeRecord = {
-            _id: crypto.randomBytes(12).toString('hex'),
+            _id: tradeId,
             pairId: pairId,
             baseAssetSymbol: baseSymbol,
             quoteAssetSymbol: quoteSymbol,

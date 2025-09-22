@@ -114,8 +114,13 @@ export class OrderBook {
 
             // Determine trade price (maker's price takes precedence for limit orders)
             const tradePrice = toBigInt(makerOrder.price!);
+            // Generate deterministic trade ID based on the order matching
+            const tradeId = crypto.createHash('sha256')
+                .update(`${this.pairId}-${makerOrder._id}-${takerOrder._id}-${quantityToTrade}-${tradePrice}`)
+                .digest('hex')
+                .substring(0, 16);
             const trade: TradeData = {
-                _id: crypto.randomBytes(12).toString('hex'),
+                _id: tradeId,
                 pairId: this.pairId,
                 baseAssetSymbol: makerOrder.baseAssetSymbol || '',
                 quoteAssetSymbol: makerOrder.quoteAssetSymbol || '',

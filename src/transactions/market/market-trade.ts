@@ -213,7 +213,7 @@ export async function process(data: HybridTradeData, sender: string, transaction
         // Check if AMM output meets minAmountOut requirement
         if (data.minAmountOut && toBigInt(quote.amountOut) < toBigInt(data.minAmountOut)) {
           // AMM output too low - use orderbook as limit order with calculated price
-          
+
           // Find the correct trading pair ID regardless of token order
           const pairId = await findTradingPairId(data.tokenIn, data.tokenOut);
           if (!pairId) {
@@ -230,14 +230,14 @@ export async function process(data: HybridTradeData, sender: string, transaction
 
           // Determine the correct order side
           const orderSide = await determineOrderSide(data.tokenIn, data.tokenOut, pairId);
-          
+
           // Calculate price based on the user's desired exchange rate
           // Price should be: how much quote token per unit of base token
           const baseDecimals = getTokenDecimals(pair.baseAssetSymbol);
           const quoteDecimals = getTokenDecimals(pair.quoteAssetSymbol);
-          
+
           let calculatedPrice: bigint;
-          
+
           if (orderSide === OrderSide.BUY) {
             // User wants to buy base token with quote token
             // From orderbook formula: quantity = (amountIn * 10^baseDecimals) / orderPrice
@@ -511,9 +511,9 @@ async function executeOrderbookRoute(
       const baseDecimals = getTokenDecimals(pair.baseAssetSymbol);
       const quoteDecimals = getTokenDecimals(pair.quoteAssetSymbol);
       // This formula works for any decimals:
-  // With price in quoteDecimals, use:
-  // quantity = (amountIn * 10^baseDecimals) / orderPrice
-  orderQuantity = (amountIn * BigInt(10 ** baseDecimals)) / toBigInt(orderPrice);
+      // With price in quoteDecimals, use:
+      // quantity = (amountIn * 10^baseDecimals) / orderPrice
+      orderQuantity = (amountIn * BigInt(10 ** baseDecimals)) / toBigInt(orderPrice);
     } else {
       // For sell orders, quantity is the amount of base currency to sell
       orderQuantity = amountIn;
@@ -521,7 +521,7 @@ async function executeOrderbookRoute(
 
     logger.info(`[executeOrderbookRoute] Order quantity: ${orderQuantity}, amountIn: ${amountIn}, orderPrice: ${orderPrice}`);
 
-    // Create order (limit or market)
+    // Create order (limit or market) with deterministic ID generation
     const orderData: any = {
       userId: sender,
       pairId: orderbookDetails.pairId,
@@ -529,7 +529,8 @@ async function executeOrderbookRoute(
       side: orderbookDetails.side,
       quantity: orderQuantity,
       baseAssetSymbol: pair.baseAssetSymbol,
-      quoteAssetSymbol: pair.quoteAssetSymbol
+      quoteAssetSymbol: pair.quoteAssetSymbol,
+      transactionId: transactionId // Use transaction ID for deterministic ID generation
     };
 
     // Add price for limit orders (from tradeData or route details)

@@ -13,8 +13,12 @@ import { toBigInt, toDbString } from '../../utils/bigint.js';
 import validate from '../../validation/index.js';
 import config from '../../config.js';
 
-function generateLaunchpadId(): string {
-  return `pad-${crypto.randomBytes(12).toString('hex')}`;
+function generateLaunchpadId(userId: string, tokenSymbol: string, transactionId?: string): string {
+  const txId = transactionId || 'no-tx';
+  return `pad-${crypto.createHash('sha256')
+    .update(`${userId}-${tokenSymbol}-${txId}`)
+    .digest('hex')
+    .substring(0, 12)}`;
 }
 
 export async function validateTx(data: LaunchpadLaunchTokenData, sender: string): Promise<boolean> {
@@ -84,7 +88,7 @@ export async function process(launchData: LaunchpadLaunchTokenData, sender: stri
   logger.debug(`[launchpad-launch-token] Processing launch request from ${sender}`);
   
   try {
-    const launchpadId = generateLaunchpadId();
+    const launchpadId = generateLaunchpadId(sender, launchData.tokenSymbol, transactionId);
     const now = new Date().toISOString();
     const tokenDecimalsNumber = launchData.tokenDecimals ?? 18;
     const totalSupplyBigInt = toBigInt(launchData.totalSupply);

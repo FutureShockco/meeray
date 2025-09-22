@@ -17,8 +17,8 @@ export enum OrderStatus {
   PARTIALLY_FILLED = 'partially_filled',
   FILLED = 'filled',
   CANCELLED = 'cancelled',      // Cancelled by user or system
-  REJECTED = 'REJECTED',        // Could not be placed (e.g. insufficient funds, invalid params)
-  EXPIRED = 'EXPIRED',          // If timeInForce or expiry is implemented
+  REJECTED = 'rejected',        // Could not be placed (e.g. insufficient funds, invalid params)
+  EXPIRED = 'expired',          // If timeInForce or expiry is implemented
 }
 
 // Defines the configuration for a tradable pair
@@ -69,12 +69,37 @@ export interface OrderData {
   expiresAt?: string;             // ISO Date string for orders with an expiry
 }
 
+// Generate deterministic order ID based on order parameters
+function generateOrderId(
+  userId: string,
+  pairId: string,
+  side: OrderSide,
+  type: OrderType,
+  quantity: bigint,
+  price?: bigint,
+  transactionId?: string
+): string {
+  const priceStr = price ? price.toString() : 'market';
+  const txId = transactionId || 'no-tx';
+  return crypto.createHash('sha256')
+    .update(`${userId}-${pairId}-${side}-${type}-${quantity}-${priceStr}-${txId}`)
+    .digest('hex')
+    .substring(0, 16);
+}
+
 // Helper function to create a new order with proper initialization
-export function createOrder(data: Partial<OrderData & { /* Allow extra fields like amount for flexible input */ amount?: bigint | string | number, expirationTimestamp?: bigint | number, tickSize?: bigint | string, lotSize?: bigint | string }>): OrderData {
-  const orderId = data._id || crypto.randomUUID();
+export function createOrder(data: Partial<OrderData & { /* Allow extra fields like amount for flexible input */ amount?: bigint | string | number, expirationTimestamp?: bigint | number, tickSize?: bigint | string, lotSize?: bigint | string, transactionId?: string }>): OrderData {
   // Quantity can be from data.quantity or data.amount (if provided as an alternative)
   const quantityValue = data.quantity !== undefined ? toBigInt(data.quantity) :
               (data.amount !== undefined ? toBigInt(data.amount) : BigInt(0));
+  
+  const priceValue = data.price !== undefined ? toBigInt(data.price) : undefined;
+  const userId = data.userId || '';
+  const pairId = data.pairId || '';
+  const side = data.side || OrderSide.BUY;
+  const type = data.type || OrderType.LIMIT;
+  
+  const orderId = data._id || generateOrderId(userId, pairId, side, type, quantityValue, priceValue, data.transactionId);
 
   let expiresAtValue: string | undefined = data.expiresAt;
   if (data.expirationTimestamp !== undefined) {
@@ -85,7 +110,7 @@ export function createOrder(data: Partial<OrderData & { /* Allow extra fields li
   }
 
   // Always store price and quantity as padded strings
-  const priceValue = data.price !== undefined ? toDbString(toBigInt(data.price)) : undefined;
+  const priceValueString = data.price !== undefined ? toDbString(toBigInt(data.price)) : undefined;
   const paddedQuantity = toDbString(quantityValue);
   const paddedFilledQuantity = data.filledQuantity !== undefined ? toDbString(toBigInt(data.filledQuantity)) : toDbString(BigInt(0));
   const paddedAverageFillPrice = data.averageFillPrice !== undefined ? toDbString(toBigInt(data.averageFillPrice)) : undefined;
@@ -100,7 +125,7 @@ export function createOrder(data: Partial<OrderData & { /* Allow extra fields li
     quoteAssetSymbol: data.quoteAssetSymbol || '',
     side: data.side || OrderSide.BUY,
     type: data.type || OrderType.LIMIT,
-    price: priceValue,
+    price: priceValueString,
     quantity: paddedQuantity,
     filledQuantity: paddedFilledQuantity,
     status: data.status || OrderStatus.OPEN,
