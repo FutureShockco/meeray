@@ -212,7 +212,11 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
         }
 
         // Check if AMM output meets minAmountOut requirement
-        if (data.minAmountOut && toBigInt(quote.amountOut) < toBigInt(data.minAmountOut)) {
+        if (data.minAmountOut) {
+          const ammOutput = toBigInt(quote.amountOut);
+          const minOut = toBigInt(data.minAmountOut);
+          logger.info(`[hybrid-trade] Comparing AMM output ${ammOutput} (${quote.amountOut}) with minAmountOut ${minOut} (${data.minAmountOut})`);
+          if (ammOutput < minOut) {
           // AMM output too low - use orderbook as limit order with calculated price
 
           // Find the correct trading pair ID regardless of token order
@@ -270,7 +274,12 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
               price: calculatedPrice.toString()
             }
           }];
-        } else {
+          } else {
+            logger.info(`[hybrid-trade] AMM output ${ammOutput} meets minAmountOut ${minOut} requirement. Using AMM route.`);
+          }
+        }
+        
+        if (!routes) {
           // AMM output meets requirements - use AMM route
           routes = quote.routes.map(r => ({
             type: r.type,
@@ -395,6 +404,9 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
         }
       } else {
         logger.info('[hybrid-trade] Limit order placed with no immediate fills; minAmountOut check deferred until fills occur.');
+        // For limit orders with no immediate fills, we consider the trade successful
+        // The order is placed and will be filled when matching orders are available
+        return true;
       }
     }
 
