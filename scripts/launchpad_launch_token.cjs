@@ -1,6 +1,7 @@
 const { getClient, getMasterAccount, generateRandomLaunchpadData, sendCustomJson } = require('./helpers.cjs');
 const fs = require('fs');
 const path = require('path');
+// use global fetch (Node 18+)
 
 async function main() {
     // Get client and master account
@@ -11,24 +12,14 @@ async function main() {
     const launchData = generateRandomLaunchpadData();
 
     const launchTokenData = {
-        userId: username,
         tokenName: launchData.tokenName,
         tokenSymbol: launchData.tokenSymbol,
         tokenPrecision: launchData.tokenPrecision,
-        tokenMaxSupply: launchData.tokenMaxSupply,
+        totalSupply: "1000000000",  // Fixed total supply for launch
         tokenInitialSupply: launchData.tokenInitialSupply,
         description: launchData.description,
         logoUrl: launchData.logoUrl,
         websiteUrl: launchData.websiteUrl,
-        phase: launchData.phase,
-        duration: launchData.duration,
-        startBlock: launchData.startBlock,
-        softCap: launchData.softCap,
-        hardCap: launchData.hardCap,
-        tokenPrice: launchData.tokenPrice,
-        minInvestment: launchData.minInvestment,
-        maxInvestment: launchData.maxInvestment,
-        vestingSchedule: launchData.vestingSchedule
     };
 
     console.log(`Launching token with account ${username}:`);
@@ -44,12 +35,25 @@ async function main() {
             privateKey
         );
 
-        // Write the launchpad ID to lastLaunchpadId.txt after successful launch
-        // The launchpad ID format is typically userId-tokenSymbol
-        const launchpadId = `${username}-${launchData.tokenSymbol}`;
+        // Attempt to discover the created launchpad by querying the HTTP API (port 3001)
+        const apiBase = process.env.LAUNCHPAD_API_BASE || 'http://localhost:3001';
         const launchpadIdFilePath = path.join(__dirname, 'lastLaunchpadId.txt');
-        fs.writeFileSync(launchpadIdFilePath, launchpadId);
-        console.log(`Launchpad ID "${launchpadId}" written to lastLaunchpadId.txt`);
+        try {
+            const url = `${apiBase.replace(/\/$/, '')}/launchpad`;
+            const res = await fetch(url);
+            let pads = [];
+            if (res.ok) pads = await res.json();
+            // Heuristic: find the most recent pad launched by this user with matching token symbol
+            const candidate = (Array.isArray(pads) ? pads.slice().reverse().find(p => p.issuer === username && p.tokenToLaunch && p.tokenToLaunch.symbol === launchData.tokenSymbol) : null);
+            const launchpadId = candidate ? candidate._id : `${username}_${launchData.tokenSymbol}`;
+            fs.writeFileSync(launchpadIdFilePath, launchpadId);
+            console.log(`Launchpad ID "${launchpadId}" written to lastLaunchpadId.txt`);
+        } catch (err) {
+            console.warn('Warning: could not query launchpad HTTP API to discover created id. Falling back to fallback id.');
+            const fallbackId = `${username}_${launchData.tokenSymbol}`;
+            fs.writeFileSync(launchpadIdFilePath, fallbackId);
+            console.log(`Fallback Launchpad ID "${fallbackId}" written to lastLaunchpadId.txt`);
+        }
 
     } catch (error) {
         console.error('Token launch failed.');

@@ -133,8 +133,8 @@ async function claimTokens(launchpadId, allocationType = "PRESALE_INVESTORS") {
 
 // --- Main Test Function --- //
 async function runAdvancedLaunchpadTest() {
-  const quoteAssetSymbol = 'ECHUSD';
-  const quoteAssetName = 'Echelon USD';
+  const quoteAssetSymbol = 'MRYGAME';
+  const quoteAssetName = 'USD';
   const tokenSymbol = 'LPTEST';
   const tokenName = 'Launchpad Test Token';
   const tokenPrecision = 6;
@@ -147,7 +147,7 @@ async function runAdvancedLaunchpadTest() {
   console.log(`Running advanced LAUNCHPAD test with account: ${username} on ${STEEM_API_URL}`);
 
   try {
-    // 1. Create Quote Asset Token (ECHUSD)
+    // 1. Create Quote Asset Token (MRYUSD)
     console.log(`1. Creating quote asset token ${quoteAssetSymbol}...`);
     await createToken(quoteAssetSymbol, quoteAssetName, tokenPrecision, tokenMaxSupply, tokenInitialSupply);
 

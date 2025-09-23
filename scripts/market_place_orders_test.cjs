@@ -29,17 +29,17 @@ async function main() {
         
         // Create some sample hybrid trades to demonstrate the new system
         const hybridTrades = [
-            // Example: Trade ECH for STEEM
+            // Example: Trade MRY for STEEM
             {
-                tokenIn: 'ECH',
-                tokenOut: 'STEEM', 
-                amountIn: '100000000', // 1.0 ECH (8 decimals)
+                tokenIn: 'MRY',
+                tokenOut: 'STEEM',
+                amountIn: '100000000', // 1.0 MRY (8 decimals)
                 maxSlippagePercent: 2.0 // 2% max slippage
             },
-            // Example: Trade STEEM for ECH
+            // Example: Trade STEEM for MRY
             {
                 tokenIn: 'STEEM',
-                tokenOut: 'ECH',
+                tokenOut: 'MRY',
                 amountIn: '1000', // 1.0 STEEM (3 decimals)
                 maxSlippagePercent: 2.0
             }

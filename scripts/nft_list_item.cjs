@@ -28,7 +28,7 @@ async function main() {
     // In a real scenario, you'd query the database to find the most recent NFT
     let instanceId = "1";
     console.log(`Using NFT instance ID: "${instanceId}" (first NFT in collection)`);
-    console.log(`Looking for NFT: "${collectionSymbol}-${instanceId}"`);
+    console.log(`Looking for NFT: "${collectionSymbol}_${instanceId}"`);
 
     const listItemData = {
         collectionSymbol: collectionSymbol,
@@ -53,7 +53,7 @@ async function main() {
 
         // Write the listing ID to lastNFTListingId.txt after successful listing
         // The listing ID format is collectionSymbol-instanceId-seller
-        const listingId = `${collectionSymbol}-${instanceId}-${username}`;
+        const listingId = `${collectionSymbol}_${instanceId}_${username}`;
         const listingIdFilePath = path.join(__dirname, 'lastNFTListingId.txt');
         fs.writeFileSync(listingIdFilePath, listingId);
         console.log(`NFT listing ID "${listingId}" written to lastNFTListingId.txt`);

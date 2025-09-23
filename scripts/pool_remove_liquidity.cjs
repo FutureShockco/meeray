@@ -24,7 +24,7 @@ async function main() {
 
     const removeLiquidityData = {
         poolId: generatePoolId(lastSymbol, "TESTS", 300),
-        provider: username,
+        user: username,
         lpTokenAmount: "5000" // Amount of LP tokens to burn/redeem
     };
 

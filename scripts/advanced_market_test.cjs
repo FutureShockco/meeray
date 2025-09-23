@@ -101,8 +101,8 @@ async function cancelOrder(orderId) {
 
 // --- Main Test Function --- //
 async function runAdvancedMarketTest() {
-  const baseSymbol = 'ECH';
-  const baseName = 'Echelon Token';
+  const baseSymbol = 'MRY';
+  const baseName = 'Meeray Token';
   const quoteSymbol = 'USD';
   const quoteName = 'Test USD';
   const tokenPrecision = 4;
@@ -114,7 +114,7 @@ async function runAdvancedMarketTest() {
   console.log('📢 Using new hybrid trading system for optimal price discovery!');
 
   try {
-    // 1. Create Base Token (ECH)
+    // 1. Create Base Token (MRY)
     console.log(`1. Creating base token ${baseSymbol}...`);
     await createToken(baseSymbol, baseName, tokenPrecision, tokenMaxSupply, tokenInitialSupply);
 
@@ -139,8 +139,7 @@ async function runAdvancedMarketTest() {
     console.log(`5. Adding AMM liquidity to establish price...`);
     await sendCustomJson('pool_add_liquidity', {
       poolId: `${baseSymbol}_${quoteSymbol}`, // Format: tokenA_tokenB
-      provider: username,
-      tokenA_amount: (1000 * Math.pow(10, tokenPrecision)).toString(), // 1000 ECH
+      tokenA_amount: (1000 * Math.pow(10, tokenPrecision)).toString(), // 1000 MRY
       tokenB_amount: (1000 * Math.pow(10, tokenPrecision)).toString()  // 1000 USD (1:1 ratio)
     });
 
@@ -148,7 +147,7 @@ async function runAdvancedMarketTest() {
     console.log(`6. Testing hybrid trade: Buy ${baseSymbol} with ${quoteSymbol}...`);
     await executeHybridTrade(
       `${quoteSymbol}@${username}`, // tokenIn (USD)
-      `${baseSymbol}@${username}`,  // tokenOut (ECH)
+      `${baseSymbol}@${username}`,  // tokenOut (MRY)
       (100 * Math.pow(10, tokenPrecision)).toString(), // 100 USD
       2.0 // 2% max slippage
     );
@@ -156,15 +155,15 @@ async function runAdvancedMarketTest() {
     // 7. Test reverse hybrid trade
     console.log(`7. Testing hybrid trade: Sell ${baseSymbol} for ${quoteSymbol}...`);
     await executeHybridTrade(
-      `${baseSymbol}@${username}`,  // tokenIn (ECH)
+      `${baseSymbol}@${username}`,  // tokenIn (MRY)
       `${quoteSymbol}@${username}`, // tokenOut (USD)
-      (50 * Math.pow(10, tokenPrecision)).toString(), // 50 ECH
+      (50 * Math.pow(10, tokenPrecision)).toString(), // 50 MRY
       2.0 // 2% max slippage
     );
 
     console.log('\n✅ Advanced market test completed successfully!');
     console.log('\nWhat happened:');
-    console.log('• Created ECH/USD liquidity pool with automatic trading pair creation');
+    console.log('• Created MRY/USD liquidity pool with automatic trading pair creation');
     console.log('• Added AMM liquidity for price discovery');
     console.log('• Executed hybrid trades that automatically found best prices across:');
     console.log('  - AMM pool liquidity');

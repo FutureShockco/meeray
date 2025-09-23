@@ -27,16 +27,16 @@ async function main() {
         // Test 1: Limit order with specific price
         console.log('=== TEST 1: Limit Order with Specific Price ===');
         const limitTradeData = {
-            tokenIn: 'ECH',      
+            tokenIn: 'MRY',      
             tokenOut: 'STEEM',   
-            amountIn: '100000000',             // 1.0 ECH
-            price: '50000000'                  // Price: 0.5 STEEM per ECH (adjust to 8 decimals: 0.5 * 10^8)
+            amountIn: '100000000',             // 1.0 MRY
+            price: '50000000'                  // Price: 0.5 STEEM per MRY (adjust to 8 decimals: 0.5 * 10^8)
             // No slippage protection needed when using specific price
         };
 
         console.log('Creating limit order:');
         console.log(JSON.stringify(limitTradeData, null, 2));
-        console.log('This will only execute if someone sells STEEM at 0.5 STEEM per ECH or better.');
+        console.log('This will only execute if someone sells STEEM at 0.5 STEEM per MRY or better.');
 
         await sendCustomJson(
             client,
@@ -52,9 +52,9 @@ async function main() {
         // Test 2: Market order (old behavior for comparison)
         console.log('=== TEST 2: Market Order (executes immediately) ===');
         const marketTradeData = {
-            tokenIn: 'ECH',      
+            tokenIn: 'MRY',      
             tokenOut: 'STEEM',   
-            amountIn: '50000000',              // 0.5 ECH
+            amountIn: '50000000',              // 0.5 MRY
             maxSlippagePercent: 5.0            // Will execute at current market price ±5%
             // No price specified = market order
         };
@@ -77,17 +77,17 @@ async function main() {
         // Test 3: Custom routing with price
         console.log('=== TEST 3: Custom Route with Specific Price ===');
         const customRouteData = {
-            tokenIn: 'ECH',      
+            tokenIn: 'MRY',      
             tokenOut: 'STEEM',   
-            amountIn: '75000000',              // 0.75 ECH
-            price: '45000000',                 // Better price: 0.45 STEEM per ECH
+            amountIn: '75000000',              // 0.75 MRY
+            price: '45000000',                 // Better price: 0.45 STEEM per MRY
             routes: [
                 {
                     type: 'ORDERBOOK',
                     allocation: 100,  // 100% through orderbook with limit order
                     details: {
-                        pairId: 'ECH-STEEM',
-                        side: 'BUY',           // We're buying STEEM with ECH
+                        pairId: 'MRY-STEEM',
+                        side: 'BUY',           // We're buying STEEM with MRY
                         orderType: 'LIMIT',
                         price: '45000000'      // Same price as in main data
                     }

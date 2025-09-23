@@ -9,7 +9,7 @@ async function main() {
 
     const symbolFilePath = path.join(__dirname, 'lastTokenSymbol.txt');
     let lastSymbol = "TESTS"; // Default fallback
-    
+
     try {
         if (fs.existsSync(symbolFilePath)) {
             lastSymbol = fs.readFileSync(symbolFilePath, 'utf8').trim();
@@ -33,8 +33,7 @@ async function main() {
     }
 
     const addLiquidityData = {
-        poolId: generatePoolId(lastSymbol, "TESTS", 300),
-        provider: username,
+        poolId: generatePoolId(lastSymbol, "TESTS"),
         tokenA_amount: tokenAOp.amount,
         tokenB_amount: tokenBOp.amount
     };
@@ -48,6 +47,20 @@ async function main() {
             sscId,
             'pool_add_liquidity',
             addLiquidityData,
+            username,
+            privateKey
+        );
+
+
+        await sendCustomJson(
+            client,
+            sscId,
+            'pool_add_liquidity',
+            {
+                poolId: generatePoolId("MRY", "TESTS"),
+                tokenA_amount: "1000000000000", // 10000 MRY
+                tokenB_amount: "1000000"       // 1000 TESTS
+            },
             username,
             privateKey
         );

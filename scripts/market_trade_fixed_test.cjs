@@ -27,15 +27,15 @@ async function main() {
         // Test the fix: Market order that should now work correctly
         console.log('=== TEST: Market Order with Fixed Output Tracking ===');
         const fixedTradeData = {
-            tokenIn: 'STEEM',      // Swapping STEEM for ECH  
-            tokenOut: 'ECH',       // Should get ECH back
+            tokenIn: 'STEEM',      // Swapping STEEM for MRY  
+            tokenOut: 'MRY',       // Should get MRY back
             amountIn: '5000',                    // 5000 STEEM (no decimal places)
             maxSlippagePercent: 10.0             // 10% slippage tolerance
         };
 
         console.log('Creating market trade:');
         console.log(JSON.stringify(fixedTradeData, null, 2));
-        console.log('Expected behavior: Should execute successfully and return correct ECH amount');
+        console.log('Expected behavior: Should execute successfully and return correct MRY amount');
 
         await sendCustomJson(
             client,
@@ -48,7 +48,7 @@ async function main() {
 
         console.log('✅ Market trade sent successfully!');
         console.log('Check the logs to see if the output amount is now correctly calculated.');
-        console.log('The swap should show the actual ECH received instead of the STEEM input amount.');
+        console.log('The swap should show the actual MRY received instead of the STEEM input amount.');
 
     } catch (error) {
         console.error('Error in fixed market trade test:', error);

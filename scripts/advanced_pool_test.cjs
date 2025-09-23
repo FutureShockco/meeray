@@ -99,7 +99,7 @@ async function createPool(tokenA_symbol, tokenB_symbol) {
 async function addLiquidity(poolId, tokenA_amount, tokenB_amount) {
   const payload = {
     poolId,
-    provider: username,
+    user: username,
     tokenA_amount: tokenA_amount.toString(), // Ensure string
     tokenB_amount: tokenB_amount.toString(), // Ensure string
   };

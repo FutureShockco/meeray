@@ -27,9 +27,9 @@ async function main() {
 
         // Test data for a basic market trade (auto-routing)
         const basicTradeData = {
-            tokenIn: 'ECH',      // Use full token identifier format
+            tokenIn: 'MRY',      // Use full token identifier format
             tokenOut: 'STEEM',   // Use full token identifier format
-            amountIn: '100000000',             // 1.0 ECH (ECH has 8 decimals)
+            amountIn: '100000000',             // 1.0 MRY (MRY has 8 decimals)
             maxSlippagePercent: 5.0            // Maximum 5% slippage (let system calculate minAmountOut)
             // minAmountOut: not specified - let the system calculate based on slippage
             // routes: undefined - let the system auto-route for best price
@@ -53,23 +53,23 @@ async function main() {
         console.log('\n--- Testing with specific routing ---');
 
         const routedTradeData = {
-            tokenIn: 'ECH',      // Use full token identifier format
+            tokenIn: 'MRY',      // Use full token identifier format
             tokenOut: 'STEEM',   // Use full token identifier format  
-            amountIn: '50000000',              // 0.5 ECH (0.5 * 10^8 = 50000000)
+            amountIn: '50000000',              // 0.5 MRY (0.5 * 10^8 = 50000000)
             maxSlippagePercent: 10.0,          // 10% slippage (let system calculate minAmountOut)
             routes: [
                 {
                     type: 'AMM',
                     allocation: 70,  // 70% through AMM
                     details: {
-                        poolId: 'ECH_STEEM'  // Format: token1_token2
+                        poolId: 'MRY_STEEM'  // Format: token1_token2
                     }
                 },
                 {
                     type: 'ORDERBOOK',
                     allocation: 30,  // 30% through orderbook
                     details: {
-                        pairId: 'ECH-STEEM',     // Different format for orderbook pairs
+                        pairId: 'MRY-STEEM',     // Different format for orderbook pairs
                         side: 'BUY',
                         orderType: 'MARKET'
                     }
@@ -96,9 +96,9 @@ async function main() {
         console.log('Note: Only use minAmountOut if you know the exact token decimals and expected output');
 
         const preciseTradeData = {
-            tokenIn: 'ECH',
+            tokenIn: 'MRY',
             tokenOut: 'STEEM',
-            amountIn: '10000000',              // 0.1 ECH (small amount)
+            amountIn: '10000000',              // 0.1 MRY (small amount)
             minAmountOut: '1',                 // Accept as little as 0.001 STEEM (very loose for testing)
             // maxSlippagePercent: not specified when using minAmountOut
         };

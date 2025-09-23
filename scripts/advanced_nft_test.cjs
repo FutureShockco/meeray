@@ -184,7 +184,7 @@ async function runAdvancedNftTest() {
     if (!obtainedListingId) {
         console.warn('Could not obtain listingId from list_item transaction. Subsequent operations might fail or use placeholder.');
         // Fallback / Placeholder for testing - THIS IS NOT ROBUST
-        obtainedListingId = `${collectionSymbol}-${nftInstanceId}-listing-placeholder`; 
+        obtainedListingId = `${collectionSymbol}_${nftInstanceId}-listing-placeholder`; 
     }
     console.log(`NFT ${nftInstanceId} listed by ${secondaryUsername}. Assumed/Retrieved Listing ID: ${obtainedListingId}`);
 
@@ -200,7 +200,7 @@ async function runAdvancedNftTest() {
     // let obtainedListingId2 = listResult2.listingId;
     // if (!obtainedListingId2) {
     //     console.warn('Could not obtain listingId_2 from list_item transaction.');
-    //     obtainedListingId2 = `${collectionSymbol}-${nftInstanceId}-listing-placeholder2`;
+    //     obtainedListingId2 = `${collectionSymbol}_${nftInstanceId}-listing-placeholder2`;
     // }
 
     // // 7. Delist NFT (Primary User delists)
