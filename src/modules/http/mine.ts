@@ -1,8 +1,9 @@
 import express from 'express';
-import p2p from '../../p2p/index.js';
-import mining from '../../mining.js';
+
 import { chain } from '../../chain.js';
 import logger from '../../logger.js';
+import mining from '../../mining.js';
+import p2p from '../../p2p/index.js';
 
 const router = express.Router();
 
@@ -22,7 +23,11 @@ router.post('/', async (req, res) => {
             if (localHead < networkHead) {
                 // Drop all connections
                 for (const sock of [...p2p.sockets]) {
-                    try { p2p.closeConnection(sock); } catch (e) { }
+                    try {
+                        p2p.closeConnection(sock);
+                    } catch {
+                        // Ignore connection close errors
+                    }
                 }
                 // Reconnect to all peers and witnesses
                 if (typeof p2p.keepAlive === 'function') {
@@ -43,7 +48,11 @@ router.post('/', async (req, res) => {
             logger.error(`Error during post-mine recovery check: ${e}`);
         }
         if (didReplay) {
-            res.status(202).json({ success: false, replay: true, message: 'Node is behind network head, triggering recovery/replay.' });
+            res.status(202).json({
+                success: false,
+                replay: true,
+                message: 'Node is behind network head, triggering recovery/replay.',
+            });
         } else if (err) {
             res.status(500).json({ success: false, error: 'Failed to mine block', block });
         } else {

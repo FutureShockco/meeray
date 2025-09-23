@@ -1,15 +1,14 @@
-import { TransactionType } from './transactions/types.js';
-
-import logger from './logger.js';
 import config from './config.js';
-import settings from './settings.js';
-import { parseTokenAmount, toBigInt } from './utils/bigint.js';
-import { isTokenIssuedByNode } from './utils/token.js';
+import logger from './logger.js';
 import { steemBridge } from './modules/steemBridge.js';
+import settings from './settings.js';
+import { TransactionType } from './transactions/types.js';
+import { parseTokenAmount } from './utils/bigint.js';
+import { isTokenIssuedByNode } from './utils/token.js';
 
 interface SteemOperationData {
-    id: string;              // Custom JSON id
-    json: string;            // JSON string payload
+    id: string; // Custom JSON id
+    json: string; // JSON string payload
     required_auths: string[]; // Required authorizations
     from?: string;
     to?: string;
@@ -48,24 +47,23 @@ export interface ParsedTransaction {
  * @param blockNum The block number
  * @returns Array of parsed transactions
  */
+// eslint-disable-next-line max-lines-per-function, complexity
 const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number): Promise<SteemBlockResult> => {
     logger.debug(`Starting to parse Steem block ${blockNum} with ${steemBlock.transactions.length} transactions`);
     const txs: ParsedTransaction[] = [];
     let opIndex = 0;
-    // Process each transaction
-    for (let tx of steemBlock.transactions) {
-        for (let op of tx.operations) {
+    for (const tx of steemBlock.transactions) {
+        for (const op of tx.operations) {
             try {
                 const [opType, opData] = op;
                 const isCustomJsonForChain = opType === 'custom_json' && opData.id === config.chainId;
-                const isTransferAndBridgeEnabled = opType === 'transfer' && settings.steemBridgeEnabled === true && opData.to === settings.steemBridgeAccount;
+                const isTransferAndBridgeEnabled =
+                    opType === 'transfer' && settings.steemBridgeEnabled === true && opData.to === settings.steemBridgeAccount;
                 if (!isCustomJsonForChain && !isTransferAndBridgeEnabled) {
                     opIndex++;
                     continue;
                 }
-
                 if (isCustomJsonForChain) {
-
                     let json: { contract: string; payload: any };
                     try {
                         json = JSON.parse(opData.json);
@@ -74,31 +72,27 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                         opIndex++;
                         continue;
                     }
-
                     if (!json.contract || !json.payload) {
                         opIndex++;
                         continue;
                     }
-
                     // Only process transactions with active authorization
                     if (!opData.required_auths || opData.required_auths.length === 0) {
                         logger.debug(`Skipping transaction in block ${blockNum}, operation ${opIndex}: No active authorization`);
                         opIndex++;
                         continue;
                     }
-
                     // Validate that the first required auth is a valid non-empty string
                     const sender = opData.required_auths[0];
                     if (!sender || typeof sender !== 'string' || sender.trim() === '') {
-                        logger.warn(`Skipping transaction in block ${blockNum}, operation ${opIndex}: Invalid sender (${sender})`);
+                        logger.warn(
+                            `Skipping transaction in block ${blockNum}, operation ${opIndex}: Invalid sender (${sender})`
+                        );
                         opIndex++;
                         continue;
                     }
-                    logger.debug(`Transaction added: ${json.contract}`);
-
                     let txType: number;
                     switch (json.contract.toLowerCase()) {
-                        // NFT Transactions
                         case 'nft_create_collection':
                             txType = TransactionType.NFT_CREATE_COLLECTION;
                             break;
@@ -138,8 +132,6 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                         case 'nft_cancel_offer':
                             txType = TransactionType.NFT_CANCEL_OFFER;
                             break;
-
-                        // Farm Transactions
                         case 'farm_create':
                             txType = TransactionType.FARM_CREATE;
                             break;
@@ -152,8 +144,6 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                         case 'farm_claim_rewards':
                             txType = TransactionType.FARM_CLAIM_REWARDS;
                             break;
-
-                        // Pool Transactions
                         case 'pool_create':
                             txType = TransactionType.POOL_CREATE;
                             break;
@@ -166,8 +156,6 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                         case 'pool_swap':
                             txType = TransactionType.POOL_SWAP;
                             break;
-
-                        // Token Transactions
                         case 'token_create':
                             txType = TransactionType.TOKEN_CREATE;
                             break;
@@ -183,8 +171,6 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                         case 'token_withdraw':
                             txType = TransactionType.TOKEN_WITHDRAW;
                             break;
-
-                        // Witness Transactions
                         case 'witness_register':
                             txType = TransactionType.WITNESS_REGISTER;
                             break;
@@ -194,8 +180,6 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                         case 'witness_unvote':
                             txType = TransactionType.WITNESS_UNVOTE;
                             break;
-
-                        // Launchpad Transactions
                         case 'launchpad_launch_token':
                             txType = TransactionType.LAUNCHPAD_LAUNCH_TOKEN;
                             break;
@@ -220,32 +204,32 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                         case 'launchpad_update_whitelist':
                             txType = TransactionType.LAUNCHPAD_UPDATE_WHITELIST;
                             break;
-
                         case 'market_cancel_order':
                             txType = TransactionType.MARKET_CANCEL_ORDER;
                             break;
-
                         case 'market_trade':
                             txType = TransactionType.MARKET_TRADE;
                             break;
-
-                        default:
+                        default: {
                             const typeNum = parseInt(json.contract);
                             if (!isNaN(typeNum) && TransactionType[typeNum]) {
                                 txType = typeNum;
                             } else {
-                                logger.debug(`Unknown transaction type in block ${blockNum}, operation ${opIndex}:`, json.contract);
+                                logger.debug(
+                                    `Unknown transaction type in block ${blockNum}, operation ${opIndex}:`,
+                                    json.contract
+                                );
                                 opIndex++;
                                 continue;
                             }
+                        }
                     }
-
                     const newTx: ParsedTransaction = {
                         type: txType,
                         data: json.payload,
                         sender: sender.trim(),
                         ts: new Date(steemBlock.timestamp + 'Z').getTime(),
-                        ref: blockNum + ':' + opIndex
+                        ref: blockNum + ':' + opIndex,
                     };
 
                     try {
@@ -255,10 +239,19 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                         logger.error(`Error processing transaction in block ${blockNum}, operation ${opIndex}:`, error);
                     }
                 }
-                if (isTransferAndBridgeEnabled && settings.skipBridgeOperationsUntilBlock > 0 && blockNum <= settings.skipBridgeOperationsUntilBlock) {
+                if (
+                    isTransferAndBridgeEnabled &&
+                    settings.skipBridgeOperationsUntilBlock > 0 &&
+                    blockNum <= settings.skipBridgeOperationsUntilBlock
+                ) {
                     const [opType, opData] = op;
                     const { from, to, amount } = opData;
-                    const tokenSymbol = amount?.split(' ')[1] === settings.steemTokenSymbol ? settings.steemTokenSymbol : settings.sbdTokenSymbol;
+                    if (to !== settings.steemBridgeAccount && opType !== 'transfer') {
+                        opIndex++;
+                        continue;
+                    }
+                    const tokenSymbol =
+                        amount?.split(' ')[1] === settings.steemTokenSymbol ? settings.steemTokenSymbol : settings.sbdTokenSymbol;
                     const amountValue = amount?.split(' ')[0] || '0';
 
                     const issuedByNode = await isTokenIssuedByNode(tokenSymbol);
@@ -270,22 +263,20 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                     const mintData = {
                         symbol: tokenSymbol,
                         to: from || 'null',
-                        amount: parseTokenAmount(amountValue, tokenSymbol).toString()
+                        amount: parseTokenAmount(amountValue, tokenSymbol).toString(),
                     };
 
                     await steemBridge.enqueueDeposit(mintData);
-                    logger.info(`[steemParser] Bridge deposit detected: ${amountValue} ${tokenSymbol} from ${from}, queued for broadcast`);
-
+                    logger.info(
+                        `[steemParser] Bridge deposit detected: ${amountValue} ${tokenSymbol} from ${from}, queued for broadcast`
+                    );
                 }
-
             } catch (error) {
                 logger.error(`Error processing operation in block ${blockNum}, operation ${opIndex}:`, error);
             }
-
             opIndex++;
         }
     }
-
     logger.debug(`Finished parsing Steem block ${blockNum}, found ${txs.length} valid transactions`);
     return { transactions: txs, timestamp: new Date(steemBlock.timestamp + 'Z').getTime() };
 };

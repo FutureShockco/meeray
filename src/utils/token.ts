@@ -1,21 +1,21 @@
 import cache from '../cache.js';
 import logger from '../logger.js';
 import settings from '../settings.js';
-import { toBigInt, toDbString } from './bigint.js';
 import { TokenData } from '../transactions/token/token-interfaces.js';
+import { toBigInt, toDbString } from './bigint.js';
 
 export interface Token {
-    _id: string;                // Typically the symbol
+    _id: string; // Typically the symbol
     symbol: string;
     name: string;
-    precision: bigint;          // Number of decimal places (0-18)
-    issuer?: string;            // For non-native tokens
-    maxSupply: bigint;          // Maximum token supply
-    currentSupply: bigint;      // Current circulating supply
+    precision: bigint; // Number of decimal places (0-18)
+    issuer?: string; // For non-native tokens
+    maxSupply: bigint; // Maximum token supply
+    currentSupply: bigint; // Current circulating supply
 }
 
 export async function getToken(symbol: string): Promise<TokenData | null> {
-    return await cache.findOnePromise('tokens', { symbod: symbol }) as TokenData | null;
+    return (await cache.findOnePromise('tokens', { symbod: symbol })) as TokenData | null;
 }
 
 export function getLpTokenSymbol(tokenA_symbol: string, tokenB_symbol: string): string {
@@ -30,7 +30,11 @@ export async function adjustTokenSupply(tokenSymbol: string, amount: bigint): Pr
         return null;
     }
     const newSupply = toBigInt(token.currentSupply) + amount;
-    const updateResult = await cache.updateOnePromise('tokens', { symbol: tokenSymbol }, { $set: { currentSupply: toDbString(newSupply) } });
+    const updateResult = await cache.updateOnePromise(
+        'tokens',
+        { symbol: tokenSymbol },
+        { $set: { currentSupply: toDbString(newSupply) } }
+    );
     if (!updateResult) {
         logger.error(`[token-utils] Failed to update token supply for ${tokenSymbol}`);
         return null;
@@ -49,7 +53,9 @@ export async function isTokenIssuedByNode(symbol: string): Promise<boolean> {
     }
     const isIssuer = token.issuer === settings.steemBridgeAccount;
     if (!isIssuer) {
-        logger.warn(`[token-utils] Token ${symbol} issuer (${token.issuer}) does not match node bridge account (${settings.steemBridgeAccount}).`);
+        logger.warn(
+            `[token-utils] Token ${symbol} issuer (${token.issuer}) does not match node bridge account (${settings.steemBridgeAccount}).`
+        );
     }
     return isIssuer;
 }

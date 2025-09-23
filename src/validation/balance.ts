@@ -2,6 +2,7 @@ import logger from '../logger.js';
 import { getAccount } from '../utils/account.js';
 import { toBigInt } from '../utils/bigint.js';
 import validate from './index.js';
+
 /**
  * Validates that the user has sufficient balances for one or more tokens.
  * @param user User account name
@@ -29,7 +30,9 @@ export const userBalances = async (
             return false;
         }
         if (balance < toBigInt(req.amount)) {
-            logger.warn(`[balance-validation] Insufficient balance for ${req.symbol}. Required: ${req.amount}, Available: ${balance}`);
+            logger.warn(
+                `[balance-validation] Insufficient balance for ${req.symbol}. Required: ${req.amount}, Available: ${balance}`
+            );
             return false;
         }
     }

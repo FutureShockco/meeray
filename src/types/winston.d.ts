@@ -1,4 +1,5 @@
 import 'winston';
+import { LeveledLogMethod } from 'winston';
 
 declare module 'winston' {
     interface Logger {

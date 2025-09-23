@@ -1,9 +1,9 @@
-import steemConfig from './config.js';
+import chain from '../chain.js';
+import config from '../config.js';
 import logger from '../logger.js';
 import p2p from '../p2p/index.js';
-import chain from '../chain.js';
 import SteemApiClient from './apiClient.js';
-import config from '../config.js';
+import steemConfig from './config.js';
 
 interface SyncStatus {
     nodeId: string;
@@ -27,7 +27,7 @@ class SyncManager {
     private apiClient: SteemApiClient;
 
     // Sync status broadcasting management
-    private syncStatusBroadcastInterval: NodeJS.Timeout | null = null;
+    private syncStatusBroadcastInterval: any | null = null;
     private lastBroadcastInterval: number | null = null;
     private lastBroadcastedSyncStatus: Partial<SyncStatus> = {};
     private lastForcedBroadcast = 0;
@@ -80,7 +80,7 @@ class SyncManager {
                 blockId: chain.getLatestBlock()?._id || 0,
                 consensusBlocks: {},
                 exitTarget: null,
-                timestamp: Date.now()
+                timestamp: Date.now(),
             };
             p2p.broadcastSyncStatus(currentStatus);
         }
@@ -96,7 +96,7 @@ class SyncManager {
                 blockId: currentBlockId,
                 consensusBlocks: {},
                 exitTarget: null,
-                timestamp: Date.now()
+                timestamp: Date.now(),
             };
 
             p2p.broadcastSyncStatus(exitStatus);
@@ -146,7 +146,7 @@ class SyncManager {
             blockId: chain.getLatestBlock()?._id || 0,
             consensusBlocks: {},
             exitTarget: this.syncExitTargetBlock,
-            timestamp: Date.now()
+            timestamp: Date.now(),
         };
 
         const targetInterval = this.isSyncing ? steemConfig.fastBroadcastInterval : steemConfig.defaultBroadcastInterval;
@@ -156,7 +156,7 @@ class SyncManager {
             statusToBroadcast.exitTarget !== this.lastBroadcastedSyncStatus.exitTarget;
 
         const now = Date.now();
-        if (significantChange || (now - this.lastForcedBroadcast) > targetInterval) {
+        if (significantChange || now - this.lastForcedBroadcast > targetInterval) {
             p2p.broadcastSyncStatus(statusToBroadcast);
             this.lastBroadcastedSyncStatus = { ...statusToBroadcast };
             this.lastForcedBroadcast = now;
@@ -188,7 +188,9 @@ class SyncManager {
 
                 // NEW: Exit sync mode immediately if Steem blocks behind is lower than config.steemBlockDelay
                 if (realTimeBehindBlocks < config.steemBlockDelay) {
-                    logger.info(`Exiting sync mode immediately: Steem blocks behind (${realTimeBehindBlocks}) is lower than steemBlockDelay (${config.steemBlockDelay}) at block ${currentBlockId}`);
+                    logger.info(
+                        `Exiting sync mode immediately: Steem blocks behind (${realTimeBehindBlocks}) is lower than steemBlockDelay (${config.steemBlockDelay}) at block ${currentBlockId}`
+                    );
                     return true;
                 }
 
@@ -207,7 +209,9 @@ class SyncManager {
 
         // NEW: Also check cached value against steemBlockDelay
         if (this.behindBlocks < config.steemBlockDelay) {
-            logger.info(`Exiting sync mode immediately (cached): Steem blocks behind (${this.behindBlocks}) is lower than steemBlockDelay (${config.steemBlockDelay}) at block ${currentBlockId}`);
+            logger.info(
+                `Exiting sync mode immediately (cached): Steem blocks behind (${this.behindBlocks}) is lower than steemBlockDelay (${config.steemBlockDelay}) at block ${currentBlockId}`
+            );
             return true;
         }
 
@@ -217,7 +221,9 @@ class SyncManager {
 
         // Only check network consensus if we're actually caught up with Steem
         if (this.isNetworkReadyToExitSyncMode()) {
-            logger.info(`Local node caught up with Steem (${this.behindBlocks} blocks behind) and network is ready to exit sync mode at block ${currentBlockId}.`);
+            logger.info(
+                `Local node caught up with Steem (${this.behindBlocks} blocks behind) and network is ready to exit sync mode at block ${currentBlockId}.`
+            );
             return true;
         }
 
@@ -230,18 +236,23 @@ class SyncManager {
         let nodesReadyToExit = 0;
         let consideredNodes = 0;
         const witnessAccounts = new Set(chain.schedule.active_witnesses || []);
-        const activePeerNodeIds = new Set(p2p.sockets.filter(s => s.node_status && s.node_status.nodeId).map(s => s.node_status!.nodeId));
+        const activePeerNodeIds = new Set(
+            p2p.sockets.filter(s => s.node_status && s.node_status.nodeId).map(s => s.node_status!.nodeId)
+        );
 
         this.networkSyncStatus.forEach((status, nodeId) => {
             if (activePeerNodeIds.has(nodeId) && now - status.timestamp < steemConfig.steemHeightExpiry) {
                 const peerAccount = (p2p as any).getPeerAccount ? (p2p as any).getPeerAccount(nodeId) : null;
-                const isRelevantPeer = (witnessAccounts.size === 0) || (peerAccount && witnessAccounts.has(peerAccount));
+                const isRelevantPeer = witnessAccounts.size === 0 || (peerAccount && witnessAccounts.has(peerAccount));
 
                 if (isRelevantPeer) {
                     consideredNodes++;
-                    if ((!status.isSyncing && status.behindBlocks <= steemConfig.syncExitThreshold) ||
+                    if (
+                        (!status.isSyncing && status.behindBlocks <= steemConfig.syncExitThreshold) ||
                         (status.isSyncing && status.behindBlocks <= steemConfig.syncExitThreshold) ||
-                        (status.exitTarget !== null && status.exitTarget <= (chain.getLatestBlock()?._id || 0) + steemConfig.syncExitThreshold)) {
+                        (status.exitTarget !== null &&
+                            status.exitTarget <= (chain.getLatestBlock()?._id || 0) + steemConfig.syncExitThreshold)
+                    ) {
                         nodesReadyToExit++;
                     }
                 }
@@ -257,7 +268,12 @@ class SyncManager {
     }
 
     receivePeerSyncStatus(nodeId: string, status: SyncStatus): void {
-        if (!status || typeof status.behindBlocks !== 'number' || typeof status.isSyncing !== 'boolean' || typeof status.steemBlock !== 'number') {
+        if (
+            !status ||
+            typeof status.behindBlocks !== 'number' ||
+            typeof status.isSyncing !== 'boolean' ||
+            typeof status.steemBlock !== 'number'
+        ) {
             logger.warn(`Received malformed sync status from ${nodeId}:`, status);
             return;
         }
@@ -268,7 +284,7 @@ class SyncManager {
         if (this.isSyncing && status.exitTarget !== null) {
             const currentChainBlockId = chain?.getLatestBlock()?._id || 0;
             if (status.exitTarget > currentChainBlockId && status.behindBlocks <= steemConfig.syncExitThreshold + 3) {
-                if (this.syncExitTargetBlock === null || (status.exitTarget < this.syncExitTargetBlock)) {
+                if (this.syncExitTargetBlock === null || status.exitTarget < this.syncExitTargetBlock) {
                     logger.info(`Adopting syncExitTargetBlock ${status.exitTarget} from peer ${nodeId}`);
                     this.syncExitTargetBlock = status.exitTarget;
                 }
@@ -285,11 +301,21 @@ class SyncManager {
     }
 
     // Getters and utility methods
-    isInSyncMode(): boolean { return this.isSyncing; }
-    getBehindBlocks(): number { return this.behindBlocks; }
-    getSyncExitTarget(): number | null { return this.syncExitTargetBlock; }
-    getLastSyncExitTime(): number | null { return this.lastSyncExitTime; }
-    shouldBeLenient(blockId: number): boolean { return !!this.postSyncLenientUntil && blockId <= this.postSyncLenientUntil; }
+    isInSyncMode(): boolean {
+        return this.isSyncing;
+    }
+    getBehindBlocks(): number {
+        return this.behindBlocks;
+    }
+    getSyncExitTarget(): number | null {
+        return this.syncExitTargetBlock;
+    }
+    getLastSyncExitTime(): number | null {
+        return this.lastSyncExitTime;
+    }
+    shouldBeLenient(blockId: number): boolean {
+        return !!this.postSyncLenientUntil && blockId <= this.postSyncLenientUntil;
+    }
 
     updateBehindBlocks(count: number): void {
         const oldValue = this.behindBlocks;
@@ -298,7 +324,9 @@ class SyncManager {
             logger.trace(`updateBehindBlocks: ${oldValue} -> ${count} (change: ${count - oldValue})`);
         }
     }
-    setSyncExitTarget(target: number | null): void { this.syncExitTargetBlock = target; }
+    setSyncExitTarget(target: number | null): void {
+        this.syncExitTargetBlock = target;
+    }
 
     handlePostSyncReady(blockId: number): void {
         if (!this.readySent && !this.isSyncing && this.postSyncLenientUntil && blockId <= this.postSyncLenientUntil) {

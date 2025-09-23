@@ -1,9 +1,10 @@
-import express, { Request, Response, Router, RequestHandler } from 'express';
+import express, { Request, RequestHandler, Response, Router } from 'express';
+
 import cache from '../../cache.js';
-import { mongo } from '../../mongo.js';
 import logger from '../../logger.js';
+import { mongo } from '../../mongo.js';
 import { toBigInt } from '../../utils/bigint.js';
-import { formatTokenAmountForResponse, formatTokenAmountSimple } from '../../utils/http.js';
+import { formatTokenAmountForResponse } from '../../utils/http.js';
 
 const router: Router = express.Router();
 
@@ -17,18 +18,20 @@ const getPagination = (req: Request) => {
 const transformFarmData = (farmData: any): any => {
     if (!farmData) return farmData;
     const transformed = { ...farmData };
-    if (transformed._id && typeof transformed._id !== 'string') { // If _id is ObjectId
+    if (transformed._id && typeof transformed._id !== 'string') {
+        // If _id is ObjectId
         transformed.id = transformed._id.toString();
         delete transformed._id;
-    } else if (transformed._id) { // If _id is string, ensure it's called id for consistency or keep as _id
+    } else if (transformed._id) {
+        // If _id is string, ensure it's called id for consistency or keep as _id
         // transformed.id = transformed._id; // Option to map string _id to id
-        // delete transformed._id; 
+        // delete transformed._id;
     }
 
     // Format farm amounts using appropriate token symbols
     const stakingTokenSymbol = transformed.stakingToken?.symbol || 'LP_TOKEN';
     const rewardTokenSymbol = transformed.rewardToken?.symbol || 'REWARD_TOKEN';
-    
+
     // Format staking-related amounts using staking token decimals
     const stakingFields = ['totalStaked', 'minStakeAmount', 'maxStakeAmount'];
     for (const field of stakingFields) {
@@ -38,7 +41,7 @@ const transformFarmData = (farmData: any): any => {
             transformed[`raw${field.charAt(0).toUpperCase() + field.slice(1)}`] = formatted.rawAmount;
         }
     }
-    
+
     // Format reward-related amounts using reward token decimals
     const rewardFields = ['rewardsPerBlock', 'totalRewards', 'rewardsRemaining'];
     for (const field of rewardFields) {
@@ -48,12 +51,12 @@ const transformFarmData = (farmData: any): any => {
             transformed[`raw${field.charAt(0).toUpperCase() + field.slice(1)}`] = formatted.rawAmount;
         }
     }
-    
+
     // APR is typically a percentage, so keep as raw value
     if (transformed.apr) {
         transformed.apr = toBigInt(transformed.apr).toString();
     }
-    
+
     return transformed;
 };
 
@@ -71,7 +74,7 @@ const transformUserFarmPositionData = (positionData: any): any => {
     const farmId = transformed.farmId;
     let stakingTokenSymbol = 'UNKNOWN';
     let rewardTokenSymbol = 'UNKNOWN';
-    
+
     // In a real implementation, you might want to cache this or join with farms collection
     // For now, we'll use placeholder symbols
     if (farmId) {
@@ -79,14 +82,14 @@ const transformUserFarmPositionData = (positionData: any): any => {
         stakingTokenSymbol = 'LP_TOKEN'; // or actual staking token symbol
         rewardTokenSymbol = 'REWARD_TOKEN'; // or actual reward token symbol
     }
-    
+
     // Format staked amount using staking token decimals
     if (transformed.stakedAmount) {
         const formatted = formatTokenAmountForResponse(transformed.stakedAmount, stakingTokenSymbol);
         transformed.stakedAmount = formatted.amount;
         transformed.rawStakedAmount = formatted.rawAmount;
     }
-    
+
     // Format reward amounts using reward token decimals
     const rewardFields = ['rewardsEarned', 'claimedRewards', 'pendingRewards'];
     for (const field of rewardFields) {
@@ -96,7 +99,7 @@ const transformUserFarmPositionData = (positionData: any): any => {
             transformed[`raw${field.charAt(0).toUpperCase() + field.slice(1)}`] = formatted.rawAmount;
         }
     }
-    
+
     return transformed;
 };
 
@@ -141,7 +144,11 @@ router.get('/positions/user/:userId', (async (req: Request, res: Response) => {
     const { userId } = req.params; // Assuming userId is the staker
     const { limit, skip } = getPagination(req);
     try {
-        const positionsFromDB = await cache.findPromise('userFarmPositions', { userId: userId }, { limit, skip, sort: { _id: 1 } });
+        const positionsFromDB = await cache.findPromise(
+            'userFarmPositions',
+            { userId: userId },
+            { limit, skip, sort: { _id: 1 } }
+        );
         const total = await mongo.getDb().collection('userFarmPositions').countDocuments({ userId: userId });
         const positions = (positionsFromDB || []).map(transformUserFarmPositionData);
         res.json({ data: positions, total, limit, skip });
@@ -155,7 +162,11 @@ router.get('/positions/farm/:farmId', (async (req: Request, res: Response) => {
     const { farmId } = req.params;
     const { limit, skip } = getPagination(req);
     try {
-        const positionsFromDB = await cache.findPromise('userFarmPositions', { farmId: farmId }, { limit, skip, sort: { _id: 1 } });
+        const positionsFromDB = await cache.findPromise(
+            'userFarmPositions',
+            { farmId: farmId },
+            { limit, skip, sort: { _id: 1 } }
+        );
         const total = await mongo.getDb().collection('userFarmPositions').countDocuments({ farmId: farmId });
         const positions = (positionsFromDB || []).map(transformUserFarmPositionData);
         res.json({ data: positions, total, limit, skip });

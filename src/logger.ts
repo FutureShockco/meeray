@@ -1,7 +1,7 @@
-import winston from 'winston';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import winston from 'winston';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,25 +12,13 @@ if (!fs.existsSync(logsDir)) {
     fs.mkdirSync(logsDir, { recursive: true });
 }
 
-const validLogLevels = [
-    'fatal',
-    'error',
-    'perf',
-    'warn',
-    'info',
-    'http',
-    'verbose',
-    'debug',
-    'silly',
-    'trace',
-    'cons'
-];
+const validLogLevels = ['fatal', 'error', 'perf', 'warn', 'info', 'http', 'verbose', 'debug', 'silly', 'trace', 'cons'];
 
 let logLevel = (process.env.LOG_LEVEL || 'info').toLowerCase();
 
 if (!validLogLevels.includes(logLevel)) {
+    // eslint-disable-next-line no-console
     console.warn(`Invalid LOG_LEVEL "${logLevel}" specified. Using "info" instead.`);
-    console.warn(`Valid levels are: ${validLogLevels.join(', ')}`);
     logLevel = 'info';
 }
 
@@ -60,7 +48,7 @@ const customLevels = {
         debug: 7,
         silly: 8,
         trace: 9,
-        cons: 10
+        cons: 10,
     },
     colors: {
         fatal: 'redBG white',
@@ -73,8 +61,8 @@ const customLevels = {
         debug: 'white',
         silly: 'grey',
         trace: 'grey',
-        cons: 'inverse'
-    }
+        cons: 'inverse',
+    },
 };
 
 winston.addColors(customLevels.colors);
@@ -88,12 +76,9 @@ const logr = winston.createLogger({
         new winston.transports.File({
             filename: logFile,
             level: logLevel,
-            format: winston.format.combine(
-                winston.format.timestamp(),
-                winston.format.json()
-            )
-        })
-    ]
+            format: winston.format.combine(winston.format.timestamp(), winston.format.json()),
+        }),
+    ],
 });
 
 const logger = Object.assign(logr, {
@@ -105,7 +90,7 @@ const logger = Object.assign(logr, {
         }
         logr.level = newLevel;
         logr.info(`Log level changed to: ${newLevel}`);
-    }
+    },
 });
 
 export default logger;

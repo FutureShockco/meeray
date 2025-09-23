@@ -1,11 +1,11 @@
-import logger from '../../logger.js';
 import cache from '../../cache.js';
-import validate from '../../validation/index.js';
 import config from '../../config.js';
-import { FarmCreateData, FarmData } from './farm-interfaces.js';
-import { toDbString, BigIntMath, toBigInt } from '../../utils/bigint.js';
-import { getAccount } from '../../utils/account.js';
+import logger from '../../logger.js';
 import mongo from '../../mongo.js';
+import { getAccount } from '../../utils/account.js';
+import { BigIntMath, toBigInt, toDbString } from '../../utils/bigint.js';
+import validate from '../../validation/index.js';
+import { FarmCreateData, FarmData } from './farm-interfaces.js';
 
 // Helper function to generate a unique and deterministic farm ID
 function generateFarmId(stakingTokenSymbol: string, rewardTokenSymbol: string): string {
@@ -15,7 +15,14 @@ function generateFarmId(stakingTokenSymbol: string, rewardTokenSymbol: string): 
 
 export async function validateTx(data: FarmCreateData, sender: string): Promise<boolean> {
     try {
-        if (!data.name || !data.stakingToken?.symbol || !data.rewardToken?.symbol || !data.rewardToken?.issuer || !data.startTime || !data.endTime) {
+        if (
+            !data.name ||
+            !data.stakingToken?.symbol ||
+            !data.rewardToken?.symbol ||
+            !data.rewardToken?.issuer ||
+            !data.startTime ||
+            !data.endTime
+        ) {
             logger.warn('[farm-create] Invalid data: Missing required fields.');
             return false;
         }
@@ -39,7 +46,8 @@ export async function validateTx(data: FarmCreateData, sender: string): Promise<
             logger.warn(`[farm-create] Invalid rewardToken.symbol: ${data.rewardToken.symbol}.`);
             return false;
         }
-        if (!validate.string(data.rewardToken.issuer, 16, 3)) { // Assuming issuer is an account name
+        if (!validate.string(data.rewardToken.issuer, 16, 3)) {
+            // Assuming issuer is an account name
             logger.warn(`[farm-create] Invalid rewardToken.issuer: ${data.rewardToken.issuer}.`);
             return false;
         }
@@ -58,13 +66,17 @@ export async function validateTx(data: FarmCreateData, sender: string): Promise<
 
         // Validate that the sender is the issuer of the reward token
         if (rewardToken.issuer !== sender) {
-            logger.warn(`[farm-create] Sender ${sender} is not the issuer of reward token ${data.rewardToken.symbol}. Token issuer: ${rewardToken.issuer}`);
+            logger.warn(
+                `[farm-create] Sender ${sender} is not the issuer of reward token ${data.rewardToken.symbol}. Token issuer: ${rewardToken.issuer}`
+            );
             return false;
         }
 
         // Validate that the reward token is mintable
         if (!rewardToken.mintable) {
-            logger.warn(`[farm-create] Reward token ${data.rewardToken.symbol} is not mintable. Cannot create farm with non-mintable reward token.`);
+            logger.warn(
+                `[farm-create] Reward token ${data.rewardToken.symbol} is not mintable. Cannot create farm with non-mintable reward token.`
+            );
             return false;
         }
 
@@ -76,7 +88,8 @@ export async function validateTx(data: FarmCreateData, sender: string): Promise<
         }
 
         // Assuming startTime and endTime are ISO strings, validate their format and logical order
-        if (!validate.string(data.startTime, 50, 10) || !validate.string(data.endTime, 50, 10)) { // Basic string check
+        if (!validate.string(data.startTime, 50, 10) || !validate.string(data.endTime, 50, 10)) {
+            // Basic string check
             logger.warn('[farm-create] Invalid startTime or endTime format.');
             return false;
         }
@@ -85,7 +98,7 @@ export async function validateTx(data: FarmCreateData, sender: string): Promise<
                 logger.warn('[farm-create] startTime must be before endTime.');
                 return false;
             }
-        } catch (e) {
+        } catch {
             logger.warn('[farm-create] Invalid date string for startTime or endTime.');
             return false;
         }
@@ -112,8 +125,14 @@ export async function validateTx(data: FarmCreateData, sender: string): Promise<
         }
 
         const senderAccount = await getAccount(sender);
-        if (!senderAccount || !senderAccount.balances || BigIntMath.toBigInt(senderAccount.balances[data.rewardToken.symbol] || '0') < toBigInt(data.totalRewards)) {
-            logger.warn(`[farm-create] Sender ${sender} does not have enough ${data.rewardToken.symbol} to fund the farm. Needs ${data.totalRewards}, has ${senderAccount?.balances?.[data.rewardToken.symbol] || '0'}`);
+        if (
+            !senderAccount ||
+            !senderAccount.balances ||
+            BigIntMath.toBigInt(senderAccount.balances[data.rewardToken.symbol] || '0') < toBigInt(data.totalRewards)
+        ) {
+            logger.warn(
+                `[farm-create] Sender ${sender} does not have enough ${data.rewardToken.symbol} to fund the farm. Needs ${data.totalRewards}, has ${senderAccount?.balances?.[data.rewardToken.symbol] || '0'}`
+            );
             return false;
         }
 
@@ -124,7 +143,7 @@ export async function validateTx(data: FarmCreateData, sender: string): Promise<
     }
 }
 
-export async function processTx(data: FarmCreateData, sender: string, id: string, ts?: number): Promise<boolean> {
+export async function processTx(data: FarmCreateData, sender: string, _id: string, _ts?: number): Promise<boolean> {
     try {
         const farmId = generateFarmId(data.stakingToken.symbol, data.rewardToken.symbol);
 
@@ -138,7 +157,9 @@ export async function processTx(data: FarmCreateData, sender: string, id: string
         const newSenderRewardBalance = currentSenderRewardBalance - toBigInt(data.totalRewards);
 
         if (newSenderRewardBalance < toBigInt(0)) {
-            logger.error(`[farm-create] Critical: Sender ${sender} insufficient balance for ${data.rewardToken.symbol} during processing.`);
+            logger.error(
+                `[farm-create] Critical: Sender ${sender} insufficient balance for ${data.rewardToken.symbol} during processing.`
+            );
             return false;
         }
 
@@ -152,11 +173,23 @@ export async function processTx(data: FarmCreateData, sender: string, id: string
         const vaultAccountName = `farm_vault_${farmId}`;
         const existingVault = await cache.findOnePromise('accounts', { name: vaultAccountName });
         if (!existingVault) {
-            await mongo.getDb().collection('accounts').updateOne(
-                { name: vaultAccountName },
-                { $setOnInsert: { name: vaultAccountName, balances: { [data.rewardToken.symbol]: toDbString(toBigInt(0)) }, nfts: {}, totalVoteWeight: toDbString(toBigInt(0)), votedWitnesses: [], created: new Date() } },
-                { upsert: true }
-            );
+            await mongo
+                .getDb()
+                .collection('accounts')
+                .updateOne(
+                    { name: vaultAccountName },
+                    {
+                        $setOnInsert: {
+                            name: vaultAccountName,
+                            balances: { [data.rewardToken.symbol]: toDbString(toBigInt(0)) },
+                            nfts: {},
+                            totalVoteWeight: toDbString(toBigInt(0)),
+                            votedWitnesses: [],
+                            created: new Date(),
+                        },
+                    },
+                    { upsert: true }
+                );
             const insertedVault = await mongo.getDb().collection('accounts').findOne({ name: vaultAccountName });
             if (insertedVault) {
                 cache.accounts[vaultAccountName] = insertedVault as any;
@@ -167,14 +200,18 @@ export async function processTx(data: FarmCreateData, sender: string, id: string
         const vaultAccount = await cache.findOnePromise('accounts', { name: vaultAccountName });
         const currentVaultBal = BigIntMath.toBigInt(vaultAccount?.balances?.[data.rewardToken.symbol] || '0');
         const newVaultBal = currentVaultBal + toBigInt(data.totalRewards);
-        await cache.updateOnePromise('accounts', { name: vaultAccountName }, { $set: { [vaultBalanceKey]: toDbString(newVaultBal) } });
+        await cache.updateOnePromise(
+            'accounts',
+            { name: vaultAccountName },
+            { $set: { [vaultBalanceKey]: toDbString(newVaultBal) } }
+        );
 
         // Determine if this is a native farm (rewards in MRY from system)
-        const isNativeFarm = data.rewardToken.symbol === config.nativeTokenSymbol &&
-            data.rewardToken.issuer === config.masterName;
+        const isNativeFarm =
+            data.rewardToken.symbol === config.nativeTokenSymbol && data.rewardToken.issuer === config.masterName;
 
         // Set default weight based on farm type
-        const farmWeight = data.weight !== undefined ? data.weight : (isNativeFarm ? 1 : 0);
+        const farmWeight = data.weight !== undefined ? data.weight : isNativeFarm ? 1 : 0;
 
         const farmDocument: FarmData = {
             _id: farmId,
@@ -194,10 +231,10 @@ export async function processTx(data: FarmCreateData, sender: string, id: string
             isActive: true,
             status: 'active',
             createdAt: new Date().toISOString(),
-            rewardsRemaining: toDbString(data.totalRewards)
+            rewardsRemaining: toDbString(data.totalRewards),
         };
 
-        const insertSuccess = await new Promise<boolean>((resolve) => {
+        const insertSuccess = await new Promise<boolean>(resolve => {
             cache.insertOne('farms', farmDocument, (err, result) => {
                 if (err || !result) {
                     logger.error(`[farm-create] Failed to insert farm ${farmId} into cache: ${err || 'no result'}`);
@@ -213,7 +250,9 @@ export async function processTx(data: FarmCreateData, sender: string, id: string
             return false;
         }
 
-        logger.debug(`[farm-create] Farm ${farmId} for staking token ${data.stakingToken.symbol} rewarding ${data.rewardToken.symbol} created by ${sender}.`);
+        logger.debug(
+            `[farm-create] Farm ${farmId} for staking token ${data.stakingToken.symbol} rewarding ${data.rewardToken.symbol} created by ${sender}.`
+        );
 
         return true;
     } catch (error) {

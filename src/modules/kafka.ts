@@ -1,5 +1,8 @@
 import { Kafka, Producer, logLevel } from 'kafkajs';
-import logger from '../logger.js'; // Assuming logger is in the parent directory
+
+import logger from '../logger.js';
+
+// Assuming logger is in the parent directory
 
 // Configuration for Kafka - replace with your actual broker details
 const KAFKA_BROKERS = process.env.KAFKA_BROKERS ? process.env.KAFKA_BROKERS.split(',') : ['localhost:9092'];
@@ -34,8 +37,8 @@ export async function initializeKafkaProducer(): Promise<void> {
             logLevel: logLevel.WARN, // Adjust log level as needed (ERROR, WARN, INFO, DEBUG)
             retry: {
                 initialRetryTime: 300,
-                retries: 5
-            }
+                retries: 5,
+            },
         });
 
         const newProducer = kafka.producer({
@@ -54,11 +57,12 @@ export async function initializeKafkaProducer(): Promise<void> {
             isConnected = false;
             // Potentially try to reconnect or handle this scenario
         });
-
     } catch (error) {
         isInitializing = false;
         isConnected = false;
-        logger.error(`[kafka-producer] Failed to initialize or connect Kafka producer: ${error instanceof Error ? error.message : String(error)}`);
+        logger.error(
+            `[kafka-producer] Failed to initialize or connect Kafka producer: ${error instanceof Error ? error.message : String(error)}`
+        );
         // Depending on the application's needs, you might want to throw the error
         // or implement a retry mechanism here.
         // For now, we'll just log it and the producer will remain null.
@@ -78,7 +82,9 @@ export async function sendKafkaEvent(topic: string, message: any, key?: string):
         logger.warn(`[kafka-producer] Kafka producer not initialized or not connected. Attempting to initialize...`);
         await initializeKafkaProducer(); // Attempt to initialize if not already
         if (!producer || !isConnected) {
-            logger.error(`[kafka-producer] Failed to send event after re-initialization attempt. Producer unavailable. Topic: ${topic}`);
+            logger.error(
+                `[kafka-producer] Failed to send event after re-initialization attempt. Producer unavailable. Topic: ${topic}`
+            );
             // Optionally, you could queue this message or handle the failure in another way
             return;
         }
@@ -86,16 +92,18 @@ export async function sendKafkaEvent(topic: string, message: any, key?: string):
 
     try {
         const stringMessage = JSON.stringify(message);
-        logger.debug(`[kafka-producer] Sending event to Kafka topic '${topic}'. Key: '${key || 'none'}', Message: ${stringMessage}`);
+        logger.debug(
+            `[kafka-producer] Sending event to Kafka topic '${topic}'. Key: '${key || 'none'}', Message: ${stringMessage}`
+        );
         await producer.send({
             topic: topic,
-            messages: [
-                { key: key, value: stringMessage },
-            ],
+            messages: [{ key: key, value: stringMessage }],
         });
         logger.info(`[kafka-producer] Event successfully sent to Kafka topic '${topic}'. EventID: ${message?._id || 'N/A'}`);
     } catch (error) {
-        logger.error(`[kafka-producer] Failed to send event to Kafka topic '${topic}': ${error instanceof Error ? error.message : String(error)}. Message: ${JSON.stringify(message)}`);
+        logger.error(
+            `[kafka-producer] Failed to send event to Kafka topic '${topic}': ${error instanceof Error ? error.message : String(error)}. Message: ${JSON.stringify(message)}`
+        );
         // Handle send errors (e.g., retries, dead-letter queue)
     }
 }
@@ -110,7 +118,9 @@ export async function disconnectKafkaProducer(): Promise<void> {
             await producer.disconnect();
             logger.info('[kafka-producer] Kafka producer disconnected successfully.');
         } catch (error) {
-            logger.error(`[kafka-producer] Error disconnecting Kafka producer: ${error instanceof Error ? error.message : String(error)}`);
+            logger.error(
+                `[kafka-producer] Error disconnecting Kafka producer: ${error instanceof Error ? error.message : String(error)}`
+            );
         } finally {
             producer = null;
             isConnected = false;

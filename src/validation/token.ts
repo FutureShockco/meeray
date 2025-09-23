@@ -1,8 +1,9 @@
-import cache from "../cache.js";
-import config from "../config.js";
-import logger from "../logger.js";
-import { toBigInt } from "../utils/bigint.js";
-import validate from "./index.js";
+import cache from '../cache.js';
+import config from '../config.js';
+import logger from '../logger.js';
+import { toBigInt } from '../utils/bigint.js';
+import validate from './index.js';
+
 const BURN_ACCOUNT_NAME = config.burnAccountName || 'null';
 
 /**
@@ -30,8 +31,14 @@ export const tokenSymbols = (symbols: any[] | any): boolean => {
  * @param memo Optional memo
  * @returns True if the transfer is valid, false otherwise
  */
-
-export const tokenTransfer = (sender: string, symbol: string, to: string, amount: string | bigint, memo?: string, isTransfer?: boolean): boolean => {
+export const tokenTransfer = (
+    sender: string,
+    symbol: string,
+    to: string,
+    amount: string | bigint,
+    memo?: string,
+    isTransfer?: boolean
+): boolean => {
     if (!symbol || !to || !amount) {
         logger.warn('[token-transfer:validation] Invalid data: Missing required fields (symbol, to, amount).');
         return false;
@@ -56,7 +63,7 @@ export const tokenTransfer = (sender: string, symbol: string, to: string, amount
         logger.warn(`[token-transfer:validation] Invalid amount: ${toBigInt(amount).toString()}. Must be a positive integer.`);
         return false;
     }
-    return true
+    return true;
 };
 
 /**
@@ -66,11 +73,18 @@ export const tokenTransfer = (sender: string, symbol: string, to: string, amount
  * @param maxLength Maximum allowed length of the array
  * @returns True if the array is valid, false otherwise
  */
-export const newToken = async (
-    data: any
-): Promise<boolean> => {
-    if (!data.symbol || !data.name || data.maxSupply === undefined || data.precision === undefined || data.initialSupply === undefined) {
-        logger.warn('[token-config:validation] Invalid data: Missing required fields (symbol, name, maxSupply, precision, initialSupply).');
+
+export const newToken = async (data: any): Promise<boolean> => {
+    if (
+        !data.symbol ||
+        !data.name ||
+        data.maxSupply === undefined ||
+        data.precision === undefined ||
+        data.initialSupply === undefined
+    ) {
+        logger.warn(
+            '[token-config:validation] Invalid data: Missing required fields (symbol, name, maxSupply, precision, initialSupply).'
+        );
         return false;
     }
     if (!validate.tokenSymbols(data.symbol)) {
@@ -78,7 +92,9 @@ export const newToken = async (
         return false;
     }
     if (data.symbol.startsWith('LP_')) {
-        logger.warn('[token-config:validation] Token symbol cannot start with "LP_". This prefix is reserved for liquidity pool tokens.');
+        logger.warn(
+            '[token-config:validation] Token symbol cannot start with "LP_". This prefix is reserved for liquidity pool tokens.'
+        );
         return false;
     }
     if (!validate.string(data.name, 25, 1)) {
@@ -131,7 +147,7 @@ export const newToken = async (
         logger.warn(`[token-config:validation] Token with symbol ${data.symbol} already exists.`);
         return false;
     }
-    return true
+    return true;
 };
 
 /**
@@ -147,8 +163,8 @@ export const tokenExists = async (symbol: string): Promise<boolean> => {
         logger.warn(`[token-exists:validation] Token with symbol ${symbol} already exists.`);
         return true;
     }
-    return false
-}
+    return false;
+};
 
 /**
  * Validates if a token exists
@@ -163,8 +179,8 @@ export const isIssuer = async (sender: string, symbol: string): Promise<boolean>
         logger.warn(`[token-issuer:validation] Sender ${sender} is not the issuer of the token ${symbol}.`);
         return false;
     }
-    return true
-}
+    return true;
+};
 
 /**
  * Validates if a token exists
@@ -184,7 +200,7 @@ export const canMintToken = async (sender: string, symbol: string, amount: strin
     const currentSupplyBigInt = toBigInt(token.currentSupply || 0);
     const maxSupplyBigInt = toBigInt(token.maxSupply);
     const amountBigInt = toBigInt(amount);
-    if ((currentSupplyBigInt + amountBigInt) > maxSupplyBigInt) {
+    if (currentSupplyBigInt + amountBigInt > maxSupplyBigInt) {
         logger.warn(`[token-mint:validation] Mint would exceed max supply for ${symbol}.`);
         return false;
     }
@@ -198,7 +214,7 @@ export const canMintToken = async (sender: string, symbol: string, amount: strin
         return false;
     }
 
-    return true
-}
+    return true;
+};
 
 export default { tokenSymbols, newToken, tokenExists, isIssuer, canMintToken };

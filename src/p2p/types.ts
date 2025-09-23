@@ -1,4 +1,5 @@
 import WebSocket from 'ws';
+
 import { Block } from '../block.js';
 
 // Message Types
@@ -11,7 +12,7 @@ export enum MessageType {
     BLOCK_CONF_ROUND = 5,
     STEEM_SYNC_STATUS = 6,
     QUERY_PEER_LIST = 7,
-    PEER_LIST = 8
+    PEER_LIST = 8,
 }
 
 // Interfaces
@@ -43,7 +44,7 @@ export interface EnhancedWebSocket extends WebSocket {
     steemSyncStatus?: SteemSyncStatus;
     challengeHash?: string;
     receivedChallenge?: string;
-    pendingDisconnect?: NodeJS.Timeout;
+    pendingDisconnect?: any;
     sentUs?: [string, number][];
     _peerUrl?: string;
 }

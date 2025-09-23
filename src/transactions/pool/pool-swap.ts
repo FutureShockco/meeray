@@ -1,9 +1,16 @@
 import logger from '../../logger.js';
-import validate from '../../validation/index.js';
-import { PoolSwapData } from './pool-interfaces.js';
 import { getAccount } from '../../utils/account.js';
 import { toBigInt } from '../../utils/bigint.js';
-import { processAutoRouteSwap, processRoutedSwap, processSingleHopSwap, validateAutoRouteSwap, validateRoutedSwap, validateSingleHopSwap } from './pool-processor.js';
+import validate from '../../validation/index.js';
+import { PoolSwapData } from './pool-interfaces.js';
+import {
+    processAutoRouteSwap,
+    processRoutedSwap,
+    processSingleHopSwap,
+    validateAutoRouteSwap,
+    validateRoutedSwap,
+    validateSingleHopSwap,
+} from './pool-processor.js';
 
 export async function validateTx(data: PoolSwapData, sender: string): Promise<boolean> {
     try {
@@ -35,7 +42,9 @@ export async function validateTx(data: PoolSwapData, sender: string): Promise<bo
             // Auto-route swap - find the best route
             return await validateAutoRouteSwap(data, sender, traderAccount);
         } else {
-            logger.warn('[pool-swap] Invalid swap data: must specify either poolId for single-hop, hops for multi-hop, or fromTokenSymbol/toTokenSymbol for auto-routing.');
+            logger.warn(
+                '[pool-swap] Invalid swap data: must specify either poolId for single-hop, hops for multi-hop, or fromTokenSymbol/toTokenSymbol for auto-routing.'
+            );
             return false;
         }
     } catch (error) {

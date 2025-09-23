@@ -1,7 +1,7 @@
-import logger from '../logger.js';
-import { EnhancedWebSocket, MessageType, SteemSyncStatus } from './types.js';
 import { Block } from '../block.js';
+import logger from '../logger.js';
 import { P2P_CONFIG } from './config.js';
+import { EnhancedWebSocket, MessageType, SteemSyncStatus } from './types.js';
 
 // Central socket communication utilities - stateless, works with provided sockets array
 export class SocketManager {
@@ -18,7 +18,8 @@ export class SocketManager {
 
     // Core communication methods
     static sendJSON(ws: EnhancedWebSocket, data: any): void {
-        if (ws.readyState === 1) { // WebSocket.OPEN
+        if (ws.readyState === 1) {
+            // WebSocket.OPEN
             try {
                 ws.send(JSON.stringify(data));
             } catch (error) {
@@ -54,7 +55,7 @@ export class SocketManager {
                     break;
                 }
             }
-            
+
             if (shouldSend) {
                 this.sendJSON(socket, data);
                 // Note: Don't add to sentUs here - only when receiving (matches old P2P)

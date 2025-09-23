@@ -7,19 +7,19 @@ import { NftInstance } from '../transactions/nft/nft-transfer.js';
  * @returns The cover URL for the NFT
  */
 export function getNftCoverUrl(nft: NftInstance, collectionBaseCoverUrl?: string): string | undefined {
-  // If the NFT has its own cover URL, use it
-  if (nft.coverUrl) {
-    return nft.coverUrl;
-  }
-  
-  // If the collection has a base cover URL and the NFT has an index, construct the URL
-  if (collectionBaseCoverUrl && nft.index) {
-    // Replace {index} placeholder with the actual index
-    return collectionBaseCoverUrl.replace('{index}', nft.index.toString());
-  }
-  
-  // No cover URL available
-  return undefined;
+    // If the NFT has its own cover URL, use it
+    if (nft.coverUrl) {
+        return nft.coverUrl;
+    }
+
+    // If the collection has a base cover URL and the NFT has an index, construct the URL
+    if (collectionBaseCoverUrl && nft.index) {
+        // Replace {index} placeholder with the actual index
+        return collectionBaseCoverUrl.replace('{index}', nft.index.toString());
+    }
+
+    // No cover URL available
+    return undefined;
 }
 
 /**
@@ -29,5 +29,5 @@ export function getNftCoverUrl(nft: NftInstance, collectionBaseCoverUrl?: string
  * @returns The display name (e.g., "My Collection #1")
  */
 export function getNftDisplayName(nft: NftInstance, collectionName: string): string {
-  return `${collectionName} #${nft.index || nft.tokenId}`;
+    return `${collectionName} #${nft.index || nft.tokenId}`;
 }

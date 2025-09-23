@@ -1,11 +1,11 @@
-import logger from '../logger.js';
 import cache from '../cache.js';
-import { toBigInt, toDbString } from './bigint.js';
 import config from '../config.js';
-import { Account } from "../mongo.js";
+import logger from '../logger.js';
+import { Account } from '../mongo.js';
+import { toBigInt, toDbString } from './bigint.js';
 
 export async function getAccount(accountId: string): Promise<Account | null> {
-    return await cache.findOnePromise('accounts', { name: accountId }) as Account | null;
+    return (await cache.findOnePromise('accounts', { name: accountId })) as Account | null;
 }
 
 const adjustWitnessVoteWeights = async (account: Account | null, currentBalance: bigint, newBalance: bigint) => {
@@ -22,17 +22,17 @@ const adjustWitnessVoteWeights = async (account: Account | null, currentBalance:
                 const currentVoteWeight = toBigInt(witnessAccount?.totalVoteWeight || 0);
                 let updated = currentVoteWeight + diffPerWitness;
                 if (updated < 0n) updated = 0n;
-                await cache.updateOnePromise('accounts', { name: witnessName }, { $set: { totalVoteWeight: toDbString(updated) } });
+                await cache.updateOnePromise(
+                    'accounts',
+                    { name: witnessName },
+                    { $set: { totalVoteWeight: toDbString(updated) } }
+                );
             }
         }
     }
-}
+};
 
-export async function adjustUserBalance(
-    accountId: string,
-    tokenSymbol: string,
-    amount: bigint | string
-): Promise<boolean> {
+export async function adjustUserBalance(accountId: string, tokenSymbol: string, amount: bigint | string): Promise<boolean> {
     try {
         const account = await getAccount(accountId);
         const currentBalance = toBigInt(account!.balances?.[tokenSymbol] || '0');

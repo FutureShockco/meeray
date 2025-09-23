@@ -1,5 +1,5 @@
-import validateBigInt from './bigint.js';
 import { toBigInt } from '../utils/bigint.js';
+import validateBigInt from './bigint.js';
 
 /**
  * Type validation functions
@@ -23,7 +23,7 @@ const types: Record<string, ValidationType> = {
     posInt: (val: any) => validateBigInt(val, false, false),
     posNonZeroInt: (val: any) => validateBigInt(val, false, false, toBigInt(1)),
     posAmount: (val: any) => validateBigInt(val, true, false),
-    posNonZeroAmount: (val: any) => validateBigInt(val, false, false, toBigInt(1))
+    posNonZeroAmount: (val: any) => validateBigInt(val, false, false, toBigInt(1)),
 };
 
 /**
@@ -33,8 +33,8 @@ const types: Record<string, ValidationType> = {
 const groups: Record<string, ParameterGroup> = {
     ecoRentTimes: {
         members: ['ecoRentStartTime', 'ecoRentEndTime', 'ecoClaimTime'],
-        validate: (v1: bigint, v2: bigint, v3: bigint) => v1 < v2 && v2 < v3
-    }
+        validate: (v1: bigint, v2: bigint, v3: bigint) => v1 < v2 && v2 < v3,
+    },
 };
 
 /**
@@ -42,9 +42,7 @@ const groups: Record<string, ParameterGroup> = {
  */
 const groupsInv: Record<string, string> = (() => {
     const result: Record<string, string> = {};
-    for (let g in groups)
-        for (let p in groups[g].members)
-            result[groups[g].members[p]] = g;
+    for (const g in groups) for (const p in groups[g].members) result[groups[g].members[p]] = g;
     return result;
 })();
 
@@ -60,5 +58,5 @@ const parameters: Record<string, ValidationType> = {
 export default {
     groups,
     groupsInv,
-    parameters
+    parameters,
 };

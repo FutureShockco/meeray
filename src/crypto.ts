@@ -1,13 +1,14 @@
+import bs58 from 'bs58';
 import cloneDeep from 'clone-deep';
+import { randomBytes } from 'crypto';
 import CryptoJS from 'crypto-js';
 import secp256k1 from 'secp256k1';
-import bs58 from 'bs58';
+
+import { Block, calculateHashForBlock } from './block.js';
 import cache from './cache.js';
-import logger from './logger.js';
 import { chain } from './chain.js';
 import consensus from './consensus.js';
-import { randomBytes } from 'crypto';
-import { Block, calculateHashForBlock } from './block.js';
+import logger from './logger.js';
 
 /**
  * Signs a message using the STEEM_ACCOUNT_PRIV environment variable.
@@ -36,25 +37,18 @@ export function verifySignature(message: any, cb: (isValid: boolean) => void): v
         return cb(false);
     }
     const sign = message.s.s;
-    const name = message.s.n
+    const name = message.s.n;
 
     const tmpMess = cloneDeep(message);
     delete tmpMess.s;
     const hash = CryptoJS.SHA256(JSON.stringify(tmpMess)).toString();
-    const pub = consensus.getActiveWitnessKey(name)
+    const pub = consensus.getActiveWitnessKey(name);
 
-    if (
-        pub &&
-        secp256k1.ecdsaVerify(
-            bs58.decode(sign),
-            Buffer.from(hash, 'hex'),
-            bs58.decode(pub)
-        )
-    ) {
-        cb(true)
+    if (pub && secp256k1.ecdsaVerify(bs58.decode(sign), Buffer.from(hash, 'hex'), bs58.decode(pub))) {
+        cb(true);
         return;
     }
-    cb(false)
+    cb(false);
     return;
 }
 
@@ -64,12 +58,12 @@ export function verifySignature(message: any, cb: (isValid: boolean) => void): v
  * @returns true if valid, false otherwise
  */
 export function isValidPubKey(key: string): boolean {
-    if(!key || typeof key !== 'string') return false;
+    if (!key || typeof key !== 'string') return false;
     try {
-        return secp256k1.publicKeyVerify(bs58.decode(key))
+        return secp256k1.publicKeyVerify(bs58.decode(key));
     } catch (error) {
         logger.error('isValidPubKey DEBUG: error =', error);
-        return false
+        return false;
     }
 }
 
@@ -80,27 +74,29 @@ export function isValidPubKey(key: string): boolean {
  * @param sign The signature (base58 string)
  * @returns Promise<boolean> true if valid, false otherwise
  */
-export async function isValidSignature(
-    user: string,
-    hash: string,
-    sign: string
-): Promise<any> {
+export async function isValidSignature(user: string, hash: string, sign: string): Promise<any> {
     const account = await cache.findOnePromise('accounts', { name: user });
     if (!account) {
         return false;
-    } else if (chain.restoredBlocks && chain.getLatestBlock()._id < chain.restoredBlocks && process.env.REBUILD_NO_VERIFY === '1') {
+    } else if (
+        chain.restoredBlocks &&
+        chain.getLatestBlock()._id < chain.restoredBlocks &&
+        process.env.REBUILD_NO_VERIFY === '1'
+    ) {
         // no verify rebuild mode, only use if you trust the contents of blocks.zip
         return account;
     }
 
     try {
-        let bufferHash = Buffer.from(hash, 'hex')
-        let b58sign = bs58.decode(sign)
-        let b58pub = bs58.decode(account.witnessPublicKey)
+        const bufferHash = Buffer.from(hash, 'hex');
+        const b58sign = bs58.decode(sign);
+        const b58pub = bs58.decode(account.witnessPublicKey);
         if (secp256k1.ecdsaVerify(b58sign, bufferHash, b58pub)) {
             return account;
         }
-    } catch (e) { }
+    } catch {
+        // Ignore error
+    }
     return false;
 }
 
@@ -112,15 +108,15 @@ export function getNewKeyPair() {
     } while (!secp256k1.privateKeyVerify(privKey));
     return {
         pub: bs58.encode(pubKey),
-        priv: bs58.encode(privKey)
+        priv: bs58.encode(privKey),
     };
 }
 
 export const hashAndSignBlock = (block: Block): Block => {
-    let nextHash = calculateHashForBlock(block)
-    let sigObj = secp256k1.ecdsaSign(Buffer.from(nextHash, 'hex'), bs58.decode(process.env.WITNESS_PRIVATE_KEY || ''))
-    const signature = bs58.encode(sigObj.signature)
-    block.signature = signature
-    block.hash = nextHash
-    return block
-}
+    const nextHash = calculateHashForBlock(block);
+    const sigObj = secp256k1.ecdsaSign(Buffer.from(nextHash, 'hex'), bs58.decode(process.env.WITNESS_PRIVATE_KEY || ''));
+    const signature = bs58.encode(sigObj.signature);
+    block.signature = signature;
+    block.hash = nextHash;
+    return block;
+};

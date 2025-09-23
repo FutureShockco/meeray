@@ -1,18 +1,17 @@
 import logger from '../../logger.js';
+import { adjustUserBalance } from '../../utils/account.js';
+import { toBigInt, toDbString } from '../../utils/bigint.js';
+import { logEvent } from '../../utils/event-logger.js';
 import validate from '../../validation/index.js';
 import { TokenTransferData } from './token-interfaces.js';
-import { toBigInt, toDbString } from '../../utils/bigint.js';
-import { adjustUserBalance } from '../../utils/account.js';
-import { logEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: TokenTransferData, sender: string): Promise<boolean> {
     try {
-
         if (!validate.tokenTransfer(sender, data.symbol, data.to, data.amount, data.memo, true)) return false;
 
         if (!validate.tokenExists(data.symbol)) return false;
 
-        if (!await validate.userBalances(sender, [{ symbol: data.symbol, amount: toBigInt(data.amount) }])) return false;
+        if (!(await validate.userBalances(sender, [{ symbol: data.symbol, amount: toBigInt(data.amount) }]))) return false;
 
         return true;
     } catch (error) {
@@ -23,16 +22,19 @@ export async function validateTx(data: TokenTransferData, sender: string): Promi
 
 export async function processTx(data: TokenTransferData, sender: string): Promise<boolean> {
     try {
-
         const debitSender = await adjustUserBalance(sender, data.symbol, -toBigInt(data.amount));
         if (!debitSender) {
-            logger.error(`[token-transfer:process] Failed to debit sender ${sender} for ${toBigInt(data.amount).toString()} ${data.symbol}`);
+            logger.error(
+                `[token-transfer:process] Failed to debit sender ${sender} for ${toBigInt(data.amount).toString()} ${data.symbol}`
+            );
             return false;
         }
 
         const creditReceiver = await adjustUserBalance(data.to, data.symbol, toBigInt(data.amount));
         if (!creditReceiver) {
-            logger.error(`[token-transfer:process] Failed to credit recipient ${data.to} for ${toBigInt(data.amount).toString()} ${data.symbol}`);
+            logger.error(
+                `[token-transfer:process] Failed to credit recipient ${data.to} for ${toBigInt(data.amount).toString()} ${data.symbol}`
+            );
             return false;
         }
 
@@ -40,7 +42,7 @@ export async function processTx(data: TokenTransferData, sender: string): Promis
             symbol: data.symbol,
             from: sender,
             to: data.to,
-            amount: toDbString(data.amount)
+            amount: toDbString(data.amount),
         });
 
         return true;

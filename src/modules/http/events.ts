@@ -1,4 +1,5 @@
-import express, { Request, Response, Router, RequestHandler } from 'express';
+import express, { Request, RequestHandler, Response, Router } from 'express';
+
 import cache from '../../cache.js';
 import logger from '../../logger.js';
 
@@ -13,42 +14,39 @@ const getPagination = (req: Request) => {
 router.get('/', (async (req: Request, res: Response) => {
     try {
         const { limit, skip } = getPagination(req);
-        
+
         const query: any = {};
-        
+
         // Support new category + action structure with multiple values
         if (req.query.category) {
             const categories = Array.isArray(req.query.category) ? req.query.category : [req.query.category];
             query.category = categories.length === 1 ? categories[0] : { $in: categories };
         }
-        
+
         if (req.query.action) {
             const actions = Array.isArray(req.query.action) ? req.query.action : [req.query.action];
             query.action = actions.length === 1 ? actions[0] : { $in: actions };
         }
-        
+
         // Legacy support for type field
         if (req.query.type) {
             query.type = req.query.type;
         }
-        
+
         if (req.query.actor) {
             query.actor = req.query.actor;
         }
-        
+
         if (req.query.transactionId) {
             query.transactionId = req.query.transactionId;
         }
-        
+
         if (req.query.poolId) {
             // Search for poolId in the event data for pool-related events
             // Pool create events use _id, while other pool events use poolId
-            query.$or = [
-                { 'data.poolId': req.query.poolId },
-                { 'data._id': req.query.poolId }
-            ];
+            query.$or = [{ 'data.poolId': req.query.poolId }, { 'data._id': req.query.poolId }];
         }
-        
+
         if (req.query.startTime) {
             query.timestamp = { $gte: req.query.startTime };
         }
@@ -56,24 +54,24 @@ router.get('/', (async (req: Request, res: Response) => {
             if (!query.timestamp) query.timestamp = {};
             query.timestamp.$lte = req.query.endTime;
         }
-        
+
         const sortDirection = req.query.sortDirection === 'asc' ? 1 : -1;
-        
+
         const events = await cache.findPromise('events', query, {
             sort: { timestamp: sortDirection },
             limit,
-            skip
+            skip,
         });
-        
+
         const allEvents = await cache.findPromise('events', query);
         const total = allEvents ? allEvents.length : 0;
-        
+
         res.json({
             success: true,
             data: events || [],
             total,
             limit,
-            skip
+            skip,
         });
     } catch (err) {
         logger.error('Error fetching events:', err);
@@ -85,10 +83,10 @@ router.get('/types', (async (req: Request, res: Response) => {
     try {
         const events = await cache.findPromise('events', {});
         const types = events ? [...new Set(events.map(event => event.type))] : [];
-        
+
         res.json({
             success: true,
-            types
+            types,
         });
     } catch (err) {
         logger.error('Error fetching event types:', err);
@@ -106,7 +104,7 @@ router.get('/categories', (async (req: Request, res: Response) => {
 
         const categories = [...new Set(events.map(event => event.category).filter(Boolean))];
         const actions = [...new Set(events.map(event => event.action).filter(Boolean))];
-        
+
         // Group actions by category
         const categoryActions: Record<string, string[]> = {};
         events.forEach(event => {
@@ -119,12 +117,12 @@ router.get('/categories', (async (req: Request, res: Response) => {
                 }
             }
         });
-        
+
         res.json({
             success: true,
             categories,
             actions,
-            categoryActions
+            categoryActions,
         });
     } catch (err) {
         logger.error('Error fetching event categories:', err);
@@ -140,15 +138,15 @@ router.get('/stats', (async (req: Request, res: Response) => {
             return res.json({ success: true, stats: {} });
         }
 
-        const stats: Record<string, { total: number, actions: Record<string, number> }> = {};
-        
+        const stats: Record<string, { total: number; actions: Record<string, number> }> = {};
+
         events.forEach(event => {
             if (event.category) {
                 if (!stats[event.category]) {
                     stats[event.category] = { total: 0, actions: {} };
                 }
                 stats[event.category].total++;
-                
+
                 if (event.action) {
                     if (!stats[event.category].actions[event.action]) {
                         stats[event.category].actions[event.action] = 0;
@@ -157,10 +155,10 @@ router.get('/stats', (async (req: Request, res: Response) => {
                 }
             }
         });
-        
+
         res.json({
             success: true,
-            stats
+            stats,
         });
     } catch (err) {
         logger.error('Error fetching event statistics:', err);
@@ -171,14 +169,14 @@ router.get('/stats', (async (req: Request, res: Response) => {
 router.get('/:id', (async (req: Request, res: Response) => {
     try {
         const event = await cache.findOnePromise('events', { _id: req.params.id });
-        
+
         if (!event) {
             return res.status(404).json({ error: `Event with ID ${req.params.id} not found` });
         }
-        
+
         res.json({
             success: true,
-            event
+            event,
         });
     } catch (err) {
         logger.error(`Error fetching event ${req.params.id}:`, err);

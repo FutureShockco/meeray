@@ -4,13 +4,13 @@
  * @returns A string ID with components sorted alphabetically and joined by an underscore.
  */
 export function generateDeterministicId(...components: string[]): string {
-  if (!components || components.length === 0) {
-    throw new Error('Cannot generate ID from empty components.');
-  }
-  // Filter out any null, undefined, or empty strings to prevent issues like "__" or trailing/leading underscores.
-  const validComponents = components.filter(c => c && c.trim() !== '');
-  if (validComponents.length === 0) {
-    throw new Error('Cannot generate ID from only empty or invalid components.');
-  }
-  return validComponents.sort().join('_');
+    if (!components || components.length === 0) {
+        throw new Error('Cannot generate ID from empty components.');
+    }
+    // Filter out any null, undefined, or empty strings to prevent issues like "__" or trailing/leading underscores.
+    const validComponents = components.filter(c => c && c.trim() !== '');
+    if (validComponents.length === 0) {
+        throw new Error('Cannot generate ID from only empty or invalid components.');
+    }
+    return validComponents.sort().join('_');
 }

@@ -5,13 +5,9 @@
  * @param maxLength Maximum allowed length of the array
  * @returns True if the array is valid, false otherwise
  */
-const validateBoolean = (
-    value: any
-): boolean => {
-    if (!value)
-        return false;
-    if (typeof value !== 'boolean')
-        return false;
+const validateBoolean = (value: any): boolean => {
+    if (!value) return false;
+    if (typeof value !== 'boolean') return false;
 
     return true;
 };

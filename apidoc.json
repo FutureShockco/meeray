@@ -1,0 +1,20 @@
+{
+  "name": "MeeRay Sidechain API",
+  "version": "1.0.0",
+  "description": "API documentation for MeeRay - A next-generation sidechain extending Steem Blockchain capabilities",
+  "title": "MeeRay API Documentation",
+  "url": "http://localhost:3333",
+  "sampleUrl": "http://localhost:3001",
+  "template": {
+    "withCompare": true,
+    "withGenerator": true
+  },
+  "header": {
+    "title": "MeeRay API",
+    "filename": "/docs/header.md"
+  },
+  "footer": {
+    "title": "MeeRay Footer",
+    "filename": "/docs/footer.md"
+  }
+}

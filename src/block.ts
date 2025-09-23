@@ -1,12 +1,13 @@
-import CryptoJS from 'crypto-js';
 import cloneDeep from 'clone-deep';
-import config from './config.js';
+import CryptoJS from 'crypto-js';
+
 import cache from './cache.js';
-import logger from './logger.js';
 import chain from './chain.js';
+import config from './config.js';
 import { isValidSignature } from './crypto.js';
-import steem from './steem.js';
+import logger from './logger.js';
 import p2p from './p2p/index.js';
+import steem from './steem.js';
 
 export class Block {
     _id!: number;
@@ -23,6 +24,7 @@ export class Block {
     signature?: string;
     hash?: string;
 
+    // eslint-disable-next-line max-params
     constructor(
         _id: number,
         blockNum: number,
@@ -54,12 +56,9 @@ export class Block {
     }
 }
 
-export function calculateHashForBlock(
-    blockData: Block,
-    deleteExisting?: boolean
-): string {
+export function calculateHashForBlock(blockData: Block, deleteExisting?: boolean): string {
     try {
-        let blockToProcess: any = cloneDeep(blockData); // Always clone to avoid modifying the original
+        const blockToProcess: any = cloneDeep(blockData); // Always clone to avoid modifying the original
 
         if (deleteExisting === true) {
             delete blockToProcess.hash;
@@ -68,9 +67,11 @@ export function calculateHashForBlock(
 
         // Create a canonical representation for hashing
         const orderedBlock: any = {};
-        Object.keys(blockToProcess).sort().forEach(key => {
-            orderedBlock[key] = blockToProcess[key];
-        });
+        Object.keys(blockToProcess)
+            .sort()
+            .forEach(key => {
+                orderedBlock[key] = blockToProcess[key];
+            });
 
         const hash = CryptoJS.SHA256(JSON.stringify(orderedBlock)).toString();
         return hash;
@@ -81,47 +82,47 @@ export function calculateHashForBlock(
 }
 
 export async function isValidHashAndSignature(newBlock: any): Promise<boolean> {
-    let theoreticalHash = calculateHashForBlock(newBlock, true)
+    const theoreticalHash = calculateHashForBlock(newBlock, true);
     if (theoreticalHash !== newBlock.hash) {
-        logger.debug(`Hash types: received = ${typeof (newBlock.hash)}, calculated = ${typeof theoreticalHash}`);
+        logger.debug(`Hash types: received = ${typeof newBlock.hash}, calculated = ${typeof theoreticalHash}`);
         logger.error(`invalid hash: calculated = ${theoreticalHash}, received = ${newBlock.hash}`);
         // Log the full newBlock object when there's a hash mismatch
-        logger.error(`[isValidHashAndSignature] Mismatch detected. Received newBlock object: ${JSON.stringify(newBlock, null, 2)}`);
+        logger.error(
+            `[isValidHashAndSignature] Mismatch detected. Received newBlock object: ${JSON.stringify(newBlock, null, 2)}`
+        );
         return false;
     }
 
     const valid = await isValidSignature(newBlock.witness, newBlock.hash, newBlock.signature);
     if (!valid) {
-        logger.error('invalid miner signature')
+        logger.error('invalid miner signature');
         return false;
     }
     return true;
 }
 
 export function isValidBlockTxs(newBlock: any): Promise<boolean> {
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
         chain.executeBlockTransactions(newBlock, true, function (validTxs, dist) {
-            cache.rollback()
+            cache.rollback();
             if (validTxs.length !== newBlock.txs.length) {
-                logger.error('invalid block transaction')
+                logger.error('invalid block transaction');
                 resolve(false);
                 return;
             }
-            let blockDist = newBlock.dist || 0
+            const blockDist = newBlock.dist || 0;
             if (blockDist !== dist) {
-                logger.error('Wrong dist amount', blockDist, dist)
+                logger.error('Wrong dist amount', blockDist, dist);
                 resolve(false);
                 return;
             }
 
             resolve(true);
-        })
+        });
     });
 }
 
-export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boolean, verifyTxValidity: boolean): Promise<boolean> {
-
-    if (!newBlock) return false;
+export const isBlockValid = (newBlock: any, verifyHashAndSignature: boolean): boolean => {
     if (!newBlock._id || typeof newBlock._id !== 'number') {
         logger.error('invalid block _id');
         return false;
@@ -158,7 +159,19 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
         logger.error('invalid block missedBy');
         return false;
     }
+    return true;
+};
 
+export async function isValidNewBlock(
+    newBlock: any,
+    verifyHashAndSignature: boolean,
+    verifyTxValidity: boolean
+): Promise<boolean> {
+    if (!newBlock) return false;
+
+    if (!isBlockValid(newBlock, verifyHashAndSignature)) {
+        return false;
+    }
     // Prevent true duplicate blocks (same hash) but allow collision scenarios
     // Check recentBlocks for IDENTICAL blocks (true duplicates)
     const actualDuplicate = chain.recentBlocks.find(
@@ -178,7 +191,7 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
     // verify that its indeed the next block
     const previousBlock = chain.getLatestBlock();
     if (previousBlock._id + 1 !== newBlock._id) {
-        logger.error('invalid index')
+        logger.error('invalid index');
         return false;
     }
 
@@ -190,11 +203,10 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
         // Universal backup: Allow any active witness to serve as backup
         // Check if the witness is in the current shuffle (active witnesses)
         for (let i = 1; i <= config.read(newBlock._id).witnesses; i++) {
-            if (!chain.recentBlocks[chain.recentBlocks.length - i])
-                break
+            if (!chain.recentBlocks[chain.recentBlocks.length - i]) break;
             if (chain.recentBlocks[chain.recentBlocks.length - i].miner === newBlock.miner) {
-                witnessPriority = i+1
-                break
+                witnessPriority = i + 1;
+                break;
             }
         }
     }
@@ -205,8 +217,7 @@ export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boo
     const blockTime = newBlock.sync ? config.syncBlockTime : config.blockTime;
     const isRecovering = p2p.recovering || p2p.recoveringBlocks.length > 0 || p2p.recoverAttempt > 0;
     const isReplayMode = process.env.REBUILD_STATE === '1';
-    if(newBlock.timestamp - previousBlock.timestamp < witnessPriority*blockTime)
-    {
+    if (newBlock.timestamp - previousBlock.timestamp < witnessPriority * blockTime) {
         if (!isRecovering && !isReplayMode && !steem.isInSyncMode()) {
             logger.error('block too early for witness with priority #' + witnessPriority);
             return false;

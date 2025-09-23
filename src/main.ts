@@ -1,25 +1,28 @@
 import 'dotenv/config';
-import http from './modules/http/index.js';
-import logger from './logger.js';
-import config from './config.js';
-import { p2p } from './p2p/index.js';
-import { chain } from './chain.js';
-import transaction from './transaction.js';
-import cache from './cache.js';
-import { setMongoDbInstance as setCacheMongoDbInstance } from './cache.js';
-import { witnessesStats } from './witnessesStats.js';
-import { blocks } from './blockStore.js';
-import { mongo, StateDoc } from './mongo.js'; 
-import { witnessesModule } from './witnesses.js';
-import { initializeModules } from './initialize.js';
+
 import { Block } from './block.js';
-import settings from './settings.js';
+import { blocks } from './blockStore.js';
+import cache, { setMongoDbInstance as setCacheMongoDbInstance } from './cache.js';
+import { chain } from './chain.js';
+import config from './config.js';
+import { initializeModules } from './initialize.js';
+import logger from './logger.js';
+import http from './modules/http/index.js';
 import { startWorker as startSteemBridgeWorker } from './modules/steemBridge.js';
+import { StateDoc, mongo } from './mongo.js';
+import { p2p } from './p2p/index.js';
+import settings from './settings.js';
+import transaction from './transaction.js';
+import { witnessesModule } from './witnesses.js';
+import { witnessesStats } from './witnessesStats.js';
 
 process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
     logger.error('CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
     if (typeof logger !== 'undefined' && logger.fatal) {
-        logger.fatal('CRITICAL: Unhandled Rejection at:', { promise_details: String(promise), reason_details: String(reason) });
+        logger.fatal('CRITICAL: Unhandled Rejection at:', {
+            promise_details: String(promise),
+            reason_details: String(reason),
+        });
         if (reason instanceof Error && reason.stack) {
             logger.fatal('Stack Trace:', reason.stack);
         }
@@ -33,7 +36,11 @@ process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
 process.on('uncaughtException', (error: Error) => {
     logger.error('CRITICAL: Uncaught Exception:', error);
     if (typeof logger !== 'undefined' && logger.fatal) {
-        logger.fatal('CRITICAL: Uncaught Exception:', { errorName: error.name, errorMessage: error.message, stack: error.stack });
+        logger.fatal('CRITICAL: Uncaught Exception:', {
+            errorName: error.name,
+            errorMessage: error.message,
+            stack: error.stack,
+        });
     } else {
         logger.error('Stack Trace:', error.stack);
     }
@@ -84,7 +91,9 @@ export async function main() {
         let timeStart = new Date().getTime();
         const warmupAccountsCount = parseInt(process.env.WARMUP_ACCOUNTS || '10000');
         await cache.warmup('accounts', warmupAccountsCount);
-        logger.info(`${Object.keys(cache.accounts || {}).length} accounts loaded in RAM in ${new Date().getTime() - timeStart} ms`);
+        logger.info(
+            `${Object.keys(cache.accounts || {}).length} accounts loaded in RAM in ${new Date().getTime() - timeStart} ms`
+        );
 
         // Warmup tokens
         timeStart = new Date().getTime();
@@ -114,7 +123,9 @@ export async function main() {
         }
 
         if (process.env.REBUILD_STATE === '1' && !isResumingRebuild) {
-            logger.info(`Chain state rebuild requested${(process.env.UNZIP_BLOCKS === '1' && !blocks.isOpen) ? ', unzipping blocks.zip...' : ''}`);
+            logger.info(
+                `Chain state rebuild requested${process.env.UNZIP_BLOCKS === '1' && !blocks.isOpen ? ', unzipping blocks.zip...' : ''}`
+            );
             if (!blocks.isOpen) {
                 mongo.restoreBlocks((e?: string | null) => {
                     if (e) {
@@ -144,14 +155,20 @@ export async function main() {
         currentConfig = config.read ? config.read(block._id) : config; // Update config based on latest known block
 
         if (isResumingRebuild) {
-            logger.info('Resuming interrupted rebuild from block ' + rebuildResumeBlock)
+            logger.info('Resuming interrupted rebuild from block ' + rebuildResumeBlock);
             currentConfig = config.read ? config.read(rebuildResumeBlock - 1) : config;
-            chain.restoredBlocks = block._id
-            let blkScheduleStart = rebuildResumeBlock - 1 - (rebuildResumeBlock - 1) % currentConfig.witnesses
+            chain.restoredBlocks = block._id;
+            const blkScheduleStart = rebuildResumeBlock - 1 - ((rebuildResumeBlock - 1) % currentConfig.witnesses);
             if (!blocks.isOpen)
-                mongo.fillInMemoryBlocks(async () => { // Make outer callback async
+                mongo.fillInMemoryBlocks(async () => {
+                    // Make outer callback async
                     try {
-                        const scheduleSourceBlock = await mongo.getDb().collection<Block>('blocks').findOne({ _id: rebuildResumeBlock - 1 - (rebuildResumeBlock - 1) % currentConfig.witnesses });
+                        const scheduleSourceBlock = await mongo
+                            .getDb()
+                            .collection<Block>('blocks')
+                            .findOne({
+                                _id: rebuildResumeBlock - 1 - ((rebuildResumeBlock - 1) % currentConfig.witnesses),
+                            });
                         chain.schedule = witnessesModule.witnessSchedule(scheduleSourceBlock); // scheduleSourceBlock can be null
                         startRebuild(rebuildResumeBlock);
                     } catch (e: any) {
@@ -159,22 +176,22 @@ export async function main() {
                         // Decide how to handle this error, e.g., startRebuild with null schedule or exit
                         startRebuild(rebuildResumeBlock); // Or handle error more gracefully
                     }
-                }, rebuildResumeBlock)
+                }, rebuildResumeBlock);
             else {
-                blocks.fillInMemoryBlocks(rebuildResumeBlock)
-                chain.schedule = witnessesModule.witnessSchedule(blocks.read(blkScheduleStart))
-                startRebuild(rebuildResumeBlock)
+                blocks.fillInMemoryBlocks(rebuildResumeBlock);
+                chain.schedule = witnessesModule.witnessSchedule(blocks.read(blkScheduleStart));
+                startRebuild(rebuildResumeBlock);
             }
-            return
+            return;
         }
 
         logger.info(`#${block._id} is the latest block in our db`);
 
         if (blocks.isOpen) {
-            blocks.fillInMemoryBlocks(); 
+            blocks.fillInMemoryBlocks();
             await startDaemon(currentConfig);
         } else {
-            await mongo.fillInMemoryBlocks(async () => { 
+            await mongo.fillInMemoryBlocks(async () => {
                 await startDaemon(currentConfig);
             });
         }
@@ -182,39 +199,49 @@ export async function main() {
 }
 
 function startRebuild(startBlock: number) {
-    let rebuildStartTime = new Date().getTime()
-    chain.lastRebuildOutput = rebuildStartTime
+    const rebuildStartTime = new Date().getTime();
+    chain.lastRebuildOutput = rebuildStartTime;
     chain.rebuildState(startBlock, (e, headBlockNum) => {
         if (e) {
-            erroredRebuild = true
-            return logger.error('Error rebuilding chain at block', headBlockNum, e)
+            erroredRebuild = true;
+            return logger.error('Error rebuilding chain at block', headBlockNum, e);
         } else if (headBlockNum <= chain.restoredBlocks)
-            logger.info('Rebuild interrupted at block ' + headBlockNum + ', so far it took ' + (new Date().getTime() - rebuildStartTime) + ' ms.')
+            logger.info(
+                'Rebuild interrupted at block ' +
+                    headBlockNum +
+                    ', so far it took ' +
+                    (new Date().getTime() - rebuildStartTime) +
+                    ' ms.'
+            );
         else
-            logger.info('Rebuilt ' + headBlockNum + ' blocks successfully in ' + (new Date().getTime() - rebuildStartTime) + ' ms')
-        logger.info('Writing rebuild data to disk...')
-        let cacheWriteStart = new Date().getTime()
+            logger.info(
+                'Rebuilt ' + headBlockNum + ' blocks successfully in ' + (new Date().getTime() - rebuildStartTime) + ' ms'
+            );
+        logger.info('Writing rebuild data to disk...');
+        const cacheWriteStart = new Date().getTime();
         cache.writeToDisk(true, () => {
-            logger.info('Rebuild data written to disk in ' + (new Date().getTime() - cacheWriteStart) + ' ms')
+            logger.info('Rebuild data written to disk in ' + (new Date().getTime() - cacheWriteStart) + ' ms');
             if (chain.shuttingDown || process.env.TERMINATE_AFTER_REBUILD === '1') {
-                if (blocks.isOpen)
-                    blocks.close()
-                return process.exit(0)
+                if (blocks.isOpen) blocks.close();
+                return process.exit(0);
             }
             const latestBlockForRebuild = chain.getLatestBlock();
-            const configForDaemon = latestBlockForRebuild ? (config.read ? config.read(latestBlockForRebuild._id) : config) : config;
+            const configForDaemon = latestBlockForRebuild
+                ? config.read
+                    ? config.read(latestBlockForRebuild._id)
+                    : config
+                : config;
             startDaemon(configForDaemon);
-        })
-    })
+        });
+    });
 }
 
 async function startDaemon(cfg: any) {
-    let blkScheduleStart = chain.getLatestBlock()._id - (chain.getLatestBlock()._id % config.witnesses)
-    if (blocks.isOpen)
-        chain.schedule = witnessesModule.witnessSchedule(blocks.read(blkScheduleStart))
+    const blkScheduleStart = chain.getLatestBlock()._id - (chain.getLatestBlock()._id % config.witnesses);
+    if (blocks.isOpen) chain.schedule = witnessesModule.witnessSchedule(blocks.read(blkScheduleStart));
     else {
-        const block = await mongo.getDb().collection<Block>('blocks').findOne({ _id: blkScheduleStart })
-        chain.schedule = witnessesModule.witnessSchedule(block)
+        const block = await mongo.getDb().collection<Block>('blocks').findOne({ _id: blkScheduleStart });
+        chain.schedule = witnessesModule.witnessSchedule(block);
     }
 
     http.init();
@@ -228,9 +255,12 @@ async function startDaemon(cfg: any) {
         logger.info('Steem bridge worker started successfully.');
     }
 
-    setInterval(() => {
-        transaction.cleanPool?.();
-    }, (cfg.blockTime || 3000) * 0.9);
+    setInterval(
+        () => {
+            transaction.cleanPool?.();
+        },
+        (cfg.blockTime || 3000) * 0.9
+    );
     logger.info('Node daemon started successfully.');
 }
 
@@ -244,10 +274,10 @@ process.on('SIGINT', async function () {
     const shutdownCheck = setInterval(() => {
         const isQueueEmpty = cache.writerQueue?.queue?.length === 0; // Adapted for potential new cache structure
         const isProcessing = cache.writerQueue?.processing; // Adapted
-        if (!erroredRebuild && chain.restoredBlocks && chain.getLatestBlock()._id < chain.restoredBlocks) return
-        process.stdout.write('\r')
+        if (!erroredRebuild && chain.restoredBlocks && chain.getLatestBlock()._id < chain.restoredBlocks) return;
+        process.stdout.write('\r');
         logger.debug(`Waiting for writerQueue... queue=${cache.writerQueue?.queue?.length}, processing=${isProcessing}`);
-        blocks.close()
+        blocks.close();
         if (isQueueEmpty && !isProcessing) {
             clearInterval(shutdownCheck);
             logger.info('MeeRay exited safely');

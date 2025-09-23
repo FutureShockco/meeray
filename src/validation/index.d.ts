@@ -1,18 +1,13 @@
-/**
- * Chain configuration validation
- */
 export interface ChainConfig {
     groups: Record<string, {
         members: string[];
         validate: (...args: any[]) => boolean;
     }>;
     groupsInv: Record<string, string>;
+ 
     parameters: Record<string, (val: any) => boolean>;
 }
 
-/**
- * Validation module interface
- */
 export interface ValidateModule {
     chainConfig: ChainConfig;
     array: (value: any, maxLength?: number) => boolean;

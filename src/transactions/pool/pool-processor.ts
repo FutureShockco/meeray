@@ -1,14 +1,12 @@
-import logger from '../../logger.js';
 import cache from '../../cache.js';
-import { LiquidityPoolData, PoolSwapData, PoolSwapResult, UserLiquidityPositionData } from './pool-interfaces.js';
-import { getLpTokenSymbol } from '../../utils/token.js';
-import { calculateDecimalAwarePrice, toBigInt, toDbString } from '../../utils/bigint.js';
-import { logEvent } from '../../utils/event-logger.js';
-import { adjustUserBalance } from '../../utils/account.js';
-import crypto from 'crypto';
-import { findBestTradeRoute, getOutputAmountBigInt } from '../../utils/pool.js';
+import logger from '../../logger.js';
 import { Account } from '../../mongo.js';
+import { adjustUserBalance } from '../../utils/account.js';
+import { toBigInt, toDbString } from '../../utils/bigint.js';
+import { logEvent } from '../../utils/event-logger.js';
+import { findBestTradeRoute, getOutputAmountBigInt } from '../../utils/pool.js';
 import { recordPoolSwapTrade } from './pool-helpers.js';
+import { PoolSwapData, PoolSwapResult } from './pool-interfaces.js';
 
 export async function validateSingleHopSwap(data: PoolSwapData, sender: string, traderAccount: Account): Promise<boolean> {
     // Get pool data
@@ -19,8 +17,12 @@ export async function validateSingleHopSwap(data: PoolSwapData, sender: string, 
     }
 
     // Verify token symbols match
-    if (!((poolFromDb.tokenA_symbol === data.tokenIn_symbol && poolFromDb.tokenB_symbol === data.tokenOut_symbol) ||
-        (poolFromDb.tokenB_symbol === data.tokenIn_symbol && poolFromDb.tokenA_symbol === data.tokenOut_symbol))) {
+    if (
+        !(
+            (poolFromDb.tokenA_symbol === data.tokenIn_symbol && poolFromDb.tokenB_symbol === data.tokenOut_symbol) ||
+            (poolFromDb.tokenB_symbol === data.tokenIn_symbol && poolFromDb.tokenA_symbol === data.tokenOut_symbol)
+        )
+    ) {
         logger.warn('[pool-swap] Token symbols do not match pool configuration.');
         return false;
     }
@@ -56,8 +58,12 @@ export async function validateRoutedSwap(data: PoolSwapData, sender: string, tra
         }
 
         // Verify token symbols match for this hop
-        if (!((poolFromDb.tokenA_symbol === hop.tokenIn_symbol && poolFromDb.tokenB_symbol === hop.tokenOut_symbol) ||
-            (poolFromDb.tokenB_symbol === hop.tokenIn_symbol && poolFromDb.tokenA_symbol === hop.tokenOut_symbol))) {
+        if (
+            !(
+                (poolFromDb.tokenA_symbol === hop.tokenIn_symbol && poolFromDb.tokenB_symbol === hop.tokenOut_symbol) ||
+                (poolFromDb.tokenB_symbol === hop.tokenIn_symbol && poolFromDb.tokenA_symbol === hop.tokenOut_symbol)
+            )
+        ) {
             logger.warn(`[pool-swap] Token symbols do not match pool configuration for hop ${i + 1}.`);
             return false;
         }
@@ -77,7 +83,9 @@ export async function validateRoutedSwap(data: PoolSwapData, sender: string, tra
 
         // Check if actual calculation meets minimum (same as execution)
         if (hop.minAmountOut && amountOut < toBigInt(hop.minAmountOut)) {
-            logger.warn(`[pool-swap] Validation: Output amount ${amountOut} is less than minimum required ${hop.minAmountOut} for hop ${i + 1}.`);
+            logger.warn(
+                `[pool-swap] Validation: Output amount ${amountOut} is less than minimum required ${hop.minAmountOut} for hop ${i + 1}.`
+            );
             return false;
         }
 
@@ -87,7 +95,9 @@ export async function validateRoutedSwap(data: PoolSwapData, sender: string, tra
 
     // Check final minimum output
     if (data.minAmountOut && toBigInt(currentAmountIn) < toBigInt(data.minAmountOut)) {
-        logger.warn(`[pool-swap] Validation: Final output amount ${currentAmountIn} is less than minimum required ${data.minAmountOut}.`);
+        logger.warn(
+            `[pool-swap] Validation: Final output amount ${currentAmountIn} is less than minimum required ${data.minAmountOut}.`
+        );
         return false;
     }
 
@@ -112,11 +122,11 @@ export async function validateAutoRouteSwap(data: PoolSwapData, sender: string, 
 
     // Apply slippage tolerance (same logic as execution)
     const slippagePercent = data.slippagePercent || 1.0;
-    const expectedFinalOutput = toBigInt(bestRoute.finalAmountOut);
+    // const expectedFinalOutput = toBigInt(bestRoute.finalAmountOut);
 
     // Calculate minimum output (same logic as execution)
-    const finalMinAmountOut = data.minAmountOut ||
-        (expectedFinalOutput * toBigInt(10000 - Math.floor(slippagePercent * 100))) / toBigInt(10000);
+    // const finalMinAmountOut =
+    //     data.minAmountOut || (expectedFinalOutput * toBigInt(10000 - Math.floor(slippagePercent * 100))) / toBigInt(10000);
 
     // Validate each hop using the same calculation logic as execution
     let currentAmountIn = toBigInt(data.amountIn);
@@ -124,7 +134,12 @@ export async function validateAutoRouteSwap(data: PoolSwapData, sender: string, 
         const hop = bestRoute.hops[i];
 
         // Get current pool data (same as execution)
-        const poolFromDb = (await cache.findOnePromise('liquidityPools', { _id: hop.poolId })) as { tokenA_symbol: string; tokenA_reserve: string; tokenB_symbol: string; tokenB_reserve: string };
+        const poolFromDb = (await cache.findOnePromise('liquidityPools', { _id: hop.poolId })) as {
+            tokenA_symbol: string;
+            tokenA_reserve: string;
+            tokenB_symbol: string;
+            tokenB_reserve: string;
+        };
         if (!poolFromDb) {
             logger.warn(`[pool-swap] Pool ${hop.poolId} not found during validation for hop ${i + 1}.`);
             return false;
@@ -144,7 +159,9 @@ export async function validateAutoRouteSwap(data: PoolSwapData, sender: string, 
 
         // Check if actual calculation meets minimum (same as execution)
         if (amountOut < hopMinAmountOut) {
-            logger.warn(`[pool-swap] Validation: Output amount ${amountOut} is less than minimum required ${hopMinAmountOut} for hop ${i + 1}.`);
+            logger.warn(
+                `[pool-swap] Validation: Output amount ${amountOut} is less than minimum required ${hopMinAmountOut} for hop ${i + 1}.`
+            );
             return false;
         }
 
@@ -154,7 +171,9 @@ export async function validateAutoRouteSwap(data: PoolSwapData, sender: string, 
 
     // Check final minimum output
     if (data.minAmountOut && currentAmountIn < toBigInt(data.minAmountOut)) {
-        logger.warn(`[pool-swap] Validation: Final output amount ${currentAmountIn} is less than minimum required ${data.minAmountOut}.`);
+        logger.warn(
+            `[pool-swap] Validation: Final output amount ${currentAmountIn} is less than minimum required ${data.minAmountOut}.`
+        );
         return false;
     }
 
@@ -241,7 +260,7 @@ export async function processSingleHopSwap(data: PoolSwapData, sender: string, t
     const poolUpdateSet: any = {
         lastTradeAt: new Date().toISOString(),
         feeGrowthGlobalA: toDbString(newFeeGrowthGlobalA),
-        feeGrowthGlobalB: toDbString(newFeeGrowthGlobalB)
+        feeGrowthGlobalB: toDbString(newFeeGrowthGlobalB),
     };
     if (tokenInIsA) {
         poolUpdateSet.tokenA_reserve = toDbString(newReserveIn);
@@ -251,16 +270,24 @@ export async function processSingleHopSwap(data: PoolSwapData, sender: string, t
         poolUpdateSet.tokenA_reserve = toDbString(newReserveOut);
     }
 
-    const updateSuccess = await cache.updateOnePromise('liquidityPools', { _id: data.poolId }, {
-        $set: poolUpdateSet
-    });
+    const updateSuccess = await cache.updateOnePromise(
+        'liquidityPools',
+        { _id: data.poolId },
+        {
+            $set: poolUpdateSet,
+        }
+    );
 
     if (!updateSuccess) {
-        logger.error(`[pool-swap] Failed to update pool ${data.poolId} reserves. Critical: Balances changed but pool reserves not.`);
+        logger.error(
+            `[pool-swap] Failed to update pool ${data.poolId} reserves. Critical: Balances changed but pool reserves not.`
+        );
         return false;
     }
 
-    logger.info(`[pool-swap] Successful single-hop swap by ${sender} in pool ${data.poolId}: ${data.amountIn} ${tokenIn_symbol} -> ${amountOut} ${tokenOut_symbol}`);
+    logger.info(
+        `[pool-swap] Successful single-hop swap by ${sender} in pool ${data.poolId}: ${data.amountIn} ${tokenIn_symbol} -> ${amountOut} ${tokenOut_symbol}`
+    );
 
     // Record the swap as a market trade
     await recordPoolSwapTrade({
@@ -270,20 +297,26 @@ export async function processSingleHopSwap(data: PoolSwapData, sender: string, t
         amountIn: toBigInt(data.amountIn),
         amountOut: amountOut,
         sender: sender,
-        transactionId: transactionId
+        transactionId: transactionId,
     });
 
     // Log event
-    await logEvent('defi', 'swap', sender, {
-        poolId: data.poolId,
-        tokenIn: tokenIn_symbol,
-        tokenOut: tokenOut_symbol,
-        amountIn: toDbString(data.amountIn),
-        amountOut: toDbString(amountOut),
-        fee: toDbString(feeAmount),
-        tokenA_symbol: poolFromDb.tokenA_symbol,
-        tokenB_symbol: poolFromDb.tokenB_symbol
-    }, transactionId);
+    await logEvent(
+        'defi',
+        'swap',
+        sender,
+        {
+            poolId: data.poolId,
+            tokenIn: tokenIn_symbol,
+            tokenOut: tokenOut_symbol,
+            amountIn: toDbString(data.amountIn),
+            amountOut: toDbString(amountOut),
+            fee: toDbString(feeAmount),
+            tokenA_symbol: poolFromDb.tokenA_symbol,
+            tokenB_symbol: poolFromDb.tokenB_symbol,
+        },
+        transactionId
+    );
 
     return true;
 }
@@ -292,7 +325,11 @@ export async function processSingleHopSwap(data: PoolSwapData, sender: string, t
  * Single-hop swap that returns detailed result including output amount
  * This is a copy of processSingleHopSwap but returns PoolSwapResult instead of boolean
  */
-export async function processSingleHopSwapWithResult(data: PoolSwapData, sender: string, transactionId: string): Promise<PoolSwapResult> {
+export async function processSingleHopSwapWithResult(
+    data: PoolSwapData,
+    sender: string,
+    transactionId: string
+): Promise<PoolSwapResult> {
     try {
         // Get pool data
         const poolFromDb = await cache.findOnePromise('liquidityPools', { _id: data.poolId });
@@ -328,7 +365,11 @@ export async function processSingleHopSwapWithResult(data: PoolSwapData, sender:
 
         // Ensure minimum output amount is met
         if (data.minAmountOut && amountOut < toBigInt(data.minAmountOut)) {
-            return { success: false, amountOut: toBigInt(0), error: `Output amount ${amountOut} is less than minimum required ${data.minAmountOut}` };
+            return {
+                success: false,
+                amountOut: toBigInt(0),
+                error: `Output amount ${amountOut} is less than minimum required ${data.minAmountOut}`,
+            };
         }
 
         // Update pool reserves
@@ -338,18 +379,26 @@ export async function processSingleHopSwapWithResult(data: PoolSwapData, sender:
         // Update user balances
         const deductSuccess = await adjustUserBalance(sender, tokenIn_symbol, -toBigInt(data.amountIn));
         if (!deductSuccess) {
-            return { success: false, amountOut: toBigInt(0), error: `Failed to deduct ${data.amountIn} ${tokenIn_symbol} from ${sender}` };
+            return {
+                success: false,
+                amountOut: toBigInt(0),
+                error: `Failed to deduct ${data.amountIn} ${tokenIn_symbol} from ${sender}`,
+            };
         }
         const creditSuccess = await adjustUserBalance(sender, tokenOut_symbol, amountOut);
         if (!creditSuccess) {
-            return { success: false, amountOut: toBigInt(0), error: `Failed to credit ${amountOut} ${tokenOut_symbol} to ${sender}` };
+            return {
+                success: false,
+                amountOut: toBigInt(0),
+                error: `Failed to credit ${amountOut} ${tokenOut_symbol} to ${sender}`,
+            };
         }
 
         // Save updated pool state
         const poolUpdateSet: any = {
             lastTradeAt: new Date().toISOString(),
             feeGrowthGlobalA: toDbString(newFeeGrowthGlobalA),
-            feeGrowthGlobalB: toDbString(newFeeGrowthGlobalB)
+            feeGrowthGlobalB: toDbString(newFeeGrowthGlobalB),
         };
         if (tokenInIsA) {
             poolUpdateSet.tokenA_reserve = toDbString(newReserveIn);
@@ -359,15 +408,21 @@ export async function processSingleHopSwapWithResult(data: PoolSwapData, sender:
             poolUpdateSet.tokenA_reserve = toDbString(newReserveOut);
         }
 
-        const updateSuccess = await cache.updateOnePromise('liquidityPools', { _id: data.poolId }, {
-            $set: poolUpdateSet
-        });
+        const updateSuccess = await cache.updateOnePromise(
+            'liquidityPools',
+            { _id: data.poolId },
+            {
+                $set: poolUpdateSet,
+            }
+        );
 
         if (!updateSuccess) {
             return { success: false, amountOut: toBigInt(0), error: `Failed to update pool ${data.poolId} reserves` };
         }
 
-        logger.info(`[pool-swap] Successful single-hop swap by ${sender} in pool ${data.poolId}: ${data.amountIn} ${tokenIn_symbol} -> ${amountOut} ${tokenOut_symbol}`);
+        logger.info(
+            `[pool-swap] Successful single-hop swap by ${sender} in pool ${data.poolId}: ${data.amountIn} ${tokenIn_symbol} -> ${amountOut} ${tokenOut_symbol}`
+        );
 
         // Record the swap as a market trade
         await recordPoolSwapTrade({
@@ -377,20 +432,26 @@ export async function processSingleHopSwapWithResult(data: PoolSwapData, sender:
             amountIn: toBigInt(data.amountIn),
             amountOut: amountOut,
             sender: sender,
-            transactionId: transactionId
+            transactionId: transactionId,
         });
 
         // Log event
-        await logEvent('defi', 'swap', sender, {
-            poolId: data.poolId,
-            tokenIn: tokenIn_symbol,
-            tokenOut: tokenOut_symbol,
-            amountIn: toDbString(data.amountIn),
-            amountOut: toDbString(amountOut),
-            fee: toDbString(feeAmount),
-            tokenA_symbol: poolFromDb.tokenA_symbol,
-            tokenB_symbol: poolFromDb.tokenB_symbol
-        }, transactionId);
+        await logEvent(
+            'defi',
+            'swap',
+            sender,
+            {
+                poolId: data.poolId,
+                tokenIn: tokenIn_symbol,
+                tokenOut: tokenOut_symbol,
+                amountIn: toDbString(data.amountIn),
+                amountOut: toDbString(amountOut),
+                fee: toDbString(feeAmount),
+                tokenA_symbol: poolFromDb.tokenA_symbol,
+                tokenB_symbol: poolFromDb.tokenB_symbol,
+            },
+            transactionId
+        );
 
         return { success: true, amountOut };
     } catch (error) {
@@ -401,7 +462,7 @@ export async function processSingleHopSwapWithResult(data: PoolSwapData, sender:
 export async function processRoutedSwap(data: PoolSwapData, sender: string, transactionId: string): Promise<boolean> {
     let currentAmountIn = toBigInt(data.amountIn);
     let totalAmountOut = toBigInt(0);
-    const swapResults: Array<{ poolId: string, tokenIn: string, tokenOut: string, amountIn: string, amountOut: string }> = [];
+    const swapResults: Array<{ poolId: string; tokenIn: string; tokenOut: string; amountIn: string; amountOut: string }> = [];
 
     // Process each hop in sequence
     for (let i = 0; i < data.hops!.length; i++) {
@@ -438,7 +499,9 @@ export async function processRoutedSwap(data: PoolSwapData, sender: string, tran
 
         // Check minimum output for this hop
         if (hop.minAmountOut && amountOut < toBigInt(hop.minAmountOut)) {
-            logger.warn(`[pool-swap] Output amount ${amountOut} is less than minimum required ${hop.minAmountOut} for hop ${i + 1}.`);
+            logger.warn(
+                `[pool-swap] Output amount ${amountOut} is less than minimum required ${hop.minAmountOut} for hop ${i + 1}.`
+            );
             return false;
         }
 
@@ -462,7 +525,7 @@ export async function processRoutedSwap(data: PoolSwapData, sender: string, tran
         const poolUpdateSet: any = {
             lastTradeAt: new Date().toISOString(),
             feeGrowthGlobalA: toDbString(newFeeGrowthGlobalA),
-            feeGrowthGlobalB: toDbString(newFeeGrowthGlobalB)
+            feeGrowthGlobalB: toDbString(newFeeGrowthGlobalB),
         };
         if (tokenInIsA) {
             poolUpdateSet.tokenA_reserve = toDbString(newReserveIn);
@@ -472,9 +535,13 @@ export async function processRoutedSwap(data: PoolSwapData, sender: string, tran
             poolUpdateSet.tokenA_reserve = toDbString(newReserveOut);
         }
 
-        const updateSuccess = await cache.updateOnePromise('liquidityPools', { _id: hop.poolId }, {
-            $set: poolUpdateSet
-        });
+        const updateSuccess = await cache.updateOnePromise(
+            'liquidityPools',
+            { _id: hop.poolId },
+            {
+                $set: poolUpdateSet,
+            }
+        );
 
         if (!updateSuccess) {
             logger.error(`[pool-swap] Failed to update pool ${hop.poolId} reserves in hop ${i + 1}.`);
@@ -487,7 +554,7 @@ export async function processRoutedSwap(data: PoolSwapData, sender: string, tran
             tokenIn: tokenIn_symbol,
             tokenOut: tokenOut_symbol,
             amountIn: currentAmountIn.toString(),
-            amountOut: amountOut.toString()
+            amountOut: amountOut.toString(),
         });
 
         // Update for next hop
@@ -503,7 +570,9 @@ export async function processRoutedSwap(data: PoolSwapData, sender: string, tran
         return false;
     }
 
-    logger.info(`[pool-swap] Successful multi-hop swap by ${sender}: ${data.amountIn} ${data.hops![0].tokenIn_symbol} -> ${totalAmountOut} ${data.hops![data.hops!.length - 1].tokenOut_symbol} through ${data.hops!.length} hops`);
+    logger.info(
+        `[pool-swap] Successful multi-hop swap by ${sender}: ${data.amountIn} ${data.hops![0].tokenIn_symbol} -> ${totalAmountOut} ${data.hops![data.hops!.length - 1].tokenOut_symbol} through ${data.hops!.length} hops`
+    );
 
     // Record the multi-hop swap as a market trade (overall trade from first token to last token)
     await recordPoolSwapTrade({
@@ -513,21 +582,27 @@ export async function processRoutedSwap(data: PoolSwapData, sender: string, tran
         amountIn: toBigInt(data.amountIn),
         amountOut: totalAmountOut,
         sender: sender,
-        transactionId: transactionId
+        transactionId: transactionId,
     });
 
     // Log event - get pool data for the first hop to access token symbols
     const firstPoolData = await cache.findOnePromise('liquidityPools', { _id: data.hops![0].poolId });
-    await logEvent('defi', 'swap', sender, {
-        poolId: data.hops![0].poolId, // Use the first hop's poolId instead of data.poolId
-        tokenIn: data.hops![0].tokenIn_symbol,
-        tokenOut: data.hops![data.hops!.length - 1].tokenOut_symbol,
-        amountIn: toDbString(data.amountIn),
-        amountOut: toDbString(totalAmountOut),
-        fee: toDbString(totalAmountOut * toBigInt(10000) / toBigInt(data.amountIn)),
-        tokenA_symbol: firstPoolData?.tokenA_symbol || data.hops![0].tokenIn_symbol,
-        tokenB_symbol: firstPoolData?.tokenB_symbol || data.hops![0].tokenOut_symbol
-    }, transactionId);
+    await logEvent(
+        'defi',
+        'swap',
+        sender,
+        {
+            poolId: data.hops![0].poolId, // Use the first hop's poolId instead of data.poolId
+            tokenIn: data.hops![0].tokenIn_symbol,
+            tokenOut: data.hops![data.hops!.length - 1].tokenOut_symbol,
+            amountIn: toDbString(data.amountIn),
+            amountOut: toDbString(totalAmountOut),
+            fee: toDbString((totalAmountOut * toBigInt(10000)) / toBigInt(data.amountIn)),
+            tokenA_symbol: firstPoolData?.tokenA_symbol || data.hops![0].tokenIn_symbol,
+            tokenB_symbol: firstPoolData?.tokenB_symbol || data.hops![0].tokenOut_symbol,
+        },
+        transactionId
+    );
 
     return true;
 }
@@ -545,9 +620,9 @@ export async function processAutoRouteSwap(data: PoolSwapData, sender: string, t
     const expectedFinalOutput = toBigInt(bestRoute.finalAmountOut);
 
     // If user provided minAmountOut, use it; otherwise apply slippage
-    const finalMinAmountOut = data.minAmountOut ?
-        toBigInt(data.minAmountOut) :
-        (expectedFinalOutput * toBigInt(10000 - Math.floor(slippagePercent * 100))) / toBigInt(10000);
+    const finalMinAmountOut = data.minAmountOut
+        ? toBigInt(data.minAmountOut)
+        : (expectedFinalOutput * toBigInt(10000 - Math.floor(slippagePercent * 100))) / toBigInt(10000);
 
     // Convert the route to hops format with slippage-adjusted minimums
     const hops = bestRoute.hops.map((hop, index) => {
@@ -567,17 +642,19 @@ export async function processAutoRouteSwap(data: PoolSwapData, sender: string, t
             tokenIn_symbol: hop.tokenIn,
             tokenOut_symbol: hop.tokenOut,
             amountIn: toBigInt(hop.amountIn),
-            minAmountOut: minAmountOut
+            minAmountOut: minAmountOut,
         };
     });
 
     const routedData: PoolSwapData = {
         ...data,
         hops: hops,
-        minAmountOut: finalMinAmountOut
+        minAmountOut: finalMinAmountOut,
     };
 
-    logger.info(`[pool-swap] Auto-route swap: ${data.amountIn} ${data.fromTokenSymbol} -> ${expectedFinalOutput} ${data.toTokenSymbol} (min: ${finalMinAmountOut})`);
+    logger.info(
+        `[pool-swap] Auto-route swap: ${data.amountIn} ${data.fromTokenSymbol} -> ${expectedFinalOutput} ${data.toTokenSymbol} (min: ${finalMinAmountOut})`
+    );
 
     return await processRoutedSwap(routedData, sender, transactionId);
 }

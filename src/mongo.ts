@@ -1,14 +1,15 @@
-import { MongoClient, Db } from 'mongodb';
+import { ChildProcess, spawn, spawnSync } from 'child_process';
 import fs from 'fs';
-import { spawn, spawnSync, ChildProcess } from 'child_process';
+import { Db, MongoClient } from 'mongodb';
 import sha256File from 'sha256-file';
-import logger from './logger.js';
-import config from './config.js';
-import { chain } from './chain.js';
+
 import { Block } from './block.js';
-import { TokenData } from './transactions/token/token-interfaces.js';
-import { toDbString, setTokenDecimals, toBigInt } from './utils/bigint.js';
+import { chain } from './chain.js';
+import config from './config.js';
+import logger from './logger.js';
 import { FarmData } from './transactions/farm/farm-interfaces.js';
+import { TokenData } from './transactions/token/token-interfaces.js';
+import { setTokenDecimals, toBigInt, toDbString } from './utils/bigint.js';
 
 const DB_NAME = process.env.MONGO_DB || 'meeray';
 const DB_URL = process.env.MONGO_URL || 'mongodb://localhost:27017';
@@ -62,7 +63,7 @@ export const mongo = {
             const genesis = await mongo.db.collection<Block>('blocks').findOne({ _id: 0 });
             if (genesis) {
                 if (genesis.hash !== config.originHash) {
-                    logger.fatal('Block #0 hash doesn\'t match config. Did you forget to db.dropDatabase() ?');
+                    logger.fatal("Block #0 hash doesn't match config. Did you forget to db.dropDatabase() ?");
                     process.exit(1);
                 }
                 cb(null, state);
@@ -109,7 +110,9 @@ export const mongo = {
                     setTokenDecimals(tokenDoc.symbol, tokenDoc.precision);
                     logger.trace(`[mongo] Registered decimals for ${tokenDoc.symbol}: ${tokenDoc.precision}`);
                 } else {
-                    logger.warn(`[mongo] Token document ${tokenDoc._id} is missing symbol or precision, or precision is not a number. Skipping registration.`);
+                    logger.warn(
+                        `[mongo] Token document ${tokenDoc._id} is missing symbol or precision, or precision is not a number. Skipping registration.`
+                    );
                 }
             }
             logger.info(`[mongo] Finished registering decimals for ${allTokens.length} token(s).`);
@@ -149,9 +152,9 @@ export const mongo = {
             await mongo.restore(mongoUriForRestore, genesisFolder);
             logger.info('Finished importing genesis data');
             await mongo.insertBlockZero();
-
         } catch (err) {
             logger.warn('No genesis.zip file found or error during processing. Creating minimal genesis.');
+            logger.warn(err);
             await mongo.insertMasterAndNullAccount();
             await mongo.insertBlockZero();
             await mongo.insertNativeTokens();
@@ -160,12 +163,8 @@ export const mongo = {
     },
 
     restore: (mongoUri: string, folder: string): Promise<boolean> => {
-        return new Promise((resolve) => {
-            const mongorestore: ChildProcess = spawn('mongorestore', [
-                `--uri=${mongoUri}`,
-                '-d', DB_NAME,
-                folder
-            ]);
+        return new Promise(resolve => {
+            const mongorestore: ChildProcess = spawn('mongorestore', [`--uri=${mongoUri}`, '-d', DB_NAME, folder]);
 
             mongorestore.stderr?.on('data', (data: Buffer) => {
                 const lines = data.toString().split('\n');
@@ -176,7 +175,7 @@ export const mongo = {
                     }
                 }
             });
-            mongorestore.on('close', (code) => {
+            mongorestore.on('close', code => {
                 if (code !== 0) {
                     logger.error(`mongorestore process exited with code ${code}`);
                     resolve(false);
@@ -184,7 +183,7 @@ export const mongo = {
                     resolve(true);
                 }
             });
-            mongorestore.on('error', (err) => {
+            mongorestore.on('error', err => {
                 logger.error('Failed to start mongorestore:', err);
                 resolve(false);
             });
@@ -201,7 +200,7 @@ export const mongo = {
             nfts: {},
             totalVoteWeight: toDbString(config.masterBalance),
             votedWitnesses: [config.masterName],
-            witnessPublicKey: config.masterPublicKey
+            witnessPublicKey: config.masterPublicKey,
         };
         const nullAccount: Account = {
             name: config.burnAccountName,
@@ -210,7 +209,7 @@ export const mongo = {
             nfts: {},
             totalVoteWeight: toDbString(0),
             votedWitnesses: [],
-            witnessPublicKey: ''
+            witnessPublicKey: '',
         };
         await currentDb.collection<Account>('accounts').insertOne(masterAccount);
         await currentDb.collection<Account>('accounts').insertOne(nullAccount);
@@ -227,57 +226,36 @@ export const mongo = {
     insertNativeTokens: async (): Promise<void> => {
         if (process.env.BLOCKS_DIR) return;
         const currentDb = mongo.getDb();
-
         setTokenDecimals(config.nativeTokenSymbol, 8);
-
-        const MAX_SUPPLY_MRY_BIGINT = toBigInt(config.masterBalance); // 200 million with 8 decimals
-        const VERY_LARGE_MAX_SUPPLY_BIGINT = toBigInt('1000000000000000000000000000000'); // Effectively unlimited for pegged tokens
-
-        // This object represents the INPUT parameters for creating the native token MRY
-        const nativeTokenCreationParams: TokenData = {
+        const nativeTokenToStore: TokenData = {
+            _id: config.nativeTokenSymbol,
             symbol: config.nativeTokenSymbol,
             name: config.nativeTokenName,
             precision: 8,
-            maxSupply: toDbString(VERY_LARGE_MAX_SUPPLY_BIGINT),
-            initialSupply: toDbString(MAX_SUPPLY_MRY_BIGINT),
+            maxSupply: toDbString(config.maxValue),
+            currentSupply: toDbString(config.masterBalance),
             mintable: true,
             burnable: true,
-            description: 'MeeRay is the native token of the MeeRay Sidechain',
-            logoUrl: '',
-            websiteUrl: 'https://meeray.com'
-        };
-
-        const nativeTokenToStore: TokenData = {
-            _id: nativeTokenCreationParams.symbol,
-            symbol: nativeTokenCreationParams.symbol,
-            name: nativeTokenCreationParams.name,
-            precision: nativeTokenCreationParams.precision || 8,
-            maxSupply: nativeTokenCreationParams.maxSupply,
-            currentSupply: nativeTokenCreationParams.initialSupply || MAX_SUPPLY_MRY_BIGINT,
-            mintable: nativeTokenCreationParams.mintable === undefined ? true : nativeTokenCreationParams.mintable,
-            burnable: nativeTokenCreationParams.burnable === undefined ? true : nativeTokenCreationParams.burnable,
             issuer: config.masterName,
-            description: nativeTokenCreationParams.description,
-            logoUrl: nativeTokenCreationParams.logoUrl,
-            websiteUrl: nativeTokenCreationParams.websiteUrl,
-            createdAt: new Date().toISOString()
+            description: 'MeeRay is the native token of the MeeRay Sidechain',
+            logoUrl: 'https://meeray.com/mry.svg',
+            websiteUrl: 'https://meeray.com',
+            createdAt: new Date().toISOString(),
         };
         await currentDb.collection<TokenData>('tokens').insertOne(nativeTokenToStore);
         logger.info(`Native token ${config.nativeTokenSymbol} inserted.`);
-
-        // --- STEEM ---
         setTokenDecimals('STEEM', 3);
         const nativeTokenCreationParamsSTEEM: TokenData = {
             symbol: 'STEEM',
             name: 'Steem',
             precision: 3,
-            maxSupply: toDbString(VERY_LARGE_MAX_SUPPLY_BIGINT),
+            maxSupply: toDbString(config.maxValue),
             initialSupply: toDbString(toBigInt(0)),
             mintable: true,
             burnable: true,
             description: 'Steem is the native token of the Steem blockchain, pegged on this sidechain.',
             logoUrl: 'https://steem.com/images/steem-logo.png', // Placeholder URL
-            websiteUrl: 'https://steem.com'
+            websiteUrl: 'https://steem.com',
         };
         if (process.env.NODE_ENV === 'development') {
             nativeTokenCreationParamsSTEEM.symbol = 'TESTS';
@@ -297,7 +275,7 @@ export const mongo = {
             description: nativeTokenCreationParamsSTEEM.description,
             logoUrl: nativeTokenCreationParamsSTEEM.logoUrl,
             websiteUrl: nativeTokenCreationParamsSTEEM.websiteUrl,
-            createdAt: new Date().toISOString()
+            createdAt: new Date().toISOString(),
         };
         await currentDb.collection<TokenData>('tokens').insertOne(nativeTokenToStoreSTEEM);
         logger.info('Native token STEEM inserted.');
@@ -309,13 +287,13 @@ export const mongo = {
             symbol: 'SBD',
             name: 'Steem Dollar',
             precision: 3,
-            maxSupply: toDbString(VERY_LARGE_MAX_SUPPLY_BIGINT),
+            maxSupply: toDbString(config.maxValue),
             initialSupply: toDbString(toBigInt(0)),
             mintable: true,
             burnable: true,
             description: 'SBD (Steem Dollar) is a stablecoin on the Steem blockchain, pegged on this sidechain.',
             logoUrl: 'https://steem.com/images/sbd-logo.png', // Placeholder URL
-            websiteUrl: 'https://steem.com'
+            websiteUrl: 'https://steem.com',
         };
         if (process.env.NODE_ENV === 'development') {
             nativeTokenCreationParamsSBD.symbol = 'TBD';
@@ -334,11 +312,10 @@ export const mongo = {
             description: nativeTokenCreationParamsSBD.description,
             logoUrl: nativeTokenCreationParamsSBD.logoUrl,
             websiteUrl: nativeTokenCreationParamsSBD.websiteUrl,
-            createdAt: new Date().toISOString()
+            createdAt: new Date().toISOString(),
         };
         await currentDb.collection<TokenData>('tokens').insertOne(nativeTokenToStoreSBD);
         logger.info('Native token SBD inserted.');
-
     },
     insertNativeFarms: async (): Promise<void> => {
         const currentDb = mongo.getDb();
@@ -349,11 +326,11 @@ export const mongo = {
                 name: 'MeeRay Farm',
                 stakingToken: {
                     symbol: 'MRY',
-                    issuer: 'echelon-node1'
+                    issuer: 'echelon-node1',
                 },
                 rewardToken: {
                     symbol: 'MRY',
-                    issuer: 'echelon-node1'
+                    issuer: 'echelon-node1',
                 },
                 startTime: new Date().toISOString(),
                 endTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
@@ -368,8 +345,8 @@ export const mongo = {
                 status: 'active' as const,
                 createdAt: new Date().toISOString(),
                 lastUpdatedAt: new Date().toISOString(),
-                rewardsRemaining: toDbString('1000000000000000000000000000000')
-            }
+                rewardsRemaining: toDbString('1000000000000000000000000000000'),
+            },
         ];
         await currentDb.collection<FarmData>('farms').insertMany(nativeFarms);
         logger.info('Native farms inserted.');
@@ -431,9 +408,9 @@ export const mongo = {
             await eventsCollection.createIndex({ timestamp: 1 });
             await eventsCollection.createIndex({ category: 1, timestamp: 1 }); // NEW: Time-series by category
             await eventsCollection.createIndex({ transactionId: 1 }); // NEW: Transaction linking
-            await eventsCollection.createIndex({ "data.collectionSymbol": 1 }, { sparse: true });
-            await eventsCollection.createIndex({ "data.instanceId": 1 }, { sparse: true });
-            await eventsCollection.createIndex({ "data.listingId": 1 }, { sparse: true });
+            await eventsCollection.createIndex({ 'data.collectionSymbol': 1 }, { sparse: true });
+            await eventsCollection.createIndex({ 'data.instanceId': 1 }, { sparse: true });
+            await eventsCollection.createIndex({ 'data.listingId': 1 }, { sparse: true });
             logger.debug('[DB Indexes] Finished creating indexes for events collection.');
 
             // User Farm Positions
@@ -458,7 +435,10 @@ export const mongo = {
             const tradingPairsCollection = currentDb.collection('tradingPairs');
             await tradingPairsCollection.createIndex({ _id: 1 }); // pairId is _id
             await tradingPairsCollection.createIndex({ status: 1 });
-            await tradingPairsCollection.createIndex({ baseAssetSymbol: 1, quoteAssetSymbol: 1 }, { name: "assets_combination_idx" });
+            await tradingPairsCollection.createIndex(
+                { baseAssetSymbol: 1, quoteAssetSymbol: 1 },
+                { name: 'assets_combination_idx' }
+            );
             logger.debug('[DB Indexes] Finished creating indexes for tradingPairs collection.');
 
             // Launchpads Collection Indexes
@@ -466,9 +446,9 @@ export const mongo = {
             const launchpadsCollection = currentDb.collection('launchpads');
             await launchpadsCollection.createIndex({ status: 1 });
             await launchpadsCollection.createIndex({ issuer: 1 });
-            await launchpadsCollection.createIndex({ "tokenToLaunch.symbol": 1 });
+            await launchpadsCollection.createIndex({ 'tokenToLaunch.symbol': 1 });
             await launchpadsCollection.createIndex({ mainTokenId: 1 });
-            await launchpadsCollection.createIndex({ "presale.participants.userId": 1 });
+            await launchpadsCollection.createIndex({ 'presale.participants.userId': 1 });
             logger.debug('[DB Indexes] Finished creating indexes for launchpads collection.');
 
             // Orders
@@ -510,14 +490,17 @@ export const mongo = {
 
     fillInMemoryBlocks: async (cb: () => void, headBlock?: number): Promise<void> => {
         const currentDb = mongo.getDb();
-        let query: any = {};
+        const query: any = {};
         if (headBlock) query._id = { $lt: headBlock };
 
         try {
-            const blocksFromDb = await currentDb.collection<Block>('blocks').find(query, {
-                sort: { _id: -1 },
-                limit: config.memoryBlocks || 1000
-            }).toArray();
+            const blocksFromDb = await currentDb
+                .collection<Block>('blocks')
+                .find(query, {
+                    sort: { _id: -1 },
+                    limit: config.memoryBlocks || 1000,
+                })
+                .toArray();
 
             chain.recentBlocks = blocksFromDb.reverse();
             logger.info(`Filled ${chain.recentBlocks.length} blocks into memory.`);
@@ -531,9 +514,12 @@ export const mongo = {
     lastBlock: async (): Promise<Block | null> => {
         const currentDb = mongo.getDb();
         // The JS version uses a new Promise wrapper, but direct await is cleaner in TS
-        return currentDb.collection<Block>('blocks').findOne({}, {
-            sort: { _id: -1 }
-        });
+        return currentDb.collection<Block>('blocks').findOne(
+            {},
+            {
+                sort: { _id: -1 },
+            }
+        );
     },
 
     restoreBlocks: async (cb: (errMessage?: string | null) => void): Promise<void> => {
@@ -547,14 +533,14 @@ export const mongo = {
         if (process.env.UNZIP_BLOCKS === '1') {
             try {
                 fs.statSync(dump_location);
-            } catch (err) {
+            } catch {
                 return cb('blocks.zip file not found');
             }
         } else {
             try {
                 fs.statSync(blocks_bson);
                 fs.statSync(blocks_meta);
-            } catch (e) {
+            } catch {
                 return cb('blocks mongo dump files not found');
             }
         }
@@ -590,7 +576,7 @@ export const mongo = {
             logger.error('Error during restoreBlocks:', err);
             cb(err.message || 'Unknown error during restoreBlocks');
         }
-    }
+    },
 };
 
 export default mongo;

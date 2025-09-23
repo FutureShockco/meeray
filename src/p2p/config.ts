@@ -14,7 +14,7 @@ export const P2P_CONFIG = {
     RATE_LIMIT_EMERGENCY: 3000,
     RATE_LIMIT_NORMAL: 10000,
     PEER_LIST_REQUEST_INTERVAL: 60000,
-    PEER_LIST_INITIAL_DELAY: 5000
+    PEER_LIST_INITIAL_DELAY: 5000,
 } as const;
 
 // Runtime configuration from environment
@@ -25,5 +25,5 @@ export const P2P_RUNTIME_CONFIG = {
     PEERS: process.env.PEERS ? process.env.PEERS.split(',') : [],
     NO_DISCOVERY: process.env.NO_DISCOVERY === '1',
     OFFLINE: process.env.OFFLINE === '1',
-    DISCOVERY_EXCLUDE: process.env.DISCOVERY_EXCLUDE ? process.env.DISCOVERY_EXCLUDE.split(',') : []
+    DISCOVERY_EXCLUDE: process.env.DISCOVERY_EXCLUDE ? process.env.DISCOVERY_EXCLUDE.split(',') : [],
 } as const;

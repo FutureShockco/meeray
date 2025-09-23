@@ -1,4 +1,4 @@
-import logger from "./logger.js";
+import logger from './logger.js';
 
 export class ProcessingQueue {
     queue: Array<(callback: (err: any, result?: any) => void) => void>;
@@ -9,7 +9,7 @@ export class ProcessingQueue {
         this.processing = false;
     }
 
-    push(f: (callback: (err: any, result?: any) => void) => void = (cb) => cb(null)): void {
+    push(f: (callback: (err: any, result?: any) => void) => void = cb => cb(null)): void {
         this.queue.push(f);
         if (!this.processing) {
             this.processing = true;
@@ -20,7 +20,7 @@ export class ProcessingQueue {
     private execute(): void {
         const first = this.queue.shift();
         if (first) {
-            first((err: any, result?: any) => {
+            first((err: any, _result?: any) => {
                 if (err) {
                     logger.error('Error in ProcessingQueue task:', err);
                 }

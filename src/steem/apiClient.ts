@@ -1,8 +1,9 @@
 import { Client as DsteemClient } from 'dsteem';
-import logger from '../logger.js';
+
 import config from '../config.js';
-import steemConfig from './config.js';
+import logger from '../logger.js';
 import settings from '../settings.js';
+import steemConfig from './config.js';
 
 interface RpcHeightData {
     height: number;
@@ -16,9 +17,7 @@ class SteemApiClient {
     private rpcHeightData = new Map<string, RpcHeightData>();
 
     constructor() {
-        this.apiUrls = settings.steemApiUrls.length > 0
-            ? settings.steemApiUrls
-            : steemConfig.defaultSteemEndpoints;
+        this.apiUrls = settings.steemApiUrls.length > 0 ? settings.steemApiUrls : steemConfig.defaultSteemEndpoints;
 
         this.initializeClient();
     }
@@ -28,13 +27,13 @@ class SteemApiClient {
             this.client = new DsteemClient(this.apiUrls[this.currentEndpointIndex], {
                 addressPrefix: 'STM',
                 chainId: '0000000000000000000000000000000000000000000000000000000000000000',
-                timeout: 15000
+                timeout: 15000,
             });
         } else {
-            this.client = new DsteemClient("https://testapi.moecki.online", {
+            this.client = new DsteemClient('https://testapi.moecki.online', {
                 addressPrefix: 'MTN',
                 chainId: '1aa939649afcc54c67e01a809967f75b8bee5d928aa6bdf237d0d5d6bfbc5c22',
-                timeout: 15000
+                timeout: 15000,
             });
         }
     }
@@ -64,7 +63,7 @@ class SteemApiClient {
             this.client = new DsteemClient(bestEndpoint, {
                 addressPrefix: 'STM',
                 chainId: config.steemChainId || '0000000000000000000000000000000000000000000000000000000000000000',
-                timeout: 15000
+                timeout: 15000,
             });
             return true;
         }
@@ -72,11 +71,11 @@ class SteemApiClient {
         this.currentEndpointIndex = (this.currentEndpointIndex + 1) % this.apiUrls.length;
         const newEndpoint = this.apiUrls[this.currentEndpointIndex];
         logger.info(`Switching to next Steem API endpoint: ${newEndpoint}`);
-        
+
         this.client = new DsteemClient(newEndpoint, {
             addressPrefix: 'STM',
             chainId: config.steemChainId || '0000000000000000000000000000000000000000000000000000000000000000',
-            timeout: 15000
+            timeout: 15000,
         });
         return true;
     }
@@ -85,13 +84,13 @@ class SteemApiClient {
         try {
             const now = Date.now();
             let highestCachedBlock = 0;
-            
+
             for (const data of this.rpcHeightData.values()) {
                 if (now - data.timestamp < 10000 && data.height > highestCachedBlock) {
                     highestCachedBlock = data.height;
                 }
             }
-            
+
             if (highestCachedBlock > 0) {
                 return highestCachedBlock;
             }
@@ -100,11 +99,11 @@ class SteemApiClient {
             if (dynamicGlobalProps?.head_block_number) {
                 this.rpcHeightData.set(this.client.address, {
                     height: dynamicGlobalProps.head_block_number,
-                    timestamp: Date.now()
+                    timestamp: Date.now(),
                 });
                 return dynamicGlobalProps.head_block_number;
             }
-            
+
             throw new Error('Invalid response from getDynamicGlobalProperties');
         } catch (error) {
             logger.warn('Error getting latest Steem block number:', error);

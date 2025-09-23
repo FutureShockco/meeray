@@ -1,11 +1,11 @@
 import cache from '../cache.js';
 import { LiquidityPoolData, Pool, TradeHop, TradeRoute } from '../transactions/pool/pool-interfaces.js';
-import { sqrt, toBigInt, getTokenDecimals } from './bigint.js';
+import { getTokenDecimals, sqrt, toBigInt } from './bigint.js';
 
 /**
  * Generates a pool ID from token symbols
  * This is used across pool swaps and market trades for consistency
- * 
+ *
  * @param tokenA_symbol - Symbol of token A
  * @param tokenB_symbol - Symbol of token B
  * @returns Pool ID
@@ -18,17 +18,13 @@ export function generatePoolId(tokenA_symbol: string, tokenB_symbol: string): st
 /**
  * Calculates the output amount for a swap using the constant product formula
  * This is used across pool swaps and market trades for consistency
- * 
+ *
  * @param inputAmount - Amount of input tokens
  * @param inputReserve - Reserve of input token in the pool
  * @param outputReserve - Reserve of output token in the pool
  * @returns Expected output amount after fees
  */
-export function getOutputAmountBigInt(
-    inputAmount: bigint,
-    inputReserve: bigint,
-    outputReserve: bigint
-): bigint {
+export function getOutputAmountBigInt(inputAmount: bigint, inputReserve: bigint, outputReserve: bigint): bigint {
     if (inputAmount <= 0n || inputReserve <= 0n || outputReserve <= 0n) {
         return 0n;
     }
@@ -50,7 +46,7 @@ export function getOutputAmountBigInt(
 
 /**
  * Helper function to calculate expected AMM output with token direction logic
- * 
+ *
  * @param inputAmount - Amount of input tokens
  * @param tokenIn - Symbol of input token
  * @param tokenOut - Symbol of output token
@@ -61,7 +57,7 @@ export function calculateExpectedAMMOutput(
     inputAmount: bigint,
     tokenIn: string,
     tokenOut: string,
-    ammSource: { tokenA: string, tokenB: string, reserveA?: string | bigint, reserveB?: string | bigint }
+    ammSource: { tokenA: string; tokenB: string; reserveA?: string | bigint; reserveB?: string | bigint }
 ): bigint {
     const reserveA = toBigInt(ammSource.reserveA || '0');
     const reserveB = toBigInt(ammSource.reserveB || '0');
@@ -75,7 +71,7 @@ export function calculateExpectedAMMOutput(
 
 /**
  * Calculates the price impact of a swap
- * 
+ *
  * @param amountIn - Input amount
  * @param reserveIn - Input token reserve
  * @returns Price impact as a percentage (0-100)
@@ -96,13 +92,13 @@ export async function findBestTradeRoute(
     initialAmountIn: bigint,
     maxHops: number = 3
 ): Promise<TradeRoute | null> {
-    const allPoolsFromDB: any[] = await cache.findPromise('liquidityPools', {}) || [];
+    const allPoolsFromDB: any[] = (await cache.findPromise('liquidityPools', {})) || [];
     const allPools: Pool[] = allPoolsFromDB.map(p => ({
         _id: p._id.toString(),
         tokenA_symbol: p.tokenA_symbol,
         tokenA_reserve: p.tokenA_reserve,
         tokenB_symbol: p.tokenB_symbol,
-        tokenB_reserve: p.tokenB_reserve
+        tokenB_reserve: p.tokenB_reserve,
     }));
 
     const routes: TradeRoute[] = [];
@@ -143,7 +139,7 @@ export async function findBestTradeRoute(
                 tokenOut: nextTokenSymbol,
                 amountIn: currentAmountIn.toString(),
                 amountOut: amountOutFromHop.toString(),
-                priceImpact: priceImpact
+                priceImpact: priceImpact,
             };
             const newPath = [...currentPath, newHop];
 
@@ -151,72 +147,67 @@ export async function findBestTradeRoute(
                 routes.push({
                     hops: newPath,
                     finalAmountIn: initialAmountIn.toString(),
-                    finalAmountOut: amountOutFromHop.toString()
+                    finalAmountOut: amountOutFromHop.toString(),
                 });
             } else {
                 queue.push([nextTokenSymbol, newPath, amountOutFromHop]);
             }
         }
     }
-    return routes.sort((a, b) => toBigInt(b.finalAmountOut) > toBigInt(a.finalAmountOut) ? 1 : -1)[0] || null;
+    return routes.sort((a, b) => (toBigInt(b.finalAmountOut) > toBigInt(a.finalAmountOut) ? 1 : -1))[0] || null;
 }
 
 // Calculate LP tokens to mint based on provided liquidity
 // For initial liquidity: uses geometric mean (sqrt of product) for fair distribution
 // For subsequent liquidity: uses proportional minting based on existing reserves
 // Normalizes token amounts to 18 decimals for consistent calculations like pro DEXs
-export function calculateLpTokensToMint(
-    tokenA_amount: bigint, 
-    tokenB_amount: bigint, 
-    pool: LiquidityPoolData
-): bigint {
+export function calculateLpTokensToMint(tokenA_amount: bigint, tokenB_amount: bigint, pool: LiquidityPoolData): bigint {
     const NORMALIZED_DECIMALS = 18; // Normalize to 18 decimals like most pro DEXs
-    
+
     // Get token decimals for normalization
     const tokenADecimals = getTokenDecimals(pool.tokenA_symbol);
     const tokenBDecimals = getTokenDecimals(pool.tokenB_symbol);
-    
+
     // Normalize amounts to 18 decimals for consistent calculation
     const normalizedTokenA = normalizeToDecimals(tokenA_amount, tokenADecimals, NORMALIZED_DECIMALS);
     const normalizedTokenB = normalizeToDecimals(tokenB_amount, tokenBDecimals, NORMALIZED_DECIMALS);
-    
+
     // Initial liquidity provision
     if (toBigInt(pool.totalLpTokens) === toBigInt(0)) {
         const product = normalizedTokenA * normalizedTokenB;
         const liquidity = sqrt(product);
-        
+
         // Adaptive minimum liquidity: Use smaller of 1000 or liquidity/1000
         // This ensures small amounts can still provide liquidity
         const BASE_MINIMUM = toBigInt(1000);
         const ADAPTIVE_MINIMUM = liquidity / toBigInt(1000);
-        const MINIMUM_LIQUIDITY = ADAPTIVE_MINIMUM > toBigInt(0) && ADAPTIVE_MINIMUM < BASE_MINIMUM 
-            ? ADAPTIVE_MINIMUM 
-            : BASE_MINIMUM;
-        
+        const MINIMUM_LIQUIDITY =
+            ADAPTIVE_MINIMUM > toBigInt(0) && ADAPTIVE_MINIMUM < BASE_MINIMUM ? ADAPTIVE_MINIMUM : BASE_MINIMUM;
+
         if (liquidity <= MINIMUM_LIQUIDITY) {
             return toBigInt(0); // Signal insufficient liquidity
         }
-        
+
         return liquidity - MINIMUM_LIQUIDITY; // Burn minimum liquidity
     }
-    
+
     // For subsequent liquidity provisions, mint proportional to existing reserves
     const poolTotalLpTokens = toBigInt(pool.totalLpTokens);
     const poolTokenAReserve = toBigInt(pool.tokenA_reserve);
     const poolTokenBReserve = toBigInt(pool.tokenB_reserve);
-    
+
     // Protect against division by zero
     if (poolTokenAReserve === toBigInt(0) || poolTokenBReserve === toBigInt(0)) {
         return toBigInt(0);
     }
-    
+
     // Normalize existing reserves for consistent ratio calculation
     const normalizedReserveA = normalizeToDecimals(poolTokenAReserve, tokenADecimals, NORMALIZED_DECIMALS);
     const normalizedReserveB = normalizeToDecimals(poolTokenBReserve, tokenBDecimals, NORMALIZED_DECIMALS);
-    
+
     const ratioA = (normalizedTokenA * poolTotalLpTokens) / normalizedReserveA;
     const ratioB = (normalizedTokenB * poolTotalLpTokens) / normalizedReserveB;
-    
+
     return ratioA < ratioB ? ratioA : ratioB;
 }
 
@@ -231,7 +222,7 @@ function normalizeToDecimals(amount: bigint, currentDecimals: number, targetDeci
     if (currentDecimals === targetDecimals) {
         return amount;
     }
-    
+
     if (currentDecimals < targetDecimals) {
         // Scale up - multiply by 10^(targetDecimals - currentDecimals)
         const scaleFactor = toBigInt(10 ** (targetDecimals - currentDecimals));

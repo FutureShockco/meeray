@@ -1,25 +1,20 @@
-import secp256k1 from 'secp256k1';
 import baseX from 'base-x';
-import logger from '../logger.js';
-import config from '../config.js';
-import cache from '../cache.js';
-import consensus from '../consensus.js';
-import steem from '../steem.js';
-import mongo from '../mongo.js';
-import { chain } from '../chain.js';
-import { blocks } from '../blockStore.js';
-import { Block } from '../block.js';
+import secp256k1 from 'secp256k1';
 
-import { 
-    EnhancedWebSocket, 
-    P2PState, 
-    MessageType,
-    SteemSyncStatus 
-} from './types.js';
-import { P2P_CONFIG, P2P_RUNTIME_CONFIG } from './config.js';
-import { SocketManager } from './socket.js';
+import { Block } from '../block.js';
+import { blocks } from '../blockStore.js';
+import cache from '../cache.js';
+import { chain } from '../chain.js';
+import config from '../config.js';
+import consensus from '../consensus.js';
+import logger from '../logger.js';
+import mongo from '../mongo.js';
+import steem from '../steem.js';
+import { P2P_CONFIG } from './config.js';
 import { PeerDiscovery } from './discovery.js';
 import { RecoveryManager } from './recovery.js';
+import { SocketManager } from './socket.js';
+import { EnhancedWebSocket, MessageType, P2PState, SteemSyncStatus } from './types.js';
 
 const bs58 = baseX(config.b58Alphabet || '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz');
 
@@ -36,12 +31,12 @@ export class MessageHandler {
 
     setupMessageHandler(ws: EnhancedWebSocket): void {
         logger.debug('Setting up message handler for websocket');
-        ws.on('message', (data) => {
+        ws.on('message', data => {
             logger.debug(`Received P2P message: ${data.toString().substring(0, 100)}`);
             let message: any;
             try {
                 message = JSON.parse(data.toString());
-            } catch (e) {
+            } catch {
                 logger.warn('P2P received non-JSON data');
                 return;
             }
@@ -90,7 +85,7 @@ export class MessageHandler {
 
     handleNodeStatusQuery(ws: EnhancedWebSocket, message: any): void {
         logger.debug('Received QUERY_NODE_STATUS:', message.d);
-        
+
         if (typeof message.d?.nodeId !== 'string' || typeof message.d?.random !== 'string') {
             logger.warn('Invalid QUERY_NODE_STATUS format:', message.d);
             return;
@@ -110,12 +105,15 @@ export class MessageHandler {
             ws.receivedChallenge = receivedChallenge;
 
             const latestBlock = chain.getLatestBlock();
-            
+
             // Sign the challenge hash they sent us to prove we own our nodeId
             let signature = '';
             if (this.state.nodeId?.priv) {
                 try {
-                    const sigObj = secp256k1.ecdsaSign(Buffer.from(receivedChallenge, 'hex'), bs58.decode(this.state.nodeId.priv));
+                    const sigObj = secp256k1.ecdsaSign(
+                        Buffer.from(receivedChallenge, 'hex'),
+                        bs58.decode(this.state.nodeId.priv)
+                    );
                     signature = bs58.encode(sigObj.signature);
                 } catch (error) {
                     logger.error('Failed to sign challenge:', error);
@@ -133,17 +131,17 @@ export class MessageHandler {
                     previous_block_hash: latestBlock.phash,
                     origin_block: config.originHash,
                     version: P2P_CONFIG.VERSION,
-                    sign: signature
-                }
+                    sign: signature,
+                },
             });
-            
+
             logger.debug('Sent NODE_STATUS response with signature');
         }
     }
 
     handleNodeStatus(ws: EnhancedWebSocket, message: any): void {
         logger.debug('Received NODE_STATUS:', message.d);
-        
+
         if (typeof message.d?.sign !== 'string') {
             logger.warn('NODE_STATUS missing signature:', message.d);
             return;
@@ -179,9 +177,11 @@ export class MessageHandler {
             }
 
             for (let i = 0; i < this.state.sockets.length; i++) {
-                if (i !== wsIndex &&
+                if (
+                    i !== wsIndex &&
                     this.state.sockets[i].node_status &&
-                    this.state.sockets[i].node_status?.nodeId === message.d.nodeId) {
+                    this.state.sockets[i].node_status?.nodeId === message.d.nodeId
+                ) {
                     logger.debug('Peer disconnected: duplicate connection');
                     this.state.sockets[i].close();
                 }
@@ -195,7 +195,6 @@ export class MessageHandler {
             this.state.sockets[wsIndex].node_status = message.d;
 
             logger.debug(`Peer connection established successfully with nodeId: ${message.d.nodeId}`);
-
         } catch (error) {
             logger.error('Error during NODE_STATUS verification:', error);
         }
@@ -213,7 +212,7 @@ export class MessageHandler {
         // Try blocks store first
         try {
             block = blocks.readOne(blockId);
-        } catch (error) {
+        } catch {
             logger.debug('Block', blockId, 'not found in blocks store');
         }
 
@@ -268,7 +267,9 @@ export class MessageHandler {
 
         // Ensure node_status exists before updating
         if (!this.state.sockets[wsIndex].node_status) {
-            logger.warn(`[P2P] Received NEW_BLOCK from peer without node_status, ignoring block ${block._id}. This can happen during initial connection before NODE_STATUS message is received.`);
+            logger.warn(
+                `[P2P] Received NEW_BLOCK from peer without node_status, ignoring block ${block._id}. This can happen during initial connection before NODE_STATUS message is received.`
+            );
             return;
         }
 
@@ -288,8 +289,7 @@ export class MessageHandler {
         if (!message.s?.s || !message.s?.n || !message.d?.ts) return;
 
         const now = Date.now();
-        if (message.d.ts + 2 * config.blockTime < now ||
-            message.d.ts - 2 * config.blockTime > now) return;
+        if (message.d.ts + 2 * config.blockTime < now || message.d.ts - 2 * config.blockTime > now) return;
 
         const wsIndex = this.state.sockets.indexOf(ws);
         if (wsIndex !== -1) {
@@ -343,7 +343,7 @@ export class MessageHandler {
         if (!syncStatus.relayed) {
             const relayedMessage = {
                 ...message,
-                d: { ...syncStatus, relayed: true }
+                d: { ...syncStatus, relayed: true },
             };
 
             for (const socket of this.state.sockets) {
@@ -388,5 +388,4 @@ export class MessageHandler {
             }
         });
     }
-
 }

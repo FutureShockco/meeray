@@ -1,11 +1,17 @@
-import express, { Request, Response, Router, RequestHandler } from 'express';
+import express, { Request, RequestHandler, Response, Router } from 'express';
+
 import cache from '../../cache.js';
-import { mongo } from '../../mongo.js';
 import logger from '../../logger.js';
-import { toBigInt, toDbString as bigintToString, parseTokenAmount, formatTokenAmount } from '../../utils/bigint.js';
-import { getTokenDecimals } from '../../utils/bigint.js';
-import { getOutputAmountBigInt, calculatePriceImpact } from '../../utils/pool.js';
+import { mongo } from '../../mongo.js';
+import {
+    toDbString as bigintToString,
+    formatTokenAmount,
+    getTokenDecimals,
+    parseTokenAmount,
+    toBigInt,
+} from '../../utils/bigint.js';
 import { formatTokenAmountForResponse, formatTokenAmountSimple } from '../../utils/http.js';
+import { calculatePriceImpact, getOutputAmountBigInt } from '../../utils/pool.js';
 
 const router: Router = express.Router();
 
@@ -48,7 +54,7 @@ async function findAllTradeRoutesBigInt(
     startTokenSymbol: string,
     endTokenSymbol: string,
     initialAmountInString: string, // Assumed to be string of smallest units
-    maxHops: number = 3 
+    maxHops: number = 3
 ): Promise<TradeRoute[]> {
     const startTokenDecimals = getTokenDecimals(startTokenSymbol);
     if (startTokenDecimals === undefined) {
@@ -67,14 +73,14 @@ async function findAllTradeRoutesBigInt(
 
     const routes: TradeRoute[] = [];
     const queue: [string, TradeHop[], bigint][] = [[startTokenSymbol, [], initialAmountInBigInt]];
-    
+
     while (queue.length > 0) {
         const [currentTokenSymbol, currentPath, currentAmountInBigInt] = queue.shift()!;
         if (currentPath.length >= maxHops) continue;
-        
+
         for (const pool of allPools) {
             let tokenInReserveStr: string, tokenOutReserveStr: string, nextTokenSymbol: string;
-            
+
             if (pool.tokenA_symbol === currentTokenSymbol) {
                 tokenInReserveStr = pool.tokenA_reserve;
                 tokenOutReserveStr = pool.tokenB_reserve;
@@ -84,42 +90,46 @@ async function findAllTradeRoutesBigInt(
                 tokenOutReserveStr = pool.tokenA_reserve;
                 nextTokenSymbol = pool.tokenA_symbol;
             } else {
-                continue; 
+                continue;
             }
 
             const tokenInReserveBigInt = toBigInt(tokenInReserveStr);
             const tokenOutReserveBigInt = toBigInt(tokenOutReserveStr);
             if (tokenInReserveBigInt <= 0n || tokenOutReserveBigInt <= 0n) continue;
-            if (currentPath.length > 0 && currentPath[currentPath.length -1].tokenIn === nextTokenSymbol) continue;
-            
-            const amountOutFromHopBigInt = getOutputAmountBigInt( currentAmountInBigInt, tokenInReserveBigInt, tokenOutReserveBigInt );
+            if (currentPath.length > 0 && currentPath[currentPath.length - 1].tokenIn === nextTokenSymbol) continue;
+
+            const amountOutFromHopBigInt = getOutputAmountBigInt(
+                currentAmountInBigInt,
+                tokenInReserveBigInt,
+                tokenOutReserveBigInt
+            );
             if (amountOutFromHopBigInt <= 0n) continue;
-            
+
             // Calculate price impact for this hop
             const priceImpact = calculatePriceImpact(currentAmountInBigInt, tokenInReserveBigInt);
-            
+
             const newHop: TradeHop = {
                 poolId: pool._id,
                 tokenIn: currentTokenSymbol,
                 tokenOut: nextTokenSymbol,
                 amountIn: bigintToString(currentAmountInBigInt),
                 amountOut: bigintToString(amountOutFromHopBigInt),
-                priceImpact: priceImpact
+                priceImpact: priceImpact,
             };
             const newPath = [...currentPath, newHop];
-            
+
             if (nextTokenSymbol === endTokenSymbol) {
-                routes.push({ 
-                    hops: newPath, 
+                routes.push({
+                    hops: newPath,
                     finalAmountIn: bigintToString(initialAmountInBigInt),
-                    finalAmountOut: bigintToString(amountOutFromHopBigInt)
+                    finalAmountOut: bigintToString(amountOutFromHopBigInt),
                 });
             } else {
                 queue.push([nextTokenSymbol, newPath, amountOutFromHopBigInt]);
             }
         }
     }
-    return routes.sort((a, b) => toBigInt(b.finalAmountOut) - toBigInt(a.finalAmountOut) > 0n ? 1 : -1 );
+    return routes.sort((a, b) => (toBigInt(b.finalAmountOut) - toBigInt(a.finalAmountOut) > 0n ? 1 : -1));
 }
 
 const transformPoolData = (poolData: any): any => {
@@ -186,8 +196,14 @@ const transformUserLiquidityPositionData = (positionData: any, poolData?: any): 
         const unclaimedFeesB = toBigInt(positionData.unclaimedFeesB || '0');
         const feeGrowthGlobalA = toBigInt(poolData.feeGrowthGlobalA || '0');
         const feeGrowthGlobalB = toBigInt(poolData.feeGrowthGlobalB || '0');
-        transformed.claimableFeesA = ((feeGrowthGlobalA - feeGrowthEntryA) * lpTokenBalance / toBigInt(1e18) + unclaimedFeesA).toString();
-        transformed.claimableFeesB = ((feeGrowthGlobalB - feeGrowthEntryB) * lpTokenBalance / toBigInt(1e18) + unclaimedFeesB).toString();
+        transformed.claimableFeesA = (
+            ((feeGrowthGlobalA - feeGrowthEntryA) * lpTokenBalance) / toBigInt(1e18) +
+            unclaimedFeesA
+        ).toString();
+        transformed.claimableFeesB = (
+            ((feeGrowthGlobalB - feeGrowthEntryB) * lpTokenBalance) / toBigInt(1e18) +
+            unclaimedFeesB
+        ).toString();
     }
     return transformed;
 };
@@ -205,11 +221,15 @@ router.get('/', (async (req: Request, res: Response) => {
         // Fetch all swap events for all pools in the page in one query
         const eventsByPool: Record<string, any[]> = {};
         if (poolIds.length > 0) {
-            const events = await mongo.getDb().collection('events').find({
-                'type': 'poolSwap',
-                'data.poolId': { $in: poolIds },
-                'timestamp': { $gte: yearAgo.toISOString() }
-            }).toArray();
+            const events = await mongo
+                .getDb()
+                .collection('events')
+                .find({
+                    type: 'poolSwap',
+                    'data.poolId': { $in: poolIds },
+                    timestamp: { $gte: yearAgo.toISOString() },
+                })
+                .toArray();
             for (const event of events) {
                 const poolId = event.data?.poolId?.toString();
                 if (!poolId) continue;
@@ -219,13 +239,17 @@ router.get('/', (async (req: Request, res: Response) => {
         }
         // For 24h fees calculation
         const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        let events24hByPool: Record<string, any[]> = {};
+        const events24hByPool: Record<string, any[]> = {};
         if (poolIds.length > 0) {
-            const events24h = await mongo.getDb().collection('events').find({
-                'type': 'poolSwap',
-                'data.poolId': { $in: poolIds },
-                'timestamp': { $gte: dayAgo.toISOString() }
-            }).toArray();
+            const events24h = await mongo
+                .getDb()
+                .collection('events')
+                .find({
+                    type: 'poolSwap',
+                    'data.poolId': { $in: poolIds },
+                    timestamp: { $gte: dayAgo.toISOString() },
+                })
+                .toArray();
             for (const event of events24h) {
                 const poolId = event.data?.poolId?.toString();
                 if (!poolId) continue;
@@ -233,55 +257,60 @@ router.get('/', (async (req: Request, res: Response) => {
                 events24hByPool[poolId].push(event);
             }
         }
-        const pools = (poolsFromDB || []).map(poolData => {
-            const poolIdStr = (poolData._id ?? '').toString();
-            if (!poolIdStr) return null; // skip pools without _id
-            // Calculate yearly APR for each pool
-            let totalFeesA = 0n, totalFeesB = 0n;
-            const events = eventsByPool[poolIdStr] || [];
-            for (const event of events) {
-                const e = event.data;
-                const feeDivisor = toBigInt(10000);
-                const amountIn = toBigInt(e.amountIn);
-                const tokenIn = e.tokenIn_symbol;
-                const feeAmount = (amountIn * toBigInt(300)) / feeDivisor; // Fixed 0.3% fee
-                if (tokenIn === e.tokenA_symbol || tokenIn === e.tokenIn_symbol) {
-                    totalFeesA += feeAmount;
-                } else {
-                    totalFeesB += feeAmount;
+        const pools = (poolsFromDB || [])
+            .map(poolData => {
+                const poolIdStr = (poolData._id ?? '').toString();
+                if (!poolIdStr) return null; // skip pools without _id
+                // Calculate yearly APR for each pool
+                let totalFeesA = 0n,
+                    totalFeesB = 0n;
+                const events = eventsByPool[poolIdStr] || [];
+                for (const event of events) {
+                    const e = event.data;
+                    const feeDivisor = toBigInt(10000);
+                    const amountIn = toBigInt(e.amountIn);
+                    const tokenIn = e.tokenIn_symbol;
+                    const feeAmount = (amountIn * toBigInt(300)) / feeDivisor; // Fixed 0.3% fee
+                    if (tokenIn === e.tokenA_symbol || tokenIn === e.tokenIn_symbol) {
+                        totalFeesA += feeAmount;
+                    } else {
+                        totalFeesB += feeAmount;
+                    }
                 }
-            }
-            // Calculate 24h fees for each pool
-            let fees24hA = 0n, fees24hB = 0n;
-            const events24h = events24hByPool[poolIdStr] || [];
-            for (const event of events24h) {
-                const e = event.data;
-                const feeDivisor = toBigInt(10000);
-                const amountIn = toBigInt(e.amountIn);
-                const tokenIn = e.tokenIn_symbol;
-                const feeAmount = (amountIn * toBigInt(300)) / feeDivisor; // Fixed 0.3% fee
-                if (tokenIn === e.tokenA_symbol || tokenIn === e.tokenIn_symbol) {
-                    fees24hA += feeAmount;
-                } else {
-                    fees24hB += feeAmount;
+                // Calculate 24h fees for each pool
+                let fees24hA = 0n,
+                    fees24hB = 0n;
+                const events24h = events24hByPool[poolIdStr] || [];
+                for (const event of events24h) {
+                    const e = event.data;
+                    const feeDivisor = toBigInt(10000);
+                    const amountIn = toBigInt(e.amountIn);
+                    const tokenIn = e.tokenIn_symbol;
+                    const feeAmount = (amountIn * toBigInt(300)) / feeDivisor; // Fixed 0.3% fee
+                    if (tokenIn === e.tokenA_symbol || tokenIn === e.tokenIn_symbol) {
+                        fees24hA += feeAmount;
+                    } else {
+                        fees24hB += feeAmount;
+                    }
                 }
-            }
-            const tvlA = toBigInt(poolData.tokenA_reserve || '0');
-            const tvlB = toBigInt(poolData.tokenB_reserve || '0');
-            let aprA = 0, aprB = 0;
-            if (tvlA > 0n) {
-                aprA = Number(totalFeesA) / Number(tvlA);
-            }
-            if (tvlB > 0n) {
-                aprB = Number(totalFeesB) / Number(tvlB);
-            }
-            const transformed = transformPoolData(poolData);
-            transformed.aprA = aprA;
-            transformed.aprB = aprB;
-            transformed.fees24hA = fees24hA.toString();
-            transformed.fees24hB = fees24hB.toString();
-            return transformed;
-        }).filter(Boolean);
+                const tvlA = toBigInt(poolData.tokenA_reserve || '0');
+                const tvlB = toBigInt(poolData.tokenB_reserve || '0');
+                let aprA = 0,
+                    aprB = 0;
+                if (tvlA > 0n) {
+                    aprA = Number(totalFeesA) / Number(tvlA);
+                }
+                if (tvlB > 0n) {
+                    aprB = Number(totalFeesB) / Number(tvlB);
+                }
+                const transformed = transformPoolData(poolData);
+                transformed.aprA = aprA;
+                transformed.aprB = aprB;
+                transformed.fees24hA = fees24hA.toString();
+                transformed.fees24hB = fees24hB.toString();
+                return transformed;
+            })
+            .filter(Boolean);
         res.json({ data: pools, total, limit, skip });
     } catch (error: any) {
         logger.error('Error fetching liquidity pools:', error);
@@ -293,33 +322,27 @@ router.get('/', (async (req: Request, res: Response) => {
 router.get('/count', (async (req: Request, res: Response) => {
     try {
         const query: any = {};
-        
+
         // Apply filters if provided (similar to main pools endpoint)
         if (req.query.hasLiquidity === 'true') {
             // Only count pools with actual liquidity
-            query.$or = [
-                { tokenA_reserve: { $gt: '0' } },
-                { tokenB_reserve: { $gt: '0' } }
-            ];
+            query.$or = [{ tokenA_reserve: { $gt: '0' } }, { tokenB_reserve: { $gt: '0' } }];
         }
-        
+
         if (req.query.tokenSymbol) {
             const tokenSymbol = req.query.tokenSymbol as string;
-            query.$or = [
-                { tokenA_symbol: tokenSymbol },
-                { tokenB_symbol: tokenSymbol }
-            ];
+            query.$or = [{ tokenA_symbol: tokenSymbol }, { tokenB_symbol: tokenSymbol }];
         }
-        
+
         const totalPools = await mongo.getDb().collection('liquidityPools').countDocuments(query);
-        
-        res.json({ 
-            success: true, 
+
+        res.json({
+            success: true,
             count: totalPools,
             filters: {
                 hasLiquidity: req.query.hasLiquidity === 'true' || false,
-                tokenSymbol: req.query.tokenSymbol || null
-            }
+                tokenSymbol: req.query.tokenSymbol || null,
+            },
         });
     } catch (error: any) {
         logger.error('Error fetching pools count:', error);
@@ -345,10 +368,7 @@ router.get('/token/:tokenSymbol', (async (req: Request, res: Response) => {
     const { tokenSymbol } = req.params;
     const { limit, skip } = getPagination(req);
     const query = {
-        $or: [
-            { tokenA_symbol: tokenSymbol },
-            { tokenB_symbol: tokenSymbol }
-        ]
+        $or: [{ tokenA_symbol: tokenSymbol }, { tokenB_symbol: tokenSymbol }],
     };
     try {
         const poolsFromDB = await cache.findPromise('liquidityPools', query, { limit, skip, sort: { _id: 1 } });
@@ -366,7 +386,11 @@ router.get('/positions/user/:userId', (async (req: Request, res: Response) => {
     const { userId } = req.params;
     const { limit, skip } = getPagination(req);
     try {
-        const positionsFromDB = await cache.findPromise('userLiquidityPositions', { user: userId }, { limit, skip, sort: { _id: 1 } });
+        const positionsFromDB = await cache.findPromise(
+            'userLiquidityPositions',
+            { user: userId },
+            { limit, skip, sort: { _id: 1 } }
+        );
         const total = await mongo.getDb().collection('userLiquidityPositions').countDocuments({ user: userId });
         const positions = (positionsFromDB || []).map(transformUserLiquidityPositionData);
         res.json({ data: positions, total, limit, skip });
@@ -380,7 +404,11 @@ router.get('/positions/pool/:poolId', (async (req: Request, res: Response) => {
     const { poolId } = req.params;
     const { limit, skip } = getPagination(req);
     try {
-        const positionsFromDB = await cache.findPromise('userLiquidityPositions', { poolId: poolId }, { limit, skip, sort: { _id: 1 } });
+        const positionsFromDB = await cache.findPromise(
+            'userLiquidityPositions',
+            { poolId: poolId },
+            { limit, skip, sort: { _id: 1 } }
+        );
         const total = await mongo.getDb().collection('userLiquidityPositions').countDocuments({ poolId: poolId });
         const positions = (positionsFromDB || []).map(transformUserLiquidityPositionData);
         res.json({ data: positions, total, limit, skip });
@@ -453,14 +481,17 @@ router.post('/route-swap', (async (req: Request, res: Response) => {
         const amountInStr = typeof amountIn === 'number' ? amountIn.toString() : amountIn;
         // Convert input amount (e.g., "1.23") to smallest unit BigInt (e.g., 123000000n)
         amountInBigInt = parseTokenAmount(amountInStr, fromTokenSymbol);
-        if (amountInBigInt <= 0n) { // parseTokenAmount already throws for invalid format
-            return res.status(400).json({ message: `Invalid amountIn: ${amountIn}. Must result in a positive value in smallest units.` });
+        if (amountInBigInt <= 0n) {
+            // parseTokenAmount already throws for invalid format
+            return res
+                .status(400)
+                .json({ message: `Invalid amountIn: ${amountIn}. Must result in a positive value in smallest units.` });
         }
     } catch (error: any) {
         logger.error(`Error parsing amountIn for swap route: ${amountIn}, token: ${fromTokenSymbol}`, error);
-        return res.status(400).json({ 
+        return res.status(400).json({
             message: `Invalid amountIn '${amountIn}' for token '${fromTokenSymbol}'. Error: ${error.message}`,
-            error: error.message 
+            error: error.message,
         });
     }
     // Now convert the bigint to string for findAllTradeRoutesBigInt
@@ -477,15 +508,15 @@ router.post('/route-swap', (async (req: Request, res: Response) => {
             return res.status(404).json({ message: 'No trade route found.' });
         }
 
-        const bestRoute = routes[0]; 
-        
+        const bestRoute = routes[0];
+
         const transformRouteForAPI = (route: TradeRoute): any => {
             // Calculate slippage-adjusted amounts for each hop
             const hopsWithSlippage = route.hops.map(hop => {
                 const expectedAmountOut = toBigInt(hop.amountOut);
                 const slippageMultiplier = toBigInt(10000 - Math.floor(slippagePercent * 100));
                 const minAmountOut = (expectedAmountOut * slippageMultiplier) / toBigInt(10000);
-                
+
                 return {
                     ...hop,
                     amountIn: toBigInt(hop.amountIn).toString(),
@@ -496,7 +527,7 @@ router.post('/route-swap', (async (req: Request, res: Response) => {
                     minAmountOutFormatted: formatTokenAmountSimple(minAmountOut, hop.tokenOut),
                     slippagePercent: slippagePercent,
                     priceImpact: hop.priceImpact,
-                    priceImpactFormatted: `${hop.priceImpact.toFixed(4)}%`
+                    priceImpactFormatted: `${hop.priceImpact.toFixed(4)}%`,
                 };
             });
 
@@ -519,7 +550,7 @@ router.post('/route-swap', (async (req: Request, res: Response) => {
                 slippagePercent: slippagePercent,
                 totalPriceImpact: totalPriceImpact,
                 totalPriceImpactFormatted: `${totalPriceImpact.toFixed(4)}%`,
-                hops: hopsWithSlippage
+                hops: hopsWithSlippage,
             };
         };
 
@@ -534,10 +565,10 @@ router.post('/route-swap', (async (req: Request, res: Response) => {
 // GET /pools/:poolId/analytics?period=hour|day|week|month|year[&interval=hour|day|week]
 router.get('/:poolId/analytics', (async (req: Request, res: Response) => {
     const { poolId } = req.params;
-    const period = req.query.period as string || 'day'; // default to 'day'
+    const period = (req.query.period as string) || 'day'; // default to 'day'
     const intervalParam = req.query.interval as string | undefined;
     const validPeriods = ['hour', 'day', 'week', 'month', 'year'];
-    const validIntervals = ['hour', 'day', 'week'];
+    // const validIntervals = ['hour', 'day', 'week'];
     if (!validPeriods.includes(period)) {
         return res.status(400).json({ message: `Invalid period. Must be one of: ${validPeriods.join(', ')}` });
     }
@@ -546,37 +577,64 @@ router.get('/:poolId/analytics', (async (req: Request, res: Response) => {
     let startTime: Date;
     let defaultInterval: string;
     switch (period) {
-        case 'hour': startTime = new Date(now.getTime() - 60 * 60 * 1000); defaultInterval = 'minute'; break;
-        case 'day': startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000); defaultInterval = 'hour'; break;
-        case 'week': startTime = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); defaultInterval = 'day'; break;
-        case 'month': startTime = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); defaultInterval = 'day'; break;
-        case 'year': startTime = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000); defaultInterval = 'month'; break;
-        default: startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000); defaultInterval = 'hour';
+        case 'hour':
+            startTime = new Date(now.getTime() - 60 * 60 * 1000);
+            defaultInterval = 'minute';
+            break;
+        case 'day':
+            startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+            defaultInterval = 'hour';
+            break;
+        case 'week':
+            startTime = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            defaultInterval = 'day';
+            break;
+        case 'month':
+            startTime = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+            defaultInterval = 'day';
+            break;
+        case 'year':
+            startTime = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+            defaultInterval = 'month';
+            break;
+        default:
+            startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+            defaultInterval = 'hour';
     }
     // Determine interval
     let interval = intervalParam;
     if (!interval) {
         // Auto-select interval for ~10 buckets
         const ms = now.getTime() - startTime.getTime();
-        const approxBucketMs = Math.max(Math.floor(ms / 10), 1);
-        if (ms <= 2 * 60 * 60 * 1000) interval = 'minute'; // <=2h: minute
-        else if (ms <= 2 * 24 * 60 * 60 * 1000) interval = 'hour'; // <=2d: hour
-        else if (ms <= 60 * 24 * 60 * 60 * 1000) interval = 'day'; // <=2mo: day
+        // const approxBucketMs = Math.max(Math.floor(ms / 10), 1);
+        if (ms <= 2 * 60 * 60 * 1000)
+            interval = 'minute'; // <=2h: minute
+        else if (ms <= 2 * 24 * 60 * 60 * 1000)
+            interval = 'hour'; // <=2d: hour
+        else if (ms <= 60 * 24 * 60 * 60 * 1000)
+            interval = 'day'; // <=2mo: day
         else interval = 'week';
     }
     // If interval is not valid, fallback to defaultInterval
     if (!['minute', 'hour', 'day', 'week', 'month'].includes(interval)) interval = defaultInterval;
     try {
         // Get all swap events for this pool in the period
-        const events = await mongo.getDb().collection('events').find({
-            'type': 'poolSwap',
-            'data.poolId': poolId,
-            'timestamp': { $gte: startTime.toISOString() }
-        }).toArray();
+        const events = await mongo
+            .getDb()
+            .collection('events')
+            .find({
+                type: 'poolSwap',
+                'data.poolId': poolId,
+                timestamp: { $gte: startTime.toISOString() },
+            })
+            .toArray();
         // If interval is not set or is 'aggregate', return aggregate as before
         if (!interval || interval === 'aggregate') {
             // Calculate total volume and fees
-            let totalVolumeA = 0n, totalVolumeB = 0n, totalFeesA = 0n, totalFeesB = 0n;
+            let totalVolumeA = 0n,
+                totalVolumeB = 0n,
+                totalFeesA = 0n,
+                totalFeesB = 0n;
             for (const event of events) {
                 const e = event.data;
                 const feeDivisor = toBigInt(10000);
@@ -603,13 +661,14 @@ router.get('/:poolId/analytics', (async (req: Request, res: Response) => {
             const tvlB = toBigInt(pool.tokenB_reserve || '0');
             // APR = (fees in period * periods per year) / TVL
             // For simplicity, use tokenA as base for APR
-            let aprA = 0, aprB = 0;
+            let aprA = 0,
+                aprB = 0;
             const periodsPerYear: Record<string, number> = { hour: 8760, day: 365, week: 52, month: 12, year: 1 };
             if (tvlA > 0n) {
-                aprA = Number(totalFeesA) * periodsPerYear[period] / Number(tvlA);
+                aprA = (Number(totalFeesA) * periodsPerYear[period]) / Number(tvlA);
             }
             if (tvlB > 0n) {
-                aprB = Number(totalFeesB) * periodsPerYear[period] / Number(tvlB);
+                aprB = (Number(totalFeesB) * periodsPerYear[period]) / Number(tvlB);
             }
             return res.json({
                 poolId,
@@ -623,28 +682,39 @@ router.get('/:poolId/analytics', (async (req: Request, res: Response) => {
                 tvlA: tvlA.toString(),
                 tvlB: tvlB.toString(),
                 aprA,
-                aprB
+                aprB,
             });
         }
         // Otherwise, return time-series data
         // Determine bucket size in ms
         let bucketMs = 0;
         switch (interval) {
-            case 'minute': bucketMs = 60 * 1000; break;
-            case 'hour': bucketMs = 60 * 60 * 1000; break;
-            case 'day': bucketMs = 24 * 60 * 60 * 1000; break;
-            case 'week': bucketMs = 7 * 24 * 60 * 60 * 1000; break;
-            case 'month': bucketMs = 30 * 24 * 60 * 60 * 1000; break;
-            default: bucketMs = 60 * 60 * 1000;
+            case 'minute':
+                bucketMs = 60 * 1000;
+                break;
+            case 'hour':
+                bucketMs = 60 * 60 * 1000;
+                break;
+            case 'day':
+                bucketMs = 24 * 60 * 60 * 1000;
+                break;
+            case 'week':
+                bucketMs = 7 * 24 * 60 * 60 * 1000;
+                break;
+            case 'month':
+                bucketMs = 30 * 24 * 60 * 60 * 1000;
+                break;
+            default:
+                bucketMs = 60 * 60 * 1000;
         }
         // Prepare buckets
         const bucketCount = Math.ceil((now.getTime() - startTime.getTime()) / bucketMs);
         const buckets: Array<{
-            timestamp: string,
-            volumeA: bigint,
-            volumeB: bigint,
-            feesA: bigint,
-            feesB: bigint
+            timestamp: string;
+            volumeA: bigint;
+            volumeB: bigint;
+            feesA: bigint;
+            feesB: bigint;
         }> = [];
         for (let i = 0; i < bucketCount; i++) {
             const bucketStart = new Date(startTime.getTime() + i * bucketMs);
@@ -653,7 +723,7 @@ router.get('/:poolId/analytics', (async (req: Request, res: Response) => {
                 volumeA: 0n,
                 volumeB: 0n,
                 feesA: 0n,
-                feesB: 0n
+                feesB: 0n,
             });
         }
         // Assign events to buckets
@@ -680,7 +750,7 @@ router.get('/:poolId/analytics', (async (req: Request, res: Response) => {
             volumeA: b.volumeA.toString(),
             volumeB: b.volumeB.toString(),
             feesA: b.feesA.toString(),
-            feesB: b.feesB.toString()
+            feesB: b.feesB.toString(),
         }));
         return res.json({
             poolId,
@@ -688,7 +758,7 @@ router.get('/:poolId/analytics', (async (req: Request, res: Response) => {
             interval,
             from: startTime.toISOString(),
             to: now.toISOString(),
-            timeSeries
+            timeSeries,
         });
     } catch (error: any) {
         logger.error(`Error fetching analytics for pool ${poolId}:`, error);

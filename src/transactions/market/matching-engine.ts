@@ -1,5 +1,5 @@
-import { OrderData, TradeData, TradingPairData, OrderStatus, OrderSide, OrderType } from './market-interfaces.js';
-import { OrderBook, OrderBookMatchResult } from './orderbook.js';
+import { OrderData, TradeData, TradingPairData, OrderStatus, OrderType } from './market-interfaces.js';
+import { OrderBook } from './orderbook.js';
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import { adjustUserBalance } from '../../utils/account.js';
@@ -252,6 +252,7 @@ class MatchingEngine {
     logger.debug(`[MatchingEngine:warmupMarketData] Market data warmup completed. Initialized ${successfulBookInitializations} order book(s) out of ${activePairs.length} active pair(s).`);
   }
 
+  // eslint-disable-next-line max-lines-per-function
   public async addOrder(takerOrderInput: OrderData): Promise<EngineMatchResult> {
     const takerOrder = takerOrderInput;
     logger.debug(`[MatchingEngine] Received order ${takerOrder._id} for pair ${takerOrder.pairId}: ${takerOrder.side} ${takerOrder.quantity.toString()} ${takerOrder.baseAssetSymbol} @ ${takerOrder.price ? takerOrder.price.toString() : takerOrder.type}`);

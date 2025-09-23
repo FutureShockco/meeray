@@ -1,21 +1,18 @@
+import logger from '../logger.js';
+
 /**
  * Validates JSON values for content and profile data
  * @param value Value to validate
  * @param max Maximum allowed JSON string length
  * @returns True if the JSON is valid, false otherwise
  */
-const validateJson = (
-    value: any,
-    max: number
-): boolean => {
-    if (!value)
-        return false;
-    if (typeof value !== 'object')
-        return false;
+const validateJson = (value: any, max: number): boolean => {
+    if (!value) return false;
+    if (typeof value !== 'object') return false;
     try {
-        if (JSON.stringify(value).length > max)
-            return false;
+        if (JSON.stringify(value).length > max) return false;
     } catch (error) {
+        logger.warn(`[json-validation] Error validating JSON: ${error}`);
         return false;
     }
 

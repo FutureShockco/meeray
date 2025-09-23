@@ -1,8 +1,8 @@
-import logger from '../../logger.js';
 import cache from '../../cache.js';
+import logger from '../../logger.js';
+import { logEvent } from '../../utils/event-logger.js';
 import validate from '../../validation/index.js';
 import { TokenUpdateData } from './token-interfaces.js';
-import { logEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: TokenUpdateData, sender: string): Promise<boolean> {
     try {
@@ -23,7 +23,7 @@ export async function validateTx(data: TokenUpdateData, sender: string): Promise
             return false;
         }
 
-        if (!await validate.isIssuer(sender, data.symbol)) return false;
+        if (!(await validate.isIssuer(sender, data.symbol))) return false;
 
         return true;
     } catch (error) {
@@ -32,7 +32,7 @@ export async function validateTx(data: TokenUpdateData, sender: string): Promise
     }
 }
 
-export async function processTx(data: TokenUpdateData, sender: string, id: string): Promise<boolean> {
+export async function processTx(data: TokenUpdateData, sender: string): Promise<boolean> {
     try {
         const token = await cache.findOnePromise('tokens', { _id: data.symbol });
         if (!token) {
@@ -48,11 +48,7 @@ export async function processTx(data: TokenUpdateData, sender: string, id: strin
             logger.warn(`[token-update:process] No fields to update for token ${data.symbol}`);
             return false;
         }
-        const updateSuccess = await cache.updateOnePromise(
-            'tokens',
-            { _id: data.symbol },
-            { $set: updateData }
-        );
+        const updateSuccess = await cache.updateOnePromise('tokens', { _id: data.symbol }, { $set: updateData });
         if (!updateSuccess) {
             logger.error(`[token-update:process] Failed to update token ${data.symbol}`);
             return false;
@@ -60,7 +56,7 @@ export async function processTx(data: TokenUpdateData, sender: string, id: strin
         await logEvent('token', 'update', sender, {
             symbol: data.symbol,
             issuer: sender,
-            updatedFields: updateData
+            updatedFields: updateData,
         });
         return true;
     } catch (error) {

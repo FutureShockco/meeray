@@ -1,30 +1,45 @@
-import express, { Request, Response, Router, RequestHandler } from 'express';
+import express, { Request, RequestHandler, Response, Router } from 'express';
+
 import cache from '../../cache.js';
-import { mongo } from '../../mongo.js';
 import logger from '../../logger.js';
-import { toBigInt } from '../../utils/bigint.js';
-import { formatTokenAmountForResponse, formatTokenAmountSimple } from '../../utils/http.js';
+import { mongo } from '../../mongo.js';
 import { TokenData } from '../../transactions/token/token-interfaces.js';
+import { formatTokenAmountForResponse } from '../../utils/http.js';
+import { getPagination } from './utils.js';
 
 const router: Router = express.Router();
 
-// Helper for pagination
-const getPagination = (req: Request) => {
-    const limit = parseInt(req.query.limit as string) || 10;
-    const offset = parseInt(req.query.offset as string) || 0;
-    return { limit, skip: offset, page: Math.floor(offset / limit) + 1 };
-};
-
 // --- Tokens ---
 
+/**
+ * @api {get} /tokens Get all tokens
+ * @apiName GetTokens
+ * @apiGroup Tokens
+ * @apiDescription Retrieve a paginated list of all registered tokens
+ *
+ * @apiUse PaginationParams
+ *
+ * @apiSuccess {Object[]} data List of tokens
+ * @apiSuccess {String} data.symbol Token symbol
+ * @apiSuccess {String} data.name Token name
+ * @apiSuccess {Number} data.decimals Token decimals
+ * @apiSuccess {String} data.supply Total supply
+ * @apiSuccess {String} data.issuer Token issuer
+ *
+ * @apiError {String} error Error message
+ */
 // GET /tokens - List all registered tokens
 router.get('/', (async (req: Request, res: Response) => {
     const { limit, skip } = getPagination(req);
     try {
         const mongoQuery = { symbol: { $not: /^LP_/ } };
-        const tokensFromDB: TokenData[] | null = await cache.findPromise('tokens', mongoQuery, { limit, skip, sort: { _id: 1 } }) as TokenData[] | null;
+        const tokensFromDB: TokenData[] | null = (await cache.findPromise('tokens', mongoQuery, {
+            limit,
+            skip,
+            sort: { _id: 1 },
+        })) as TokenData[] | null;
         const total = await mongo.getDb().collection('tokens').countDocuments(mongoQuery);
-        
+
         let tokens: any[] = [];
         if (tokensFromDB && tokensFromDB.length > 0) {
             tokens = tokensFromDB.map((tokenDoc: TokenData) => {
@@ -41,7 +56,7 @@ router.get('/', (async (req: Request, res: Response) => {
                     transformedToken.currentSupply = formattedSupply.amount;
                     transformedToken.rawCurrentSupply = formattedSupply.rawAmount;
                 }
-                
+
                 return transformedToken;
             });
         }
@@ -58,19 +73,19 @@ router.get('/new', (async (req: Request, res: Response) => {
     const { limit, skip } = getPagination(req);
     try {
         const mongoQuery = { symbol: { $not: /^LP_/ } };
-        const tokensFromDB: TokenData[] | null = await cache.findPromise(
-            'tokens', 
-            mongoQuery, 
-            { limit, skip, sort: { createdAt: -1 } }
-        ) as TokenData[] | null;
+        const tokensFromDB: TokenData[] | null = (await cache.findPromise('tokens', mongoQuery, {
+            limit,
+            skip,
+            sort: { createdAt: -1 },
+        })) as TokenData[] | null;
         const total = await mongo.getDb().collection('tokens').countDocuments(mongoQuery);
-        
+
         let tokens: any[] = [];
         if (tokensFromDB && tokensFromDB.length > 0) {
             tokens = tokensFromDB.map((tokenDoc: TokenData) => {
                 const { maxSupply, currentSupply, createdAt, ...rest } = tokenDoc;
                 const transformedToken: any = { ...rest, createdAt };
-                
+
                 // Format supply values with proper decimals
                 if (maxSupply) {
                     const formattedSupply = formatTokenAmountForResponse(maxSupply, tokenDoc.symbol);
@@ -82,7 +97,7 @@ router.get('/new', (async (req: Request, res: Response) => {
                     transformedToken.currentSupply = formattedSupply.amount;
                     transformedToken.rawCurrentSupply = formattedSupply.rawAmount;
                 }
-                
+
                 return transformedToken;
             });
         }
@@ -98,13 +113,13 @@ router.get('/new', (async (req: Request, res: Response) => {
 router.get('/:symbol', (async (req: Request, res: Response) => {
     const { symbol } = req.params;
     try {
-        const tokenFromDB = await cache.findOnePromise('tokens', { _id: symbol }) as TokenData | null;
+        const tokenFromDB = (await cache.findOnePromise('tokens', { _id: symbol })) as TokenData | null;
         if (!tokenFromDB) {
             return res.status(404).json({ message: `Token ${symbol} not found.` });
         }
         const { maxSupply, currentSupply, ...rest } = tokenFromDB;
         const token: any = { ...rest };
-        
+
         // Format supply values with proper decimals
         if (maxSupply) {
             const formattedSupply = formatTokenAmountForResponse(maxSupply, symbol);
@@ -116,7 +131,7 @@ router.get('/:symbol', (async (req: Request, res: Response) => {
             token.currentSupply = formattedSupply.amount;
             token.rawCurrentSupply = formattedSupply.rawAmount;
         }
-        
+
         res.json(token);
     } catch (error: any) {
         logger.error(`Error fetching token ${symbol}:`, error);
@@ -130,7 +145,11 @@ router.get('/issuer/:issuerName', (async (req: Request, res: Response) => {
     const { limit, skip } = getPagination(req);
     try {
         const mongoQuery = { issuer: issuerName, symbol: { $not: /^LP_/ } };
-        const tokensFromDB: TokenData[] | null = await cache.findPromise('tokens', mongoQuery, { limit, skip, sort: { _id: 1 } }) as TokenData[] | null;
+        const tokensFromDB: TokenData[] | null = (await cache.findPromise('tokens', mongoQuery, {
+            limit,
+            skip,
+            sort: { _id: 1 },
+        })) as TokenData[] | null;
         const total = await mongo.getDb().collection('tokens').countDocuments(mongoQuery);
 
         let tokens: any[] = [];
@@ -138,7 +157,7 @@ router.get('/issuer/:issuerName', (async (req: Request, res: Response) => {
             tokens = tokensFromDB.map((tokenDoc: TokenData) => {
                 const { maxSupply, currentSupply, ...rest } = tokenDoc;
                 const transformedToken: any = { ...rest };
-                
+
                 // Format supply values with proper decimals
                 if (maxSupply) {
                     const formattedSupply = formatTokenAmountForResponse(maxSupply, tokenDoc.symbol);
@@ -150,7 +169,7 @@ router.get('/issuer/:issuerName', (async (req: Request, res: Response) => {
                     transformedToken.currentSupply = formattedSupply.amount;
                     transformedToken.rawCurrentSupply = formattedSupply.rawAmount;
                 }
-                
+
                 return transformedToken;
             });
         }
@@ -167,7 +186,11 @@ router.get('/name/:searchName', (async (req: Request, res: Response) => {
     const { limit, skip } = getPagination(req);
     try {
         const mongoQuery = { name: { $regex: searchName, $options: 'i' }, symbol: { $not: /^LP_/ } };
-        const tokensFromDB: TokenData[] | null = await cache.findPromise('tokens', mongoQuery, { limit, skip, sort: { _id: 1 } }) as TokenData[] | null;
+        const tokensFromDB: TokenData[] | null = (await cache.findPromise('tokens', mongoQuery, {
+            limit,
+            skip,
+            sort: { _id: 1 },
+        })) as TokenData[] | null;
         const total = await mongo.getDb().collection('tokens').countDocuments(mongoQuery);
 
         let tokens: any[] = [];
@@ -175,7 +198,7 @@ router.get('/name/:searchName', (async (req: Request, res: Response) => {
             tokens = tokensFromDB.map((tokenDoc: TokenData) => {
                 const { maxSupply, currentSupply, ...rest } = tokenDoc;
                 const transformedToken: any = { ...rest };
-                
+
                 // Format supply values with proper decimals
                 if (maxSupply) {
                     const formattedSupply = formatTokenAmountForResponse(maxSupply, tokenDoc.symbol);
@@ -187,7 +210,7 @@ router.get('/name/:searchName', (async (req: Request, res: Response) => {
                     transformedToken.currentSupply = formattedSupply.amount;
                     transformedToken.rawCurrentSupply = formattedSupply.rawAmount;
                 }
-                
+
                 return transformedToken;
             });
         }

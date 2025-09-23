@@ -1,8 +1,8 @@
-import logger from '../logger.js';
-import { chain } from '../chain.js';
-import transaction from '../transaction.js';
-import parseSteemTransactions, { SteemBlock, SteemBlockResult } from '../steemParser.js';
 import { Block } from '../block.js';
+import { chain } from '../chain.js';
+import logger from '../logger.js';
+import parseSteemTransactions, { SteemBlock, SteemBlockResult } from '../steemParser.js';
+import transaction from '../transaction.js';
 import SteemApiClient from './apiClient.js';
 import steemConfig from './config.js';
 
@@ -14,7 +14,7 @@ class BlockProcessor {
     private circuitBreakerOpen = false;
     private prefetchInProgress = false;
 
-    constructor(private apiClient: SteemApiClient) { }
+    constructor(private apiClient: SteemApiClient) {}
 
     async processBlock(blockNum: number): Promise<SteemBlockResult | null> {
         const lastProcessedSteemBlockBySidechain = chain.getLatestBlock()?.steemBlockNum || 0;
@@ -22,7 +22,9 @@ class BlockProcessor {
         logger.debug(`Processing block ${blockNum}, last processed: ${lastProcessedSteemBlockBySidechain}`);
 
         if (blockNum !== lastProcessedSteemBlockBySidechain + 1) {
-            logger.debug(`Block ${blockNum} is not sequential. Expected ${lastProcessedSteemBlockBySidechain + 1}, returning null`);
+            logger.debug(
+                `Block ${blockNum} is not sequential. Expected ${lastProcessedSteemBlockBySidechain + 1}, returning null`
+            );
             return null;
         }
 
@@ -54,13 +56,15 @@ class BlockProcessor {
                 transaction.addToPool(
                     steemBlockResult.transactions.map((tx, idx) => ({
                         ...tx,
-                        id: tx.hash ?? `${blockNum}-${idx}`
+                        id: tx.hash ?? `${blockNum}-${idx}`,
                     }))
                 );
             }
 
             this.processingBlocks = this.processingBlocks.filter(b => b !== blockNum);
-            logger.debug(`Block processor returning result for block ${blockNum} with ${steemBlockResult.transactions.length} transactions`);
+            logger.debug(
+                `Block processor returning result for block ${blockNum} with ${steemBlockResult.transactions.length} transactions`
+            );
             return steemBlockResult;
         } catch (error) {
             this.incrementConsecutiveErrors();
@@ -84,10 +88,9 @@ class BlockProcessor {
                     this.resetConsecutiveErrors();
                     return {
                         transactions: rawSteemBlock.transactions || [],
-                        timestamp: rawSteemBlock.timestamp
+                        timestamp: rawSteemBlock.timestamp,
                     };
-                }
-                else {
+                } else {
                     this.incrementConsecutiveErrors();
                     logger.warn(`No data returned for Steem block ${blockNum}`);
                     const backoffDelay = Math.min(1000 * Math.pow(2, attempt), 30000);
@@ -231,8 +234,10 @@ class BlockProcessor {
                     if (opData?.id === 'sidechain') {
                         try {
                             const jsonData = JSON.parse(opData.json);
-                            if (jsonData?.contract === tx.data?.contract &&
-                                JSON.stringify(jsonData.payload) === JSON.stringify(tx.data?.payload)) {
+                            if (
+                                jsonData?.contract === tx.data?.contract &&
+                                JSON.stringify(jsonData.payload) === JSON.stringify(tx.data?.payload)
+                            ) {
                                 foundOnSteem = true;
                                 break;
                             }

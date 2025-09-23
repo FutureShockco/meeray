@@ -1,14 +1,15 @@
 import { WebSocketServer } from 'ws';
-import logger from '../logger.js';
-import { getNewKeyPair } from '../crypto.js';
+
 import { Block } from '../block.js';
-import { EnhancedWebSocket, P2PState, SteemSyncStatus } from './types.js';
+import { getNewKeyPair } from '../crypto.js';
+import logger from '../logger.js';
 import { P2P_CONFIG, P2P_RUNTIME_CONFIG } from './config.js';
 import { ConnectionManager } from './connection.js';
 import { PeerDiscovery } from './discovery.js';
 import { MessageHandler } from './messages.js';
-import { SocketManager } from './socket.js';
 import { RecoveryManager } from './recovery.js';
+import { SocketManager } from './socket.js';
+import { EnhancedWebSocket, P2PState, SteemSyncStatus } from './types.js';
 
 const state: P2PState = {
     sockets: [],
@@ -19,7 +20,7 @@ const state: P2PState = {
     nodeId: null,
     connectingPeers: new Set<string>(),
     lastEmergencyDiscovery: 0,
-    lastPeerListConnection: 0
+    lastPeerListConnection: 0,
 };
 
 // Initialize sub-modules
@@ -37,28 +38,48 @@ connectionManager.setOutgoingConnectionHandler((ws: EnhancedWebSocket) => {
 });
 
 export const p2p = {
-    get sockets() { 
+    get sockets() {
         SocketManager.setSockets(state.sockets);
-        return state.sockets; 
+        return state.sockets;
     },
-    get recoveringBlocks() { return state.recoveringBlocks; },
-    get recoveredBlocks() { return state.recoveredBlocks; },
-    get recovering() { return state.recovering; },
-    set recovering(value: boolean | number) { state.recovering = value; },
-    get recoverAttempt() { return state.recoverAttempt; },
-    set recoverAttempt(value: number) { state.recoverAttempt = value; },
-    get nodeId() { return state.nodeId; },
-    get connectingPeers() { return state.connectingPeers; },
-    get lastEmergencyDiscovery() { return state.lastEmergencyDiscovery; },
-    get lastPeerListConnection() { return state.lastPeerListConnection; },
+    get recoveringBlocks() {
+        return state.recoveringBlocks;
+    },
+    get recoveredBlocks() {
+        return state.recoveredBlocks;
+    },
+    get recovering() {
+        return state.recovering;
+    },
+    set recovering(value: boolean | number) {
+        state.recovering = value;
+    },
+    get recoverAttempt() {
+        return state.recoverAttempt;
+    },
+    set recoverAttempt(value: number) {
+        state.recoverAttempt = value;
+    },
+    get nodeId() {
+        return state.nodeId;
+    },
+    get connectingPeers() {
+        return state.connectingPeers;
+    },
+    get lastEmergencyDiscovery() {
+        return state.lastEmergencyDiscovery;
+    },
+    get lastPeerListConnection() {
+        return state.lastPeerListConnection;
+    },
 
     init(): void {
         generateNodeId();
-        const server = new WebSocketServer({ 
-            host: P2P_RUNTIME_CONFIG.P2P_HOST, 
-            port: P2P_RUNTIME_CONFIG.P2P_PORT 
+        const server = new WebSocketServer({
+            host: P2P_RUNTIME_CONFIG.P2P_HOST,
+            port: P2P_RUNTIME_CONFIG.P2P_PORT,
         });
-        server.on('connection', (ws) => handshake(ws as EnhancedWebSocket));
+        server.on('connection', ws => handshake(ws as EnhancedWebSocket));
 
         logger.info('Listening websocket p2p port on: ' + P2P_RUNTIME_CONFIG.P2P_PORT);
         logger.info('Version: ' + P2P_CONFIG.VERSION);
@@ -93,7 +114,7 @@ export const p2p = {
     keepAlive: () => connectionManager.keepAlive(),
     connect: (peers: string[], isInit?: boolean) => connectionManager.connect(peers, isInit),
     handshake: (ws: EnhancedWebSocket) => handshake(ws),
-    
+
     messageHandler: (ws: EnhancedWebSocket) => messageHandler.setupMessageHandler(ws),
 
     recover: () => recoveryManager.recover(),
@@ -103,23 +124,23 @@ export const p2p = {
     errorHandler: (ws: EnhancedWebSocket) => errorHandler(ws),
     closeConnection: (ws: EnhancedWebSocket) => connectionManager.closeConnection(ws),
     sendJSON: (ws: EnhancedWebSocket, data: any) => SocketManager.sendJSON(ws, data),
-    broadcast: (data: any) => { 
-        SocketManager.setSockets(state.sockets); 
-        return SocketManager.broadcast(data); 
+    broadcast: (data: any) => {
+        SocketManager.setSockets(state.sockets);
+        return SocketManager.broadcast(data);
     },
-    broadcastNotSent: (data: any) => { 
-        SocketManager.setSockets(state.sockets); 
-        return SocketManager.broadcastNotSent(data); 
+    broadcastNotSent: (data: any) => {
+        SocketManager.setSockets(state.sockets);
+        return SocketManager.broadcastNotSent(data);
     },
-    broadcastBlock: (block: Block) => { 
-        SocketManager.setSockets(state.sockets); 
-        return SocketManager.broadcastBlock(block); 
+    broadcastBlock: (block: Block) => {
+        SocketManager.setSockets(state.sockets);
+        return SocketManager.broadcastBlock(block);
     },
-    broadcastSyncStatus: (syncStatus: SteemSyncStatus) => { 
-        SocketManager.setSockets(state.sockets); 
-        return SocketManager.broadcastSyncStatus(syncStatus); 
+    broadcastSyncStatus: (syncStatus: SteemSyncStatus) => {
+        SocketManager.setSockets(state.sockets);
+        return SocketManager.broadcastSyncStatus(syncStatus);
     },
-    cleanRoundConfHistory: () => SocketManager.cleanRoundConfHistory()
+    cleanRoundConfHistory: () => SocketManager.cleanRoundConfHistory(),
 };
 
 // Internal functions

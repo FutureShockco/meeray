@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+build/
+dist/
+
+# Logs
+logs/
+*.log
+
+# Database
+*.db
+*.sqlite
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+
+# Coverage reports
+coverage/
+
+# Compiled files
+*.js
+*.js.map
+*.d.ts
+
+# Archives
+*.gz
+*.zip
+*.tar
+
+# Specific files to avoid formatting
+src/transactions/launchpad/launchpad-participate-presale.ts
+src/transactions/market/matching-engine.ts

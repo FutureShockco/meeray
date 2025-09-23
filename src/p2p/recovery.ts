@@ -1,9 +1,9 @@
-import logger from '../logger.js';
 import { chain } from '../chain.js';
-import { P2PState, MessageType } from './types.js';
+import config from '../config.js';
+import logger from '../logger.js';
 import { P2P_CONFIG } from './config.js';
 import { SocketManager } from './socket.js';
-import config from '../config.js';
+import { MessageType, P2PState } from './types.js';
 
 export class RecoveryManager {
     private state: P2PState;
@@ -14,7 +14,8 @@ export class RecoveryManager {
 
     recover(): void {
         if (!SocketManager.getSocketCount()) return;
-        if (Object.keys(this.state.recoveredBlocks).length + this.state.recoveringBlocks.length > P2P_CONFIG.MAX_BLOCKS_BUFFER) return;
+        if (Object.keys(this.state.recoveredBlocks).length + this.state.recoveringBlocks.length > P2P_CONFIG.MAX_BLOCKS_BUFFER)
+            return;
 
         if (!this.state.recovering) {
             this.state.recovering = chain.getLatestBlock()._id;
@@ -30,14 +31,15 @@ export class RecoveryManager {
                 headBlock: socket.node_status?.head_block,
                 originBlock: socket.node_status?.origin_block,
                 isAhead: socket.node_status ? socket.node_status.head_block > currentBlock : false,
-                originMatches: socket.node_status?.origin_block === config.originHash
+                originMatches: socket.node_status?.origin_block === config.originHash,
             });
         });
 
-        const peersAhead = SocketManager.getSockets().filter(socket => 
-            socket.node_status &&
-            socket.node_status.head_block > chain.getLatestBlock()._id &&
-            socket.node_status.origin_block === config.originHash
+        const peersAhead = SocketManager.getSockets().filter(
+            socket =>
+                socket.node_status &&
+                socket.node_status.head_block > chain.getLatestBlock()._id &&
+                socket.node_status.origin_block === config.originHash
         );
 
         if (peersAhead.length === 0) {
@@ -64,17 +66,18 @@ export class RecoveryManager {
             if (nextBlock % 2) {
                 this.recover();
             }
-        } 
+        }
     }
 
     refresh(force: boolean = false): void {
         if (this.state.recovering && !force) return;
 
         for (const socket of SocketManager.getSockets()) {
-            if (socket.node_status &&
+            if (
+                socket.node_status &&
                 socket.node_status.head_block > chain.getLatestBlock()._id + 10 &&
-                socket.node_status.origin_block === config.originHash) {
-
+                socket.node_status.origin_block === config.originHash
+            ) {
                 logger.info(`Catching up with network, peer head block: ${socket.node_status.head_block}`);
                 this.state.recovering = chain.getLatestBlock()._id;
                 this.recover();

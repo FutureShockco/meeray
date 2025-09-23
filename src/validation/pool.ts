@@ -1,11 +1,12 @@
-import logger from '../logger.js';
 import cache from '../cache.js';
+import config from '../config.js';
+import logger from '../logger.js';
 import { LiquidityPoolData } from '../transactions/pool/pool-interfaces.js';
 import { getAccount } from '../utils/account.js';
 import { toBigInt } from '../utils/bigint.js';
 import { getLpTokenSymbol } from '../utils/token.js';
-import config from '../config.js';
 import validate from './index.js';
+
 /**
  * Validates that the required fields are present in pool add liquidity data
  * @param data Pool add liquidity data
@@ -40,7 +41,7 @@ export const validatePoolTokens = (data: any): boolean => {
  * @param sender Transaction sender
  * @returns True if required fields are valid, false otherwise
  */
-export const validatePoolAddLiquidityFields = (data: any, sender: string): boolean => {
+export const validatePoolAddLiquidityFields = (data: any): boolean => {
     if (!data.poolId || !data.tokenA_amount || !data.tokenB_amount) {
         logger.warn('[pool-validation] Invalid data: Missing required fields.');
         return false;
@@ -75,12 +76,16 @@ export const validateUserBalances = async (
     const tokenBBalance = toBigInt(userAccount.balances[tokenBSymbol] || '0');
 
     if (tokenABalance < toBigInt(tokenAAmount)) {
-        logger.warn(`[pool-validation] Insufficient balance for ${tokenASymbol}. Required: ${tokenAAmount}, Available: ${tokenABalance}`);
+        logger.warn(
+            `[pool-validation] Insufficient balance for ${tokenASymbol}. Required: ${tokenAAmount}, Available: ${tokenABalance}`
+        );
         return false;
     }
 
     if (tokenBBalance < toBigInt(tokenBAmount)) {
-        logger.warn(`[pool-validation] Insufficient balance for ${tokenBSymbol}. Required: ${tokenBAmount}, Available: ${tokenBBalance}`);
+        logger.warn(
+            `[pool-validation] Insufficient balance for ${tokenBSymbol}. Required: ${tokenBAmount}, Available: ${tokenBBalance}`
+        );
         return false;
     }
 
@@ -116,7 +121,9 @@ export const validatePoolRatioTolerance = (
     const maxDifference = (expectedTokenBAmount * tolerance) / toBigInt(10000);
 
     if (difference > maxDifference) {
-        logger.warn(`[pool-validation] Token amounts do not match current pool ratio. Expected B: ${expectedTokenBAmount}, Got: ${tokenBAmount}. Pool A reserve: ${pool.tokenA_reserve}, B reserve: ${pool.tokenB_reserve}, A amount: ${tokenAAmount}`);
+        logger.warn(
+            `[pool-validation] Token amounts do not match current pool ratio. Expected B: ${expectedTokenBAmount}, Got: ${tokenBAmount}. Pool A reserve: ${pool.tokenA_reserve}, B reserve: ${pool.tokenB_reserve}, A amount: ${tokenAAmount}`
+        );
         return false;
     }
 
@@ -129,7 +136,7 @@ export const validatePoolRatioTolerance = (
  * @returns Pool data if exists, null otherwise
  */
 export const poolExists = async (poolId: string): Promise<LiquidityPoolData | null> => {
-    const poolDB = await cache.findOnePromise('liquidityPools', { _id: poolId }) as LiquidityPoolData | null;
+    const poolDB = (await cache.findOnePromise('liquidityPools', { _id: poolId })) as LiquidityPoolData | null;
     if (!poolDB) {
         logger.warn(`[pool-validation] Pool with ID ${poolId} does not exist.`);
         return null;
@@ -157,7 +164,9 @@ export const validateLiquidityProvision = (pool: LiquidityPoolData, tokenAAmount
     const maxDifference = (expectedTokenBAmount * tolerance) / toBigInt(10000);
 
     if (difference > maxDifference) {
-        logger.warn(`[pool-validation] Token amounts do not match current pool ratio. Expected B: ${expectedTokenBAmount}, Got: ${tokenBAmount}. Pool A reserve: ${pool.tokenA_reserve}, B reserve: ${pool.tokenB_reserve}, A amount: ${tokenAAmount}`);
+        logger.warn(
+            `[pool-validation] Token amounts do not match current pool ratio. Expected B: ${expectedTokenBAmount}, Got: ${tokenBAmount}. Pool A reserve: ${pool.tokenA_reserve}, B reserve: ${pool.tokenB_reserve}, A amount: ${tokenAAmount}`
+        );
         return false;
     }
 
@@ -167,15 +176,13 @@ export const validateLiquidityProvision = (pool: LiquidityPoolData, tokenAAmount
 /**
  * Validates that the LP token exists for a pool
  */
-export const validateLpTokenExists = async (
-    tokenASymbol: string,
-    tokenBSymbol: string,
-    poolId: string
-): Promise<boolean> => {
+export const validateLpTokenExists = async (tokenASymbol: string, tokenBSymbol: string, poolId: string): Promise<boolean> => {
     const lpTokenSymbol = getLpTokenSymbol(tokenASymbol, tokenBSymbol);
     const existingLpToken = await cache.findOnePromise('tokens', { _id: lpTokenSymbol });
     if (!existingLpToken) {
-        logger.warn(`[pool-validation] LP token ${lpTokenSymbol} does not exist for pool ${poolId}. This suggests the pool was created before the LP token creation was fixed. Please contact support or recreate the pool.`);
+        logger.warn(
+            `[pool-validation] LP token ${lpTokenSymbol} does not exist for pool ${poolId}. This suggests the pool was created before the LP token creation was fixed. Please contact support or recreate the pool.`
+        );
         return false;
     }
     return true;

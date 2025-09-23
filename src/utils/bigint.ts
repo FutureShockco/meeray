@@ -1,5 +1,6 @@
+import logger from '../logger.js';
+
 // Maximum expected length for any BigInt value we'll handle
-// This allows for numbers up to 999,999,999,999,999,999,999,999,999,999 (30 digits)
 // Which is more than sufficient even for tokens with 18 decimal places
 const MAX_INTEGER_LENGTH = 32;
 
@@ -42,11 +43,8 @@ export function toBigInt(value: string | bigint | number | null | undefined): bi
  * @param padLength Optional custom pad length
  * @returns A zero-padded string representation
  */
-export function toDbString(
-    value: number | string | bigint,
-    padLength = MAX_INTEGER_LENGTH
-): string {
-    const bigValue = toBigInt(value);       // Convert safely to BigInt
+export function toDbString(value: number | string | bigint, padLength = MAX_INTEGER_LENGTH): string {
+    const bigValue = toBigInt(value); // Convert safely to BigInt
     const isNegative = bigValue < 0n;
     const absStr = (isNegative ? -bigValue : bigValue).toString();
 
@@ -69,7 +67,7 @@ export function toDbString(
  * @returns A properly formatted string with decimal places
  */
 export function formatTokenAmount(value: bigint, symbol: string): string {
-    let decimals = 18
+    let decimals = 18;
     if (!symbol.startsWith('LP_')) {
         decimals = getTokenDecimals(symbol);
     }
@@ -89,7 +87,7 @@ export function formatTokenAmount(value: bigint, symbol: string): string {
  * @returns A BigInt value
  */
 export function parseTokenAmount(value: string, symbol: string): bigint {
-    let decimals = 18
+    let decimals = 18;
     if (!symbol.startsWith('LP_')) {
         decimals = getTokenDecimals(symbol);
     }
@@ -120,33 +118,11 @@ export function calculateDecimalAwarePrice(
     const decimalDifference = tokenOutDecimals - tokenInDecimals;
 
     let price: bigint;
-
-    // Debug logging for tracing calculation
-    if (typeof console !== 'undefined' && console.debug) {
-        console.debug('[calculateDecimalAwarePrice] Inputs:', {
-            amountIn: amountIn?.toString(),
-            amountOut: amountOut?.toString(),
-            tokenInSymbol,
-            tokenOutSymbol,
-            tokenInDecimals,
-            tokenOutDecimals,
-            decimalDifference
-        });
-    }
-
     // Handle decimal differences properly
     if (amountOut === 0n) {
-        if (typeof console !== 'undefined' && console.error) {
-            console.error('[calculateDecimalAwarePrice] Division by zero! Inputs:', {
-                amountIn: amountIn?.toString(),
-                amountOut: amountOut?.toString(),
-                tokenInSymbol,
-                tokenOutSymbol,
-                tokenInDecimals,
-                tokenOutDecimals,
-                decimalDifference
-            });
-        }
+        logger.error(
+            `[calculateDecimalAwarePrice] Division by zero! Inputs: ${amountIn}, ${amountOut}, ${tokenInSymbol}, ${tokenOutSymbol}, ${tokenInDecimals}, ${tokenOutDecimals}, ${decimalDifference}`
+        );
         return 0n;
     }
     if (decimalDifference >= 0) {
@@ -156,17 +132,14 @@ export function calculateDecimalAwarePrice(
         price = (amountIn * scalingFactor * BigInt(10 ** quoteDecimals)) / amountOut;
     } else {
         // TokenIn has more decimals, scale up amountOut
-        const scalingFactor = BigInt(10 ** (-decimalDifference));
+        const scalingFactor = BigInt(10 ** -decimalDifference);
         const quoteDecimals = getTokenDecimals(tokenOutSymbol);
         price = (amountIn * BigInt(10 ** quoteDecimals)) / (amountOut * scalingFactor);
     }
-    if (typeof console !== 'undefined' && console.debug) {
-        console.debug('[calculateDecimalAwarePrice] Computed price:', price?.toString());
-    }
-
-    // Ensure price is never negative (should never happen with positive inputs)
     if (price < 0n) {
-        console.error(`[calculateDecimalAwarePrice] CRITICAL: Negative price calculated! amountIn: ${amountIn}, amountOut: ${amountOut}, decimals: ${tokenInDecimals}/${tokenOutDecimals}`);
+        logger.error(
+            `[calculateDecimalAwarePrice] CRITICAL: Negative price calculated! amountIn: ${amountIn}, amountOut: ${amountOut}, decimals: ${tokenInDecimals}/${tokenOutDecimals}`
+        );
         return 0n;
     }
 
@@ -182,35 +155,24 @@ export function calculateDecimalAwarePrice(
  * @param quoteTokenSymbol Quote token symbol
  * @returns Trade value in quote token units
  */
-export function calculateTradeValue(
-    price: bigint,
-    quantity: bigint,
-    baseTokenSymbol: string,
-    quoteTokenSymbol: string
-): bigint {
-
+export function calculateTradeValue(price: bigint, quantity: bigint, baseTokenSymbol: string, quoteTokenSymbol: string): bigint {
     const baseDecimals = getTokenDecimals(baseTokenSymbol);
     const quoteDecimals = getTokenDecimals(quoteTokenSymbol);
-
     // Price is scaled by quote token decimals, so we need to:
     // 1. Calculate the raw value: (price * quantity) / 10^quoteDecimals
     // 2. Adjust for decimal differences between base and quote tokens
-
-    let rawValue = (price * quantity) / (BigInt(10) ** BigInt(quoteDecimals));
-
+    let rawValue = (price * quantity) / BigInt(10) ** BigInt(quoteDecimals);
     // Then adjust for decimal differences
     const decimalDifference = quoteDecimals - baseDecimals;
-
     if (decimalDifference > 0) {
         // Quote has more decimals than base, scale up the result
         const scalingFactor = BigInt(10 ** decimalDifference);
         rawValue = rawValue * scalingFactor;
     } else if (decimalDifference < 0) {
         // Base has more decimals than quote, scale down the result
-        const scalingFactor = BigInt(10 ** (-decimalDifference));
+        const scalingFactor = BigInt(10 ** -decimalDifference);
         rawValue = rawValue / scalingFactor;
     }
-
     return rawValue;
 }
 
@@ -223,14 +185,14 @@ export type BigIntToString<T> = {
 
 export type RecursiveBigIntToString<T> = {
     [P in keyof T]: T[P] extends bigint
-    ? string
-    : T[P] extends Array<infer U>
-    ? Array<RecursiveBigIntToString<U>>
-    : T[P] extends object | null | undefined
-    ? T[P] extends null | undefined
-    ? T[P]
-    : RecursiveBigIntToString<T[P]>
-    : T[P];
+        ? string
+        : T[P] extends Array<infer U>
+          ? Array<RecursiveBigIntToString<U>>
+          : T[P] extends object | null | undefined
+            ? T[P] extends null | undefined
+                ? T[P]
+                : RecursiveBigIntToString<T[P]>
+            : T[P];
 };
 
 export type StringToBigInt<T> = {
@@ -255,11 +217,11 @@ export function convertToBigInt<T>(obj: BigIntToString<T>, numericFields: (keyof
  */
 export const BigIntMath = {
     max(...values: bigint[]): bigint {
-        return values.reduce((max, val) => val > max ? val : max);
+        return values.reduce((max, val) => (val > max ? val : max));
     },
 
     min(...values: bigint[]): bigint {
-        return values.reduce((min, val) => val < min ? val : min);
+        return values.reduce((min, val) => (val < min ? val : min));
     },
 
     abs(value: bigint): bigint {
@@ -370,7 +332,7 @@ export const BigIntMath = {
     createRangeQuery(min: bigint, max: bigint) {
         return {
             $gte: toDbString(min),
-            $lte: toDbString(max)
+            $lte: toDbString(max),
         };
     },
 
@@ -396,26 +358,26 @@ export const BigIntMath = {
      */
     parseToken(value: string, symbol: string): bigint {
         return parseTokenAmount(value, symbol);
-    }
-}; 
+    },
+};
 
 // Integer square root function for BigInt
 export function sqrt(value: bigint): bigint {
     if (value < 0n) {
-      throw new Error('Cannot calculate square root of negative number');
+        throw new Error('Cannot calculate square root of negative number');
     }
     if (value < 2n) {
-      return value;
+        return value;
     }
-  
+
     // Binary search for square root
     let x = value;
     let y = (x + 1n) / 2n;
-  
+
     while (y < x) {
-      x = y;
-      y = (x + value / x) / 2n;
+        x = y;
+        y = (x + value / x) / 2n;
     }
-  
+
     return x;
-  }
+}

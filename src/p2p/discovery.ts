@@ -1,20 +1,17 @@
-import logger from '../logger.js';
+import { chain } from '../chain.js';
 import config from '../config.js';
 import consensus from '../consensus.js';
-import { chain } from '../chain.js';
+import logger from '../logger.js';
 import { witnessesModule } from '../witnesses.js';
-import { EnhancedWebSocket, P2PState, MessageType } from './types.js';
 import { P2P_CONFIG, P2P_RUNTIME_CONFIG } from './config.js';
 import { SocketManager } from './socket.js';
+import { EnhancedWebSocket, MessageType, P2PState } from './types.js';
 
 export class PeerDiscovery {
     private state: P2PState;
     private connect: (peers: string[], isInit?: boolean) => void;
 
-    constructor(
-        state: P2PState, 
-        connect: (peers: string[], isInit?: boolean) => void
-    ) {
+    constructor(state: P2PState, connect: (peers: string[], isInit?: boolean) => void) {
         this.state = state;
         this.connect = connect;
     }
@@ -32,9 +29,13 @@ export class PeerDiscovery {
 
         // Request peer lists more aggressively if below consensus threshold
         const shouldRequestAll = currentPeerCount < minPeersForConsensus;
-        const peersToQuery = shouldRequestAll ? connectedPeers : connectedPeers.slice(0, Math.max(1, Math.ceil(connectedPeers.length / 2)));
+        const peersToQuery = shouldRequestAll
+            ? connectedPeers
+            : connectedPeers.slice(0, Math.max(1, Math.ceil(connectedPeers.length / 2)));
 
-        logger.debug(`[PEER_REQUEST] Requesting peer lists from ${peersToQuery.length}/${connectedPeers.length} peers (current: ${currentPeerCount}, min needed: ${minPeersForConsensus})`);
+        logger.debug(
+            `[PEER_REQUEST] Requesting peer lists from ${peersToQuery.length}/${connectedPeers.length} peers (current: ${currentPeerCount}, min needed: ${minPeersForConsensus})`
+        );
 
         peersToQuery.forEach(socket => {
             SocketManager.sendJSON(socket, { t: MessageType.QUERY_PEER_LIST, d: {} });
@@ -52,16 +53,22 @@ export class PeerDiscovery {
         // Rate limiting for non-init calls
         const now = Date.now();
         if (!isInit && now - this.state.lastEmergencyDiscovery < P2P_CONFIG.RATE_LIMIT_EMERGENCY) {
-            logger.debug(`[DISCOVERY] Rate limited - last emergency discovery ${Math.round((now - this.state.lastEmergencyDiscovery) / 1000)}s ago`);
+            logger.debug(
+                `[DISCOVERY] Rate limited - last emergency discovery ${Math.round((now - this.state.lastEmergencyDiscovery) / 1000)}s ago`
+            );
             return;
         }
 
-        logger.debug(`[DISCOVERY] Current peers: ${currentPeerCount}, Min needed: ${minPeersForConsensus}, Optimal: ${optimalPeerCount}`);
+        logger.debug(
+            `[DISCOVERY] Current peers: ${currentPeerCount}, Min needed: ${minPeersForConsensus}, Optimal: ${optimalPeerCount}`
+        );
 
         // Only use witness endpoints if we're critically low on peers or during init
         if (isInit || currentPeerCount < Math.max(1, minPeersForConsensus - 1)) {
             if (!isInit) {
-                logger.warn(`[DISCOVERY] Critically low peer count (${currentPeerCount})! Using witness endpoints as emergency fallback`);
+                logger.warn(
+                    `[DISCOVERY] Critically low peer count (${currentPeerCount})! Using witness endpoints as emergency fallback`
+                );
                 this.state.lastEmergencyDiscovery = now;
             }
             const block = chain.getLatestBlock();
@@ -81,13 +88,15 @@ export class PeerDiscovery {
                             isConnected = true;
                             break;
                         }
-                    } catch (error) {
+                    } catch {
                         logger.debug(`Invalid ws for witness ${witness.name}: ${witness.ws}`);
                     }
                 }
 
                 if (!isConnected) {
-                    logger[isInit ? 'info' : 'warn'](`[DISCOVERY] Connecting to witness ${witness.name} at ${witness.ws} (${isInit ? 'init' : 'emergency'})`);
+                    logger[isInit ? 'info' : 'warn'](
+                        `[DISCOVERY] Connecting to witness ${witness.name} at ${witness.ws} (${isInit ? 'init' : 'emergency'})`
+                    );
                     this.connect([witness.ws], isInit);
                 }
             }
@@ -96,7 +105,7 @@ export class PeerDiscovery {
         }
     }
 
-    handlePeerListQuery(ws: EnhancedWebSocket, message: any): void {
+    handlePeerListQuery(ws: EnhancedWebSocket, _message: any): void {
         const knownPeers: string[] = [];
 
         // Add currently connected peers
@@ -127,7 +136,7 @@ export class PeerDiscovery {
                     knownPeers.push(witness.ws);
                 }
             });
-        } catch (e) {
+        } catch {
             // Ignore witness generation errors
         }
 
@@ -135,7 +144,7 @@ export class PeerDiscovery {
 
         SocketManager.sendJSON(ws, {
             t: MessageType.PEER_LIST,
-            d: { peers: knownPeers }
+            d: { peers: knownPeers },
         });
     }
 
@@ -151,23 +160,32 @@ export class PeerDiscovery {
         const minPeersForConsensus = Math.ceil(totalWitnesses * 0.6);
         const optimalPeerCount = Math.min(totalWitnesses - 1, P2P_RUNTIME_CONFIG.MAX_PEERS);
 
-        logger.debug(`[PEER_LIST] Received ${receivedPeers.length} peers. Current: ${currentPeerCount}, Min needed: ${minPeersForConsensus}, Optimal: ${optimalPeerCount}`);
+        logger.debug(
+            `[PEER_LIST] Received ${receivedPeers.length} peers. Current: ${currentPeerCount}, Min needed: ${minPeersForConsensus}, Optimal: ${optimalPeerCount}`
+        );
 
-        // Rate limiting: avoid connection spam 
+        // Rate limiting: avoid connection spam
         const now = Date.now();
         const isEmergency = currentPeerCount < minPeersForConsensus;
         const cooldownPeriod = isEmergency ? P2P_CONFIG.RATE_LIMIT_EMERGENCY : P2P_CONFIG.RATE_LIMIT_NORMAL;
 
         if (now - this.state.lastPeerListConnection < cooldownPeriod) {
-            logger.debug(`[PEER_LIST] Rate limited - last connection attempt ${Math.round((now - this.state.lastPeerListConnection) / 1000)}s ago`);
+            logger.debug(
+                `[PEER_LIST] Rate limited - last connection attempt ${Math.round((now - this.state.lastPeerListConnection) / 1000)}s ago`
+            );
             return;
         }
 
         // Calculate how many new peers we need based on consensus requirements
         let maxNewPeers = 0;
         if (isEmergency) {
-            maxNewPeers = Math.min(minPeersForConsensus - currentPeerCount + 1, P2P_RUNTIME_CONFIG.MAX_PEERS - this.state.sockets.length);
-            logger.warn(`[PEER_LIST] Below consensus threshold! (${currentPeerCount}/${minPeersForConsensus}) - attempting to connect to ${maxNewPeers} new peers`);
+            maxNewPeers = Math.min(
+                minPeersForConsensus - currentPeerCount + 1,
+                P2P_RUNTIME_CONFIG.MAX_PEERS - this.state.sockets.length
+            );
+            logger.warn(
+                `[PEER_LIST] Below consensus threshold! (${currentPeerCount}/${minPeersForConsensus}) - attempting to connect to ${maxNewPeers} new peers`
+            );
         } else if (currentPeerCount < optimalPeerCount) {
             maxNewPeers = Math.min(optimalPeerCount - currentPeerCount, 2);
             logger.debug(`[PEER_LIST] Below optimal, attempting to connect to ${maxNewPeers} new peers`);
@@ -182,34 +200,34 @@ export class PeerDiscovery {
         }
 
         // Filter and prioritize new peers
-        const peersToConnect = receivedPeers.filter(peerUrl => {
-            try {
-                const url = new URL(peerUrl);
-                const peerHost = url.hostname;
+        const peersToConnect = receivedPeers
+            .filter(peerUrl => {
+                try {
+                    const url = new URL(peerUrl);
+                    const peerHost = url.hostname;
 
-                // Check if already connecting
-                if (this.state.connectingPeers.has(peerUrl)) {
+                    // Check if already connecting
+                    if (this.state.connectingPeers.has(peerUrl)) {
+                        return false;
+                    }
+
+                    // Check if already connected (compare by IP only, since remotePort is ephemeral)
+                    const alreadyConnected = this.state.sockets.some(socket => {
+                        if (socket._socket?.remoteAddress) {
+                            const remoteAddr = socket._socket.remoteAddress.replace('::ffff:', '');
+                            return remoteAddr === peerHost;
+                        }
+                        return false;
+                    });
+
+                    return !alreadyConnected;
+                } catch {
+                    logger.debug(`[PEER_LIST] Invalid peer URL: ${peerUrl}`);
                     return false;
                 }
-
-                // Check if already connected (compare by IP only, since remotePort is ephemeral)
-                const alreadyConnected = this.state.sockets.some(socket => {
-                    if (socket._socket?.remoteAddress) {
-                        const remoteAddr = socket._socket.remoteAddress.replace('::ffff:', '');
-                        return remoteAddr === peerHost;
-                    }
-                    return false;
-                });
-
-                return !alreadyConnected;
-
-            } catch (e) {
-                logger.debug(`[PEER_LIST] Invalid peer URL: ${peerUrl}`);
-                return false;
-            }
-        })
-        .slice(0, maxNewPeers) // Limit based on consensus needs
-        .sort(() => Math.random() - 0.5); // Randomize to distribute load
+            })
+            .slice(0, maxNewPeers) // Limit based on consensus needs
+            .sort(() => Math.random() - 0.5); // Randomize to distribute load
 
         if (peersToConnect.length > 0) {
             this.state.lastPeerListConnection = now;
@@ -219,7 +237,7 @@ export class PeerDiscovery {
                 try {
                     const url = new URL(peerUrl);
                     return `ws://${url.hostname}:${P2P_RUNTIME_CONFIG.P2P_PORT}`;
-                } catch (e) {
+                } catch {
                     return peerUrl; // fallback to original if parsing fails
                 }
             });

@@ -1,7 +1,8 @@
-import { OrderData, OrderSide, OrderType, OrderBookLevelData, TradeData, OrderStatus, createOrder } from './market-interfaces.js';
+import crypto from 'crypto';
+
 import logger from '../../logger.js';
 import { toBigInt } from '../../utils/bigint.js';
-import crypto from 'crypto';
+import { OrderBookLevelData, OrderData, OrderSide, OrderStatus, OrderType, TradeData } from './market-interfaces.js';
 
 // Helper to sort bids (descending price, then ascending time) and asks (ascending price, then ascending time)
 function compareOrders(a: OrderData, b: OrderData, side: OrderSide): number {
@@ -25,13 +26,13 @@ export interface OrderBookMatchResult {
     trades: TradeData[];
     removedMakerOrders: string[]; // Order IDs that were completely filled
     takerOrderRemaining: OrderData | null; // Remaining portion of taker order, if any
-    updatedMakerOrder?: OrderData;      // If a maker order was partially consumed
+    updatedMakerOrder?: OrderData; // If a maker order was partially consumed
 }
 
 export class OrderBook {
     private pairId: string;
-    private bids: OrderData[];          // Sorted: highest price first, then FIFO
-    private asks: OrderData[];          // Sorted: lowest price first, then FIFO
+    private bids: OrderData[]; // Sorted: highest price first, then FIFO
+    private asks: OrderData[]; // Sorted: lowest price first, then FIFO
     private tickSize: bigint;
     private lotSize: bigint;
 
@@ -55,14 +56,20 @@ export class OrderBook {
 
         // Validate that price and quantity are valid for the pair's tick/lot size
         if (order.price && toBigInt(order.price) % this.tickSize !== 0n) {
-            logger.warn(`[OrderBook-${this.pairId}] Order ${order._id} price ${order.price.toString()} is not aligned to tick size ${this.tickSize.toString()}.`);
+            logger.warn(
+                `[OrderBook-${this.pairId}] Order ${order._id} price ${order.price.toString()} is not aligned to tick size ${this.tickSize.toString()}.`
+            );
         }
 
         if (toBigInt(order.quantity) % this.lotSize !== 0n) {
-            logger.warn(`[OrderBook-${this.pairId}] Order ${order._id} quantity ${order.quantity.toString()} is not aligned to lot size ${this.lotSize.toString()}.`);
+            logger.warn(
+                `[OrderBook-${this.pairId}] Order ${order._id} quantity ${order.quantity.toString()} is not aligned to lot size ${this.lotSize.toString()}.`
+            );
         }
 
-        logger.debug(`[OrderBook-${this.pairId}] Added order ${order._id}: ${order.side} ${order.quantity.toString()} @ ${order.price ? order.price.toString() : 'MARKET'}`);
+        logger.debug(
+            `[OrderBook-${this.pairId}] Added order ${order._id}: ${order.side} ${order.quantity.toString()} @ ${order.price ? order.price.toString() : 'MARKET'}`
+        );
     }
 
     public removeOrder(orderId: string): boolean {
@@ -88,7 +95,9 @@ export class OrderBook {
         let takerOrderRemaining: OrderData | null = null;
         let updatedMakerOrder: OrderData | undefined = undefined;
 
-        logger.debug(`[OrderBook-${this.pairId}] Matching order ${takerOrder._id}: ${takerOrder.side} ${takerOrder.quantity.toString()} @ ${takerOrder.price ? takerOrder.price.toString() : 'MARKET'}`);
+        logger.debug(
+            `[OrderBook-${this.pairId}] Matching order ${takerOrder._id}: ${takerOrder.side} ${takerOrder.quantity.toString()} @ ${takerOrder.price ? takerOrder.price.toString() : 'MARKET'}`
+        );
 
         const makerBook = takerOrder.side === OrderSide.BUY ? this.asks : this.bids;
 
@@ -99,14 +108,15 @@ export class OrderBook {
             if (takerOrder.type === OrderType.LIMIT && takerOrder.price) {
                 const takerPrice = toBigInt(takerOrder.price);
                 const makerPrice = toBigInt(makerOrder.price!);
-                
+
                 if (takerOrder.side === OrderSide.BUY && takerPrice < makerPrice) break;
                 if (takerOrder.side === OrderSide.SELL && takerPrice > makerPrice) break;
             }
 
             // Calculate quantities available for trade
             const makerQuantityAvailable = toBigInt(makerOrder.quantity) - toBigInt(makerOrder.filledQuantity);
-            const quantityToTrade = takerQuantityRemaining < makerQuantityAvailable ? takerQuantityRemaining : makerQuantityAvailable;
+            const quantityToTrade =
+                takerQuantityRemaining < makerQuantityAvailable ? takerQuantityRemaining : makerQuantityAvailable;
 
             if (quantityToTrade === 0n) {
                 continue;
@@ -115,7 +125,8 @@ export class OrderBook {
             // Determine trade price (maker's price takes precedence for limit orders)
             const tradePrice = toBigInt(makerOrder.price!);
             // Generate deterministic trade ID based on the order matching
-            const tradeId = crypto.createHash('sha256')
+            const tradeId = crypto
+                .createHash('sha256')
                 .update(`${this.pairId}_${makerOrder._id}_${takerOrder._id}_${quantityToTrade}_${tradePrice}`)
                 .digest('hex')
                 .substring(0, 16);
@@ -138,7 +149,7 @@ export class OrderBook {
                 takerFee: 0n,
                 total: tradePrice * quantityToTrade,
                 maker: makerOrder.userId,
-                taker: takerOrder.userId
+                taker: takerOrder.userId,
             };
 
             trades.push(trade);
@@ -172,13 +183,16 @@ export class OrderBook {
                 const remainingTakerOrder: OrderData = {
                     ...takerOrder,
                     quantity: takerQuantityRemaining,
-                    status: toBigInt(takerOrder.filledQuantity) > 0n ? OrderStatus.PARTIALLY_FILLED : OrderStatus.OPEN
+                    status: toBigInt(takerOrder.filledQuantity) > 0n ? OrderStatus.PARTIALLY_FILLED : OrderStatus.OPEN,
                 };
                 takerOrderRemaining = remainingTakerOrder;
-                logger.debug(`[OrderBook-${this.pairId}] Taker LIMIT order ${takerOrder._id} partially filled. Remainder ${remainingTakerOrder.quantity.toString()} could be added to book.`);
+                logger.debug(
+                    `[OrderBook-${this.pairId}] Taker LIMIT order ${takerOrder._id} partially filled. Remainder ${remainingTakerOrder.quantity.toString()} could be added to book.`
+                );
             } else {
                 // MARKET orders don't get added to the book; they just get partially filled or rejected
-                takerOrder.status = toBigInt(takerOrder.filledQuantity) > 0n ? OrderStatus.PARTIALLY_FILLED : OrderStatus.REJECTED;
+                takerOrder.status =
+                    toBigInt(takerOrder.filledQuantity) > 0n ? OrderStatus.PARTIALLY_FILLED : OrderStatus.REJECTED;
                 logger.debug(`[OrderBook-${this.pairId}] Taker MARKET order ${takerOrder._id} could not be fully filled.`);
             }
         } else {
@@ -189,11 +203,11 @@ export class OrderBook {
             trades,
             removedMakerOrders,
             takerOrderRemaining,
-            updatedMakerOrder
+            updatedMakerOrder,
         };
     }
 
-    public getSnapshot(depth: number = 20): { bids: OrderBookLevelData[], asks: OrderBookLevelData[] } {
+    public getSnapshot(depth: number = 20): { bids: OrderBookLevelData[]; asks: OrderBookLevelData[] } {
         const bidsSnapshot: OrderBookLevelData[] = [];
         const asksSnapshot: OrderBookLevelData[] = [];
 
@@ -217,19 +231,19 @@ export class OrderBook {
         for (const [priceStr, totalQuantity] of bidPriceLevels) {
             bidsSnapshot.push({
                 price: toBigInt(priceStr),
-                quantity: totalQuantity
+                quantity: totalQuantity,
             });
         }
-        bidsSnapshot.sort((a, b) => a.price > b.price ? -1 : 1); // Descending price
+        bidsSnapshot.sort((a, b) => (a.price > b.price ? -1 : 1)); // Descending price
 
         // Convert to OrderBookLevel format for asks
         for (const [priceStr, totalQuantity] of askPriceLevels) {
             asksSnapshot.push({
                 price: toBigInt(priceStr),
-                quantity: totalQuantity
+                quantity: totalQuantity,
             });
         }
-        asksSnapshot.sort((a, b) => a.price < b.price ? -1 : 1); // Ascending price
+        asksSnapshot.sort((a, b) => (a.price < b.price ? -1 : 1)); // Ascending price
 
         return { bids: bidsSnapshot, asks: asksSnapshot };
     }

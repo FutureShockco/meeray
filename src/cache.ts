@@ -1,15 +1,14 @@
-import parallel from 'run-parallel';
 import cloneDeep from 'clone-deep';
-import ProcessingQueue from './processingQueue.js';
-import logger from './logger.js';
-import config from './config.js';
+import { Db, Filter, FindOptions, Document as MongoDocument, ObjectId, UpdateFilter } from 'mongodb';
+import parallel from 'run-parallel';
+
 import { chain } from './chain.js';
-
+import config from './config.js';
+import logger from './logger.js';
 import txHistory from './modules/txHistory.js';
-import witnessesStats from './witnessesStats.js';
-
-import { Db, Filter, Document as MongoDocument, UpdateFilter, FindOptions, ObjectId } from 'mongodb';
 import mongo from './mongo.js';
+import ProcessingQueue from './processingQueue.js';
+import witnessesStats from './witnessesStats.js';
 
 interface BasicCacheDoc extends MongoDocument {
     _id?: ObjectId | string | number; // Flexible _id for state, etc.
@@ -69,22 +68,26 @@ interface CacheMainDataCollections {
 
 interface CacheType extends CacheMainDataCollections {
     copy: CacheCopyCollections;
-    changes: Array<{ // Inline type definition
+    changes: Array<{
+        // Inline type definition
         collection: string;
         query: Filter<BasicCacheDoc>;
         changes: UpdateFilter<BasicCacheDoc> | Partial<BasicCacheDoc>;
     }>;
-    inserts: Array<{ // Inline type definition
+    inserts: Array<{
+        // Inline type definition
         collection: string;
         document: BasicCacheDoc;
     }>;
     rebuild: {
-        changes: Array<{ // Inline type definition
+        changes: Array<{
+            // Inline type definition
             collection: string;
             query: Filter<BasicCacheDoc>;
             changes: UpdateFilter<BasicCacheDoc> | Partial<BasicCacheDoc>;
         }>;
-        inserts: Array<{ // Inline type definition
+        inserts: Array<{
+            // Inline type definition
             collection: string;
             document: BasicCacheDoc;
         }>;
@@ -95,12 +98,36 @@ interface CacheType extends CacheMainDataCollections {
 
     rollback: () => void;
     findOnePromise: (collection: string, query: Filter<BasicCacheDoc>, skipClone?: boolean) => Promise<BasicCacheDoc | null>;
-    findPromise: (collection: string, query: Filter<BasicCacheDoc>, options?: FindOptions<BasicCacheDoc>, skipClone?: boolean) => Promise<BasicCacheDoc[] | null>;
-    findOne: (collection: string, query: Filter<BasicCacheDoc>, cb: StandardCallback<BasicCacheDoc | null>, skipClone?: boolean) => void;
-    updateOnePromise: (collection: string, query: Filter<BasicCacheDoc>, changes: UpdateFilter<BasicCacheDoc> | Partial<BasicCacheDoc>) => Promise<boolean>;
+    findPromise: (
+        collection: string,
+        query: Filter<BasicCacheDoc>,
+        options?: FindOptions<BasicCacheDoc>,
+        skipClone?: boolean
+    ) => Promise<BasicCacheDoc[] | null>;
+    findOne: (
+        collection: string,
+        query: Filter<BasicCacheDoc>,
+        cb: StandardCallback<BasicCacheDoc | null>,
+        skipClone?: boolean
+    ) => void;
+    updateOnePromise: (
+        collection: string,
+        query: Filter<BasicCacheDoc>,
+        changes: UpdateFilter<BasicCacheDoc> | Partial<BasicCacheDoc>
+    ) => Promise<boolean>;
     deleteOnePromise: (collection: string, query: Filter<BasicCacheDoc>) => Promise<boolean>;
-    updateOne: (collection: string, query: Filter<BasicCacheDoc>, changes: UpdateFilter<BasicCacheDoc> | Partial<BasicCacheDoc>, cb: StandardCallback<boolean>) => void;
-    updateMany: (collection: string, query: Filter<BasicCacheDoc>, changes: UpdateFilter<BasicCacheDoc> | Partial<BasicCacheDoc>, cb: StandardCallback<any[]>) => void;
+    updateOne: (
+        collection: string,
+        query: Filter<BasicCacheDoc>,
+        changes: UpdateFilter<BasicCacheDoc> | Partial<BasicCacheDoc>,
+        cb: StandardCallback<boolean>
+    ) => void;
+    updateMany: (
+        collection: string,
+        query: Filter<BasicCacheDoc>,
+        changes: UpdateFilter<BasicCacheDoc> | Partial<BasicCacheDoc>,
+        cb: StandardCallback<any[]>
+    ) => void;
     insertOne: (collection: string, document: BasicCacheDoc, cb: StandardCallback<boolean>) => void;
     insertOnePromise: (collection: string, document: BasicCacheDoc) => Promise<boolean>;
     addWitness: (witness: string, isRollback: boolean) => Promise<{ witness: string; wasNew: boolean }>;
@@ -129,16 +156,38 @@ export const setMongoDbInstance = (mongoDbInstance: Db): void => {
 const cache: CacheType = {
     // Initialize with collections from the original TypeScript structure
     copy: {
-        accounts: {}, blocks: {}, state: {}, tokens: {},
-        nftCollections: {}, nfts: {}, tradingPairs: {}, orders: {},
-        nftListings: {}, nftBids: {}, events: {}, farms: {}, userFarmPositions: {}, userLiquidityPositions: {},
+        accounts: {},
+        blocks: {},
+        state: {},
+        tokens: {},
+        nftCollections: {},
+        nfts: {},
+        tradingPairs: {},
+        orders: {},
+        nftListings: {},
+        nftBids: {},
+        events: {},
+        farms: {},
+        userFarmPositions: {},
+        userLiquidityPositions: {},
         trades: {},
         launchpads: {},
-        liquidityPools: {}
+        liquidityPools: {},
     },
-    accounts: {}, blocks: {}, state: {}, tokens: {},
-    nftCollections: {}, nfts: {}, tradingPairs: {}, orders: {},
-    nftListings: {}, nftBids: {}, events: {}, farms: {}, userFarmPositions: {}, userLiquidityPositions: {},
+    accounts: {},
+    blocks: {},
+    state: {},
+    tokens: {},
+    nftCollections: {},
+    nfts: {},
+    tradingPairs: {},
+    orders: {},
+    nftListings: {},
+    nftBids: {},
+    events: {},
+    farms: {},
+    userFarmPositions: {},
+    userLiquidityPositions: {},
     trades: {},
     launchpads: {},
     liquidityPools: {},
@@ -147,7 +196,7 @@ const cache: CacheType = {
     inserts: [],
     rebuild: {
         changes: [],
-        inserts: []
+        inserts: [],
     },
     witnesses: {},
     witnessChanges: [],
@@ -167,11 +216,16 @@ const cache: CacheType = {
 
     rollback: function () {
         // rolling back changes from copied documents
-        for (let c in this.copy) {
+        for (const c in this.copy) {
             const collectionKey = c as keyof CacheCopyCollections;
-            if (this.copy[collectionKey]) { // Check if the collection exists on copy
+            if (this.copy[collectionKey]) {
+                // Check if the collection exists on copy
                 for (const key in this.copy[collectionKey]) {
-                    if (this[collectionKey] && (this[collectionKey] as CacheCollectionStore)[key] && this.copy[collectionKey][key]) {
+                    if (
+                        this[collectionKey] &&
+                        (this[collectionKey] as CacheCollectionStore)[key] &&
+                        this.copy[collectionKey][key]
+                    ) {
                         (this[collectionKey] as CacheCollectionStore)[key] = cloneDeep(this.copy[collectionKey][key]);
                     }
                 }
@@ -182,8 +236,8 @@ const cache: CacheType = {
 
         // and discarding new inserts
         for (let i = 0; i < this.inserts.length; i++) {
-            let toRemove = this.inserts[i];
-            let key = this.keyByCollection(toRemove.collection);
+            const toRemove = this.inserts[i];
+            const key = this.keyByCollection(toRemove.collection);
             const collectionName = toRemove.collection as keyof CacheMainDataCollections;
             if (this[collectionName] && toRemove.document[key] !== undefined) {
                 delete (this[collectionName] as CacheCollectionStore)[toRemove.document[key]];
@@ -192,7 +246,8 @@ const cache: CacheType = {
         this.inserts = [];
 
         // reset witness changes
-        for (let i = 0; i < this.witnessChanges.length; i++) { // Iterate over array properly
+        for (let i = 0; i < this.witnessChanges.length; i++) {
+            // Iterate over array properly
             const change = this.witnessChanges[i];
             if (change[1] === 0) {
                 this.addWitness(change[0], true).catch(err => {
@@ -207,7 +262,7 @@ const cache: CacheType = {
 
     findOnePromise: function (collection, query, skipClone) {
         return new Promise((rs, rj) => {
-            this.findOne(collection, query, (e, d) => e ? rj(e) : rs(d === undefined ? null : d), skipClone);
+            this.findOne(collection, query, (e, d) => (e ? rj(e) : rs(d === undefined ? null : d)), skipClone);
         });
     },
 
@@ -229,7 +284,7 @@ const cache: CacheType = {
         } catch (err: any) {
             logger.error(`[CACHE findPromise] DB error querying ${collection}:`, err);
             // Depending on desired error handling, could throw err or return null
-            // throw err; 
+            // throw err;
             return null;
         }
     },
@@ -240,16 +295,21 @@ const cache: CacheType = {
         // DEBUGGING LOGS START
         logger.trace(`[CACHE findOne] Checking collection: '${collection}', cast to collectionName: '${collectionName}'`);
         logger.trace(`[CACHE findOne] this.copy object keys: ${Object.keys(this.copy).join(', ')}`);
-        logger.trace(`[CACHE findOne] Value of this.copy['${collectionName}']: ${JSON.stringify(this.copy[collectionName as keyof CacheCopyCollections])}`);
+        logger.trace(
+            `[CACHE findOne] Value of this.copy['${collectionName}']: ${JSON.stringify(this.copy[collectionName as keyof CacheCopyCollections])}`
+        );
         // DEBUGGING LOGS END
 
-        if (!this.copy[collectionName as keyof CacheCopyCollections]) { // Check against known copy collections
-            logger.warn(`[CACHE findOne] Invalid collection in copy: '${collectionName}'. Available in copy: ${Object.keys(this.copy).join(', ')}`);
+        if (!this.copy[collectionName as keyof CacheCopyCollections]) {
+            // Check against known copy collections
+            logger.warn(
+                `[CACHE findOne] Invalid collection in copy: '${collectionName}'. Available in copy: ${Object.keys(this.copy).join(', ')}`
+            );
             return cb(new Error('invalid collection in copy'));
         }
         if (!db) return cb(new Error('Database not initialized'));
 
-        let keyField = this.keyByCollection(collection);
+        const keyField = this.keyByCollection(collection);
         const docId = query[keyField];
 
         if (docId !== undefined && this[collectionName] && (this[collectionName] as CacheCollectionStore)[docId]) {
@@ -258,7 +318,8 @@ const cache: CacheType = {
             return;
         }
 
-        db.collection<BasicCacheDoc>(collection).findOne(query)
+        db.collection<BasicCacheDoc>(collection)
+            .findOne(query)
             .then(obj => {
                 if (!obj) {
                     cb(null, null); // Not found, explicitly return null for document
@@ -277,7 +338,7 @@ const cache: CacheType = {
 
     updateOnePromise: function (collection, query, changes) {
         return new Promise((rs, rj) => {
-            this.updateOne(collection, query, changes, (e, d) => e ? rj(e) : rs(d || false));
+            this.updateOne(collection, query, changes, (e, d) => (e ? rj(e) : rs(d || false)));
         });
     },
 
@@ -297,7 +358,11 @@ const cache: CacheType = {
                 logger.trace(`[CACHE deleteOnePromise] Removed ${collection}/${docId} from in-memory store.`);
             }
             // Also remove from copy if it exists there (though less likely to be hit directly for a delete operation)
-            if (docId !== undefined && this.copy[collectionName as keyof CacheCopyCollections] && (this.copy[collectionName as keyof CacheCopyCollections] as CacheCollectionStore)[docId]) {
+            if (
+                docId !== undefined &&
+                this.copy[collectionName as keyof CacheCopyCollections] &&
+                (this.copy[collectionName as keyof CacheCopyCollections] as CacheCollectionStore)[docId]
+            ) {
                 delete (this.copy[collectionName as keyof CacheCopyCollections] as CacheCollectionStore)[docId];
                 logger.trace(`[CACHE deleteOnePromise] Removed ${collection}/${docId} from copy store.`);
             }
@@ -321,140 +386,140 @@ const cache: CacheType = {
             return false;
         }
     },
-
     updateOne: function (collection, query, changes, cb) {
         if (!db) return cb(new Error('Database not initialized'));
         const collectionName = collection as keyof CacheMainDataCollections;
         const copyCollectionName = collection as keyof CacheCopyCollections;
-
-        this.findOne(collection, query, (err, obj) => {
-            if (err) { cb(err); return; }
-            if (!obj) {
-                cb(null, false); return;
-            }
-            let keyField = this.keyByCollection(collection);
-            const docId = obj[keyField];
-
-            if (docId === undefined) {
-                cb(new Error('Document ID is undefined after findOne in updateOne.'));
-                return;
-            }
-
-            const liveCollection = (this[collectionName] as CacheCollectionStore);
-            const copyCollection = (this.copy[copyCollectionName] as CacheCollectionStore);
-
-            const latestBlock = chain.getLatestBlock();
-            if (copyCollection && !copyCollection[docId] &&
-                (!chain.restoredBlocks || (latestBlock && latestBlock._id >= chain.restoredBlocks))) {
-                if (liveCollection && liveCollection[docId]) {
-                    copyCollection[docId] = cloneDeep(liveCollection[docId]);
+        this.findOne(
+            collection,
+            query,
+            (err, obj) => {
+                if (err) {
+                    cb(err);
+                    return;
                 }
-            }
-
-            const targetDoc = liveCollection ? liveCollection[docId] : null;
-            if (!targetDoc) {
-                cb(new Error(`Document ${collection}/${docId} not found in live cache for update.`));
-                return;
-            }
-
-            for (const op in changes) {
-                const opArgs = changes[op];
-                if (!opArgs) continue;
-
-                switch (op) {
-                    case '$inc':
-                        for (const fieldPath in opArgs) {
-                            // Note: This $inc logic also needs dot notation handling if used for nested fields.
-                            // For now, assuming it's used for top-level or we address it separately.
-                            const keys = fieldPath.split('.');
-                            let current = targetDoc;
-                            for (let i = 0; i < keys.length - 1; i++) {
-                                if (!current[keys[i]] || typeof current[keys[i]] !== 'object') {
-                                    current[keys[i]] = {}; // Initialize nested path for $inc
-                                }
-                                current = current[keys[i]];
-                            }
-                            current[keys[keys.length - 1]] = (current[keys[keys.length - 1]] || 0) + opArgs[fieldPath];
-                        }
-                        break;
-                    case '$push':
-                        for (const fieldPath in opArgs) {
-                            const keys = fieldPath.split('.');
-                            let current: any = targetDoc;
-                            let validPath = true;
-                            for (let i = 0; i < keys.length - 1; i++) {
-                                if (!current[keys[i]] || typeof current[keys[i]] !== 'object') {
-                                    current[keys[i]] = {};
-                                }
-                                current = current[keys[i]];
-                            }
-                            const arrField = keys[keys.length - 1];
-                            if (!current[arrField] || !Array.isArray(current[arrField])) current[arrField] = [];
-                            current[arrField].push(opArgs[fieldPath]);
-                        }
-                        break;
-                    case '$pull':
-                        for (const fieldPath in opArgs) {
-                            const keys = fieldPath.split('.');
-                            let current: any = targetDoc;
-                            let validPath = true;
-                            for (let i = 0; i < keys.length - 1; i++) {
-                                if (!current || typeof current[keys[i]] !== 'object') {
-                                    validPath = false;
-                                    break;
-                                }
-                                current = current[keys[i]];
-                            }
-                            if (!validPath || !current) continue; // Path did not fully exist or became null
-
-                            const arrField = keys[keys.length - 1];
-                            if (Array.isArray(current[arrField])) {
-                                const condition = opArgs[fieldPath];
-                                if (typeof condition === 'object' && condition !== null && !Array.isArray(condition)) {
-                                    current[arrField] = current[arrField].filter((item: any) =>
-                                        !Object.keys(condition).every(k => item[k] === condition[k])
-                                    );
-                                } else {
-                                    current[arrField] = current[arrField].filter((item: any) => item !== condition);
-                                }
-                            }
-                        }
-                        break;
-                    case '$set':
-                        for (const fieldPath in opArgs) {
-                            this._setNestedValue(targetDoc, fieldPath, opArgs[fieldPath]);
-                        }
-                        break;
-                    case '$unset':
-                        for (const fieldPath in opArgs) {
-                            const keys = fieldPath.split('.');
-                            let current: any = targetDoc;
-                            let validPath = true;
-                            for (let i = 0; i < keys.length - 1; i++) {
-                                if (!current || typeof current[keys[i]] !== 'object') {
-                                    validPath = false;
-                                    break;
-                                }
-                                current = current[keys[i]];
-                            }
-                            if (validPath && current) {
-                                delete current[keys[keys.length - 1]];
-                            }
-                        }
-                        break;
-                    default:
-                        logger.warn(`[CACHE updateOne] Unsupported operator: ${op}`);
-                        break;
+                if (!obj) {
+                    cb(null, false);
+                    return;
                 }
-            }
+                const keyField = this.keyByCollection(collection);
+                const docId = obj[keyField];
+                if (docId === undefined) {
+                    cb(new Error('Document ID is undefined after findOne in updateOne.'));
+                    return;
+                }
+                const liveCollection = this[collectionName] as CacheCollectionStore;
+                const copyCollection = this.copy[copyCollectionName] as CacheCollectionStore;
+                const latestBlock = chain.getLatestBlock();
+                if (
+                    copyCollection &&
+                    !copyCollection[docId] &&
+                    (!chain.restoredBlocks || (latestBlock && latestBlock._id >= chain.restoredBlocks))
+                ) {
+                    if (liveCollection && liveCollection[docId]) {
+                        copyCollection[docId] = cloneDeep(liveCollection[docId]);
+                    }
+                }
+                const targetDoc = liveCollection ? liveCollection[docId] : null;
+                if (!targetDoc) {
+                    cb(new Error(`Document ${collection}/${docId} not found in live cache for update.`));
+                    return;
+                }
+                for (const op in changes) {
+                    const opArgs = changes[op];
+                    if (!opArgs) continue;
 
-            this.changes.push({ collection: collection, query: query, changes: changes });
-            cb(null, true);
-        }, true); // skipClone = true for findOne
+                    switch (op) {
+                        case '$inc':
+                            for (const fieldPath in opArgs) {
+                                const keys = fieldPath.split('.');
+                                let current = targetDoc;
+                                for (let i = 0; i < keys.length - 1; i++) {
+                                    if (!current[keys[i]] || typeof current[keys[i]] !== 'object') {
+                                        current[keys[i]] = {}; // Initialize nested path for $inc
+                                    }
+                                    current = current[keys[i]];
+                                }
+                                current[keys[keys.length - 1]] = (current[keys[keys.length - 1]] || 0) + opArgs[fieldPath];
+                            }
+                            break;
+                        case '$push':
+                            for (const fieldPath in opArgs) {
+                                const keys = fieldPath.split('.');
+                                let current: any = targetDoc;
+                                for (let i = 0; i < keys.length - 1; i++) {
+                                    if (!current[keys[i]] || typeof current[keys[i]] !== 'object') {
+                                        current[keys[i]] = {};
+                                    }
+                                    current = current[keys[i]];
+                                }
+                                const arrField = keys[keys.length - 1];
+                                if (!current[arrField] || !Array.isArray(current[arrField])) current[arrField] = [];
+                                current[arrField].push(opArgs[fieldPath]);
+                            }
+                            break;
+                        case '$pull':
+                            for (const fieldPath in opArgs) {
+                                const keys = fieldPath.split('.');
+                                let current: any = targetDoc;
+                                let validPath = true;
+                                for (let i = 0; i < keys.length - 1; i++) {
+                                    if (!current || typeof current[keys[i]] !== 'object') {
+                                        validPath = false;
+                                        break;
+                                    }
+                                    current = current[keys[i]];
+                                }
+                                if (!validPath || !current) continue; // Path did not fully exist or became null
+
+                                const arrField = keys[keys.length - 1];
+                                if (Array.isArray(current[arrField])) {
+                                    const condition = opArgs[fieldPath];
+                                    if (typeof condition === 'object' && condition !== null && !Array.isArray(condition)) {
+                                        current[arrField] = current[arrField].filter(
+                                            (item: any) => !Object.keys(condition).every(k => item[k] === condition[k])
+                                        );
+                                    } else {
+                                        current[arrField] = current[arrField].filter((item: any) => item !== condition);
+                                    }
+                                }
+                            }
+                            break;
+                        case '$set':
+                            for (const fieldPath in opArgs) {
+                                this._setNestedValue(targetDoc, fieldPath, opArgs[fieldPath]);
+                            }
+                            break;
+                        case '$unset':
+                            for (const fieldPath in opArgs) {
+                                const keys = fieldPath.split('.');
+                                let current: any = targetDoc;
+                                let validPath = true;
+                                for (let i = 0; i < keys.length - 1; i++) {
+                                    if (!current || typeof current[keys[i]] !== 'object') {
+                                        validPath = false;
+                                        break;
+                                    }
+                                    current = current[keys[i]];
+                                }
+                                if (validPath && current) {
+                                    delete current[keys[keys.length - 1]];
+                                }
+                            }
+                            break;
+                        default:
+                            logger.warn(`[CACHE updateOne] Unsupported operator: ${op}`);
+                            break;
+                    }
+                }
+                this.changes.push({ collection: collection, query: query, changes: changes });
+                cb(null, true);
+            },
+            true
+        );
     },
-
     updateMany: function (collection, query, changes, cb) {
-        let keyField = this.keyByCollection(collection);
+        const keyField = this.keyByCollection(collection);
         const idsToUpdate = query[keyField]?.$in;
 
         if (!idsToUpdate || !Array.isArray(idsToUpdate)) {
@@ -464,10 +529,10 @@ const cache: CacheType = {
             return;
         }
 
-        let executions: AsyncDbFunction[] = [];
+        const executions: AsyncDbFunction[] = [];
         for (let i = 0; i < idsToUpdate.length; i++) {
-            executions.push((callback) => {
-                let newQuery: Filter<BasicCacheDoc> = {};
+            executions.push(callback => {
+                const newQuery: Filter<BasicCacheDoc> = {};
                 newQuery[keyField] = idsToUpdate[i];
                 this.updateOne(collection, newQuery, changes, (err, result) => {
                     callback(err ?? null, result); // Ensure err is Error | null
@@ -482,7 +547,7 @@ const cache: CacheType = {
 
     insertOne: function (collection, document, cb) {
         const collectionName = collection as keyof CacheMainDataCollections;
-        let keyField = this.keyByCollection(collection);
+        const keyField = this.keyByCollection(collection);
         const docId = document[keyField];
 
         if (docId !== undefined && this[collectionName] && (this[collectionName] as CacheCollectionStore)[docId]) {
@@ -495,7 +560,9 @@ const cache: CacheType = {
                 (this[collectionName] as CacheCollectionStore)[docId] = document;
             } else {
                 // Handle documents without a predefined key if necessary, though JS logic implies key exists
-                logger.warn(`[CACHE insertOne] Document for ${collection} missing keyField '${keyField}'. DB will assign _id if this was the intended key.`);
+                logger.warn(
+                    `[CACHE insertOne] Document for ${collection} missing keyField '${keyField}'. DB will assign _id if this was the intended key.`
+                );
             }
         }
 
@@ -505,7 +572,7 @@ const cache: CacheType = {
 
     insertOnePromise: function (collection, document) {
         return new Promise((rs, rj) => {
-            this.insertOne(collection, document, (e, d) => e ? rj(e) : rs(d || false));
+            this.insertOne(collection, document, (e, d) => (e ? rj(e) : rs(d || false)));
         });
     },
 
@@ -517,13 +584,9 @@ const cache: CacheType = {
         if (!isRollback) {
             this.witnessChanges.push([witness, 1]);
         }
-        
-        try {
-            await this.findOnePromise('accounts', { name: witness });
-            return { witness, wasNew };  // Return whether it was new
-        } catch (err) {
-            throw err;
-        }
+
+        await this.findOnePromise('accounts', { name: witness });
+        return { witness, wasNew }; // Return whether it was new
     },
 
     removeWitness: function (witness, isRollback) {
@@ -541,7 +604,7 @@ const cache: CacheType = {
         this.rebuild.changes = [];
         this.rebuild.inserts = [];
         this.witnessChanges = [];
-        for (let c in this.copy) {
+        for (const c in this.copy) {
             const collectionKey = c as keyof CacheCopyCollections;
             if (this.copy[collectionKey]) {
                 this.copy[collectionKey] = {};
@@ -573,8 +636,8 @@ const cache: CacheType = {
             ensureBulkOpsForCollection(insertOp.collection);
             bulkOpsByCollection[insertOp.collection].push({
                 insertOne: {
-                    document: insertOp.document
-                }
+                    document: insertOp.document,
+                },
             });
         }
 
@@ -590,19 +653,23 @@ const cache: CacheType = {
                     updateOne: {
                         filter: changeOp.query,
                         update: changeOp.changes,
-                        upsert: true
-                    }
+                        upsert: true,
+                    },
                 });
             } else {
-                logger.warn(`cacheWriter: Skipped invalid or empty changeOp for ${collection} updateOne. Query: ${JSON.stringify(changeOp.query)}, Changes: ${JSON.stringify(changeOp.changes)}`);
+                logger.warn(
+                    `cacheWriter: Skipped invalid or empty changeOp for ${collection} updateOne. Query: ${JSON.stringify(changeOp.query)}, Changes: ${JSON.stringify(changeOp.changes)}`
+                );
             }
         }
 
         // 3. Prepare executions for bulkWrites
-        let dbExecutions: Promise<any>[] = [];
+        const dbExecutions: Promise<any>[] = [];
         for (const collectionName in bulkOpsByCollection) {
             if (bulkOpsByCollection[collectionName].length > 0) {
-                logger.trace(`cacheWriter: Preparing bulkWrite for ${collectionName} with ${bulkOpsByCollection[collectionName].length} ops.`);
+                logger.trace(
+                    `cacheWriter: Preparing bulkWrite for ${collectionName} with ${bulkOpsByCollection[collectionName].length} ops.`
+                );
                 dbExecutions.push(
                     currentDb.collection(collectionName).bulkWrite(bulkOpsByCollection[collectionName], { ordered: false })
                 );
@@ -611,7 +678,7 @@ const cache: CacheType = {
 
         // 4. Handle other specific updates (txHistory, witnessesStats, state)
         // These are not easily batched with the above, we keep them as separate ops for now,
-        let singleOpExecutions: AsyncDbFunction[] = [];
+        const singleOpExecutions: AsyncDbFunction[] = [];
 
         if (process.env.WITNESS_STATS === '1' && witnessesStats && typeof witnessesStats.getWriteOps === 'function') {
             try {
@@ -641,8 +708,10 @@ const cache: CacheType = {
         if (latestBlock && latestBlock._id !== undefined) {
             const stateQuery: Filter<BasicCacheDoc> = { _id: 0 };
             const stateUpdate = { $set: { headBlock: latestBlock._id } };
-            singleOpExecutions.push((callback) => {
-                currentDb.collection<BasicCacheDoc>('state').updateOne(stateQuery, stateUpdate, { upsert: true })
+            singleOpExecutions.push(callback => {
+                currentDb
+                    .collection<BasicCacheDoc>('state')
+                    .updateOne(stateQuery, stateUpdate, { upsert: true })
                     .then(() => callback(null, true))
                     .catch(err => {
                         logger.error('cacheWriter: State update error:', err);
@@ -679,13 +748,13 @@ const cache: CacheType = {
         }
 
         const executeAllOperations = () => {
-            let timeBefore = new Date().getTime();
+            const timeBefore = new Date().getTime();
             Promise.all(dbExecutions)
                 .then(bulkResults => {
                     // Now execute single operations if any bulk ops succeeded or if no bulk ops
                     if (singleOpExecutions.length > 0) {
                         parallel(singleOpExecutions, (singleErr: Error | null, singleResults: any) => {
-                            let execTime = new Date().getTime() - timeBefore;
+                            const execTime = new Date().getTime() - timeBefore;
                             if (singleErr) {
                                 logger.error('cacheWriter: Error in single operations part of batch:', singleErr);
                             }
@@ -694,12 +763,12 @@ const cache: CacheType = {
                             logTimingAndCallDone(singleErr, finalResults, execTime);
                         });
                     } else {
-                        let execTime = new Date().getTime() - timeBefore;
+                        const execTime = new Date().getTime() - timeBefore;
                         logTimingAndCallDone(null, bulkResults, execTime);
                     }
                 })
                 .catch(bulkErr => {
-                    let execTime = new Date().getTime() - timeBefore;
+                    const execTime = new Date().getTime() - timeBefore;
                     logger.error('cacheWriter: Error in bulkWrite operations:', bulkErr);
                     logTimingAndCallDone(bulkErr, [], execTime); // Pass empty results on bulk error
                 });
@@ -708,9 +777,13 @@ const cache: CacheType = {
         const logTimingAndCallDone = (err: Error | null, results: any[], execTime: number) => {
             const numOps = insertArr.length + changesArr.length + singleOpExecutions.length; // Approximate total original ops
             if (config && config.blockTime && !rebuild && execTime >= config.blockTime / 2) {
-                logger.warn(`cacheWriter: Slow DB batch: ${numOps} original ops (${totalBulkOps} bulk, ${totalSingleOps} single), ${execTime}ms`);
+                logger.warn(
+                    `cacheWriter: Slow DB batch: ${numOps} original ops (${totalBulkOps} bulk, ${totalSingleOps} single), ${execTime}ms`
+                );
             } else {
-                logger.trace(`cacheWriter: DB batch took ${execTime}ms for ${numOps} original ops (${totalBulkOps} bulk, ${totalSingleOps} single).`);
+                logger.trace(
+                    `cacheWriter: DB batch took ${execTime}ms for ${numOps} original ops (${totalBulkOps} bulk, ${totalSingleOps} single).`
+                );
             }
             allOpsDoneCallback(err ?? null, results as any[]);
         };
@@ -719,7 +792,7 @@ const cache: CacheType = {
             executeAllOperations();
         } else {
             logger.trace(`cacheWriter: Queuing ${totalBulkOps} bulk and ${totalSingleOps} single DB ops.`);
-            this.writerQueue.push((queueCb: StandardCallback) => {
+            this.writerQueue.push((_queueCb: StandardCallback) => {
                 executeAllOperations();
             });
         }
@@ -731,7 +804,7 @@ const cache: CacheType = {
         this.inserts = [];
         this.changes = [];
         this.witnessChanges = []; // As per JS logic
-        for (let c in this.copy) {
+        for (const c in this.copy) {
             const collectionKey = c as keyof CacheCopyCollections;
             if (this.copy[collectionKey]) {
                 this.copy[collectionKey] = {};
@@ -746,8 +819,10 @@ const cache: CacheType = {
 
     keyByCollection: function (collection: string): string {
         switch (collection) {
-            case 'accounts': return 'name';
-            default: return '_id';
+            case 'accounts':
+                return 'name';
+            default:
+                return '_id';
         }
     },
 
@@ -802,18 +877,18 @@ const cache: CacheType = {
     },
     warmupWitnesses: async function (): Promise<number> {
         try {
-            const accs = await mongo.getDb().collection('accounts').find({
-                $and: [
-                    { witnessPublicKey: { $exists: true } },
-                    { witnessPublicKey: { $ne: '' } }
-                ]
-            }).toArray();
-            for (let i in accs) {
+            const accs = await mongo
+                .getDb()
+                .collection('accounts')
+                .find({
+                    $and: [{ witnessPublicKey: { $exists: true } }, { witnessPublicKey: { $ne: '' } }],
+                })
+                .toArray();
+            for (const i in accs) {
                 const name = accs[i].name;
                 if (typeof name === 'string' && name.length > 0) {
                     cache.witnesses[name] = 1;
-                    if (!cache.accounts[name])
-                        cache.accounts[name] = accs[i];
+                    if (!cache.accounts[name]) cache.accounts[name] = accs[i];
                 }
             }
             logger.trace(`cacheWarmUp: Warmed up ${accs.length} witnesses.`);
@@ -822,7 +897,7 @@ const cache: CacheType = {
             logger.error('cacheWarmUp: Error warming up witnesses:', e);
             throw e;
         }
-    }
+    },
 };
 
 export default cache;

@@ -4,10 +4,7 @@
  * @param maxLength Maximum length of the string (optional)
  * @returns True if the string is valid, false otherwise
  */
-const validateUrl = (
-    value: string,
-    maxLength = 2048
-): boolean => {
+const validateUrl = (value: string, maxLength = 2048): boolean => {
     if (typeof value !== 'string' || value.length === 0 || value.length > maxLength) {
         return false;
     }
@@ -54,4 +51,4 @@ function validateLogoUrl(value: string, maxLength = 2048): boolean {
     }
 }
 
-export { validateUrl, validateLogoUrl };
+export { validateLogoUrl, validateUrl };

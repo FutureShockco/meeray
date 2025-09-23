@@ -1,6 +1,5 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
-import validate from '../../validation/index.js';
 import { LaunchpadParticipatePresaleData, LaunchpadStatus } from './launchpad-interfaces.js';
 import { getAccount, adjustUserBalance } from '../../utils/account.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
@@ -69,7 +68,7 @@ export async function validateTx(dataDb: LaunchpadParticipatePresaleData, sender
   return true;
 }
 
-export async function processTx(dataDb: LaunchpadParticipatePresaleData, sender: string, transactionId: string): Promise<boolean> {
+export async function processTx(dataDb: LaunchpadParticipatePresaleData, sender: string, _transactionId: string): Promise<boolean> {
   const data = dataDb; // No conversion needed with single interface
   logger.debug(`[launchpad-participate-presale] Processing participation from ${sender} for ${data.launchpadId}: amount ${data.contributionAmount}`);
   try {
@@ -86,8 +85,8 @@ export async function processTx(dataDb: LaunchpadParticipatePresaleData, sender:
 
   const participantUserId = data.userId || sender;
   const participantIndex = launchpad.presale!.participants.findIndex((p: any) => p.userId === participantUserId);
-    let updatedParticipantsList = [...launchpad.presale!.participants];
-    let newTotalRaised = toBigInt(launchpad.presale!.totalQuoteRaised || '0') + toBigInt(data.contributionAmount);
+    const updatedParticipantsList = [...launchpad.presale!.participants];
+    const newTotalRaised = toBigInt(launchpad.presale!.totalQuoteRaised || '0') + toBigInt(data.contributionAmount);
 
     if (participantIndex > -1) {
     updatedParticipantsList[participantIndex].quoteAmountContributed = toDbString(toBigInt(updatedParticipantsList[participantIndex].quoteAmountContributed) + toBigInt(data.contributionAmount));

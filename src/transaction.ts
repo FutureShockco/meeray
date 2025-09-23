@@ -1,13 +1,14 @@
+import cloneDeep from 'clone-deep';
 import CryptoJS from 'crypto-js';
 import { EventEmitter } from 'events';
-import { Transaction as TransactionInterface } from './transactions/index.js';
-import logr from './logger.js';
-import validation from './validation/index.js';
-import config from './config.js';
-import { TransactionType } from './transactions/types.js';
+
 import chain from './chain.js';
-import { transactionHandlers } from './transactions/index.js';
-import cloneDeep from 'clone-deep';
+import config from './config.js';
+import logr from './logger.js';
+import { Transaction as TransactionInterface, transactionHandlers } from './transactions/index.js';
+import { TransactionType } from './transactions/types.js';
+import validation from './validation/index.js';
+
 const MAX_MEMPOOL_SIZE = parseInt(process.env.MEMPOOL_SIZE || '2000', 10);
 
 type ValidationCallback = (isValid: boolean, error?: string) => void;
@@ -33,13 +34,15 @@ const transaction: TransactionModule = {
     pool: [],
     eventConfirmation: new EventEmitter(),
     createHash: (tx: TransactionInterface): string => {
-        return CryptoJS.SHA256(JSON.stringify({
-            type: tx.type,
-            data: tx.data,
-            sender: tx.sender,
-            ts: tx.ts,
-            ref: (tx as any).ref
-        })).toString();
+        return CryptoJS.SHA256(
+            JSON.stringify({
+                type: tx.type,
+                data: tx.data,
+                sender: tx.sender,
+                ts: tx.ts,
+                ref: (tx as any).ref,
+            })
+        ).toString();
     },
     addToPool: async (txs: TransactionInterface[]): Promise<void> => {
         if (transaction.isPoolFull()) {
@@ -61,7 +64,6 @@ const transaction: TransactionModule = {
                 transaction.pool.push(txs[y]);
                 added++;
                 logr.debug(`Added transaction to pool: type=${txs[y].type}, sender=${txs[y].sender}, hash=${txs[y].hash}`);
-
             }
         }
 
@@ -138,25 +140,28 @@ const transaction: TransactionModule = {
             return;
         }
         if (!tx.hash || typeof tx.hash !== 'string') {
-            cb(false, 'invalid tx hash'); return
+            cb(false, 'invalid tx hash');
+            return;
         }
 
         if (transaction.isPublished(tx)) {
-            cb(false, 'transaction already in chain'); return
+            cb(false, 'transaction already in chain');
+            return;
         }
-        let newTx = cloneDeep(tx)
-        delete newTx.signature
-        delete newTx.hash
+        const newTx = cloneDeep(tx);
+        delete newTx.signature;
+        delete newTx.hash;
 
         transaction.isValidTxData(tx, ts, tx.sender, function (isValid, error) {
-            cb(isValid, error)
-        })
+            cb(isValid, error);
+        });
     },
 
     isValidTxData: (tx: TransactionInterface, ts: number, legitUser: string, cb: ValidationCallback): void => {
         const handler = transactionHandlers[tx.type as TransactionType];
         if (handler && typeof handler.validate === 'function') {
-            handler.validate(tx.data, tx.sender, tx.id, tx.ts)
+            handler
+                .validate(tx.data, tx.sender, tx.id, tx.ts)
                 .then((isValidSpecific: boolean) => {
                     if (!isValidSpecific) {
                         cb(false, `Specific validation failed for type ${TransactionType[tx.type as TransactionType]}`); // Error = true
@@ -171,7 +176,9 @@ const transaction: TransactionModule = {
                 });
         } else {
             // If no handler or validate function is not found, consider it invalid and call the callback
-            const reason = handler ? `Validate function missing for handler type ${tx.type}` : `Unknown transaction type handler for type ${tx.type}`;
+            const reason = handler
+                ? `Validate function missing for handler type ${tx.type}`
+                : `Unknown transaction type handler for type ${tx.type}`;
             logr.warn(`[transaction.isValidTxData] ${reason}`);
             cb(false, reason);
         }
@@ -180,10 +187,13 @@ const transaction: TransactionModule = {
     execute: (tx: TransactionInterface, ts: number, cb: ExecutionCallback): void => {
         const handler = transactionHandlers[tx.type as TransactionType];
         if (handler)
-            handler.process(tx.data, tx.sender, tx.hash, tx.ts || ts)
+            handler
+                .process(tx.data, tx.sender, tx.hash, tx.ts || ts)
                 .then((success: boolean) => {
                     if (!success) {
-                        logr.warn(`Execution failed for type ${TransactionType[tx.type as TransactionType]} by sender ${tx.sender}`);
+                        logr.warn(
+                            `Execution failed for type ${TransactionType[tx.type as TransactionType]} by sender ${tx.sender}`
+                        );
                         cb(false, undefined);
                     } else {
                         cb(true, undefined); // Executed

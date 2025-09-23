@@ -1,12 +1,12 @@
-import express, { Request, Response, Router, RequestHandler } from 'express';
+import express, { Request, RequestHandler, Response, Router } from 'express';
+
 import cache from '../../cache.js';
-import { mongo } from '../../mongo.js';
-import logger from '../../logger.js';
-import { Account } from '../../mongo.js'; // Assuming Account is exported from mongo.ts and includes witness fields
-import { toBigInt } from '../../utils/bigint.js';
-import { formatTokenAmountForResponse, formatTokenBalancesForResponse } from '../../utils/http.js';
 import config from '../../config.js';
 import { getNewKeyPair } from '../../crypto.js';
+import logger from '../../logger.js';
+import { Account, mongo } from '../../mongo.js';
+import { toBigInt } from '../../utils/bigint.js';
+import { formatTokenAmountForResponse, formatTokenBalancesForResponse } from '../../utils/http.js';
 
 const router: Router = express.Router();
 
@@ -22,13 +22,15 @@ router.get('/', (async (req: Request, res: Response) => {
     const { limit, skip } = getPagination(req);
     try {
         const query = { witnessPublicKey: { $exists: true, $ne: '' } }; // Consider only accounts that declared a public key
-        const witnessesFromDB = await mongo.getDb().collection<Account>('accounts')
+        const witnessesFromDB = await mongo
+            .getDb()
+            .collection<Account>('accounts')
             .find(query)
             .sort({ totalVoteWeight: -1, name: 1 })
             .limit(limit)
             .skip(skip)
             .toArray();
-        
+
         const total = await mongo.getDb().collection<Account>('accounts').countDocuments(query);
 
         const witnesses = witnessesFromDB.map((wit: any) => {
@@ -59,11 +61,11 @@ router.get('/', (async (req: Request, res: Response) => {
 router.get('/:name/details', (async (req: Request, res: Response) => {
     const { name } = req.params;
     try {
-        const accountFromDB = await cache.findOnePromise('accounts', { name: name }) as Account | null;
+        const accountFromDB = (await cache.findOnePromise('accounts', { name: name })) as Account | null;
         if (!accountFromDB) {
             return res.status(404).json({ message: `Account ${name} not found.` });
         }
-        
+
         const { _id, totalVoteWeight, balances, ...rest } = accountFromDB as any;
         const account: any = { ...rest };
         if (_id) {
@@ -91,7 +93,7 @@ router.get('/:name/details', (async (req: Request, res: Response) => {
 router.get('/votescastby/:voterName', (async (req: Request, res: Response) => {
     const { voterName } = req.params;
     try {
-        const voter = await cache.findOnePromise('accounts', { name: voterName }) as Account | null;
+        const voter = (await cache.findOnePromise('accounts', { name: voterName })) as Account | null;
         if (!voter) {
             return res.status(404).json({ message: `Voter account ${voterName} not found.` });
         }
@@ -110,13 +112,15 @@ router.get('/votersfor/:witnessName', (async (req: Request, res: Response) => {
         // This query can be inefficient on large datasets if 'votedWitnesses' array is not indexed appropriately for $in or $elemMatch.
         // MongoDB does allow indexing arrays. Consider if this endpoint is critical for performance.
         const query = { votedWitnesses: witnessName };
-        const voters = await mongo.getDb().collection<Account>('accounts')
+        const voters = await mongo
+            .getDb()
+            .collection<Account>('accounts')
             .find(query)
             .limit(limit)
             .skip(skip)
             .project({ name: 1, _id: 0 }) // Only return voter names
             .toArray();
-        
+
         const total = await mongo.getDb().collection<Account>('accounts').countDocuments(query);
 
         res.json({ data: voters.map(v => v.name), total, limit, skip });
@@ -126,15 +130,15 @@ router.get('/votersfor/:witnessName', (async (req: Request, res: Response) => {
     }
 }) as RequestHandler);
 
-export default router; 
- 
+export default router;
+
 // Generate a new witness key pair
 router.get('/generate-keypair', ((req: Request, res: Response) => {
     try {
         const keypair = getNewKeyPair();
         res.json({
             pub: keypair.pub,
-            priv: keypair.priv
+            priv: keypair.priv,
         });
     } catch (error: any) {
         logger.error('Error generating witness key pair:', error);

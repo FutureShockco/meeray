@@ -50,8 +50,8 @@ const steemConfig: SteemConfig = {
         'https://api.justyy.com',
         'https://api.steem.fans',
         'https://api.futureshock.world',
-        'https://steemd.steemworld.org'
-    ]
+        'https://steemd.steemworld.org',
+    ],
 };
 
 export default steemConfig;

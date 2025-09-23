@@ -5,18 +5,11 @@
  * @param maxLength Maximum allowed length of the array
  * @returns True if the array is valid, false otherwise
  */
-const validateArray = (
-    value: any,
-    maxLength?: number
-): boolean => {
-    if (!value)
-        return false;
-    if (!Array.isArray(value))
-        return false;
-    if (value.length < 1)
-        return false;
-    if (maxLength && value.length > maxLength)
-        return false;
+const validateArray = (value: any, maxLength?: number): boolean => {
+    if (!value) return false;
+    if (!Array.isArray(value)) return false;
+    if (value.length < 1) return false;
+    if (maxLength && value.length > maxLength) return false;
 
     return true;
 };

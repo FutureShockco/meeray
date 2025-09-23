@@ -1,6 +1,7 @@
-import { toBigInt } from "../utils/bigint.js";
+import config from '../config.js';
+import { toBigInt } from '../utils/bigint.js';
 
-const maxValue: bigint = toBigInt('999999999999999999999999999999');
+const maxValue: bigint = toBigInt(config.maxValue);
 /**
  * Validates a BigInt value against specified constraints
  * @param value - The value to validate (string or bigint)
@@ -10,7 +11,12 @@ const maxValue: bigint = toBigInt('999999999999999999999999999999');
  * @param minValue - Optional minimum value
  * @returns boolean indicating if value meets all constraints
  */
-export default function validateBigInt(value: string | bigint, allowZero = false, allowNegative = false, minValue: bigint = toBigInt(0)): boolean {
+export default function validateBigInt(
+    value: string | bigint,
+    allowZero = false,
+    allowNegative = false,
+    minValue: bigint = toBigInt(0)
+): boolean {
     let numValue: bigint;
     try {
         numValue = typeof value === 'bigint' ? value : toBigInt(value);

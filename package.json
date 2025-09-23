@@ -15,8 +15,15 @@
     "build": "rimraf dist && tsc",
     "build:prod": "node scripts/build-prod.cjs",
     "restore": "curl -o ./meeray-latest.gz https://meeray.com/backups/meeray-latest.gz && mongorestore --uri=mongodb://127.0.0.1:27017 --archive=./meeray-latest.gz --gzip",
-    "restore:producer": "npm run reset-observer && curl -o ./meeray-latest.gz https://meeray.com/backups/meeray-latest.gz && mongorestore --uri=mongodb://127.0.0.1:27017  --nsFrom='meeray.*'  --nsTo='meeray_producer.*' --archive=./meeray-latest.gz --gzip --dryRun"
-
+    "restore:producer": "npm run reset-observer && curl -o ./meeray-latest.gz https://meeray.com/backups/meeray-latest.gz && mongorestore --uri=mongodb://127.0.0.1:27017  --nsFrom='meeray.*'  --nsTo='meeray_producer.*' --archive=./meeray-latest.gz --gzip --dryRun",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
+    "format": "prettier --write \"src/**/*.{ts,js,json}\"",
+    "format:file": "prettier --write",
+    "format:check": "prettier --check \"src/**/*.{ts,js,json}\"",
+    "docs:build": "apidoc -i src/modules/http -o docs/api -c apidoc.json",
+    "docs:serve": "apidoc -i src/modules/http -o docs/api -c apidoc.json && http-server docs/api -p 3333",
+    "check": "npm run lint"
   },
   "dependencies": {
     "bs58": "^6.0.0",
@@ -39,6 +46,8 @@
     "ws": "^8.13.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.36.0",
+    "@trivago/prettier-plugin-sort-imports": "^5.2.2",
     "@types/async": "^3.2.24",
     "@types/clone-deep": "^4.0.4",
     "@types/cors": "^2.8.18",
@@ -51,8 +60,16 @@
     "@types/secp256k1": "^4.0.6",
     "@types/sha256-file": "^1.0.3",
     "@types/ws": "^8.18.1",
+    "@typescript-eslint/eslint-plugin": "^8.44.1",
+    "@typescript-eslint/parser": "^8.44.1",
+    "apidoc": "^1.2.0",
     "cross-env": "^7.0.3",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.4",
+    "eslint-plugin-unused-imports": "^4.2.0",
+    "http-server": "^14.1.1",
     "nodemon": "^3.0.3",
+    "prettier": "^3.6.2",
     "rimraf": "^5.0.10",
     "ts-node": "^10.9.2",
     "tsx": "^4.19.4",
