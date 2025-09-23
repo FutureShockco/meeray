@@ -93,7 +93,7 @@ export function createOrder(data: Partial<OrderData & {
 }>): OrderData {
   // Quantity can be from data.quantity or data.amount (if provided as an alternative)
   const quantityValue = data.quantity !== undefined ? toBigInt(data.quantity) :
-    (data.amount !== undefined ? toBigInt(data.amount) : BigInt(0));
+    (data.amount !== undefined ? toBigInt(data.amount) : toBigInt(0));
 
   const priceValue = data.price !== undefined ? toBigInt(data.price) : undefined;
   const userId = data.userId || '';

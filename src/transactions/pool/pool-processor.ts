@@ -116,7 +116,7 @@ export async function validateAutoRouteSwap(data: PoolSwapData, sender: string, 
 
     // Calculate minimum output (same logic as execution)
     const finalMinAmountOut = data.minAmountOut ||
-        (expectedFinalOutput * BigInt(10000 - Math.floor(slippagePercent * 100))) / BigInt(10000);
+        (expectedFinalOutput * toBigInt(10000 - Math.floor(slippagePercent * 100))) / toBigInt(10000);
 
     // Validate each hop using the same calculation logic as execution
     let currentAmountIn = toBigInt(data.amountIn);
@@ -140,7 +140,7 @@ export async function validateAutoRouteSwap(data: PoolSwapData, sender: string, 
 
         // Calculate minimum for this hop (same as execution)
         const expectedOutput = toBigInt(hop.amountOut);
-        const hopMinAmountOut = (expectedOutput * BigInt(10000 - Math.floor(slippagePercent * 100))) / BigInt(10000);
+        const hopMinAmountOut = (expectedOutput * toBigInt(10000 - Math.floor(slippagePercent * 100))) / toBigInt(10000);
 
         // Check if actual calculation meets minimum (same as execution)
         if (amountOut < hopMinAmountOut) {
@@ -178,10 +178,10 @@ export async function processWithResult(data: PoolSwapData, sender: string, tran
         if (data.poolId) {
             return await processSingleHopSwapWithResult(data, sender, transactionId);
         } else {
-            return { success: false, amountOut: BigInt(0), error: 'Only single-hop swaps supported in hybrid trading' };
+            return { success: false, amountOut: toBigInt(0), error: 'Only single-hop swaps supported in hybrid trading' };
         }
     } catch (error) {
-        return { success: false, amountOut: BigInt(0), error: `Swap error: ${error}` };
+        return { success: false, amountOut: toBigInt(0), error: `Swap error: ${error}` };
     }
 }
 
@@ -200,14 +200,14 @@ export async function processSingleHopSwap(data: PoolSwapData, sender: string, t
     const amountOut = getOutputAmountBigInt(toBigInt(data.amountIn), reserveIn, reserveOut);
 
     // Calculate fee amount and update feeGrowthGlobal
-    const feeDivisor = BigInt(10000);
-    const feeAmount = (toBigInt(data.amountIn) * BigInt(300)) / feeDivisor; // Fixed 0.3% fee
+    const feeDivisor = toBigInt(10000);
+    const feeAmount = (toBigInt(data.amountIn) * toBigInt(300)) / feeDivisor; // Fixed 0.3% fee
     const totalLpTokens = toBigInt(poolFromDb.totalLpTokens);
     let newFeeGrowthGlobalA = toBigInt(poolFromDb.feeGrowthGlobalA || '0');
     let newFeeGrowthGlobalB = toBigInt(poolFromDb.feeGrowthGlobalB || '0');
 
     if (totalLpTokens > 0n && feeAmount > 0n) {
-        const feeGrowthDelta = (feeAmount * BigInt(1e18)) / totalLpTokens;
+        const feeGrowthDelta = (feeAmount * toBigInt(1e18)) / totalLpTokens;
         if (tokenInIsA) {
             newFeeGrowthGlobalA = newFeeGrowthGlobalA + feeGrowthDelta;
         } else {
@@ -297,7 +297,7 @@ export async function processSingleHopSwapWithResult(data: PoolSwapData, sender:
         // Get pool data
         const poolFromDb = await cache.findOnePromise('liquidityPools', { _id: data.poolId });
         if (!poolFromDb) {
-            return { success: false, amountOut: BigInt(0), error: `Pool ${data.poolId} not found` };
+            return { success: false, amountOut: toBigInt(0), error: `Pool ${data.poolId} not found` };
         }
 
         // Determine token indices
@@ -311,14 +311,14 @@ export async function processSingleHopSwapWithResult(data: PoolSwapData, sender:
         const amountOut = getOutputAmountBigInt(toBigInt(data.amountIn), reserveIn, reserveOut);
 
         // Calculate fee amount and update feeGrowthGlobal
-        const feeDivisor = BigInt(10000);
-        const feeAmount = (toBigInt(data.amountIn) * BigInt(300)) / feeDivisor; // Fixed 0.3% fee
+        const feeDivisor = toBigInt(10000);
+        const feeAmount = (toBigInt(data.amountIn) * toBigInt(300)) / feeDivisor; // Fixed 0.3% fee
         const totalLpTokens = toBigInt(poolFromDb.totalLpTokens);
         let newFeeGrowthGlobalA = toBigInt(poolFromDb.feeGrowthGlobalA || '0');
         let newFeeGrowthGlobalB = toBigInt(poolFromDb.feeGrowthGlobalB || '0');
 
         if (totalLpTokens > 0n && feeAmount > 0n) {
-            const feeGrowthDelta = (feeAmount * BigInt(1e18)) / totalLpTokens;
+            const feeGrowthDelta = (feeAmount * toBigInt(1e18)) / totalLpTokens;
             if (tokenInIsA) {
                 newFeeGrowthGlobalA = newFeeGrowthGlobalA + feeGrowthDelta;
             } else {
@@ -328,7 +328,7 @@ export async function processSingleHopSwapWithResult(data: PoolSwapData, sender:
 
         // Ensure minimum output amount is met
         if (data.minAmountOut && amountOut < toBigInt(data.minAmountOut)) {
-            return { success: false, amountOut: BigInt(0), error: `Output amount ${amountOut} is less than minimum required ${data.minAmountOut}` };
+            return { success: false, amountOut: toBigInt(0), error: `Output amount ${amountOut} is less than minimum required ${data.minAmountOut}` };
         }
 
         // Update pool reserves
@@ -338,11 +338,11 @@ export async function processSingleHopSwapWithResult(data: PoolSwapData, sender:
         // Update user balances
         const deductSuccess = await adjustUserBalance(sender, tokenIn_symbol, -toBigInt(data.amountIn));
         if (!deductSuccess) {
-            return { success: false, amountOut: BigInt(0), error: `Failed to deduct ${data.amountIn} ${tokenIn_symbol} from ${sender}` };
+            return { success: false, amountOut: toBigInt(0), error: `Failed to deduct ${data.amountIn} ${tokenIn_symbol} from ${sender}` };
         }
         const creditSuccess = await adjustUserBalance(sender, tokenOut_symbol, amountOut);
         if (!creditSuccess) {
-            return { success: false, amountOut: BigInt(0), error: `Failed to credit ${amountOut} ${tokenOut_symbol} to ${sender}` };
+            return { success: false, amountOut: toBigInt(0), error: `Failed to credit ${amountOut} ${tokenOut_symbol} to ${sender}` };
         }
 
         // Save updated pool state
@@ -364,7 +364,7 @@ export async function processSingleHopSwapWithResult(data: PoolSwapData, sender:
         });
 
         if (!updateSuccess) {
-            return { success: false, amountOut: BigInt(0), error: `Failed to update pool ${data.poolId} reserves` };
+            return { success: false, amountOut: toBigInt(0), error: `Failed to update pool ${data.poolId} reserves` };
         }
 
         logger.info(`[pool-swap] Successful single-hop swap by ${sender} in pool ${data.poolId}: ${data.amountIn} ${tokenIn_symbol} -> ${amountOut} ${tokenOut_symbol}`);
@@ -394,13 +394,13 @@ export async function processSingleHopSwapWithResult(data: PoolSwapData, sender:
 
         return { success: true, amountOut };
     } catch (error) {
-        return { success: false, amountOut: BigInt(0), error: `Swap error: ${error}` };
+        return { success: false, amountOut: toBigInt(0), error: `Swap error: ${error}` };
     }
 }
 
 export async function processRoutedSwap(data: PoolSwapData, sender: string, transactionId: string): Promise<boolean> {
     let currentAmountIn = toBigInt(data.amountIn);
-    let totalAmountOut = BigInt(0);
+    let totalAmountOut = toBigInt(0);
     const swapResults: Array<{ poolId: string, tokenIn: string, tokenOut: string, amountIn: string, amountOut: string }> = [];
 
     // Process each hop in sequence
@@ -421,14 +421,14 @@ export async function processRoutedSwap(data: PoolSwapData, sender: string, tran
         const amountOut = getOutputAmountBigInt(currentAmountIn, reserveIn, reserveOut);
 
         // Calculate fee amount and update feeGrowthGlobal
-        const feeDivisor = BigInt(10000);
-        const feeAmount = (currentAmountIn * BigInt(300)) / feeDivisor; // Fixed 0.3% fee
+        const feeDivisor = toBigInt(10000);
+        const feeAmount = (currentAmountIn * toBigInt(300)) / feeDivisor; // Fixed 0.3% fee
         const totalLpTokens = toBigInt(poolFromDb.totalLpTokens);
         let newFeeGrowthGlobalA = toBigInt(poolFromDb.feeGrowthGlobalA || '0');
         let newFeeGrowthGlobalB = toBigInt(poolFromDb.feeGrowthGlobalB || '0');
 
         if (totalLpTokens > 0n && feeAmount > 0n) {
-            const feeGrowthDelta = (feeAmount * BigInt(1e18)) / totalLpTokens;
+            const feeGrowthDelta = (feeAmount * toBigInt(1e18)) / totalLpTokens;
             if (tokenInIsA) {
                 newFeeGrowthGlobalA = newFeeGrowthGlobalA + feeGrowthDelta;
             } else {
@@ -524,7 +524,7 @@ export async function processRoutedSwap(data: PoolSwapData, sender: string, tran
         tokenOut: data.hops![data.hops!.length - 1].tokenOut_symbol,
         amountIn: toDbString(data.amountIn),
         amountOut: toDbString(totalAmountOut),
-        fee: toDbString(totalAmountOut * BigInt(10000) / toBigInt(data.amountIn)),
+        fee: toDbString(totalAmountOut * toBigInt(10000) / toBigInt(data.amountIn)),
         tokenA_symbol: firstPoolData?.tokenA_symbol || data.hops![0].tokenIn_symbol,
         tokenB_symbol: firstPoolData?.tokenB_symbol || data.hops![0].tokenOut_symbol
     }, transactionId);
@@ -547,7 +547,7 @@ export async function processAutoRouteSwap(data: PoolSwapData, sender: string, t
     // If user provided minAmountOut, use it; otherwise apply slippage
     const finalMinAmountOut = data.minAmountOut ?
         toBigInt(data.minAmountOut) :
-        (expectedFinalOutput * BigInt(10000 - Math.floor(slippagePercent * 100))) / BigInt(10000);
+        (expectedFinalOutput * toBigInt(10000 - Math.floor(slippagePercent * 100))) / toBigInt(10000);
 
     // Convert the route to hops format with slippage-adjusted minimums
     const hops = bestRoute.hops.map((hop, index) => {
@@ -559,7 +559,7 @@ export async function processAutoRouteSwap(data: PoolSwapData, sender: string, t
             minAmountOut = finalMinAmountOut;
         } else {
             // For intermediate hops, apply slippage
-            minAmountOut = (expectedOutput * BigInt(10000 - Math.floor(slippagePercent * 100))) / BigInt(10000);
+            minAmountOut = (expectedOutput * toBigInt(10000 - Math.floor(slippagePercent * 100))) / toBigInt(10000);
         }
 
         return {

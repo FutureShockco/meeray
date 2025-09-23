@@ -52,7 +52,7 @@ export const tokenTransfer = (sender: string, symbol: string, to: string, amount
         logger.warn(`[token-transfer:validation] Memo can not be longer than 512 it is ${memo.length}.`);
         return false;
     }
-    if (!validate.bigint(amount, false, false, BigInt(1))) {
+    if (!validate.bigint(amount, false, false, toBigInt(1))) {
         logger.warn(`[token-transfer:validation] Invalid amount: ${toBigInt(amount).toString()}. Must be a positive integer.`);
         return false;
     }
@@ -89,15 +89,15 @@ export const newToken = async (
         logger.warn('[token-config:validation] Invalid precision (must be 0-18).');
         return false;
     }
-    if (!validate.bigint(data.maxSupply, false, false, BigInt(1))) {
+    if (!validate.bigint(data.maxSupply, false, false, toBigInt(1))) {
         logger.warn('[token-config:validation] Invalid maxSupply. Must be a positive integer (min 1).');
         return false;
     }
-    if (!validate.bigint(data.initialSupply, false, false, BigInt(0))) {
+    if (!validate.bigint(data.initialSupply, false, false, toBigInt(0))) {
         logger.warn('[token-config:validation] Invalid initialSupply. Must be non-negative.');
         return false;
     }
-    if (BigInt(data.initialSupply) > BigInt(data.maxSupply)) {
+    if (toBigInt(data.initialSupply) > toBigInt(data.maxSupply)) {
         logger.warn('[token-config:validation] Invalid initialSupply. Cannot be greater than maxSupply.');
         return false;
     }

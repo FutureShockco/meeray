@@ -71,7 +71,7 @@ export async function processTx(data: PoolAddLiquidityData, sender: string, id: 
 
     // Calculate LP tokens to mint
     const lpTokensToMint = calculateLpTokensToMint(toBigInt(data.tokenA_amount), toBigInt(data.tokenB_amount), pool);
-    if (lpTokensToMint <= BigInt(0)) {
+    if (lpTokensToMint <= toBigInt(0)) {
       logger.error('[pool-add-liquidity] Insufficient liquidity amount. For initial liquidity, provide more tokens to meet minimum requirements.');
       return false;
     }

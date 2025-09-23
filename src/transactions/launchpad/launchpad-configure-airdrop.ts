@@ -8,10 +8,7 @@ import { logEvent } from '../../utils/event-logger.js';
 export async function validateTx(data: LaunchpadConfigureAirdropData, sender: string): Promise<boolean> {
   logger.debug(`[launchpad-configure-airdrop] Validating airdrop config from ${sender} for launchpad ${data.launchpadId}`);
 
-  if (sender !== data.userId) {
-    logger.warn('[launchpad-configure-airdrop] Sender must match userId.');
-    return false;
-  }
+  // Validate that sender is launchpad owner
 
   if (!data.launchpadId || !Array.isArray(data.recipients) || data.recipients.length === 0) {
     logger.warn('[launchpad-configure-airdrop] Missing required fields: launchpadId, recipients array.');
@@ -29,7 +26,7 @@ export async function validateTx(data: LaunchpadConfigureAirdropData, sender: st
     return false;
   }
 
-  if (launchpad.launchedByUserId !== sender) {
+  if (launchpad.issuer !== sender) {
     logger.warn(`[launchpad-configure-airdrop] Only launchpad owner can configure airdrop.`);
     return false;
   }
@@ -49,7 +46,7 @@ export async function validateTx(data: LaunchpadConfigureAirdropData, sender: st
 
   // Validate each recipient
   const seenUsernames = new Set<string>();
-  let totalAirdropAmount = BigInt(0);
+  let totalAirdropAmount = toBigInt(0);
 
   for (const recipient of data.recipients) {
     if (!recipient.username || !recipient.amount) {
@@ -89,7 +86,7 @@ export async function validateTx(data: LaunchpadConfigureAirdropData, sender: st
 
     // Calculate max allowed airdrop amount
     const totalSupply = toBigInt(launchpad.tokenToLaunch.totalSupply);
-    const maxAirdropAmount = (totalSupply * BigInt(airdropAllocation.percentage)) / BigInt(100);
+    const maxAirdropAmount = (totalSupply * toBigInt(airdropAllocation.percentage)) / toBigInt(100);
 
     if (totalAirdropAmount > maxAirdropAmount) {
       logger.warn(`[launchpad-configure-airdrop] Total airdrop amount ${totalAirdropAmount} exceeds allocation ${maxAirdropAmount}.`);
@@ -132,7 +129,7 @@ export async function processTx(data: LaunchpadConfigureAirdropData, sender: str
     await logEvent('launchpad', 'airdrop_configured', sender, {
       launchpadId: data.launchpadId,
       recipientCount: data.recipients.length,
-      totalAmount: toDbString(data.recipients.reduce((sum, r) => sum + toBigInt(r.amount), BigInt(0)))
+      totalAmount: toDbString(data.recipients.reduce((sum, r) => sum + toBigInt(r.amount), toBigInt(0)))
     });
 
     logger.debug(`[launchpad-configure-airdrop] Airdrop configured for ${data.launchpadId} with ${data.recipients.length} recipients`);

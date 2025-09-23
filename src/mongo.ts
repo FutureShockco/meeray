@@ -7,7 +7,7 @@ import config from './config.js';
 import { chain } from './chain.js';
 import { Block } from './block.js';
 import { TokenData } from './transactions/token/token-interfaces.js';
-import { toDbString, setTokenDecimals } from './utils/bigint.js';
+import { toDbString, setTokenDecimals, toBigInt } from './utils/bigint.js';
 import { FarmData } from './transactions/farm/farm-interfaces.js';
 
 const DB_NAME = process.env.MONGO_DB || 'meeray';
@@ -230,8 +230,8 @@ export const mongo = {
 
         setTokenDecimals(config.nativeTokenSymbol, 8);
 
-        const MAX_SUPPLY_MRY_BIGINT = BigInt(config.masterBalance); // 200 million with 8 decimals
-        const VERY_LARGE_MAX_SUPPLY_BIGINT = BigInt('1000000000000000000000000000000'); // Effectively unlimited for pegged tokens
+        const MAX_SUPPLY_MRY_BIGINT = toBigInt(config.masterBalance); // 200 million with 8 decimals
+        const VERY_LARGE_MAX_SUPPLY_BIGINT = toBigInt('1000000000000000000000000000000'); // Effectively unlimited for pegged tokens
 
         // This object represents the INPUT parameters for creating the native token MRY
         const nativeTokenCreationParams: TokenData = {
@@ -272,7 +272,7 @@ export const mongo = {
             name: 'Steem',
             precision: 3,
             maxSupply: toDbString(VERY_LARGE_MAX_SUPPLY_BIGINT),
-            initialSupply: toDbString(BigInt(0)),
+            initialSupply: toDbString(toBigInt(0)),
             mintable: true,
             burnable: true,
             description: 'Steem is the native token of the Steem blockchain, pegged on this sidechain.',
@@ -290,7 +290,7 @@ export const mongo = {
             name: nativeTokenCreationParamsSTEEM.name,
             precision: nativeTokenCreationParamsSTEEM.precision || 3,
             maxSupply: nativeTokenCreationParamsSTEEM.maxSupply,
-            currentSupply: nativeTokenCreationParamsSTEEM.initialSupply || BigInt(0),
+            currentSupply: nativeTokenCreationParamsSTEEM.initialSupply || toBigInt(0),
             mintable: nativeTokenCreationParamsSTEEM.mintable === undefined ? true : nativeTokenCreationParamsSTEEM.mintable,
             burnable: nativeTokenCreationParamsSTEEM.burnable === undefined ? true : nativeTokenCreationParamsSTEEM.burnable,
             issuer: config.masterName,
@@ -310,7 +310,7 @@ export const mongo = {
             name: 'Steem Dollar',
             precision: 3,
             maxSupply: toDbString(VERY_LARGE_MAX_SUPPLY_BIGINT),
-            initialSupply: toDbString(BigInt(0)),
+            initialSupply: toDbString(toBigInt(0)),
             mintable: true,
             burnable: true,
             description: 'SBD (Steem Dollar) is a stablecoin on the Steem blockchain, pegged on this sidechain.',
@@ -327,7 +327,7 @@ export const mongo = {
             name: nativeTokenCreationParamsSBD.name,
             precision: nativeTokenCreationParamsSBD.precision || 3,
             maxSupply: nativeTokenCreationParamsSBD.maxSupply,
-            currentSupply: nativeTokenCreationParamsSBD.initialSupply || BigInt(0),
+            currentSupply: nativeTokenCreationParamsSBD.initialSupply || toBigInt(0),
             mintable: nativeTokenCreationParamsSBD.mintable === undefined ? true : nativeTokenCreationParamsSBD.mintable,
             burnable: nativeTokenCreationParamsSBD.burnable === undefined ? true : nativeTokenCreationParamsSBD.burnable,
             issuer: config.masterName,
@@ -465,7 +465,7 @@ export const mongo = {
             logger.debug('[DB Indexes] Creating indexes for launchpads collection...');
             const launchpadsCollection = currentDb.collection('launchpads');
             await launchpadsCollection.createIndex({ status: 1 });
-            await launchpadsCollection.createIndex({ launchedByUserId: 1 });
+            await launchpadsCollection.createIndex({ issuer: 1 });
             await launchpadsCollection.createIndex({ "tokenToLaunch.symbol": 1 });
             await launchpadsCollection.createIndex({ mainTokenId: 1 });
             await launchpadsCollection.createIndex({ "presale.participants.userId": 1 });

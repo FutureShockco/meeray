@@ -6,12 +6,7 @@ import { logEvent } from '../../utils/event-logger.js';
 
 export async function validateTx(data: LaunchpadUpdateMetadataData, sender: string): Promise<boolean> {
   logger.debug(`[launchpad-update-metadata] Validating metadata update from ${sender} for launchpad ${data.launchpadId}`);
-
-  if (sender !== data.userId) {
-    logger.warn('[launchpad-update-metadata] Sender must match userId.');
-    return false;
-  }
-
+  // Don't rely on payload userId; validate that sender is launchpad owner after fetching launchpad
   if (!data.launchpadId) {
     logger.warn('[launchpad-update-metadata] Missing required field: launchpadId.');
     return false;
@@ -23,7 +18,7 @@ export async function validateTx(data: LaunchpadUpdateMetadataData, sender: stri
     return false;
   }
 
-  if (launchpad.launchedByUserId !== sender) {
+  if (launchpad.issuer !== sender) {
     logger.warn(`[launchpad-update-metadata] Only launchpad owner can update metadata.`);
     return false;
   }

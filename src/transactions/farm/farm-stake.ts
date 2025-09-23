@@ -25,7 +25,7 @@ export async function validateTx(data: FarmStakeData, sender: string): Promise<b
       return false;
     }
 
-    if (!validate.bigint(data.lpTokenAmount, false, false, BigInt(1))) {
+    if (!validate.bigint(data.lpTokenAmount, false, false, toBigInt(1))) {
       logger.warn('[farm-stake] lpTokenAmount must be a positive number.');
       return false;
     }
@@ -83,7 +83,7 @@ export async function processTx(data: FarmStakeData, sender: string, id: string,
     // Enforce min/max stake constraints if set (0 means unlimited)
     const minStake = toBigInt((farm as any).minStakeAmount || '0');
     const maxStake = toBigInt((farm as any).maxStakeAmount || '0');
-    if (minStake > BigInt(0) && toBigInt(data.lpTokenAmount) < minStake) {
+    if (minStake > toBigInt(0) && toBigInt(data.lpTokenAmount) < minStake) {
       logger.warn(`[farm-stake] Amount below minStakeAmount for farm ${data.farmId}.`);
       return false;
     }

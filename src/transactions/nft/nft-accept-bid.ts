@@ -74,7 +74,7 @@ export async function processTx(data: NftAcceptBidData, sender: string, id: stri
 
     const paymentTokenIdentifier = `${paymentToken.symbol}${paymentToken.issuer ? '@' + paymentToken.issuer : ''}`;
     const bidAmount = toBigInt(bid.bidAmount);
-    const royaltyAmount = (bidAmount * toBigInt(collection.royaltyBps || 0)) / BigInt(10000); // basis points to percentage
+    const royaltyAmount = (bidAmount * toBigInt(collection.royaltyBps || 0)) / toBigInt(10000); // basis points to percentage
     const sellerProceeds = bidAmount - royaltyAmount;
 
     // Execute payments

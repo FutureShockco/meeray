@@ -1,7 +1,7 @@
 import logger from '../../logger.js';
 import validate from '../../validation/index.js';
 import { TokenTransferData } from './token-interfaces.js';
-import { toDbString } from '../../utils/bigint.js';
+import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { adjustUserBalance } from '../../utils/account.js';
 import { logEvent } from '../../utils/event-logger.js';
 
@@ -12,7 +12,7 @@ export async function validateTx(data: TokenTransferData, sender: string): Promi
 
         if (!validate.tokenExists(data.symbol)) return false;
 
-        if (!await validate.userBalances(sender, [{ symbol: data.symbol, amount: BigInt(data.amount) }])) return false;
+        if (!await validate.userBalances(sender, [{ symbol: data.symbol, amount: toBigInt(data.amount) }])) return false;
 
         return true;
     } catch (error) {
@@ -24,15 +24,15 @@ export async function validateTx(data: TokenTransferData, sender: string): Promi
 export async function processTx(data: TokenTransferData, sender: string): Promise<boolean> {
     try {
 
-        const debitSender = await adjustUserBalance(sender, data.symbol, -BigInt(data.amount));
+        const debitSender = await adjustUserBalance(sender, data.symbol, -toBigInt(data.amount));
         if (!debitSender) {
-            logger.error(`[token-transfer:process] Failed to debit sender ${sender} for ${BigInt(data.amount).toString()} ${data.symbol}`);
+            logger.error(`[token-transfer:process] Failed to debit sender ${sender} for ${toBigInt(data.amount).toString()} ${data.symbol}`);
             return false;
         }
 
-        const creditReceiver = await adjustUserBalance(data.to, data.symbol, BigInt(data.amount));
+        const creditReceiver = await adjustUserBalance(data.to, data.symbol, toBigInt(data.amount));
         if (!creditReceiver) {
-            logger.error(`[token-transfer:process] Failed to credit recipient ${data.to} for ${BigInt(data.amount).toString()} ${data.symbol}`);
+            logger.error(`[token-transfer:process] Failed to credit recipient ${data.to} for ${toBigInt(data.amount).toString()} ${data.symbol}`);
             return false;
         }
 

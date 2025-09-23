@@ -4,7 +4,7 @@ import validate from '../../validation/index.js';
 import config from '../../config.js';
 import chain from '../../chain.js';
 import { TokenData, TokenTransferData } from './token-interfaces.js';
-import { BigIntMath } from '../../utils/bigint.js';
+import { BigIntMath, toBigInt } from '../../utils/bigint.js';
 import { steemBridge } from '../../modules/steemBridge.js';
 import settings from '../../settings.js';
 import { adjustUserBalance } from '../../utils/account.js';
@@ -20,7 +20,7 @@ export async function validateTx(data: TokenTransferData, sender: string): Promi
 
         if (!await validate.tokenExists(data.symbol)) return false;
 
-        if (!await validate.userBalances(sender, [{ symbol: data.symbol, amount: BigInt(data.amount) }])) return false;
+        if (!await validate.userBalances(sender, [{ symbol: data.symbol, amount: toBigInt(data.amount) }])) return false;
 
         return true;
     } catch (error) {
@@ -31,15 +31,15 @@ export async function validateTx(data: TokenTransferData, sender: string): Promi
 
 export async function processTx(data: TokenTransferData, sender: string, id: string): Promise<boolean> {
     try {
-        const adjustedSender = await adjustUserBalance(sender, data.symbol, -BigInt(data.amount));
+        const adjustedSender = await adjustUserBalance(sender, data.symbol, -toBigInt(data.amount));
         if (!adjustedSender) {
-            logger.error(`[token-withdraw] Failed to debit sender ${sender} for ${BigInt(data.amount).toString()} ${data.symbol}`);
+            logger.error(`[token-withdraw] Failed to debit sender ${sender} for ${toBigInt(data.amount).toString()} ${data.symbol}`);
             return false;
         }
 
-        const adjustedRecipient = await adjustUserBalance(BURN_ACCOUNT_NAME, data.symbol, BigInt(data.amount));
+        const adjustedRecipient = await adjustUserBalance(BURN_ACCOUNT_NAME, data.symbol, toBigInt(data.amount));
         if (!adjustedRecipient) {
-            logger.error(`[token-withdraw] Failed to credit burn account ${BURN_ACCOUNT_NAME} for ${BigInt(data.amount).toString()} ${data.symbol}`);
+            logger.error(`[token-withdraw] Failed to credit burn account ${BURN_ACCOUNT_NAME} for ${toBigInt(data.amount).toString()} ${data.symbol}`);
             return false;
         }
 
@@ -49,9 +49,9 @@ export async function processTx(data: TokenTransferData, sender: string, id: str
             return false;
         }
 
-        const adjustedSupply = await adjustTokenSupply(data.symbol, -BigInt(data.amount));
+        const adjustedSupply = await adjustTokenSupply(data.symbol, -toBigInt(data.amount));
         if (!adjustedSupply) {
-            logger.error(`[token-withdraw] Failed to adjust supply for ${data.symbol} when burning ${BigInt(data.amount).toString()}.`);
+            logger.error(`[token-withdraw] Failed to adjust supply for ${data.symbol} when burning ${toBigInt(data.amount).toString()}.`);
             return false;
         }
         // Check if we should skip bridge operations (during replay)
@@ -61,7 +61,7 @@ export async function processTx(data: TokenTransferData, sender: string, id: str
         if (settings.skipBridgeOperationsUntilBlock > 0 && currentBlockNum <= settings.skipBridgeOperationsUntilBlock) {
             logger.info(`[token-withdraw] Skipping Steem bridge operation during replay for block ${currentBlockNum} (skip until: ${settings.skipBridgeOperationsUntilBlock})`);
         } else {
-            const formattedAmount = BigIntMath.formatWithDecimals(BigInt(data.amount), isNaN(token.precision) ? 3 : token.precision);
+            const formattedAmount = BigIntMath.formatWithDecimals(toBigInt(data.amount), isNaN(token.precision) ? 3 : token.precision);
             // Enqueue withdraw to process asynchronously off the block path
             await steemBridge.enqueueWithdraw(sender, formattedAmount, data.symbol, 'Withdraw from MeeRay');
         }

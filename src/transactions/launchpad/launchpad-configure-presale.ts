@@ -9,10 +9,6 @@ import { logEvent } from '../../utils/event-logger.js';
 export async function validateTx(data: LaunchpadConfigurePresaleData, sender: string): Promise<boolean> {
   logger.debug(`[launchpad-configure-presale] Validating presale config from ${sender} for launchpad ${data.launchpadId}`);
 
-  if (sender !== data.userId) {
-    logger.warn('[launchpad-configure-presale] Sender must match userId.');
-    return false;
-  }
 
   if (!data.launchpadId || !data.presaleDetails) {
     logger.warn('[launchpad-configure-presale] Missing required fields: launchpadId, presaleDetails.');
@@ -25,7 +21,7 @@ export async function validateTx(data: LaunchpadConfigurePresaleData, sender: st
     return false;
   }
 
-  if (launchpad.launchedByUserId !== sender) {
+  if (launchpad.issuer !== sender) {
     logger.warn(`[launchpad-configure-presale] Only launchpad owner can configure presale.`);
     return false;
   }

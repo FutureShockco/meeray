@@ -3,7 +3,7 @@ import cache from '../../cache.js';
 import config from '../../config.js';
 import validate from '../../validation/index.js';
 import { TokenData } from './token-interfaces.js';
-import { toDbString, setTokenDecimals } from '../../utils/bigint.js';
+import { toDbString, setTokenDecimals, toBigInt } from '../../utils/bigint.js';
 import { adjustUserBalance } from '../../utils/account.js';
 import { logEvent } from '../../utils/event-logger.js';
 
@@ -11,7 +11,7 @@ export async function validateTx(data: TokenData, sender: string): Promise<boole
   try {
     if (!await validate.newToken(data)) return false;
 
-    if (!await validate.userBalances(sender, [{ symbol: config.nativeTokenSymbol, amount: BigInt(config.tokenCreationFee) }])) return false;
+    if (!await validate.userBalances(sender, [{ symbol: config.nativeTokenSymbol, amount: toBigInt(config.tokenCreationFee) }])) return false;
 
     return true;
   } catch (error) {
@@ -22,7 +22,7 @@ export async function validateTx(data: TokenData, sender: string): Promise<boole
 
 export async function processTx(data: TokenData, sender: string, id: string): Promise<boolean> {
   try {
-    const initialSupply = BigInt(data.initialSupply || 0);
+    const initialSupply = toBigInt(data.initialSupply || 0);
     const tokenToStore: TokenData = {
       _id: data.symbol,
       symbol: data.symbol,
@@ -38,14 +38,14 @@ export async function processTx(data: TokenData, sender: string, id: string): Pr
       websiteUrl: data.websiteUrl || '',
       createdAt: new Date().toISOString()
     };
-    if (initialSupply > BigInt(0)) {
-      const adjustedSupply = await adjustUserBalance(sender, tokenToStore.symbol, BigInt(initialSupply));
+    if (initialSupply > toBigInt(0)) {
+      const adjustedSupply = await adjustUserBalance(sender, tokenToStore.symbol, toBigInt(initialSupply));
       if (!adjustedSupply) {
         logger.error(`[token-create:process] Failed to adjust balance for ${sender} when creating token ${tokenToStore.symbol}.`);
         return false;
       }
     }
-    const feeDeducted = await adjustUserBalance(sender, config.nativeTokenSymbol, BigInt(-config.tokenCreationFee));
+    const feeDeducted = await adjustUserBalance(sender, config.nativeTokenSymbol, toBigInt(-config.tokenCreationFee));
     if (!feeDeducted) {
       logger.error(`[token-create:process] Failed to deduct token creation fee from ${sender}.`);
       return false;

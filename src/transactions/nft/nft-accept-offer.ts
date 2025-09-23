@@ -122,7 +122,7 @@ export async function processTx(data: NftAcceptOfferData, sender: string, id: st
     
     // Calculate royalty
     const royaltyBps = toBigInt(collection.royaltyBps || 0);
-    const royaltyAmount = (offerAmount * royaltyBps) / BigInt(10000);
+    const royaltyAmount = (offerAmount * royaltyBps) / toBigInt(10000);
     const sellerProceeds = offerAmount - royaltyAmount;
 
     // Execute payments

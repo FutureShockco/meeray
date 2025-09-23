@@ -120,14 +120,14 @@ export async function recordAMMTrade(params: {
             // Calculate price using the same formula as calculateDecimalAwarePrice
             if (decimalDifference >= 0) {
                 // TokenOut has more decimals, scale up amountIn (volume)
-                const scalingFactor = BigInt(10 ** decimalDifference);
+                const scalingFactor = toBigInt(10 ** decimalDifference);
                 const quoteDecimals = getTokenDecimals(quoteSymbol);
-                priceValue = (volume * scalingFactor * BigInt(10 ** quoteDecimals)) / quantity;
+                priceValue = (volume * scalingFactor * toBigInt(10 ** quoteDecimals)) / quantity;
             } else {
                 // TokenIn has more decimals, scale up amountOut (quantity)
-                const scalingFactor = BigInt(10 ** (-decimalDifference));
+                const scalingFactor = toBigInt(10 ** (-decimalDifference));
                 const quoteDecimals = getTokenDecimals(quoteSymbol);
-                priceValue = (volume * BigInt(10 ** quoteDecimals)) / (quantity * scalingFactor);
+                priceValue = (volume * toBigInt(10 ** quoteDecimals)) / (quantity * scalingFactor);
             }
 
             // Ensure price is never negative

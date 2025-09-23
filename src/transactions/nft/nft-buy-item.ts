@@ -103,7 +103,7 @@ async function executeImmediatePurchase(listing: NFTListingData, buyer: string, 
     const paymentTokenIdentifier = `${paymentToken.symbol}${paymentToken.issuer ? '@' + paymentToken.issuer : ''}`;
 
     const royaltyBps = toBigInt(collection.royaltyBps || 0);
-    const royaltyAmount = (amount * royaltyBps) / BigInt(10000); // basis points to percentage
+    const royaltyAmount = (amount * royaltyBps) / toBigInt(10000); // basis points to percentage
     const sellerProceeds = amount - royaltyAmount;
 
     // Execute transfers

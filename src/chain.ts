@@ -16,6 +16,7 @@ import settings from './settings.js';
 import mongo from './mongo.js';
 import steem from './steem.js';
 import { upsertAccountsReferencedInTx } from './account.js';
+import { toBigInt } from './utils/bigint.js';
 
 // Add constants for block-based broadcasting
 const SYNC_MODE_BROADCAST_INTERVAL_BLOCKS = 3; // Broadcast every 3 blocks in sync mode
@@ -92,7 +93,7 @@ export const chain = {
     output: async (block: any, rebuilding?: boolean) => {
         chain.nextOutput.txs += block.txs.length;
         if (block.dist)
-            chain.nextOutput.dist = (BigInt(chain.nextOutput.dist) + BigInt(block.dist)).toString();
+            chain.nextOutput.dist = (toBigInt(chain.nextOutput.dist) + toBigInt(block.dist)).toString();
 
         let currentOutTime = new Date().getTime();
         let outputLog = '';
@@ -525,7 +526,7 @@ export const chain = {
             }
             // First result is from account creation
             let executedSuccesfully: any[] = [];
-            let distributedInBlock = BigInt(0);
+            let distributedInBlock = toBigInt(0);
             for (let i = 0; i < block.txs.length; i++) {
                 const result = results[i];
                 if (result && result.executed) {
@@ -535,7 +536,7 @@ export const chain = {
             }
             // add rewards for the witness who mined this block
             const dist = await witnessesModule.witnessRewards(block.witness, block);
-            distributedInBlock = BigInt(distributedInBlock) + BigInt(dist);
+            distributedInBlock = toBigInt(distributedInBlock) + toBigInt(dist);
             cb(executedSuccesfully, distributedInBlock.toString());
         });
     },

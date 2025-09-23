@@ -6,6 +6,7 @@ import { adjustUserBalance } from '../../utils/account.js';
 import { toDbString, toBigInt } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
 import { getLpTokenSymbol } from '../../utils/token.js';
+import { claimFeesFromPool } from './pool-helpers.js';
 
 export async function validateTx(data: PoolRemoveLiquidityData, sender: string): Promise<boolean> {
   try {
@@ -17,7 +18,7 @@ export async function validateTx(data: PoolRemoveLiquidityData, sender: string):
         logger.warn('[pool-remove-liquidity] Invalid poolId format.');
         return false;
     }
-    if (toBigInt(data.lpTokenAmount) <= BigInt(0)) { 
+    if (toBigInt(data.lpTokenAmount) <= toBigInt(0)) { 
         logger.warn('[pool-remove-liquidity] lpTokenAmount must be a positive BigInt.');
         return false;
     }
@@ -26,7 +27,7 @@ export async function validateTx(data: PoolRemoveLiquidityData, sender: string):
       logger.warn(`[pool-remove-liquidity] Pool ${data.poolId} not found.`);
       return false;
     }
-    if (pool.totalLpTokens === BigInt(0)) {
+    if (pool.totalLpTokens === toBigInt(0)) {
         logger.warn(`[pool-remove-liquidity] Pool ${data.poolId} has no liquidity to remove.`);
         return false;
     }
@@ -54,10 +55,17 @@ export async function processTx(data: PoolRemoveLiquidityData, sender: string, t
     const userLpPositionId = `${sender}_${data.poolId}`;
     const userPosition = (await cache.findOnePromise('userLiquidityPositions', { _id: userLpPositionId }) as UserLiquidityPositionData); // validateTx guarantees existence
 
+    // Claim accumulated fees before removing liquidity
+    const feeClaimResult = await claimFeesFromPool(sender, data.poolId, toBigInt(data.lpTokenAmount));
+    if (!feeClaimResult.success) {
+      logger.error(`[pool-remove-liquidity] Failed to claim fees: ${feeClaimResult.error}`);
+      return false;
+    }
+
     const tokenAAmountToReturn = (toBigInt(data.lpTokenAmount) * toBigInt(pool.tokenA_reserve)) / toBigInt(pool.totalLpTokens);
     const tokenBAmountToReturn = (toBigInt(data.lpTokenAmount) * toBigInt(pool.tokenB_reserve)) / toBigInt(pool.totalLpTokens);
 
-    if (tokenAAmountToReturn <= BigInt(0) || tokenBAmountToReturn <= BigInt(0)) {
+    if (tokenAAmountToReturn <= toBigInt(0) || tokenBAmountToReturn <= toBigInt(0)) {
         logger.error(`[pool-remove-liquidity] Calculated zero or negative tokens to return for ${data.poolId}.`);
         return false;
     }
@@ -120,14 +128,16 @@ export async function processTx(data: PoolRemoveLiquidityData, sender: string, t
         return false;
     }
 
-    logger.debug(`[pool-remove-liquidity] ${sender} removed liquidity from pool ${data.poolId} by burning ${data.lpTokenAmount} LP tokens. Received ${tokenAAmountToReturn} ${pool.tokenA_symbol} and ${tokenBAmountToReturn} ${pool.tokenB_symbol}.`);
+    logger.debug(`[pool-remove-liquidity] ${sender} removed liquidity from pool ${data.poolId} by burning ${data.lpTokenAmount} LP tokens. Received ${tokenAAmountToReturn} ${pool.tokenA_symbol} and ${tokenBAmountToReturn} ${pool.tokenB_symbol}. Claimed fees: ${feeClaimResult.feesClaimedA} ${pool.tokenA_symbol} and ${feeClaimResult.feesClaimedB} ${pool.tokenB_symbol}.`);
 
     // Log event
     await logEvent('defi', 'liquidity_removed', sender, {
       poolId: data.poolId,
       tokenAAmount: toDbString(tokenAAmountToReturn),
       tokenBAmount: toDbString(tokenBAmountToReturn),
-      lpTokensBurned: toDbString(data.lpTokenAmount)
+      lpTokensBurned: toDbString(data.lpTokenAmount),
+      feesClaimedA: feeClaimResult.feesClaimedA.toString(),
+      feesClaimedB: feeClaimResult.feesClaimedB.toString()
     }, transactionId);
 
     return true;

@@ -107,7 +107,7 @@ export async function processTx(data: MarketCancelOrderData, sender: string, id:
 
         // If order was partially filled, we need to return locked funds
         const unfilledQuantity = toBigInt(order.quantity) - toBigInt(order.filledQuantity);
-        if (unfilledQuantity > BigInt(0)) {
+        if (unfilledQuantity > toBigInt(0)) {
             // For buy orders, return locked quote currency
             // For sell orders, return locked base currency
             const tokenToReturn = order.side === OrderSide.BUY ? 
@@ -123,7 +123,7 @@ export async function processTx(data: MarketCancelOrderData, sender: string, id:
                 amountToReturn = unfilledQuantity;
             }
 
-            if (amountToReturn > BigInt(0)) {
+            if (amountToReturn > toBigInt(0)) {
                 await adjustUserBalance(sender, tokenToReturn, amountToReturn);
             }
         }

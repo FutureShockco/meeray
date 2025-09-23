@@ -82,7 +82,7 @@ router.post('/quote', (async (req: Request, res: Response) => {
     let amountInBigInt: bigint;
     try {
       amountInBigInt = toBigInt(amountIn);
-      if (amountInBigInt <= BigInt(0)) {
+      if (amountInBigInt <= toBigInt(0)) {
         throw new Error('Amount must be positive');
       }
     } catch (error) {
@@ -301,16 +301,16 @@ router.get('/stats/:pairId', (async (req: Request, res: Response) => {
       volume24h: formatAmount(volume24h, pair.quoteAssetSymbol),
       rawVolume24h: volume24h.toString(),
       tradeCount24h,
-      priceChange24h: formatAmount(BigInt(Math.round(priceChange24h * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
+      priceChange24h: formatAmount(toBigInt(Math.round(priceChange24h * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
       rawPriceChange24h: priceChange24h.toString(),
       priceChange24hPercent,
       currentPrice: recentTrades[0] ? formatAmount(toBigInt(recentTrades[0].price || 0)) : '0.00000000',
       rawCurrentPrice: recentTrades[0] ? toBigInt(recentTrades[0].price || 0).toString() : '0',
-      highestBid: formatAmount(BigInt(Math.round(highestBid * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
+      highestBid: formatAmount(toBigInt(Math.round(highestBid * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
       rawHighestBid: Math.round(highestBid * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))).toString(),
-      lowestAsk: formatAmount(BigInt(Math.round(lowestAsk * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
+      lowestAsk: formatAmount(toBigInt(Math.round(lowestAsk * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
       rawLowestAsk: Math.round(lowestAsk * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))).toString(),
-      spread: formatAmount(BigInt(Math.round(spread * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
+      spread: formatAmount(toBigInt(Math.round(spread * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
       rawSpread: Math.round(spread * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))).toString(),
       spreadPercent,
       buyOrderCount: buyOrders.length,
@@ -429,7 +429,7 @@ router.get('/orderbook/:pairId', (async (req: Request, res: Response) => {
       timestamp: new Date().toISOString(),
       bids,
       asks,
-      spread: formatAmount(BigInt(Math.round(spread * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
+      spread: formatAmount(toBigInt(Math.round(spread * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
       rawSpread: Math.round(spread * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))).toString(),
       spreadPercent,
       depth: {
@@ -486,7 +486,7 @@ router.get('/trades/:pairId', (async (req: Request, res: Response) => {
       const quantityBigInt = toBigInt(trade.quantity);
       const quoteDecimals = getTokenDecimals(pair.quoteAssetSymbol);
       // Use the volume from the trade record if available, otherwise calculate it
-      const volumeBigInt = trade.volume ? toBigInt(trade.volume) : (priceBigInt * quantityBigInt) / (BigInt(10) ** BigInt(quoteDecimals));
+      const volumeBigInt = trade.volume ? toBigInt(trade.volume) : (priceBigInt * quantityBigInt) / (toBigInt(10) ** toBigInt(quoteDecimals));
 
       // Determine correct price formatting based on trade side
       // For buy trades: price is in quote token units (TESTS per MRY)
@@ -519,8 +519,8 @@ router.get('/trades/:pairId', (async (req: Request, res: Response) => {
       high: Math.max(...formattedTrades.map(t => Number(t.rawPrice))),
       low: Math.min(...formattedTrades.map(t => Number(t.rawPrice))),
       latest: formattedTrades[0] ? Number(formattedTrades[0].rawPrice) : 0,
-      highFormatted: formatAmount(BigInt(Math.max(...formattedTrades.map(t => Number(t.rawPrice))))),
-      lowFormatted: formatAmount(BigInt(Math.min(...formattedTrades.map(t => Number(t.rawPrice))))),
+      highFormatted: formatAmount(toBigInt(Math.max(...formattedTrades.map(t => Number(t.rawPrice))))),
+      lowFormatted: formatAmount(toBigInt(Math.min(...formattedTrades.map(t => Number(t.rawPrice))))),
       latestFormatted: formattedTrades[0] ? formattedTrades[0].price : '0.00000000'
     } : {
       high: 0,

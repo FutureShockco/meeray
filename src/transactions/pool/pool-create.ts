@@ -1,8 +1,6 @@
 import logger from '../../logger.js';
-import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 import { PoolData } from './pool-interfaces.js';
-import config from '../../config.js';
 import { generatePoolId } from '../../utils/pool.js';
 import { getLpTokenSymbol } from '../../utils/token.js';
 import { logEvent } from '../../utils/event-logger.js';

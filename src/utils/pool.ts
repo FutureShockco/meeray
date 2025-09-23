@@ -34,8 +34,8 @@ export function getOutputAmountBigInt(
     }
 
     // Use fixed 0.3% fee tier (300 basis points)
-    const feeMultiplier = BigInt(9700); // 10000 - 300 = 9700 for 0.3% fee
-    const feeDivisor = BigInt(10000);
+    const feeMultiplier = toBigInt(9700); // 10000 - 300 = 9700 for 0.3% fee
+    const feeDivisor = toBigInt(10000);
 
     const amountInAfterFee = (inputAmount * feeMultiplier) / feeDivisor;
 
@@ -181,20 +181,20 @@ export function calculateLpTokensToMint(
     const normalizedTokenB = normalizeToDecimals(tokenB_amount, tokenBDecimals, NORMALIZED_DECIMALS);
     
     // Initial liquidity provision
-    if (toBigInt(pool.totalLpTokens) === BigInt(0)) {
+    if (toBigInt(pool.totalLpTokens) === toBigInt(0)) {
         const product = normalizedTokenA * normalizedTokenB;
         const liquidity = sqrt(product);
         
         // Adaptive minimum liquidity: Use smaller of 1000 or liquidity/1000
         // This ensures small amounts can still provide liquidity
-        const BASE_MINIMUM = BigInt(1000);
-        const ADAPTIVE_MINIMUM = liquidity / BigInt(1000);
-        const MINIMUM_LIQUIDITY = ADAPTIVE_MINIMUM > BigInt(0) && ADAPTIVE_MINIMUM < BASE_MINIMUM 
+        const BASE_MINIMUM = toBigInt(1000);
+        const ADAPTIVE_MINIMUM = liquidity / toBigInt(1000);
+        const MINIMUM_LIQUIDITY = ADAPTIVE_MINIMUM > toBigInt(0) && ADAPTIVE_MINIMUM < BASE_MINIMUM 
             ? ADAPTIVE_MINIMUM 
             : BASE_MINIMUM;
         
         if (liquidity <= MINIMUM_LIQUIDITY) {
-            return BigInt(0); // Signal insufficient liquidity
+            return toBigInt(0); // Signal insufficient liquidity
         }
         
         return liquidity - MINIMUM_LIQUIDITY; // Burn minimum liquidity
@@ -206,8 +206,8 @@ export function calculateLpTokensToMint(
     const poolTokenBReserve = toBigInt(pool.tokenB_reserve);
     
     // Protect against division by zero
-    if (poolTokenAReserve === BigInt(0) || poolTokenBReserve === BigInt(0)) {
-        return BigInt(0);
+    if (poolTokenAReserve === toBigInt(0) || poolTokenBReserve === toBigInt(0)) {
+        return toBigInt(0);
     }
     
     // Normalize existing reserves for consistent ratio calculation
@@ -234,11 +234,11 @@ function normalizeToDecimals(amount: bigint, currentDecimals: number, targetDeci
     
     if (currentDecimals < targetDecimals) {
         // Scale up - multiply by 10^(targetDecimals - currentDecimals)
-        const scaleFactor = BigInt(10 ** (targetDecimals - currentDecimals));
+        const scaleFactor = toBigInt(10 ** (targetDecimals - currentDecimals));
         return amount * scaleFactor;
     } else {
         // Scale down - divide by 10^(currentDecimals - targetDecimals)
-        const scaleFactor = BigInt(10 ** (currentDecimals - targetDecimals));
+        const scaleFactor = toBigInt(10 ** (currentDecimals - targetDecimals));
         return amount / scaleFactor;
     }
 }

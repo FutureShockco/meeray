@@ -9,13 +9,9 @@ import { logEvent } from '../../utils/event-logger.js';
 export async function validateTx(dataDb: LaunchpadParticipatePresaleData, sender: string): Promise<boolean> {
   const data = dataDb; // No conversion needed with single interface
   logger.debug(`[launchpad-participate-presale] Validating participation from ${sender} for launchpad ${data.launchpadId}: amount ${data.contributionAmount}`);
+  // Use sender as the participant identity; payload `userId` is optional/backwards compatible
 
-  if (sender !== data.userId) {
-    logger.warn('[launchpad-participate-presale] Sender must match userId for participation.');
-    return false;
-  }
-
-  if (!data.launchpadId || toBigInt(data.contributionAmount) <= BigInt(0)) {
+  if (!data.launchpadId || toBigInt(data.contributionAmount) <= toBigInt(0)) {
     logger.warn('[launchpad-participate-presale] Missing or invalid fields: launchpadId, contributionAmount must be a positive value.');
     return false;
   }
@@ -55,16 +51,17 @@ export async function validateTx(dataDb: LaunchpadParticipatePresaleData, sender
 
   // Whitelist check (if applicable) - remains placeholder
 
-  const userAccount = await getAccount(data.userId);
+  const participantUserId = data.userId || sender;
+  const userAccount = await getAccount(participantUserId);
   if (!userAccount) {
-    logger.warn(`[launchpad-participate-presale] User account ${data.userId} not found.`);
+    logger.warn(`[launchpad-participate-presale] User account ${participantUserId} not found.`);
     return false;
   }
   const contributionTokenIdentifier = presaleDetails.quoteAssetForPresaleSymbol;
   const userBalanceString = userAccount.balances?.[contributionTokenIdentifier] || '0';
   const userBalance = toBigInt(userBalanceString);
   if (userBalance < toBigInt(data.contributionAmount)) {
-    logger.warn(`[launchpad-participate-presale] Insufficient balance for ${data.userId}. Needs ${data.contributionAmount} ${contributionTokenIdentifier}, has ${userBalance}.`);
+    logger.warn(`[launchpad-participate-presale] Insufficient balance for ${participantUserId}. Needs ${data.contributionAmount} ${contributionTokenIdentifier}, has ${userBalance}.`);
     return false;
   }
 
@@ -87,15 +84,16 @@ export async function processTx(dataDb: LaunchpadParticipatePresaleData, sender:
         return false;
     }
 
-    const participantIndex = launchpad.presale!.participants.findIndex((p: any) => p.userId === data.userId);
+  const participantUserId = data.userId || sender;
+  const participantIndex = launchpad.presale!.participants.findIndex((p: any) => p.userId === participantUserId);
     let updatedParticipantsList = [...launchpad.presale!.participants];
     let newTotalRaised = toBigInt(launchpad.presale!.totalQuoteRaised || '0') + toBigInt(data.contributionAmount);
 
     if (participantIndex > -1) {
-        updatedParticipantsList[participantIndex].quoteAmountContributed = toDbString(toBigInt(updatedParticipantsList[participantIndex].quoteAmountContributed) + toBigInt(data.contributionAmount));
+    updatedParticipantsList[participantIndex].quoteAmountContributed = toDbString(toBigInt(updatedParticipantsList[participantIndex].quoteAmountContributed) + toBigInt(data.contributionAmount));
     } else {
-        updatedParticipantsList.push({
-            userId: data.userId,
+    updatedParticipantsList.push({
+      userId: participantUserId,
             quoteAmountContributed: toDbString(data.contributionAmount),
             claimed: false
         });
@@ -122,7 +120,7 @@ export async function processTx(dataDb: LaunchpadParticipatePresaleData, sender:
     // Log event
     await logEvent('launchpad', 'participation', sender, {
       launchpadId: data.launchpadId,
-      userId: data.userId,
+      userId: participantUserId,
       contributionAmount: toDbString(data.contributionAmount),
       quoteAssetSymbol: presaleDetails.quoteAssetForPresaleSymbol,
       totalQuoteRaised: toDbString(newTotalRaised),

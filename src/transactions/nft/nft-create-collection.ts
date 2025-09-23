@@ -5,6 +5,7 @@ import { NFTCollectionCreateData } from './nft-interfaces.js';
 import config from '../../config.js';
 import { adjustUserBalance } from '../../utils/account.js';
 import { logEvent } from '../../utils/event-logger.js';
+import { toBigInt } from '../../utils/bigint.js';
 
 export async function validateTx(data: NFTCollectionCreateData, sender: string): Promise<boolean> {
   try {
@@ -33,7 +34,7 @@ export async function validateTx(data: NFTCollectionCreateData, sender: string):
     if (data.maxSupply !== undefined) {
       if (typeof data.maxSupply === 'string') {
         // Validate string is a valid number
-        const maxSupplyNum = BigInt(data.maxSupply);
+        const maxSupplyNum = toBigInt(data.maxSupply);
         if (maxSupplyNum < 0) {
           logger.warn('[nft-create-collection] Invalid maxSupply. Must be non-negative.');
           return false;
@@ -111,7 +112,7 @@ export async function validateTx(data: NFTCollectionCreateData, sender: string):
       return false;
     }
     
-    if (BigInt(creatorAccount.balances[config.nativeTokenSymbol]) < BigInt(config.nftCollectionCreationFee)) {
+    if (toBigInt(creatorAccount.balances[config.nativeTokenSymbol]) < toBigInt(config.nftCollectionCreationFee)) {
       logger.warn(`[nft-create-collection] Sender account ${sender} does not have enough balance to create an NFT collection.`);
       return false;
     }
@@ -179,7 +180,7 @@ export async function processTx(data: NFTCollectionCreateData, sender: string, i
       return false;
     }
 
-    const deductSuccess = await adjustUserBalance(sender, config.nativeTokenSymbol, BigInt(-config.nftCollectionCreationFee));
+    const deductSuccess = await adjustUserBalance(sender, config.nativeTokenSymbol, toBigInt(-config.nftCollectionCreationFee));
     if (!deductSuccess) {
       logger.error(`[nft-create-collection] Failed to deduct ${config.nftCollectionCreationFee} of ${config.nativeTokenSymbol} from ${sender}.`);
       return false;

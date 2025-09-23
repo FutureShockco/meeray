@@ -100,8 +100,8 @@ export const validatePoolRatioTolerance = (
     tokenBAmount: string | bigint
 ): boolean => {
     // For initial liquidity provision, both token amounts must be positive
-    if (toBigInt(pool.totalLpTokens) === BigInt(0)) {
-        if (toBigInt(tokenAAmount) <= BigInt(0) || toBigInt(tokenBAmount) <= BigInt(0)) {
+    if (toBigInt(pool.totalLpTokens) === toBigInt(0)) {
+        if (toBigInt(tokenAAmount) <= toBigInt(0) || toBigInt(tokenBAmount) <= toBigInt(0)) {
             logger.warn('[pool-validation] Initial liquidity provision requires positive amounts for both tokens.');
             return false;
         }
@@ -110,10 +110,10 @@ export const validatePoolRatioTolerance = (
 
     // For subsequent provisions, check if amounts maintain the pool ratio within tolerance
     const expectedTokenBAmount = (toBigInt(tokenAAmount) * toBigInt(pool.tokenB_reserve)) / toBigInt(pool.tokenA_reserve);
-    const tolerance = BigInt(100); // 1% tolerance as basis points (100 = 1%)
+    const tolerance = toBigInt(100); // 1% tolerance as basis points (100 = 1%)
     const actualB = toBigInt(tokenBAmount);
     const difference = actualB > expectedTokenBAmount ? actualB - expectedTokenBAmount : expectedTokenBAmount - actualB;
-    const maxDifference = (expectedTokenBAmount * tolerance) / BigInt(10000);
+    const maxDifference = (expectedTokenBAmount * tolerance) / toBigInt(10000);
 
     if (difference > maxDifference) {
         logger.warn(`[pool-validation] Token amounts do not match current pool ratio. Expected B: ${expectedTokenBAmount}, Got: ${tokenBAmount}. Pool A reserve: ${pool.tokenA_reserve}, B reserve: ${pool.tokenB_reserve}, A amount: ${tokenAAmount}`);
@@ -141,8 +141,8 @@ export const poolExists = async (poolId: string): Promise<LiquidityPoolData | nu
  * Validates initial and subsequent liquidity provision amounts for a pool
  */
 export const validateLiquidityProvision = (pool: LiquidityPoolData, tokenAAmount: string, tokenBAmount: string): boolean => {
-    if (toBigInt(pool.totalLpTokens) === BigInt(0)) {
-        if (toBigInt(tokenAAmount) <= BigInt(0) || toBigInt(tokenBAmount) <= BigInt(0)) {
+    if (toBigInt(pool.totalLpTokens) === toBigInt(0)) {
+        if (toBigInt(tokenAAmount) <= toBigInt(0) || toBigInt(tokenBAmount) <= toBigInt(0)) {
             logger.warn('[pool-validation] Initial liquidity provision requires positive amounts for both tokens.');
             return false;
         }
@@ -151,10 +151,10 @@ export const validateLiquidityProvision = (pool: LiquidityPoolData, tokenAAmount
 
     // For subsequent provisions, check if amounts maintain the pool ratio within tolerance
     const expectedTokenBAmount = (toBigInt(tokenAAmount) * toBigInt(pool.tokenB_reserve)) / toBigInt(pool.tokenA_reserve);
-    const tolerance = BigInt(100); // 1% tolerance as basis points (100 = 1%)
+    const tolerance = toBigInt(100); // 1% tolerance as basis points (100 = 1%)
     const actualB = toBigInt(tokenBAmount);
     const difference = actualB > expectedTokenBAmount ? actualB - expectedTokenBAmount : expectedTokenBAmount - actualB;
-    const maxDifference = (expectedTokenBAmount * tolerance) / BigInt(10000);
+    const maxDifference = (expectedTokenBAmount * tolerance) / toBigInt(10000);
 
     if (difference > maxDifference) {
         logger.warn(`[pool-validation] Token amounts do not match current pool ratio. Expected B: ${expectedTokenBAmount}, Got: ${tokenBAmount}. Pool A reserve: ${pool.tokenA_reserve}, B reserve: ${pool.tokenB_reserve}, A amount: ${tokenAAmount}`);

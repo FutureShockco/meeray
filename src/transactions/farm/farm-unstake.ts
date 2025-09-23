@@ -25,7 +25,7 @@ export async function validateTx(data: FarmUnstakeData, sender: string): Promise
       return false;
     }
 
-    if (!validate.bigint(data.lpTokenAmount, false, false, BigInt(1))) {
+    if (!validate.bigint(data.lpTokenAmount, false, false, toBigInt(1))) {
       logger.warn('[farm-unstake] lpTokenAmount must be a positive number.');
       return false;
     }

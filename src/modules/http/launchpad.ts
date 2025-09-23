@@ -233,8 +233,8 @@ const getClaimableTokensHandler: RequestHandler = async (req: Request, res: Resp
         }
 
         // For calculations, convert to BigInt, then convert result back to string for response
-        let totalAllocatedToUserBI = BigInt(0);
-        let claimedByUserBI = BigInt(0);
+        let totalAllocatedToUserBI = toBigInt(0);
+        let claimedByUserBI = toBigInt(0);
 
         if (launchpadFromDB.presale && launchpadFromDB.presale.participants) {
             const participantRaw = launchpadFromDB.presale.participants.find((p: any) => p.userId === userId);
@@ -254,11 +254,11 @@ const getClaimableTokensHandler: RequestHandler = async (req: Request, res: Resp
         
         const tokenomics = launchpadFromDB.tokenomicsSnapshot;
         if (tokenomics && tokenomics.allocations && tokenomics.totalSupply) {
-            const totalSupplyBI = typeof tokenomics.totalSupply === 'string' ? toBigInt(tokenomics.totalSupply) : BigInt(tokenomics.totalSupply); // Ensure totalSupply is BigInt
+            const totalSupplyBI = typeof tokenomics.totalSupply === 'string' ? toBigInt(tokenomics.totalSupply) : toBigInt(tokenomics.totalSupply); // Ensure totalSupply is BigInt
             tokenomics.allocations.forEach((allocation: any) => {
                 if (allocation.customRecipientAddress === userId) {
                     // Ensure allocation.amount is used if available, otherwise calculate from percentage
-                    let allocationAmountBI: bigint = BigInt(0); // Initialize to 0
+                    let allocationAmountBI: bigint = toBigInt(0); // Initialize to 0
                     if (allocation.amount && typeof allocation.amount === 'string') {
                         allocationAmountBI = toBigInt(allocation.amount);
                     } else if (allocation.percentage) {
@@ -266,7 +266,7 @@ const getClaimableTokensHandler: RequestHandler = async (req: Request, res: Resp
                         // multiply first, then divide: (percentage * totalSupplyBI) / 100n
                         // Or, ensure percentage calculations are done carefully if smallest units are critical.
                         // Here, assuming percentage is a whole number like 10 for 10%.
-                        allocationAmountBI = (BigInt(Math.round(allocation.percentage * 100)) * totalSupplyBI) / BigInt(10000);
+                        allocationAmountBI = (toBigInt(Math.round(allocation.percentage * 100)) * totalSupplyBI) / toBigInt(10000);
                     }
                     if (allocationAmountBI) {
                          totalAllocatedToUserBI += allocationAmountBI;
@@ -289,7 +289,7 @@ const getClaimableTokensHandler: RequestHandler = async (req: Request, res: Resp
         const totalAllocatedFormatted = formatTokenAmountForResponse(totalAllocatedToUserBI.toString(), tokenSymbol);
         const claimedFormatted = formatTokenAmountForResponse(claimedByUserBI.toString(), tokenSymbol);
         const claimableFormatted = formatTokenAmountForResponse(
-            (claimableAmountBI < BigInt(0) ? BigInt(0) : claimableAmountBI).toString(), 
+            (claimableAmountBI < toBigInt(0) ? toBigInt(0) : claimableAmountBI).toString(), 
             tokenSymbol
         );
 
@@ -358,12 +358,12 @@ router.get('/:launchpadId/settlement-preview', (async (req: Request, res: Respon
             return res.status(404).json({ message: 'Launchpad or presale data not found' });
         }
         const price = toBigInt(lp.presaleDetailsSnapshot.pricePerToken);
-        const tokenDecimals = BigInt(lp.tokenomicsSnapshot.tokenDecimals || 0);
-        const scale = BigInt(10) ** tokenDecimals;
+        const tokenDecimals = toBigInt(lp.tokenomicsSnapshot.tokenDecimals || 0);
+        const scale = toBigInt(10) ** tokenDecimals;
         const participants = lp.presale.participants || [];
         const preview = participants.map((p: any) => {
             const contrib = toBigInt(p.quoteAmountContributed || '0');
-            const alloc = price > BigInt(0) ? (contrib * scale) / price : BigInt(0);
+            const alloc = price > toBigInt(0) ? (contrib * scale) / price : toBigInt(0);
             return { userId: p.userId, contributed: p.quoteAmountContributed, tokensAllocatedPreview: alloc.toString() };
         });
         res.json({ data: preview });

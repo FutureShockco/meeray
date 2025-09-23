@@ -9,6 +9,7 @@ import cache from './cache.js';
 import consensus from './consensus.js';
 import p2p from './p2p/index.js';
 import { hashAndSignBlock } from './crypto.js';
+import { toBigInt } from './utils/bigint.js';
 
 export const mining = {
 
@@ -96,7 +97,7 @@ export const mining = {
 
             // Set distribution amount based on witness rewards
             if (config.witnessReward > 0) {
-                newBlock.dist = BigInt(config.witnessReward).toString()
+                newBlock.dist = toBigInt(config.witnessReward).toString()
             }
             logger.trace(`prepareBlock: Prepared block candidate for _id ${newBlock._id}: ${JSON.stringify(newBlock)}`);
             cb(null, newBlock)

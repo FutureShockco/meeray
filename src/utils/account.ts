@@ -1,6 +1,6 @@
 import logger from '../logger.js';
 import cache from '../cache.js';
-import { toDbString } from './bigint.js';
+import { toBigInt, toDbString } from './bigint.js';
 import config from '../config.js';
 import { Account } from "../mongo.js";
 
@@ -11,7 +11,7 @@ export async function getAccount(accountId: string): Promise<Account | null> {
 const adjustWitnessVoteWeights = async (account: Account | null, currentBalance: bigint, newBalance: bigint) => {
     const voterAccount = account;
     const voted: string[] = (voterAccount as any)?.votedWitnesses || [];
-    const numVoted = BigInt(voted.length || 0);
+    const numVoted = toBigInt(voted.length || 0);
     if (numVoted > 0n) {
         const beforeSharePerWitness = currentBalance / numVoted;
         const afterSharePerWitness = newBalance / numVoted;
@@ -19,7 +19,7 @@ const adjustWitnessVoteWeights = async (account: Account | null, currentBalance:
         if (diffPerWitness !== 0n) {
             for (const witnessName of voted) {
                 const witnessAccount = await cache.findOnePromise('accounts', { name: witnessName });
-                const currentVoteWeight = BigInt(witnessAccount?.totalVoteWeight || 0);
+                const currentVoteWeight = toBigInt(witnessAccount?.totalVoteWeight || 0);
                 let updated = currentVoteWeight + diffPerWitness;
                 if (updated < 0n) updated = 0n;
                 await cache.updateOnePromise('accounts', { name: witnessName }, { $set: { totalVoteWeight: toDbString(updated) } });
@@ -35,8 +35,8 @@ export async function adjustUserBalance(
 ): Promise<boolean> {
     try {
         const account = await getAccount(accountId);
-        const currentBalance = BigInt(account!.balances?.[tokenSymbol] || '0');
-        const newBalance = currentBalance + (typeof amount === 'string' ? BigInt(amount) : amount);
+        const currentBalance = toBigInt(account!.balances?.[tokenSymbol] || '0');
+        const newBalance = currentBalance + (typeof amount === 'string' ? toBigInt(amount) : amount);
 
         if (newBalance < 0n) {
             logger.error(`[account-utils] Insufficient balance for ${accountId}: ${currentBalance} + ${amount} = ${newBalance}`);

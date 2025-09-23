@@ -70,7 +70,7 @@ export async function processTx(data: FarmClaimRewardsData, sender: string, id: 
 
     // Approximate per-second rewards from per-block using configured block time
     const rewardsPerBlock = toBigInt(farm.rewardsPerBlock || '0');
-    if (rewardsPerBlock <= BigInt(0)) {
+    if (rewardsPerBlock <= toBigInt(0)) {
       logger.warn(`[farm-claim-rewards] rewardsPerBlock is zero for farm ${data.farmId}.`);
       return true;
     }
@@ -79,20 +79,20 @@ export async function processTx(data: FarmClaimRewardsData, sender: string, id: 
     // Total rewards generated in elapsed time proportionally to staker share of total staked
     const totalStaked = toBigInt(farm.totalStaked || '0');
     const stakedAmount = toBigInt(userFarmPos.stakedAmount || '0');
-    if (totalStaked === BigInt(0) || stakedAmount === BigInt(0)) {
+    if (totalStaked === toBigInt(0) || stakedAmount === toBigInt(0)) {
       logger.warn(`[farm-claim-rewards] No stake or totalStaked zero for farm ${data.farmId}.`);
       return true;
     }
-    const blocksElapsed = BigInt(Math.floor(elapsedMs / blockTimeMs));
+    const blocksElapsed = toBigInt(Math.floor(elapsedMs / blockTimeMs));
     const farmRewardsGenerated = rewardsPerBlock * blocksElapsed;
     let pendingRewards = (farmRewardsGenerated * stakedAmount) / totalStaked;
     // Cap by rewardsRemaining if present
     const rewardsRemaining = toBigInt((farm as any).rewardsRemaining || farm.totalRewards || '0');
-    if (rewardsRemaining > BigInt(0) && pendingRewards > rewardsRemaining) {
+    if (rewardsRemaining > toBigInt(0) && pendingRewards > rewardsRemaining) {
       pendingRewards = rewardsRemaining;
     }
 
-    if (pendingRewards <= BigInt(0)) {
+    if (pendingRewards <= toBigInt(0)) {
       logger.warn(`[farm-claim-rewards] No rewards available for ${data.staker} in farm ${data.farmId}. Elapsed: ${elapsedMs}ms`);
       return true; // Not an error, just no rewards
     }

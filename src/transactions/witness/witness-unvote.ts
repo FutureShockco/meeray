@@ -23,11 +23,11 @@ export async function processTx(data: { target: string }, sender: string, transa
     const senderAccount = await cache.findOnePromise('accounts', { name: sender });
     const votedWitnesses = senderAccount!.votedWitnesses || [];
     const newVotedWitnesses = votedWitnesses.filter((w: string) => w !== data.target);
-    const balanceStr = senderAccount!.balances?.[config.nativeTokenSymbol] || BigInt(0);
+    const balanceStr = senderAccount!.balances?.[config.nativeTokenSymbol] || toBigInt(0);
     const newVoteWeightBigIntCalculated = newVotedWitnesses.length > 0 ?
-      toBigInt(balanceStr) / BigInt(newVotedWitnesses.length) : BigInt(0);
+      toBigInt(balanceStr) / toBigInt(newVotedWitnesses.length) : toBigInt(0);
     const oldVoteWeightBigIntCalculated = votedWitnesses.length > 0 ?
-      toBigInt(balanceStr) / BigInt(votedWitnesses.length) : BigInt(0);
+      toBigInt(balanceStr) / toBigInt(votedWitnesses.length) : toBigInt(0);
 
     try {
       await cache.updateOnePromise('accounts', { name: sender }, { $set: { votedWitnesses: newVotedWitnesses } });
@@ -37,7 +37,7 @@ export async function processTx(data: { target: string }, sender: string, transa
         for (const witnessName of newVotedWitnesses) {
           const witnessAccount = await cache.findOnePromise('accounts', { name: witnessName });
           if (witnessAccount) {
-            const currentVoteWeightStr = witnessAccount.totalVoteWeight || BigInt(0);
+            const currentVoteWeightStr = witnessAccount.totalVoteWeight || toBigInt(0);
             const newVoteWeightBigInt = toBigInt(currentVoteWeightStr) + adjustmentForRemainingBigInt;
             await cache.updateOnePromise('accounts', { name: witnessName }, { $set: { totalVoteWeight: toDbString(newVoteWeightBigInt) } });
           } else {
@@ -47,10 +47,10 @@ export async function processTx(data: { target: string }, sender: string, transa
         }
       }
       const targetAccount = await cache.findOnePromise('accounts', { name: data.target });
-      const currentTotalVoteWeightStr = targetAccount!.totalVoteWeight || BigInt(0);
+      const currentTotalVoteWeightStr = targetAccount!.totalVoteWeight || toBigInt(0);
       let newTotalVoteWeightBigInt = toBigInt(currentTotalVoteWeightStr) - oldVoteWeightBigIntCalculated;
-      if (newTotalVoteWeightBigInt < BigInt(0)) {
-        newTotalVoteWeightBigInt = BigInt(0);
+      if (newTotalVoteWeightBigInt < toBigInt(0)) {
+        newTotalVoteWeightBigInt = toBigInt(0);
       }
       await cache.updateOnePromise('accounts', { name: data.target }, { $set: { totalVoteWeight: toDbString(newTotalVoteWeightBigInt) } });
       logger.debug(`Witness unvote from ${sender} to ${data.target} processed successfully`);

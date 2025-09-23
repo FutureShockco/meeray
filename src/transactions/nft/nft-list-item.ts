@@ -53,7 +53,7 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
       const reservePriceBigInt = toBigInt(data.reservePrice);
       const startingPriceBigInt = toBigInt(data.price);
       
-      if (reservePriceBigInt <= BigInt(0)) {
+      if (reservePriceBigInt <= toBigInt(0)) {
         logger.warn('[nft-list-item] Reserve price must be positive.');
         return false;
       }
@@ -66,7 +66,7 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
     
     if (data.minimumBidIncrement) {
       const incrementBigInt = toBigInt(data.minimumBidIncrement);
-      if (incrementBigInt <= BigInt(0)) {
+      if (incrementBigInt <= toBigInt(0)) {
         logger.warn('[nft-list-item] Minimum bid increment must be positive.');
         return false;
       }
@@ -77,7 +77,7 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
         return false;
     }
     const priceBigInt = toBigInt(data.price);
-    if (priceBigInt <= BigInt(0)) {
+    if (priceBigInt <= toBigInt(0)) {
         logger.warn(`[nft-list-item] Price must be positive. Received: ${data.price}`);
         return false;
     }

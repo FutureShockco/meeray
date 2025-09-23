@@ -44,9 +44,9 @@ export const witnessesModule = {
     },
     witnessRewards: async (name: string, block: any): Promise<string> => {
         const account = await cache.findOnePromise('accounts', { name: name })
-        const reward = BigInt(config.read(block._id).witnessReward || 0);
-        if (account && account.name && reward > BigInt(0)) {
-            const rewardBigInt = BigInt(reward);
+        const reward = toBigInt(config.read(block._id).witnessReward || 0);
+        if (account && account.name && reward > toBigInt(0)) {
+            const rewardBigInt = toBigInt(reward);
             logger.trace(`witnessRewards: Applying reward for ${name}: ${rewardBigInt.toString()}`);
             const adjusted = await adjustUserBalance(account.name, config.nativeTokenSymbol, rewardBigInt);
             if (!adjusted) {
@@ -93,7 +93,7 @@ export const witnessesModule = {
                 name: account.name,
                 pub: account.witnessPublicKey,
                 witnessPublicKey: account.witnessPublicKey,
-                balance: account.balances?.[config.nativeTokenSymbol] || toDbString(BigInt(0)),
+                balance: account.balances?.[config.nativeTokenSymbol] || toDbString(toBigInt(0)),
                 votedWitnesses: account.votedWitnesses,
                 totalVoteWeight: account.totalVoteWeight,
             };
@@ -141,8 +141,8 @@ export const witnessesModule = {
                 : currentBalance;
 
             // --- Compute per-witness shares ---
-            const oldShare = oldVotedWitnesses.length > 0 ? oldBalance / BigInt(oldVotedWitnesses.length) : 0n;
-            const newShare = newVotedWitnesses.length > 0 ? currentBalance / BigInt(newVotedWitnesses.length) : 0n;
+            const oldShare = oldVotedWitnesses.length > 0 ? oldBalance / toBigInt(oldVotedWitnesses.length) : 0n;
+            const newShare = newVotedWitnesses.length > 0 ? currentBalance / toBigInt(newVotedWitnesses.length) : 0n;
 
             const deltaMap: Map<string, bigint> = new Map();
 

@@ -7,7 +7,7 @@ import { Account } from './mongo.js';
 import { toDbString } from './utils/bigint.js';
 import config from './config.js';
 
-const possibleAccountFields = ['target', 'receiver', 'owner', 'delegate', 'to', 'from', 'account'];
+const possibleAccountFields = ['target', 'receiver', 'issuer', 'owner', 'delegate', 'to', 'from', 'account'];
 
 export async function upsertAccountsReferencedInTx(tx: ParsedTransaction | Transaction): Promise<void> {
   const usernamesInTx = new Set<string>();
@@ -52,9 +52,9 @@ export async function upsertAccountsReferencedInTx(tx: ParsedTransaction | Trans
       const newAccountData: Account = {
         name: username,
         created: new Date(),
-        balances: { [config.nativeTokenSymbol]: toDbString(BigInt(0)) },
+        balances: { [config.nativeTokenSymbol]: toDbString(0) },
         nfts: {},
-        totalVoteWeight: toDbString(BigInt(0)),
+        totalVoteWeight: toDbString(0),
         votedWitnesses: []
       };
       try {

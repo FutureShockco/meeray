@@ -1,5 +1,6 @@
 import logger from '../logger.js';
 import { getAccount } from '../utils/account.js';
+import { toBigInt } from '../utils/bigint.js';
 import validate from './index.js';
 /**
  * Validates that the user has sufficient balances for one or more tokens.
@@ -18,16 +19,16 @@ export const userBalances = async (
     }
 
     for (const req of requirements) {
-        const balance = BigInt(userAccount.balances[req.symbol] || 0);
+        const balance = toBigInt(userAccount.balances[req.symbol] || 0);
         if (!balance) {
             logger.warn(`[balance-validation] User account ${user} has no balance for token ${req.symbol}.`);
             return false;
         }
-        if (!validate.bigint(req.amount, false, false, BigInt(1))) {
-            logger.warn(`[token-transfer] Invalid amount: ${BigInt(req.amount).toString()}. Must be a positive integer.`);
+        if (!validate.bigint(req.amount, false, false, toBigInt(1))) {
+            logger.warn(`[token-transfer] Invalid amount: ${toBigInt(req.amount).toString()}. Must be a positive integer.`);
             return false;
         }
-        if (balance < BigInt(req.amount)) {
+        if (balance < toBigInt(req.amount)) {
             logger.warn(`[balance-validation] Insufficient balance for ${req.symbol}. Required: ${req.amount}, Available: ${balance}`);
             return false;
         }

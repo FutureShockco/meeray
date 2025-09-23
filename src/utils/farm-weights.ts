@@ -1,5 +1,6 @@
 import logger from '../logger.js';
 import cache from '../cache.js';
+import { toBigInt } from './bigint.js';
 
 export interface WeightedRewardDistribution {
   farmId: string;
@@ -45,7 +46,7 @@ export async function calculateWeightedRewards(currentBlock: number): Promise<We
     }
 
     // Total reward per block is 1 MRY (1000000000000000000 wei)
-    const totalRewardPerBlock = BigInt('1000000000000000000');
+    const totalRewardPerBlock = toBigInt('1000000000000000000');
 
     const distributions: WeightedRewardDistribution[] = [];
 
@@ -54,7 +55,7 @@ export async function calculateWeightedRewards(currentBlock: number): Promise<We
       const farmWeight = farm.weight || 0;
       if (farmWeight > 0) {
         // farmReward = (farmWeight / totalWeight) * totalRewardPerBlock
-        const farmReward = (totalRewardPerBlock * BigInt(farmWeight)) / BigInt(totalWeight);
+        const farmReward = (totalRewardPerBlock * toBigInt(farmWeight)) / toBigInt(totalWeight);
         
         distributions.push({
           farmId: farm._id?.toString() || '',
@@ -120,8 +121,8 @@ export async function updateFarmRewards(farmId: string, additionalReward: string
       return false;
     }
 
-    const currentReward = BigInt(farm.totalRewards || '0');
-    const newReward = currentReward + BigInt(additionalReward);
+    const currentReward = toBigInt(farm.totalRewards || '0');
+    const newReward = currentReward + toBigInt(additionalReward);
 
     const result = await cache.updateOnePromise('farms', 
       { _id: farmId },
@@ -230,10 +231,10 @@ export async function getFarmWeightInfo(farmId: string): Promise<{
     // Daily reward = rewardShare * totalDailyReward
     // Assuming 1200 blocks per day (3 second blocks), 1 MRY per block
     const blocksPerDay = 1200;
-    const totalDailyReward = BigInt('1000000000000000000') * BigInt(blocksPerDay); // 1200 MRY per day
+    const totalDailyReward = toBigInt('1000000000000000000') * toBigInt(blocksPerDay); // 1200 MRY per day
     const projectedDailyReward = totalWeight > 0 
-      ? (totalDailyReward * BigInt(farmWeight)) / BigInt(totalWeight)
-      : BigInt(0);
+      ? (totalDailyReward * toBigInt(farmWeight)) / toBigInt(totalWeight)
+      : toBigInt(0);
 
     return {
       farmId,

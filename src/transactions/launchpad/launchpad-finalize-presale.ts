@@ -4,15 +4,16 @@ import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { LaunchpadStatus } from './launchpad-interfaces.js';
 
 export interface LaunchpadFinalizePresaleData {
-  userId: string;
   launchpadId: string;
 }
 
 export async function validateTx(data: LaunchpadFinalizePresaleData, sender: string): Promise<boolean> {
   try {
-    if (sender !== data.userId) return false;
+    // Only launchpad owner may finalize presale; validate against launchpad owner
     const lp = await cache.findOnePromise('launchpads', { _id: data.launchpadId });
-    if (!lp || !lp.presale || !lp.presaleDetailsSnapshot) return false;
+    if (!lp) return false;
+  if (lp.issuer !== sender) return false;
+    if (!lp.presale || !lp.presaleDetailsSnapshot) return false;
     // Must be ended
     if (lp.status !== LaunchpadStatus.PRESALE_ENDED) return false;
     return true;
@@ -28,14 +29,14 @@ export async function processTx(data: LaunchpadFinalizePresaleData, sender: stri
     if (!lp || !lp.presale || !lp.presaleDetailsSnapshot) return false;
 
     const price = toBigInt(lp.presaleDetailsSnapshot.pricePerToken);
-    const tokenDecimals = BigInt(lp.tokenomicsSnapshot.tokenDecimals || 0);
-    const scale = BigInt(10) ** tokenDecimals;
+    const tokenDecimals = toBigInt(lp.tokenomicsSnapshot.tokenDecimals || 0);
+    const scale = toBigInt(10) ** tokenDecimals;
 
     const participants = lp.presale.participants || [];
     const updated = participants.map((p: any) => {
       const contrib = toBigInt(p.quoteAmountContributed || '0');
       // tokensAllocated = floor(contrib * scale / price)
-      const alloc = price > BigInt(0) ? (contrib * scale) / price : BigInt(0);
+      const alloc = price > toBigInt(0) ? (contrib * scale) / price : toBigInt(0);
       return { ...p, tokensAllocated: toDbString(alloc) };
     });
 

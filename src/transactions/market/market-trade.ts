@@ -59,7 +59,7 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
       return false;
     }
 
-    if (toBigInt(data.amountIn) <= BigInt(0)) {
+    if (toBigInt(data.amountIn) <= toBigInt(0)) {
       logger.warn('[hybrid-trade] amountIn must be positive.');
       return false;
     }
@@ -89,12 +89,12 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
       logger.info('[hybrid-trade] Using minAmountOut for market order. If AMM output is below this threshold, the trade will be routed to orderbook as a limit order for better price protection.');
     }
 
-    if (hasPrice && toBigInt(data.price!) <= BigInt(0)) {
+    if (hasPrice && toBigInt(data.price!) <= toBigInt(0)) {
       logger.warn('[hybrid-trade] price must be positive.');
       return false;
     }
 
-    if (hasMinAmountOut && toBigInt(data.minAmountOut!) < BigInt(0)) {
+    if (hasMinAmountOut && toBigInt(data.minAmountOut!) < toBigInt(0)) {
       logger.warn('[hybrid-trade] minAmountOut cannot be negative.');
       return false;
     }
@@ -107,7 +107,7 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
 
       // Only warn for extremely unusual ratios (more than 10^20 to catch obvious errors)
       // But still allow the transaction - different token decimals can create huge legitimate ratios
-      if (minAmountOut > amountIn * BigInt(10) ** BigInt(20)) {
+      if (minAmountOut > amountIn * toBigInt(10) ** toBigInt(20)) {
         logger.warn(`[hybrid-trade] minAmountOut ${minAmountOut} is unusually high compared to input amount ${amountIn}. Please verify this is correct.`);
       }
     }
@@ -180,7 +180,7 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
               ammSource
             );
 
-            if (expectedOutput === BigInt(0)) {
+            if (expectedOutput === toBigInt(0)) {
               logger.warn(`[hybrid-trade] AMM route would produce zero output for ${data.amountIn} ${data.tokenIn} -> ${data.tokenOut}. Trade would fail.`);
               return false;
             }
@@ -248,7 +248,7 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
             // From orderbook formula: quantity = (amountIn * 10^baseDecimals) / orderPrice
             // Rearranging: orderPrice = (amountIn * 10^baseDecimals) / quantity
             // where quantity is the desired amount of base token (minAmountOut)
-            calculatedPrice = (toBigInt(data.amountIn) * BigInt(10 ** baseDecimals)) / toBigInt(data.minAmountOut);
+            calculatedPrice = (toBigInt(data.amountIn) * toBigInt(10 ** baseDecimals)) / toBigInt(data.minAmountOut);
           } else {
             // User wants to sell base token for quote token  
             // For sell orders, amountIn is base token, minAmountOut is quote token
@@ -259,7 +259,7 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
             // Calculate the price in the smallest units of both tokens
             // price = (minAmountOut in quote units) / (amountIn in base units)
             // Then scale to the orderbook's expected precision
-            calculatedPrice = (toBigInt(data.minAmountOut) * BigInt(10 ** baseDecimals)) / toBigInt(data.amountIn);
+            calculatedPrice = (toBigInt(data.minAmountOut) * toBigInt(10 ** baseDecimals)) / toBigInt(data.amountIn);
           }
 
           logger.info(`[hybrid-trade] AMM output ${quote.amountOut} below minAmountOut ${data.minAmountOut}. Routing to orderbook as ${orderSide} order at calculated price ${calculatedPrice} (base: ${pair.baseAssetSymbol}=${baseDecimals} decimals, quote: ${pair.quoteAssetSymbol}=${quoteDecimals} decimals)`);
@@ -321,12 +321,12 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
     }
 
     const results: HybridTradeResult['executedRoutes'] = [];
-    let totalAmountOut = BigInt(0);
-    let totalAmountIn = BigInt(0);
+    let totalAmountOut = toBigInt(0);
+    let totalAmountIn = toBigInt(0);
 
     for (const route of routes) {
-      const routeAmountIn = (toBigInt(data.amountIn) * BigInt(route.allocation)) / BigInt(100);
-      if (routeAmountIn <= BigInt(0)) {
+      const routeAmountIn = (toBigInt(data.amountIn) * toBigInt(route.allocation)) / toBigInt(100);
+      if (routeAmountIn <= toBigInt(0)) {
         continue;
       }
 
@@ -389,7 +389,7 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
         const details = routes[0].details as any;
         finalRouteIsLimitOrder = details.orderType === OrderType.LIMIT;
       }
-      const hadImmediateFill = totalAmountOut > BigInt(0);
+      const hadImmediateFill = totalAmountOut > toBigInt(0);
 
       // If the final route is a limit order and there were no immediate fills,
       // don't treat the lack of immediate output as a slippage failure — the order was posted
@@ -441,8 +441,8 @@ async function executeAMMRoute(
 
     // Pre-validate that this route would produce non-zero output
     // This is an additional safeguard beyond the main validation
-    if (ammDetails.expectedOutput && toBigInt(ammDetails.expectedOutput) === BigInt(0)) {
-      return { success: false, amountOut: BigInt(0), error: 'Expected output is zero for this AMM route' };
+    if (ammDetails.expectedOutput && toBigInt(ammDetails.expectedOutput) === toBigInt(0)) {
+      return { success: false, amountOut: toBigInt(0), error: 'Expected output is zero for this AMM route' };
     }
 
     // Create pool swap data
@@ -459,14 +459,14 @@ async function executeAMMRoute(
     // Validate and execute the swap using the new function that returns output amount
     const isValid = await poolSwap.validateTx(swapData, sender);
     if (!isValid) {
-      return { success: false, amountOut: BigInt(0), error: 'AMM swap validation failed' };
+      return { success: false, amountOut: toBigInt(0), error: 'AMM swap validation failed' };
     }
 
     // Use the new processWithResult function to get the actual output amount
     const swapResult: PoolSwapResult = await processWithResult(swapData, sender, transactionId);
 
     if (!swapResult.success) {
-      return { success: false, amountOut: BigInt(0), error: swapResult.error || 'AMM swap execution failed' };
+      return { success: false, amountOut: toBigInt(0), error: swapResult.error || 'AMM swap execution failed' };
     }
 
     // Record the AMM trade in the trades collection for market statistics
@@ -483,7 +483,7 @@ async function executeAMMRoute(
     // Return the actual output amount from the swap
     return { success: true, amountOut: swapResult.amountOut };
   } catch (error) {
-    return { success: false, amountOut: BigInt(0), error: `AMM route error: ${error}` };
+    return { success: false, amountOut: toBigInt(0), error: `AMM route error: ${error}` };
   }
 }
 
@@ -508,7 +508,7 @@ async function executeOrderbookRoute(
     // Get the trading pair to determine correct base/quote assignment
     const pair = await cache.findOnePromise('tradingPairs', { _id: orderbookDetails.pairId });
     if (!pair) {
-      return { success: false, amountOut: BigInt(0), error: `Trading pair ${orderbookDetails.pairId} not found` };
+      return { success: false, amountOut: toBigInt(0), error: `Trading pair ${orderbookDetails.pairId} not found` };
     }
 
     // Get the price for this order
@@ -532,7 +532,7 @@ async function executeOrderbookRoute(
       // quantity = (amountIn * 10^(baseDecimals)) / price
       // where amountIn is in quote token's smallest units, price is in quote token's smallest units per base token
       if (!orderPrice) {
-        return { success: false, amountOut: BigInt(0), error: 'Price required for buy orders' };
+        return { success: false, amountOut: toBigInt(0), error: 'Price required for buy orders' };
       }
 
       const baseDecimals = getTokenDecimals(pair.baseAssetSymbol);
@@ -540,7 +540,7 @@ async function executeOrderbookRoute(
       // This formula works for any decimals:
       // With price in quoteDecimals, use:
       // quantity = (amountIn * 10^baseDecimals) / orderPrice
-      orderQuantity = (amountIn * BigInt(10 ** baseDecimals)) / toBigInt(orderPrice);
+      orderQuantity = (amountIn * toBigInt(10 ** baseDecimals)) / toBigInt(orderPrice);
     } else {
       // For sell orders, quantity is the amount of base currency to sell
       // amountIn is the amount of base token (MRY) the user wants to sell
@@ -578,28 +578,28 @@ async function executeOrderbookRoute(
     const deductionSuccess = await adjustUserBalance(sender, deductToken, -amountIn);
     if (!deductionSuccess) {
       logger.warn(`[executeOrderbookRoute] Failed to deduct ${amountIn} ${deductToken} from user ${sender}`);
-      return { success: false, amountOut: BigInt(0), error: `Insufficient balance for ${deductToken}` };
+      return { success: false, amountOut: toBigInt(0), error: `Insufficient balance for ${deductToken}` };
     }
 
     // Submit to matching engine
     const result = await matchingEngine.addOrder(createdOrder);
 
     if (!result.accepted) {
-      return { success: false, amountOut: BigInt(0), error: result.rejectReason };
+      return { success: false, amountOut: toBigInt(0), error: result.rejectReason };
     }
 
     // For limit orders, the order might not be filled immediately
     if (orderType === OrderType.LIMIT && result.trades.length === 0) {
       logger.info(`[hybrid-trade] Limit order placed at price ${orderPrice}, waiting for matching`);
-      return { success: true, amountOut: BigInt(0) }; // Order placed but not filled yet
+      return { success: true, amountOut: toBigInt(0) }; // Order placed but not filled yet
     }
 
     // Calculate output from trades (for market orders or partially filled limit orders)
     const totalOutput = result.trades.reduce((sum, trade) =>
-      sum + toBigInt(trade.quantity), BigInt(0));
+      sum + toBigInt(trade.quantity), toBigInt(0));
 
     return { success: true, amountOut: totalOutput };
   } catch (error) {
-    return { success: false, amountOut: BigInt(0), error: `Orderbook route error: ${error}` };
+    return { success: false, amountOut: toBigInt(0), error: `Orderbook route error: ${error}` };
   }
 }

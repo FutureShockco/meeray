@@ -130,7 +130,7 @@ export async function processTx(data: CloseAuctionData, sender: string, id: stri
 
     // Calculate payments
     const bidAmount = toBigInt(winningBid.bidAmount);
-    const royaltyAmount = (bidAmount * royaltyBps) / BigInt(10000); // basis points to percentage
+    const royaltyAmount = (bidAmount * royaltyBps) / toBigInt(10000); // basis points to percentage
     const sellerProceeds = bidAmount - royaltyAmount;
 
     logger.debug(`[nft-close-auction] Processing auction close: Bid=${bidAmount}, Royalty=${royaltyAmount}, SellerGets=${sellerProceeds}`);

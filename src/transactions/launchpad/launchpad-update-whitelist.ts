@@ -3,7 +3,6 @@ import cache from '../../cache.js';
 import validate from '../../validation/index.js';
 
 export interface LaunchpadUpdateWhitelistData {
-  userId: string;
   launchpadId: string;
   action: 'ADD' | 'REMOVE' | 'ENABLE' | 'DISABLE' | 'REPLACE';
   addresses?: string[];
@@ -11,14 +10,16 @@ export interface LaunchpadUpdateWhitelistData {
 
 export async function validateTx(data: LaunchpadUpdateWhitelistData, sender: string): Promise<boolean> {
   try {
-    if (sender !== data.userId) {
-      logger.error(`[launchpad-update-whitelist] validate failed: sender mismatch (sender=${sender} data.userId=${data.userId})`);
-      return false;
-    }
+    // Require that the sender is the launchpad owner rather than relying on a userId field in the payload
 
     const lp = await cache.findOnePromise('launchpads', { _id: data.launchpadId });
     if (!lp) {
       logger.error(`[launchpad-update-whitelist] validate failed: launchpad not found (launchpadId=${data.launchpadId})`);
+      return false;
+    }
+
+    if (lp.issuer !== sender) {
+      logger.error(`[launchpad-update-whitelist] validate failed: sender is not launchpad owner (sender=${sender} owner=${lp.issuer})`);
       return false;
     }
 

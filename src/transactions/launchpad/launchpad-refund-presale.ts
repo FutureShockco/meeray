@@ -5,15 +5,16 @@ import { toBigInt } from '../../utils/bigint.js';
 import { LaunchpadStatus } from './launchpad-interfaces.js';
 
 export interface LaunchpadRefundPresaleData {
-  userId: string;
   launchpadId: string;
 }
 
 export async function validateTx(data: LaunchpadRefundPresaleData, sender: string): Promise<boolean> {
   try {
-    if (sender !== data.userId) return false;
+    // Only launchpad owner may request refunds
     const lp = await cache.findOnePromise('launchpads', { _id: data.launchpadId });
-    if (!lp || !lp.presale || !lp.presaleDetailsSnapshot) return false;
+    if (!lp) return false;
+  if (lp.issuer !== sender) return false;
+    if (!lp.presale || !lp.presaleDetailsSnapshot) return false;
     // Only if failed or cancelled before TGE
     if (lp.status !== LaunchpadStatus.PRESALE_FAILED_SOFTCAP_NOT_MET && lp.status !== LaunchpadStatus.CANCELLED) return false;
     return true;
@@ -32,7 +33,7 @@ export async function processTx(data: LaunchpadRefundPresaleData, sender: string
     const participants = lp.presale.participants || [];
     for (const p of participants) {
       const amt = toBigInt(p.quoteAmountContributed || '0');
-      if (amt > BigInt(0)) {
+      if (amt > toBigInt(0)) {
         const ok = await adjustUserBalance(p.userId, quoteId, amt);
         if (!ok) {
           logger.error(`[launchpad-refund-presale] Failed refund for ${p.userId}`);

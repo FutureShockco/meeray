@@ -1,13 +1,11 @@
 import logger from '../../logger.js';
 import cache from '../../cache.js';
-import { LiquidityPoolData, PoolSwapData, PoolSwapResult, UserLiquidityPositionData } from './pool-interfaces.js';
+import { LiquidityPoolData, UserLiquidityPositionData } from './pool-interfaces.js';
 import { getLpTokenSymbol } from '../../utils/token.js';
 import { calculateDecimalAwarePrice, toBigInt, toDbString } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
 import { adjustUserBalance } from '../../utils/account.js';
 import crypto from 'crypto';
-import { findBestTradeRoute, getOutputAmountBigInt } from '../../utils/pool.js';
-import { Account } from '../../mongo.js';
 /**
  * Creates a liquidity pool in the database
  */
@@ -98,7 +96,7 @@ export async function createTradingPair(
   transactionId: string
 ): Promise<boolean> {
   try {
-    const maxTradeAmount = BigInt(1000000000000000000000000000000); // 1,000,000,000
+    const maxTradeAmount = toBigInt('999999999999999999999999999999');
 
     const tradingPairDocument = {
       _id: poolId,
@@ -175,16 +173,16 @@ export async function updatePoolReserves(
   tokenBAmount: string | bigint,
   lpTokensToMint: bigint
 ): Promise<boolean> {
-  const isInitialLiquidity = toBigInt(pool.totalLpTokens) === BigInt(0);
+  const isInitialLiquidity = toBigInt(pool.totalLpTokens) === toBigInt(0);
 
   // For initial liquidity, calculate the actual minimum that was burned
-  let minimumLiquidityBurned = BigInt(0);
+  let minimumLiquidityBurned = toBigInt(0);
   if (isInitialLiquidity) {
     // Re-calculate what minimum was actually burned (adaptive)
-    const BASE_MINIMUM = BigInt(1000);
+    const BASE_MINIMUM = toBigInt(1000);
     const totalLiquidity = lpTokensToMint + BASE_MINIMUM; // Approximate total before burn
-    const ADAPTIVE_MINIMUM = totalLiquidity / BigInt(1000);
-    minimumLiquidityBurned = ADAPTIVE_MINIMUM > BigInt(0) && ADAPTIVE_MINIMUM < BASE_MINIMUM
+    const ADAPTIVE_MINIMUM = totalLiquidity / toBigInt(1000);
+    minimumLiquidityBurned = ADAPTIVE_MINIMUM > toBigInt(0) && ADAPTIVE_MINIMUM < BASE_MINIMUM
       ? ADAPTIVE_MINIMUM
       : BASE_MINIMUM;
   }
@@ -241,8 +239,8 @@ export async function updateUserLiquidityPosition(
     // Calculate unclaimed fees before updating position
     const deltaA = toBigInt(pool.feeGrowthGlobalA || '0') - toBigInt(existingUserPos.feeGrowthEntryA || '0');
     const deltaB = toBigInt(pool.feeGrowthGlobalB || '0') - toBigInt(existingUserPos.feeGrowthEntryB || '0');
-    const newUnclaimedFeesA = (existingUserPos.unclaimedFeesA || BigInt(0)) + (deltaA * existingUserPos.lpTokenBalance) / BigInt(1e18);
-    const newUnclaimedFeesB = (existingUserPos.unclaimedFeesB || BigInt(0)) + (deltaB * existingUserPos.lpTokenBalance) / BigInt(1e18);
+    const newUnclaimedFeesA = (existingUserPos.unclaimedFeesA || toBigInt(0)) + (deltaA * existingUserPos.lpTokenBalance) / toBigInt(1e18);
+    const newUnclaimedFeesB = (existingUserPos.unclaimedFeesB || toBigInt(0)) + (deltaB * existingUserPos.lpTokenBalance) / toBigInt(1e18);
 
     userPosUpdateSuccess = await cache.updateOnePromise(
       'userLiquidityPositions',
@@ -462,5 +460,104 @@ export async function recordPoolSwapTrade(params: {
     logger.debug(`[pool-swap] Recorded trade: ${params.amountIn} ${params.tokenIn} -> ${params.amountOut} ${params.tokenOut} via pool ${params.poolId}`);
   } catch (error) {
     logger.error(`[pool-swap] Error recording trade: ${error}`);
+  }
+}
+
+/**
+ * Claims accumulated fees from a user's liquidity position
+ * This function can be used by both pool-claim-fees and pool-remove-liquidity
+ */
+export async function claimFeesFromPool(
+  user: string,
+  poolId: string,
+  lpTokenAmount?: bigint
+): Promise<{ success: boolean; feesClaimedA: bigint; feesClaimedB: bigint; error?: string }> {
+  try {
+    // Get pool data
+    const pool = await cache.findOnePromise('liquidityPools', { _id: poolId }) as LiquidityPoolData | null;
+    if (!pool) {
+      return { success: false, feesClaimedA: toBigInt(0), feesClaimedB: toBigInt(0), error: `Pool ${poolId} not found` };
+    }
+
+    // Get user position
+    const userPositionId = `${user}_${poolId}`;
+    const userPosition = await cache.findOnePromise('userLiquidityPositions', { _id: userPositionId }) as UserLiquidityPositionData | null;
+    if (!userPosition) {
+      return { success: false, feesClaimedA: toBigInt(0), feesClaimedB: toBigInt(0), error: `User ${user} has no position in pool ${poolId}` };
+    }
+
+    // Calculate claimable fees
+    const currentFeeGrowthA = toBigInt(pool.feeGrowthGlobalA || '0');
+    const currentFeeGrowthB = toBigInt(pool.feeGrowthGlobalB || '0');
+    const userFeeGrowthEntryA = toBigInt(userPosition.feeGrowthEntryA || '0');
+    const userFeeGrowthEntryB = toBigInt(userPosition.feeGrowthEntryB || '0');
+    const userUnclaimedFeesA = toBigInt(userPosition.unclaimedFeesA || '0');
+    const userUnclaimedFeesB = toBigInt(userPosition.unclaimedFeesB || '0');
+
+    // Calculate new fees since last checkpoint
+    const deltaA = currentFeeGrowthA - userFeeGrowthEntryA;
+    const deltaB = currentFeeGrowthB - userFeeGrowthEntryB;
+
+    // Use provided lpTokenAmount or user's full balance
+    const lpTokensToCalculate = lpTokenAmount || toBigInt(userPosition.lpTokenBalance);
+    
+    // Calculate fees earned since last checkpoint
+    const newFeesA = (deltaA * lpTokensToCalculate) / toBigInt(1e18);
+    const newFeesB = (deltaB * lpTokensToCalculate) / toBigInt(1e18);
+
+    // Total claimable fees
+    const totalClaimableFeesA = userUnclaimedFeesA + newFeesA;
+    const totalClaimableFeesB = userUnclaimedFeesB + newFeesB;
+
+    if (totalClaimableFeesA <= toBigInt(0) && totalClaimableFeesB <= toBigInt(0)) {
+      return { success: true, feesClaimedA: toBigInt(0), feesClaimedB: toBigInt(0) }; // No fees to claim
+    }
+
+    // Credit fees to user account
+    if (totalClaimableFeesA > toBigInt(0)) {
+      const creditASuccess = await adjustUserBalance(user, pool.tokenA_symbol, totalClaimableFeesA);
+      if (!creditASuccess) {
+        return { success: false, feesClaimedA: toBigInt(0), feesClaimedB: toBigInt(0), error: `Failed to credit ${totalClaimableFeesA} ${pool.tokenA_symbol} to ${user}` };
+      }
+    }
+
+    if (totalClaimableFeesB > toBigInt(0)) {
+      const creditBSuccess = await adjustUserBalance(user, pool.tokenB_symbol, totalClaimableFeesB);
+      if (!creditBSuccess) {
+        return { success: false, feesClaimedA: toBigInt(0), feesClaimedB: toBigInt(0), error: `Failed to credit ${totalClaimableFeesB} ${pool.tokenB_symbol} to ${user}` };
+      }
+    }
+
+    // Update user position to reset unclaimed fees and update checkpoints
+    const updateSuccess = await cache.updateOnePromise(
+      'userLiquidityPositions',
+      { _id: userPositionId },
+      {
+        $set: {
+          feeGrowthEntryA: toDbString(currentFeeGrowthA),
+          feeGrowthEntryB: toDbString(currentFeeGrowthB),
+          unclaimedFeesA: toDbString(0),
+          unclaimedFeesB: toDbString(0),
+          lastUpdatedAt: new Date().toISOString()
+        }
+      }
+    );
+
+    if (!updateSuccess) {
+      logger.error(`[claimFeesFromPool] Failed to update user position for ${user} in pool ${poolId}`);
+      return { success: false, feesClaimedA: toBigInt(0), feesClaimedB: toBigInt(0), error: 'Failed to update user position' };
+    }
+
+    logger.debug(`[claimFeesFromPool] User ${user} claimed ${totalClaimableFeesA} ${pool.tokenA_symbol} and ${totalClaimableFeesB} ${pool.tokenB_symbol} from pool ${poolId}`);
+
+    return { 
+      success: true, 
+      feesClaimedA: totalClaimableFeesA, 
+      feesClaimedB: totalClaimableFeesB 
+    };
+
+  } catch (error) {
+    logger.error(`[claimFeesFromPool] Error claiming fees for ${user} from pool ${poolId}: ${error}`);
+    return { success: false, feesClaimedA: toBigInt(0), feesClaimedB: toBigInt(0), error: `Claim fees error: ${error}` };
   }
 }

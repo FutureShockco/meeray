@@ -94,7 +94,7 @@ const transformNftListingData = (listingData: any): any => {
                 transformed[field] = value;
             } else {
                 // Convert to BigInt then toDbString
-                transformed[field] = toDbString(BigInt(value));
+                transformed[field] = toDbString(toBigInt(value));
             }
         }
     }

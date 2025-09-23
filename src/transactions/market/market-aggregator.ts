@@ -215,8 +215,8 @@ export class LiquidityAggregator {
     }
 
     // Calculate output using constant product formula with fees (fixed 0.3% fee)
-    const feeMultiplier = BigInt(9700); // 10000 - 300 = 9700 for 0.3% fee
-    const feeDivisor = BigInt(10000);
+    const feeMultiplier = toBigInt(9700); // 10000 - 300 = 9700 for 0.3% fee
+    const feeDivisor = toBigInt(10000);
     const amountInWithFee = (amountIn * feeMultiplier) / feeDivisor;
     
     if (amountInWithFee <= 0n) return null;
@@ -287,13 +287,13 @@ export class LiquidityAggregator {
       // amountIn is in quote units (TESTS), price is quote per base (TESTS per MRY)
       // So amountOut = amountIn / price (in base units - MRY)
       // Scale properly: amountOut = (amountIn * 10^baseDecimals) / price
-      amountOut = (amountIn * BigInt(10 ** baseDecimals)) / toBigInt(price);
+      amountOut = (amountIn * toBigInt(10 ** baseDecimals)) / toBigInt(price);
     } else {
       // Selling base asset: amountOut = amountIn * price
       // amountIn is in base units (MRY), price is quote per base (TESTS per MRY)
       // So amountOut = amountIn * price (in quote units - TESTS)
       // Scale properly: amountOut = (amountIn * price) / 10^baseDecimals
-      amountOut = (amountIn * toBigInt(price)) / BigInt(10 ** baseDecimals);
+      amountOut = (amountIn * toBigInt(price)) / toBigInt(10 ** baseDecimals);
     }
     
     logger.info(`[LiquidityAggregator] Orderbook quote calculation: isBuyingBase=${isBuyingBase}, amountIn=${amountIn}, price=${price}, quoteDecimals=${quoteDecimals}, baseDecimals=${baseDecimals}, amountOut=${amountOut}`);
@@ -394,14 +394,14 @@ export class LiquidityAggregator {
         return priceA > priceB ? 1 : priceA < priceB ? -1 : 0;
       });
 
-      const bestBid = bids.length > 0 ? toBigInt(bids[0].price || '0') : BigInt(0);
-      const bestAsk = asks.length > 0 ? toBigInt(asks[0].price || '0') : BigInt(0);
+      const bestBid = bids.length > 0 ? toBigInt(bids[0].price || '0') : toBigInt(0);
+      const bestAsk = asks.length > 0 ? toBigInt(asks[0].price || '0') : toBigInt(0);
 
       // Calculate available depth
       const bidDepth = bids.reduce((total: bigint, order: any) =>
-        total + (toBigInt(order.quantity) - toBigInt(order.filledQuantity)), BigInt(0));
+        total + (toBigInt(order.quantity) - toBigInt(order.filledQuantity)), toBigInt(0));
       const askDepth = asks.reduce((total: bigint, order: any) =>
-        total + (toBigInt(order.quantity) - toBigInt(order.filledQuantity)), BigInt(0));
+        total + (toBigInt(order.quantity) - toBigInt(order.filledQuantity)), toBigInt(0));
 
       logger.info(`[LiquidityAggregator] Orderbook depth for ${pairId}: bestBid=${bestBid}, bestAsk=${bestAsk}, bidDepth=${bidDepth}, askDepth=${askDepth}`);
 

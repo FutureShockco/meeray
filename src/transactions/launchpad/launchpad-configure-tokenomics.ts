@@ -8,10 +8,7 @@ import { logEvent } from '../../utils/event-logger.js';
 export async function validateTx(data: LaunchpadConfigureTokenomicsData, sender: string): Promise<boolean> {
   logger.debug(`[launchpad-configure-tokenomics] Validating tokenomics config from ${sender} for launchpad ${data.launchpadId}`);
 
-  if (sender !== data.userId) {
-    logger.warn('[launchpad-configure-tokenomics] Sender must match userId.');
-    return false;
-  }
+  // Validate that sender is launchpad owner
 
   if (!data.launchpadId || !data.tokenomics) {
     logger.warn('[launchpad-configure-tokenomics] Missing required fields: launchpadId, tokenomics.');
@@ -24,7 +21,7 @@ export async function validateTx(data: LaunchpadConfigureTokenomicsData, sender:
     return false;
   }
 
-  if (launchpad.launchedByUserId !== sender) {
+  if (launchpad.issuer !== sender) {
     logger.warn(`[launchpad-configure-tokenomics] Only launchpad owner can configure tokenomics.`);
     return false;
   }

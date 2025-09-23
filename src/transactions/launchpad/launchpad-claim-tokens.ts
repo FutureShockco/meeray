@@ -9,11 +9,7 @@ import { calculateVestedAmount, calculateUserAllocation, parseSteemTimestamp } f
 
 export async function validateTx(data: LaunchpadClaimTokensData, sender: string, blockTimestamp: string): Promise<boolean> {
   logger.debug(`[launchpad-claim-tokens] Validating claim from ${sender} for launchpad ${data.launchpadId}, type ${data.allocationType}`);
-
-  if (sender !== data.userId) {
-    logger.warn('[launchpad-claim-tokens] Sender must match userId for claiming tokens.');
-    return false;
-  }
+  // Sender is the claimant; payload `userId` is optional/back-compat. Use sender for checks below.
 
   if (!data.launchpadId || !data.allocationType) {
     logger.warn('[launchpad-claim-tokens] Missing required fields: launchpadId, allocationType.');
@@ -44,15 +40,15 @@ export async function validateTx(data: LaunchpadClaimTokensData, sender: string,
     return false;
   }
 
-  // Validate specific allocation types
+  // Validate specific allocation types — sender is the claimant
   if (data.allocationType === TokenDistributionRecipient.PRESALE_PARTICIPANTS) {
     if (!launchpad.presale || !launchpad.presale.participants) {
       logger.warn(`[launchpad-claim-tokens] No presale participant data found for ${data.launchpadId}.`);
       return false;
     }
-    const participant = launchpad.presale.participants.find((p: any) => p.userId === data.userId);
+    const participant = launchpad.presale.participants.find((p: any) => p.userId === sender);
     if (!participant) {
-      logger.warn(`[launchpad-claim-tokens] User ${data.userId} not found in presale participants for ${data.launchpadId}.`);
+      logger.warn(`[launchpad-claim-tokens] Sender ${sender} not found in presale participants for ${data.launchpadId}.`);
       return false;
     }
   } else if (data.allocationType === TokenDistributionRecipient.AIRDROP_REWARDS) {
@@ -60,13 +56,13 @@ export async function validateTx(data: LaunchpadClaimTokensData, sender: string,
       logger.warn(`[launchpad-claim-tokens] No airdrop recipients found for ${data.launchpadId}.`);
       return false;
     }
-    const airdropRecipient = launchpad.airdropRecipients.find((r: any) => r.username === data.userId);
+    const airdropRecipient = launchpad.airdropRecipients.find((r: any) => r.username === sender);
     if (!airdropRecipient) {
-      logger.warn(`[launchpad-claim-tokens] User ${data.userId} not found in airdrop recipients for ${data.launchpadId}.`);
+      logger.warn(`[launchpad-claim-tokens] Sender ${sender} not found in airdrop recipients for ${data.launchpadId}.`);
       return false;
     }
     if (airdropRecipient.claimed) {
-      logger.warn(`[launchpad-claim-tokens] User ${data.userId} has already claimed airdrop tokens for ${data.launchpadId}.`);
+      logger.warn(`[launchpad-claim-tokens] Sender ${sender} has already claimed airdrop tokens for ${data.launchpadId}.`);
       return false;
     }
   } else {
@@ -84,7 +80,7 @@ export async function validateTx(data: LaunchpadClaimTokensData, sender: string,
 
     // For simplicity, assume project owner can claim team/advisor allocations
     // In production, you'd want more sophisticated access control
-    if (sender !== launchpad.launchedByUserId) {
+    if (sender !== launchpad.issuer) {
       logger.warn(`[launchpad-claim-tokens] Only project owner can claim ${data.allocationType} tokens.`);
       return false;
     }
@@ -108,39 +104,40 @@ export async function processTx(data: LaunchpadClaimTokensData, sender: string, 
       return false;
     }
 
-    let tokensToMint = BigInt(0);
+    let tokensToMint = toBigInt(0);
     let updateQuery: any = {};
 
+      const claimant = sender; // Prefer sender for checks
     if (data.allocationType === TokenDistributionRecipient.PRESALE_PARTICIPANTS) {
       // Handle presale participant claims
-      const participant = launchpad.presale.participants.find((p: any) => p.userId === data.userId);
+      const participant = launchpad.presale.participants.find((p: any) => p.userId === sender);
       if (!participant || participant.claimed) {
-        logger.error(`[launchpad-claim-tokens] Presale participant ${data.userId} already claimed or not found.`);
+        logger.error(`[launchpad-claim-tokens] Sender ${sender} already claimed or not found in presale participants.`);
         return false;
       }
 
       tokensToMint = toBigInt(participant.tokensAllocated || '0');
-      if (tokensToMint <= BigInt(0)) {
-        logger.warn(`[launchpad-claim-tokens] No tokens allocated for presale participant ${data.userId}.`);
+      if (tokensToMint <= toBigInt(0)) {
+        logger.warn(`[launchpad-claim-tokens] No tokens allocated for presale participant ${sender}.`);
         return false;
       }
 
       // Mark participant as claimed
-      const participantIndex = launchpad.presale.participants.findIndex((p: any) => p.userId === data.userId);
+  const participantIndex = launchpad.presale.participants.findIndex((p: any) => p.userId === sender);
       updateQuery[`presale.participants.${participantIndex}.claimed`] = true;
 
     } else if (data.allocationType === TokenDistributionRecipient.AIRDROP_REWARDS) {
       // Handle airdrop claims (immediate, no vesting)
-      const airdropRecipient = launchpad.airdropRecipients?.find((r: any) => r.username === data.userId);
+        const airdropRecipient = launchpad.airdropRecipients?.find((r: any) => r.username === sender);
       if (!airdropRecipient || airdropRecipient.claimed) {
-        logger.error(`[launchpad-claim-tokens] Airdrop recipient ${data.userId} already claimed or not found.`);
+        logger.error(`[launchpad-claim-tokens] Airdrop recipient ${sender} already claimed or not found.`);
         return false;
       }
 
       tokensToMint = toBigInt(airdropRecipient.amount);
 
       // Mark airdrop as claimed
-      const recipientIndex = launchpad.airdropRecipients.findIndex((r: any) => r.username === data.userId);
+  const recipientIndex = launchpad.airdropRecipients.findIndex((r: any) => r.username === sender);
       updateQuery[`airdropRecipients.${recipientIndex}.claimed`] = true;
 
     } else {
@@ -153,7 +150,7 @@ export async function processTx(data: LaunchpadClaimTokensData, sender: string, 
 
       // Get or create vesting state
       let vestingState = await cache.findOnePromise('vesting_states', {
-        userId: data.userId,
+        userId: sender,
         launchpadId: data.launchpadId,
         allocationType: data.allocationType
       });
@@ -164,7 +161,7 @@ export async function processTx(data: LaunchpadClaimTokensData, sender: string, 
         const totalAllocated = calculateUserAllocation(allocation, totalSupply);
 
         vestingState = {
-          userId: data.userId,
+          userId: sender,
           launchpadId: data.launchpadId,
           allocationType: data.allocationType,
           totalAllocated: toDbString(totalAllocated),
@@ -187,8 +184,8 @@ export async function processTx(data: LaunchpadClaimTokensData, sender: string, 
 
       tokensToMint = vestingResult.availableToClaim;
 
-      if (tokensToMint <= BigInt(0)) {
-        logger.warn(`[launchpad-claim-tokens] No tokens available to claim for ${data.userId}. Still locked: ${vestingResult.stillLocked}`);
+      if (tokensToMint <= toBigInt(0)) {
+        logger.warn(`[launchpad-claim-tokens] No tokens available to claim for ${sender}. Still locked: ${vestingResult.stillLocked}`);
         return false;
       }
 
@@ -198,7 +195,7 @@ export async function processTx(data: LaunchpadClaimTokensData, sender: string, 
 
       await cache.updateOnePromise('vesting_states', 
         { 
-          userId: data.userId, 
+          userId: sender, 
           launchpadId: data.launchpadId, 
           allocationType: data.allocationType 
         },
@@ -213,9 +210,9 @@ export async function processTx(data: LaunchpadClaimTokensData, sender: string, 
     }
 
     // Mint tokens to user account
-    const success = await adjustUserBalance(data.userId, launchpad.mainTokenId, tokensToMint);
+      const success = await adjustUserBalance(sender, launchpad.mainTokenId, tokensToMint);
     if (!success) {
-      logger.error(`[launchpad-claim-tokens] Failed to mint ${tokensToMint} tokens to ${data.userId}.`);
+      logger.error(`[launchpad-claim-tokens] Failed to mint ${tokensToMint} tokens to ${sender}.`);
       return false;
     }
 
@@ -232,7 +229,7 @@ export async function processTx(data: LaunchpadClaimTokensData, sender: string, 
       tokenId: launchpad.mainTokenId
     });
 
-    logger.debug(`[launchpad-claim-tokens] Successfully claimed ${tokensToMint} tokens for ${data.userId}.`);
+      logger.debug(`[launchpad-claim-tokens] Successfully claimed ${tokensToMint} tokens for ${sender}.`);
     return true;
 
   } catch (error) {

@@ -1,5 +1,5 @@
-import validateInteger from './integer.js';
 import validateBigInt from './bigint.js';
+import { toBigInt } from '../utils/bigint.js';
 
 /**
  * Type validation functions
@@ -21,9 +21,9 @@ interface ParameterGroup {
  */
 const types: Record<string, ValidationType> = {
     posInt: (val: any) => validateBigInt(val, false, false),
-    posNonZeroInt: (val: any) => validateBigInt(val, false, false, BigInt(1)),
+    posNonZeroInt: (val: any) => validateBigInt(val, false, false, toBigInt(1)),
     posAmount: (val: any) => validateBigInt(val, true, false),
-    posNonZeroAmount: (val: any) => validateBigInt(val, false, false, BigInt(1))
+    posNonZeroAmount: (val: any) => validateBigInt(val, false, false, toBigInt(1))
 };
 
 /**

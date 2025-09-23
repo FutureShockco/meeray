@@ -97,7 +97,7 @@ export async function processTx(launchData: LaunchpadLaunchTokenData, sender: st
         decimals: tokenDecimalsNumber,
         totalSupply: toDbString(totalSupplyBigInt),
       },
-      launchedByUserId: sender,
+      issuer: sender,
       createdAt: now,
       updatedAt: now,
     };

@@ -6,10 +6,8 @@ import validation from './validation/index.js';
 import config from './config.js';
 import { TransactionType } from './transactions/types.js';
 import chain from './chain.js';
-import cache from './cache.js';
 import { transactionHandlers } from './transactions/index.js';
 import cloneDeep from 'clone-deep';
-import { toBigInt, toDbString } from './utils/bigint.js';
 const MAX_MEMPOOL_SIZE = parseInt(process.env.MEMPOOL_SIZE || '2000', 10);
 
 type ValidationCallback = (isValid: boolean, error?: string) => void;
@@ -158,7 +156,7 @@ const transaction: TransactionModule = {
     isValidTxData: (tx: TransactionInterface, ts: number, legitUser: string, cb: ValidationCallback): void => {
         const handler = transactionHandlers[tx.type as TransactionType];
         if (handler && typeof handler.validate === 'function') {
-            handler.validate(tx.data, tx.sender)
+            handler.validate(tx.data, tx.sender, tx.id, tx.ts)
                 .then((isValidSpecific: boolean) => {
                     if (!isValidSpecific) {
                         cb(false, `Specific validation failed for type ${TransactionType[tx.type as TransactionType]}`); // Error = true

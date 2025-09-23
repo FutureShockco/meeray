@@ -90,19 +90,19 @@ export async function validateTx(data: FarmCreateData, sender: string): Promise<
             return false;
         }
 
-        if (!validate.bigint(data.totalRewards, false, false, BigInt(1))) {
+        if (!validate.bigint(data.totalRewards, false, false, toBigInt(1))) {
             logger.warn('[farm-create] totalRewards must be a positive integer.');
             return false;
         }
-        if (!validate.bigint(data.rewardsPerBlock, false, false, BigInt(1))) {
+        if (!validate.bigint(data.rewardsPerBlock, false, false, toBigInt(1))) {
             logger.warn('[farm-create] rewardsPerBlock must be a positive integer.');
             return false;
         }
-        if (data.minStakeAmount !== undefined && !validate.bigint(data.minStakeAmount, true, false, BigInt(0))) {
+        if (data.minStakeAmount !== undefined && !validate.bigint(data.minStakeAmount, true, false, toBigInt(0))) {
             logger.warn('[farm-create] minStakeAmount must be a non-negative integer if provided.');
             return false;
         }
-        if (data.maxStakeAmount !== undefined && !validate.bigint(data.maxStakeAmount, false, false, BigInt(1))) {
+        if (data.maxStakeAmount !== undefined && !validate.bigint(data.maxStakeAmount, false, false, toBigInt(1))) {
             logger.warn('[farm-create] maxStakeAmount must be a positive integer if provided.');
             return false;
         }
@@ -112,7 +112,7 @@ export async function validateTx(data: FarmCreateData, sender: string): Promise<
         }
 
         const senderAccount = await getAccount(sender);
-        if (!senderAccount || !senderAccount.balances || BigIntMath.toBigInt(senderAccount.balances[data.rewardToken.symbol] || '0') < BigInt(data.totalRewards)) {
+        if (!senderAccount || !senderAccount.balances || BigIntMath.toBigInt(senderAccount.balances[data.rewardToken.symbol] || '0') < toBigInt(data.totalRewards)) {
             logger.warn(`[farm-create] Sender ${sender} does not have enough ${data.rewardToken.symbol} to fund the farm. Needs ${data.totalRewards}, has ${senderAccount?.balances?.[data.rewardToken.symbol] || '0'}`);
             return false;
         }
@@ -135,9 +135,9 @@ export async function processTx(data: FarmCreateData, sender: string, id: string
             return false;
         }
         const currentSenderRewardBalance = BigIntMath.toBigInt(senderAccount.balances[data.rewardToken.symbol] || '0');
-        const newSenderRewardBalance = currentSenderRewardBalance - BigInt(data.totalRewards);
+        const newSenderRewardBalance = currentSenderRewardBalance - toBigInt(data.totalRewards);
 
-        if (newSenderRewardBalance < BigInt(0)) {
+        if (newSenderRewardBalance < toBigInt(0)) {
             logger.error(`[farm-create] Critical: Sender ${sender} insufficient balance for ${data.rewardToken.symbol} during processing.`);
             return false;
         }
@@ -154,7 +154,7 @@ export async function processTx(data: FarmCreateData, sender: string, id: string
         if (!existingVault) {
             await mongo.getDb().collection('accounts').updateOne(
                 { name: vaultAccountName },
-                { $setOnInsert: { name: vaultAccountName, balances: { [data.rewardToken.symbol]: toDbString(BigInt(0)) }, nfts: {}, totalVoteWeight: toDbString(BigInt(0)), votedWitnesses: [], created: new Date() } },
+                { $setOnInsert: { name: vaultAccountName, balances: { [data.rewardToken.symbol]: toDbString(toBigInt(0)) }, nfts: {}, totalVoteWeight: toDbString(toBigInt(0)), votedWitnesses: [], created: new Date() } },
                 { upsert: true }
             );
             const insertedVault = await mongo.getDb().collection('accounts').findOne({ name: vaultAccountName });
@@ -166,7 +166,7 @@ export async function processTx(data: FarmCreateData, sender: string, id: string
         const vaultBalanceKey = `balances.${data.rewardToken.symbol}`;
         const vaultAccount = await cache.findOnePromise('accounts', { name: vaultAccountName });
         const currentVaultBal = BigIntMath.toBigInt(vaultAccount?.balances?.[data.rewardToken.symbol] || '0');
-        const newVaultBal = currentVaultBal + BigInt(data.totalRewards);
+        const newVaultBal = currentVaultBal + toBigInt(data.totalRewards);
         await cache.updateOnePromise('accounts', { name: vaultAccountName }, { $set: { [vaultBalanceKey]: toDbString(newVaultBal) } });
 
         // Determine if this is a native farm (rewards in MRY from system)
@@ -186,9 +186,9 @@ export async function processTx(data: FarmCreateData, sender: string, id: string
             endTime: data.endTime,
             totalRewards: data.totalRewards,
             rewardsPerBlock: data.rewardsPerBlock,
-            minStakeAmount: data.minStakeAmount === undefined ? BigInt(0) : data.minStakeAmount,
-            maxStakeAmount: data.maxStakeAmount === undefined ? BigInt(0) : data.maxStakeAmount,
-            totalStaked: BigInt(0),
+            minStakeAmount: data.minStakeAmount === undefined ? toBigInt(0) : data.minStakeAmount,
+            maxStakeAmount: data.maxStakeAmount === undefined ? toBigInt(0) : data.maxStakeAmount,
+            totalStaked: toBigInt(0),
             weight: farmWeight,
             isNativeFarm: isNativeFarm,
             isActive: true,

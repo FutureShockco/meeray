@@ -58,8 +58,7 @@ export interface LaunchpadLaunchTokenData {
   tokenName: string;
   tokenSymbol: string;
   totalSupply: string | bigint;
-  tokenDecimals?: number; // defaults to 18
-  
+  tokenDecimals?: number;
   // Optional basic info (can also be set via LaunchpadUpdateMetadataData)
   tokenDescription?: string;
   projectWebsite?: string;
@@ -115,7 +114,7 @@ export interface LaunchpadData {
     amount: string | bigint;
     claimed: boolean;
   }>;
-  launchedByUserId: string;
+  issuer: string;
   createdAt: string;
   updatedAt: string;
   presale?: {

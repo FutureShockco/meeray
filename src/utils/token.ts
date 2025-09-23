@@ -1,7 +1,7 @@
 import cache from '../cache.js';
 import logger from '../logger.js';
 import settings from '../settings.js';
-import { toDbString } from './bigint.js';
+import { toBigInt, toDbString } from './bigint.js';
 import { TokenData } from '../transactions/token/token-interfaces.js';
 
 export interface Token {
@@ -29,7 +29,7 @@ export async function adjustTokenSupply(tokenSymbol: string, amount: bigint): Pr
         logger.error(`[token-utils] Token ${tokenSymbol} not found`);
         return null;
     }
-    const newSupply = BigInt(token.currentSupply) + amount;
+    const newSupply = toBigInt(token.currentSupply) + amount;
     const updateResult = await cache.updateOnePromise('tokens', { symbol: tokenSymbol }, { $set: { currentSupply: toDbString(newSupply) } });
     if (!updateResult) {
         logger.error(`[token-utils] Failed to update token supply for ${tokenSymbol}`);

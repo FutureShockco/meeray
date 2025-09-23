@@ -4,7 +4,6 @@ import validate from '../../validation/index.js';
 import { LaunchpadStatus } from './launchpad-interfaces.js';
 
 export interface LaunchpadUpdateStatusData {
-  userId: string;
   launchpadId: string;
   newStatus: LaunchpadStatus | string;
   reason?: string;
@@ -34,11 +33,10 @@ const ALLOWED_TRANSITIONS: Record<LaunchpadStatus, LaunchpadStatus[]> = {
 export async function validateTx(data: LaunchpadUpdateStatusData, sender: string): Promise<boolean> {
   try {
     if (!data.launchpadId || !data.newStatus) return false;
-    if (sender !== data.userId) return false;
-
+    // Validate that the sender is the launchpad owner
     const launchpad = await cache.findOnePromise('launchpads', { _id: data.launchpadId });
     if (!launchpad) return false;
-
+  if (launchpad.issuer !== sender) return false;
     const currentStatus: LaunchpadStatus = launchpad.status;
     const desired = data.newStatus as LaunchpadStatus;
     if (!(desired in LaunchpadStatus)) return false;

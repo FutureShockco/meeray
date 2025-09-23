@@ -4,6 +4,7 @@ import * as BSON from 'bson';
 import logger from './logger.js';
 import config from './config.js';
 import chain from './chain.js';
+import { toBigInt } from './utils/bigint.js';
 
 const isRebuild = process.env.REBUILD_STATE === '1';
 
@@ -11,7 +12,7 @@ export const blocks: any = {
     fd: 0 as number,
     fdIndex: 0 as number,
     height: 0 as number,
-    bsonSize: BigInt(0),
+    bsonSize: toBigInt(0),
     dataDir: process.env.BLOCKS_DIR ? process.env.BLOCKS_DIR.replace(/\/$/, '') : '',
     isOpen: false,
     notOpenError: 'Blockchain is not open',
@@ -36,7 +37,7 @@ export const blocks: any = {
         // Open blocks.bson file
         logger.info('Opening blockchain database at ' + blocks.dataDir + '...');
         blocks.fd = fs.openSync(bsonPath, 'a+');
-        blocks.bsonSize = BigInt(fs.statSync(bsonPath).size);
+        blocks.bsonSize = toBigInt(fs.statSync(bsonPath).size);
 
         // Open blocks.index file
         blocks.fdIndex = fs.openSync(indexPath, 'a+');
@@ -49,14 +50,14 @@ export const blocks: any = {
         let resumeIndex = false;
         if (indexSize > 0) {
             assert(indexSize % 8 === 0, 'Size of index file should be in multiple of 8');
-            let docPosition = BigInt(0);
+            let docPosition = toBigInt(0);
             let docSizeBuf = Buffer.alloc(4);
             let docIndexBuf = Buffer.alloc(8);
             fs.readSync(blocks.fdIndex, docIndexBuf, { offset: 0, position: indexSize - 8, length: 8 });
-            docPosition = BigInt(Number(BigInt(docIndexBuf.readUInt32LE(0)) << 8n) + docIndexBuf.readUInt32LE(4));
+            docPosition = toBigInt(Number(toBigInt(docIndexBuf.readUInt32LE(0)) << 8n) + docIndexBuf.readUInt32LE(4));
             assert(docPosition < blocks.bsonSize, 'Latest indexed position greater than or equal to blocks.bson size');
             fs.readSync(blocks.fd, docSizeBuf, { offset: 0, position: docPosition, length: 4 });
-            let docSize = BigInt(docSizeBuf.readInt32LE(0));
+            let docSize = toBigInt(docSizeBuf.readInt32LE(0));
             docPosition += docSize;
             if (docPosition < blocks.bsonSize) {
                 resumeIndex = true;
@@ -109,14 +110,14 @@ export const blocks: any = {
         let startTime = new Date().getTime();
         let indexBuf = Buffer.alloc(8);
         let docSizeBuf = currentDocSizeBuf || Buffer.alloc(4);
-        let docPosition = currentDocPosition || BigInt(0);
+        let docPosition = currentDocPosition || toBigInt(0);
         let blockHeight = currentBlockHeight || 0;
         while (docPosition < blocks.bsonSize) {
             fs.readSync(blocks.fd, docSizeBuf, { offset: 0, position: Number(docPosition), length: 4 });
             indexBuf.writeUInt32LE(Number(docPosition >> 8n), 0);
             indexBuf.writeUInt32LE(Number(docPosition & 0xFFn), 4);
             fs.writeSync(blocks.fdIndex, indexBuf);
-            docPosition += BigInt(docSizeBuf.readInt32LE(0));
+            docPosition += toBigInt(docSizeBuf.readInt32LE(0));
             blockHeight++;
         }
         blocks.height = blockHeight - 1;
@@ -127,7 +128,7 @@ export const blocks: any = {
         assert(blocks.isOpen, blocks.notOpenError);
         assert(newBlock._id === blocks.height + 1, 'could not append non-next block');
         let serializedBlock = BSON.serialize(newBlock);
-        let newBlockSize = BigInt(serializedBlock.length);
+        let newBlockSize = toBigInt(serializedBlock.length);
         fs.writeSync(blocks.fd, serializedBlock);
         blocks.appendIndex(blocks.bsonSize);
         blocks.bsonSize += newBlockSize;
@@ -151,8 +152,8 @@ export const blocks: any = {
         // Read position of block from index
         let indexBuf = Buffer.alloc(8);
         fs.readSync(blocks.fdIndex, indexBuf, { offset: 0, position: blockNum * 8, length: 8 });
-        let docPosition = Number(BigInt(indexBuf.readUInt32LE(0)) << 8n) + indexBuf.readUInt32LE(4);
-        assert(BigInt(docPosition) < blocks.bsonSize, 'Bson position out of range');
+        let docPosition = Number(toBigInt(indexBuf.readUInt32LE(0)) << 8n) + indexBuf.readUInt32LE(4);
+        assert(toBigInt(docPosition) < blocks.bsonSize, 'Bson position out of range');
 
         // Read blocks BSON at position of block
         let docSizeBuf = Buffer.alloc(4);
@@ -183,9 +184,9 @@ export const blocks: any = {
         let indexBufEnd = Buffer.alloc(8);
         fs.readSync(blocks.fdIndex, indexBuf, { offset: 0, position: start * 8, length: 8 });
         fs.readSync(blocks.fdIndex, indexBufEnd, { offset: 0, position: end * 8, length: 8 });
-        let docPosition = Number(BigInt(indexBuf.readUInt32LE(0)) << 8n) + indexBuf.readUInt32LE(4);
-        let docPositionEnd = Number(BigInt(indexBufEnd.readUInt32LE(0)) << 8n) + indexBufEnd.readUInt32LE(4);
-        assert(BigInt(docPosition) < blocks.bsonSize && BigInt(docPositionEnd) < blocks.bsonSize, 'Bson position out of range');
+        let docPosition = Number(toBigInt(indexBuf.readUInt32LE(0)) << 8n) + indexBuf.readUInt32LE(4);
+        let docPositionEnd = Number(toBigInt(indexBufEnd.readUInt32LE(0)) << 8n) + indexBufEnd.readUInt32LE(4);
+        assert(toBigInt(docPosition) < blocks.bsonSize && toBigInt(docPositionEnd) < blocks.bsonSize, 'Bson position out of range');
 
         // Read blocks BSON from start position to end position of last block
         let docSizeBufEnd = Buffer.alloc(4);

@@ -16,7 +16,7 @@ export function calculateVestedAmount(
   totalAllocatedTokens: bigint,
   vestingStartTimestamp: string,
   currentTimestamp: string,
-  alreadyClaimed: bigint = BigInt(0)
+  alreadyClaimed: bigint = toBigInt(0)
 ): VestingCalculationResult {
   
   if (!allocation.vestingSchedule || allocation.vestingSchedule.type === VestingType.NONE) {
@@ -24,7 +24,7 @@ export function calculateVestedAmount(
     return {
       totalVested: totalAllocatedTokens,
       availableToClaim: totalAllocatedTokens - alreadyClaimed,
-      stillLocked: BigInt(0)
+      stillLocked: toBigInt(0)
     };
   }
 
@@ -39,7 +39,7 @@ export function calculateVestedAmount(
   if (timeElapsedMonths < cliffMonths) {
     // Still in cliff period - only initial unlock available
     const initialUnlockPercent = vestingSchedule.initialUnlockPercentage || 0;
-    const initialUnlockAmount = (totalAllocatedTokens * BigInt(initialUnlockPercent)) / BigInt(100);
+    const initialUnlockAmount = (totalAllocatedTokens * toBigInt(initialUnlockPercent)) / toBigInt(100);
     
     return {
       totalVested: initialUnlockAmount,
@@ -50,9 +50,9 @@ export function calculateVestedAmount(
   }
 
   // Calculate vesting based on type
-  let vestedAmount = BigInt(0);
+  let vestedAmount = toBigInt(0);
   const initialUnlockPercent = vestingSchedule.initialUnlockPercentage || 0;
-  const initialUnlockAmount = (totalAllocatedTokens * BigInt(initialUnlockPercent)) / BigInt(100);
+  const initialUnlockAmount = (totalAllocatedTokens * toBigInt(initialUnlockPercent)) / toBigInt(100);
   const vestingAmount = totalAllocatedTokens - initialUnlockAmount;
 
   switch (vestingSchedule.type) {
@@ -60,7 +60,7 @@ export function calculateVestedAmount(
       const vestingMonths = vestingSchedule.durationMonths;
       const monthsVested = Math.min(timeElapsedMonths - cliffMonths, vestingMonths);
       const vestingProgress = monthsVested / vestingMonths;
-      vestedAmount = initialUnlockAmount + (vestingAmount * BigInt(Math.floor(vestingProgress * 10000))) / BigInt(10000);
+      vestedAmount = initialUnlockAmount + (vestingAmount * toBigInt(Math.floor(vestingProgress * 10000))) / toBigInt(10000);
       break;
     }
     
@@ -69,7 +69,7 @@ export function calculateVestedAmount(
       const timeElapsedDays = timeElapsedMs / (1000 * 60 * 60 * 24);
       const daysVested = Math.min(timeElapsedDays - (cliffMonths * 30.44), vestingDays);
       const vestingProgress = daysVested / vestingDays;
-      vestedAmount = initialUnlockAmount + (vestingAmount * BigInt(Math.floor(vestingProgress * 10000))) / BigInt(10000);
+      vestedAmount = initialUnlockAmount + (vestingAmount * toBigInt(Math.floor(vestingProgress * 10000))) / toBigInt(10000);
       break;
     }
     
@@ -107,9 +107,9 @@ export function calculateUserAllocation(
   userShare?: bigint, // For presale participants based on contribution
   totalShares?: bigint // Total contributions for presale
 ): bigint {
-  const allocationAmount = (totalTokenSupply * BigInt(allocation.percentage)) / BigInt(100);
+  const allocationAmount = (totalTokenSupply * toBigInt(allocation.percentage)) / toBigInt(100);
   
-  if (allocation.recipient === 'PRESALE_PARTICIPANTS' && userShare && totalShares && totalShares > BigInt(0)) {
+  if (allocation.recipient === 'PRESALE_PARTICIPANTS' && userShare && totalShares && totalShares > toBigInt(0)) {
     // Calculate proportional share for presale participant
     return (allocationAmount * userShare) / totalShares;
   }

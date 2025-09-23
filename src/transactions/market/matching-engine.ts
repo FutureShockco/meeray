@@ -45,7 +45,7 @@ async function distributeOrderbookFeesToLiquidityProviders(
 
     // Distribute base token fees to the correct pool token
     if (baseTokenFee > 0n) {
-      const feeGrowthDelta = (baseTokenFee * BigInt(1e18)) / totalLpTokens;
+      const feeGrowthDelta = (baseTokenFee * toBigInt(1e18)) / totalLpTokens;
       if (baseIsTokenA) {
         newFeeGrowthGlobalA = newFeeGrowthGlobalA + feeGrowthDelta;
       } else {
@@ -55,7 +55,7 @@ async function distributeOrderbookFeesToLiquidityProviders(
 
     // Distribute quote token fees to the correct pool token
     if (quoteTokenFee > 0n) {
-      const feeGrowthDelta = (quoteTokenFee * BigInt(1e18)) / totalLpTokens;
+      const feeGrowthDelta = (quoteTokenFee * toBigInt(1e18)) / totalLpTokens;
       if (quoteIsTokenA) {
         newFeeGrowthGlobalA = newFeeGrowthGlobalA + feeGrowthDelta;
       } else {
@@ -416,8 +416,8 @@ class MatchingEngine {
         const tradeValue = calculateTradeValue(tradePriceBigInt, tradeQuantityBigInt, baseTokenIdentifier, quoteTokenIdentifier);
 
         // Apply 0.3% fee split between buyer and seller (0.15% each)
-        const feeRate = BigInt(150); // 0.15% in basis points for each party
-        const feeDivisor = BigInt(10000);
+        const feeRate = toBigInt(150); // 0.15% in basis points for each party
+        const feeDivisor = toBigInt(10000);
         
         // Calculate fees for both parties
         const baseTokenFee = (tradeQuantityBigInt * feeRate) / feeDivisor; // Fee on base token (taken from buyer)
