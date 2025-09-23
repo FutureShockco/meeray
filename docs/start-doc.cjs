@@ -1,38 +1,18 @@
-// Simple test script to verify API documentation
-const http = require('http');
+const path = require('path');
+const express = require('express');
+const app = express();
+const port = process.env.APIDOC_PORT || 3333;
 
-const options = {
-  hostname: 'localhost',
-  port: 3000,
-  path: '/api-docs',
-  method: 'GET',
-  headers: {
-    'Accept': 'text/html'
-  }
-};
+const distPath = path.join(__dirname, 'api');
 
-const req = http.request(options, (res) => {
-  console.log(`Status: ${res.statusCode}`);
-  console.log(`Headers: ${JSON.stringify(res.headers)}`);
-  
-  let data = '';
-  res.on('data', (chunk) => {
-    data += chunk;
-  });
-  
-  res.on('end', () => {
-    if (data.includes('swagger') || data.includes('Swagger')) {
-      console.log('✅ API Documentation is working!');
-      console.log('📖 Visit http://localhost:3000/api-docs in your browser');
-    } else {
-      console.log('❌ API Documentation not found');
-      console.log('Response preview:', data.substring(0, 200));
-    }
-  });
+// Serve static files
+app.use(express.static(distPath));
+
+// Catch-all route
+app.use((req, res) => {
+  res.sendFile(path.join(distPath, 'index.html'));
 });
 
-req.on('error', (error) => {
-  console.error('❌ Error:', error.message);
+app.listen(port, () => {
+  console.log(`✅ App running at http://localhost:${port}`);
 });
-
-req.end();

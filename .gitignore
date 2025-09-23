@@ -33,3 +33,5 @@ config/p2p_node_id.json
 build/node.exe
 build/mongod.exe
 MeerayNodeSetup.exe
+*.gz
+.env

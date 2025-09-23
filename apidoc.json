@@ -4,7 +4,7 @@
   "description": "API documentation for MeeRay - A next-generation sidechain extending Steem Blockchain capabilities",
   "title": "MeeRay API Documentation",
   "url": "http://localhost:3333",
-  "sampleUrl": "http://localhost:3001",
+  "sampleUrl": "https://api.meeray.com",
   "template": {
     "withCompare": true,
     "withGenerator": true
