@@ -326,11 +326,11 @@ export const mongo = {
                 name: 'MeeRay Farm',
                 stakingToken: {
                     symbol: 'MRY',
-                    issuer: 'echelon-node1',
+                    issuer: 'meeray-node1',
                 },
                 rewardToken: {
                     symbol: 'MRY',
-                    issuer: 'echelon-node1',
+                    issuer: 'meeray-node1',
                 },
                 startTime: new Date().toISOString(),
                 endTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),

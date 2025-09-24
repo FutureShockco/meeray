@@ -35,7 +35,7 @@ async function main() {
         instanceId: instanceId,
         price: "100000", // Fixed price for testing
         paymentTokenSymbol: "TESTS", // Use TESTS token which should exist
-        paymentTokenIssuer: "echelon-node1" // Issuer for TESTS token
+        paymentTokenIssuer: "meeray-node1" // Issuer for TESTS token
     };
 
     console.log(`Listing NFT for sale with account ${username}:`);

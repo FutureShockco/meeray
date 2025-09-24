@@ -9,7 +9,7 @@
                               "decimals":  8,
                               "totalSupply":  "00000000000000000100000000000000"
                           },
-    "issuer":  "echelon-node1",
+    "issuer":  "meeray-node1",
         "createdAt":  "2025-09-22T20:34:42.075Z",
         "updatedAt":  "2025-09-22T20:34:42.075Z"
     },
@@ -23,7 +23,7 @@
                               "decimals":  18,
                               "totalSupply":  "00000000000000000000001000000000"
                           },
-    "issuer":  "echelon-node1",
+    "issuer":  "meeray-node1",
         "createdAt":  "2025-09-22T22:08:23.080Z",
         "updatedAt":  "2025-09-22T22:08:23.080Z"
     },
@@ -37,7 +37,7 @@
                               "decimals":  18,
                               "totalSupply":  "00000000000000000000001000000000"
                           },
-    "issuer":  "echelon-node1",
+    "issuer":  "meeray-node1",
         "createdAt":  "2025-09-22T22:08:53.644Z",
         "updatedAt":  "2025-09-22T22:08:53.644Z"
     },
@@ -51,7 +51,7 @@
                               "decimals":  18,
                               "totalSupply":  "00000000000000000000001000000000"
                           },
-    "issuer":  "echelon-node1",
+    "issuer":  "meeray-node1",
         "createdAt":  "2025-09-22T22:12:53.661Z",
         "updatedAt":  "2025-09-22T22:12:53.661Z"
     }

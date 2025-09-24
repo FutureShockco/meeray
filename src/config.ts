@@ -8,7 +8,7 @@ const config = {
     burnAccountName: 'null',
     maxWitnesses: 20,
     masterBalance: '20000000000000000',
-    masterName: 'echelon-node1',
+    masterName: 'meeray-node1',
     masterPublicKey: 'e27B66QHwRLjnjxi5KAa9G7fLSDajtoB6CxuZ87oTdfS',
     blockTime: 3000,
     syncBlockTime: 1000,

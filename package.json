@@ -8,7 +8,7 @@
     "test": "nodemon --watch src --ext ts --exec \"tsx src/main.ts\"",
     "dev": "nodemon --watch src --ext ts --exec \"tsx src/main.ts\"",
     "observer": "npm run reset-observer && cross-env PEERS=ws://localhost:6001 LOG_LEVEL=info WITNESS_PUBLIC_KEY=x WITNESS_PRIVATE_KEY=x MONGO_DB=meeray_observer STEEM_ACCOUNT=observer_node API_PORT=3001 P2P_PORT=6002 nodemon --watch src --ext ts --exec \"tsx src/main.ts\"",
-    "producer": "cross-env PEERS=ws://localhost:6001 LOG_LEVEL=info API_PORT=3002 P2P_PORT=6002 WITNESS_PUBLIC_KEY=29YugDTkCuz1L2sQ8SvknF89cUh9RzaPfhogXrzuTJ7YK WITNESS_PRIVATE_KEY=2FvK1XvSgrn4e1n9A7t85aQRQVfUkgT4f1D1GUMtQqRV MONGO_DB=meeray_producer STEEM_ACCOUNT=echelon-node3 nodemon --watch src --ext ts --exec \"tsx src/main.ts\"",
+    "producer": "cross-env PEERS=ws://localhost:6001 LOG_LEVEL=info API_PORT=3002 P2P_PORT=6002 WITNESS_PUBLIC_KEY=29YugDTkCuz1L2sQ8SvknF89cUh9RzaPfhogXrzuTJ7YK WITNESS_PRIVATE_KEY=2FvK1XvSgrn4e1n9A7t85aQRQVfUkgT4f1D1GUMtQqRV MONGO_DB=meeray_producer STEEM_ACCOUNT=meeray-node3 nodemon --watch src --ext ts --exec \"tsx src/main.ts\"",
     "reset": "mongosh meeray --eval \"db.dropDatabase()\"",
     "reset-observer": "mongosh meeray_observer --eval \"db.dropDatabase()\"",
     "reset-producer": "mongosh meeray_producer --eval \"db.dropDatabase()\"",

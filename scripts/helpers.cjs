@@ -301,7 +301,7 @@ async function getMasterAccount() {
         }
 
         return {
-            username: 'echelon-node1',
+            username: 'meeray-node1',
             privateKey: PrivateKey.fromString(privateKeys[0])
         };
     } catch (err) {

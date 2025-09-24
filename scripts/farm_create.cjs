@@ -13,11 +13,11 @@ async function main() {
         name: "TESTS Farm", // Simple farm name
         stakingToken: {
             symbol: "TESTS", // Use TESTS token which should exist
-            issuer: "echelon-node1" // Issuer for TESTS token
+            issuer: "meeray-node1" // Issuer for TESTS token
         },
         rewardToken: {
             symbol: "TBD", // Use TBD token as reward
-            issuer: "echelon-node1" // Issuer for TBD token
+            issuer: "meeray-node1" // Issuer for TBD token
         },
         startTime: new Date(now).toISOString(),
         endTime: new Date(now + durationMs).toISOString(),

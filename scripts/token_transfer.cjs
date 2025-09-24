@@ -49,14 +49,14 @@ async function main() {
     }
     
     // Mint tokens using the last created symbol
-    await transferTokens(lastSymbol, "echelon-node3");
-    await transferTokens(lastSymbol, "echelon-node2");
+    await transferTokens(lastSymbol, "meeray-node3");
+    await transferTokens(lastSymbol, "meeray-node2");
     
     // Also mint some default tokens for testing
-    // await transferTokens("TESTS", "echelon-node3");
-    // await transferTokens("TBD", "echelon-node3");
-    // await transferTokens("TESTS", "echelon-node2");
-    // await transferTokens("TBD", "echelon-node2");
+    // await transferTokens("TESTS", "meeray-node3");
+    // await transferTokens("TBD", "meeray-node3");
+    // await transferTokens("TESTS", "meeray-node2");
+    // await transferTokens("TBD", "meeray-node2");
 }
 
 main().catch(err => {

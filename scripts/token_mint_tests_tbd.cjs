@@ -33,12 +33,12 @@ async function mintTokens(symbol, to) {
 async function main() {
     
     // Also mint some default tokens for testing
-    await mintTokens("TESTS", "echelon-node1");
-    await mintTokens("TBD", "echelon-node1");
-    await mintTokens("TESTS", "echelon-node2");
-    await mintTokens("TBD", "echelon-node2");
-    await mintTokens("TESTS", "echelon-node1");
-    await mintTokens("TBD", "echelon-node1");
+    await mintTokens("TESTS", "meeray-node1");
+    await mintTokens("TBD", "meeray-node1");
+    await mintTokens("TESTS", "meeray-node2");
+    await mintTokens("TBD", "meeray-node2");
+    await mintTokens("TESTS", "meeray-node1");
+    await mintTokens("TBD", "meeray-node1");
 }
 
 main().catch(err => {

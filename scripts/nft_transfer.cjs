@@ -28,8 +28,8 @@ async function main() {
     let instanceId = "1";
     console.log(`Using NFT instance ID: "${instanceId}" (first NFT in collection)`);
 
-    // For this example, we'll transfer to a different account (echelon-node2)
-    const NFT_RECEIVER = 'echelon-node2';
+    // For this example, we'll transfer to a different account (meeray-node2)
+    const NFT_RECEIVER = 'meeray-node2';
 
     const transferData = {
         collectionSymbol: collectionSymbol,

@@ -9,13 +9,13 @@ async function testLaunchpadLaunch() {
     // Test the transaction processing directly
     const testTx = {
       type: 29, // LAUNCHPAD_LAUNCH_TOKEN
-      sender: 'echelon-node1',
+      sender: 'meeray-node1',
       data: {
         tokenName: 'MRYLAUNCH',
         tokenSymbol: 'MRYL',
         totalSupply: '100000000000000',
         tokenDecimals: 8,
-        userId: 'echelon-node1'
+        userId: 'meeray-node1'
       },
       id: 'test-tx-123',
       ts: Date.now()

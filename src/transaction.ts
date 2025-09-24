@@ -12,7 +12,6 @@ import validation from './validation/index.js';
 const MAX_MEMPOOL_SIZE = parseInt(process.env.MEMPOOL_SIZE || '2000', 10);
 
 type ValidationCallback = (isValid: boolean, error?: string) => void;
-
 type ExecutionCallback = (executed: boolean, distributed?: number) => void;
 
 interface TransactionModule {
@@ -66,10 +65,8 @@ const transaction: TransactionModule = {
                 logr.debug(`Added transaction to pool: type=${txs[y].type}, sender=${txs[y].sender}, hash=${txs[y].hash}`);
             }
         }
-
         logr.info(`Added ${added} new transactions to pool (new size: ${transaction.pool.length})`);
     },
-
     isPoolFull: (): boolean => {
         if (transaction.pool.length >= MAX_MEMPOOL_SIZE) {
             logr.warn(`Mempool is full (${transaction.pool.length}/${MAX_MEMPOOL_SIZE} txs), ignoring tx`);
@@ -77,7 +74,6 @@ const transaction: TransactionModule = {
         }
         return false;
     },
-
     removeFromPool: (txs: TransactionInterface[]): void => {
         for (let y = 0; y < txs.length; y++) {
             for (let i = 0; i < transaction.pool.length; i++) {
@@ -88,7 +84,6 @@ const transaction: TransactionModule = {
             }
         }
     },
-
     cleanPool: (): void => {
         for (let i = 0; i < transaction.pool.length; i++) {
             if (transaction.pool[i] && transaction.pool[i].ts! + config.read(0).txExpirationTime < new Date().getTime()) {

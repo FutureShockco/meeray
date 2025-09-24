@@ -47,7 +47,7 @@ async function main() {
 
     const tokenMintData = {
         symbol: tokenSymbol, // Use the retrieved symbol
-        to: "echelon-node1",
+        to: "meeray-node1",
         amount: tokenData.maxSupply / 10
     };
 

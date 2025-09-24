@@ -6,10 +6,10 @@ async function main() {
     // Get client - we'll use a different account to buy the NFT
     const { client, sscId } = await getClient();
 
-    // Use echelon-node2 account to buy the NFT (different from the lister)
-    const username = 'echelon-node2';
+    // Use meeray-node2 account to buy the NFT (different from the lister)
+    const username = 'meeray-node2';
     const keys = require('./keys.json');
-    const privateKey = keys[1]; // Use second key for echelon-node2
+    const privateKey = keys[1]; // Use second key for meeray-node2
 
     // Read the last created NFT collection symbol from file
     const symbolFilePath = path.join(__dirname, 'lastNFTCollectionSymbol.txt');
@@ -28,7 +28,7 @@ async function main() {
     }
 
     // Generate listing ID based on collection symbol and instance ID
-    let listingId = `${collectionSymbol}-1-echelon-node1`; // Format: collection-instanceId-seller (seller is echelon-node1)
+    let listingId = `${collectionSymbol}-1-meeray-node1`; // Format: collection-instanceId-seller (seller is meeray-node1)
     console.log(`Using NFT listing ID: ${listingId}`);
 
     const buyItemData = {

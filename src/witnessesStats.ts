@@ -2,13 +2,13 @@ import logger from './logger.js';
 import mongo from './mongo.js';
 
 interface IWitnessStats {
-    _id?: string; // Witness name, corresponds to the account name
+    _id?: string;
     sinceTs?: number;
     sinceBlock?: number;
     produced?: number;
     missed?: number;
     voters?: number;
-    last?: number; // Assuming this refers to the last block number produced
+    last?: number;
 }
 
 interface IWitnessIndexer {
@@ -21,7 +21,7 @@ interface IWitnessIndexer {
 
 const indexer: IWitnessIndexer = {
     witnesses: {
-        'echelon-node1': {
+        'meeray-node1': {
             sinceTs: 0,
             sinceBlock: 0,
             produced: 1,
