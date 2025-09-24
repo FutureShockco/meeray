@@ -101,7 +101,7 @@ export async function processTx(data: NftCancelBidData, sender: string, _id: str
                 await cache.updateOnePromise(
                     'nftBids',
                     { _id: newHighestBid._id },
-                    { $set: { isHighestBid: true, status: 'WINNING' } }
+                    { $set: { isHighestBid: true, status: 'winning' } }
                 );
             } else {
                 // No remaining bids, clear highest bid info

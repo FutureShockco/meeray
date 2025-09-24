@@ -1085,7 +1085,7 @@ router.get('/user/:username/winning', (async (req: Request, res: Response) => {
         // Get user's winning bids
         const winningBids = await cache.findPromise('nftBids', {
             bidder: userId,
-            status: 'WINNING',
+            status: 'winning',
             isHighestBid: true,
         });
 

@@ -16,7 +16,7 @@ export async function getHighestBid(listingId: string): Promise<NftBid | null> {
     try {
         const bids = (await cache.findPromise('nftBids', {
             listingId,
-            status: 'ACTIVE',
+            status: 'active',
             isHighestBid: true,
         })) as NftBid[] | null;
 
@@ -43,7 +43,7 @@ export async function getActiveBids(listingId: string): Promise<NftBid[]> {
     try {
         const bids = (await cache.findPromise('nftBids', {
             listingId,
-            status: 'ACTIVE',
+            status: 'active',
         })) as NftBid[] | null;
 
         if (!bids) return [];
@@ -68,7 +68,7 @@ export async function updateBidStatuses(listingId: string, newHighestBidId: stri
         // Get all other active bids first
         const otherBids = (await cache.findPromise('nftBids', {
             listingId,
-            status: 'ACTIVE',
+            status: 'active',
             _id: { $ne: newHighestBidId },
         })) as any[] | null;
 
@@ -80,7 +80,7 @@ export async function updateBidStatuses(listingId: string, newHighestBidId: stri
                     { _id: bid._id },
                     {
                         $set: {
-                            status: 'OUTBID',
+                            status: 'outbid',
                             isHighestBid: false,
                         },
                     }
@@ -98,7 +98,7 @@ export async function updateBidStatuses(listingId: string, newHighestBidId: stri
             { _id: newHighestBidId },
             {
                 $set: {
-                    status: 'WINNING',
+                    status: 'winning',
                     isHighestBid: true,
                 },
             }

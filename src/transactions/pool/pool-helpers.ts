@@ -21,7 +21,7 @@ export async function createLiquidityPool(poolId: string, tokenA_symbol: string,
             tokenB_reserve: toDbString(0),
             totalLpTokens: toDbString(0),
             createdAt: new Date().toISOString(),
-            status: 'ACTIVE',
+            status: 'active',
         };
 
         const createSuccess = await cache.insertOnePromise('liquidityPools', poolDocument);
@@ -99,7 +99,7 @@ export async function createTradingPair(
             tickSize: toDbString(1),
             lotSize: toDbString(1),
             minNotional: toDbString(1),
-            status: 'TRADING',
+            status: 'trading',
             minTradeAmount: toDbString(1),
             maxTradeAmount: toDbString(maxTradeAmount),
             createdAt: new Date().toISOString(),
