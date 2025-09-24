@@ -20,7 +20,7 @@ if (process.env.ADDRESS_PREFIX) {
   CLIENT_OPTIONS.addressPrefix = process.env.ADDRESS_PREFIX;
 }
 
-// Use master account (meeray-node1) instead of random account
+// Use master account (echelon-node1) instead of random account
 let privateKeyString;
 let username;
 
@@ -29,8 +29,8 @@ try {
   const keysFile = fs.readFileSync(path.join(__dirname, 'keys.json'));
   const privateKeys = JSON.parse(keysFile);
 
-  privateKeyString = privateKeys[0]; // Use first key (meeray-node1)
-  username = 'meeray-node1'; // Master account name
+  privateKeyString = privateKeys[0]; // Use first key (echelon-node1)
+  username = 'echelon-node1'; // Master account name
 } catch (err) {
   console.error('Error loading keys.json file:', err);
   process.exit(1);

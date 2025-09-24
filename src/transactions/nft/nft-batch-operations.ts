@@ -19,26 +19,28 @@ export async function validateTx(data: NftBatchPayload, sender: string): Promise
                 return false;
             }
 
-            const validOperations = ['LIST', 'DELIST', 'BUY', 'BID', 'TRANSFER'];
-            if (!validOperations.includes(op.operation)) {
+            // normalize operation name locally to avoid mutating types
+            const opName = String(op.operation).toLowerCase();
+            const validOperations = ['list', 'delist', 'buy', 'bid', 'transfer'];
+            if (!validOperations.includes(opName)) {
                 logger.warn(`[nft-batch] Invalid operation type: ${op.operation}.`);
                 return false;
             }
 
             let isValid = false;
             try {
-                switch (op.operation) {
-                    case 'LIST':
+                switch (opName) {
+                    case 'list':
                         isValid = await validateListTx(op.data, sender);
                         break;
-                    case 'DELIST':
+                    case 'delist':
                         isValid = await validateDelistTx(op.data, sender);
                         break;
-                    case 'BUY':
-                    case 'BID':
+                    case 'buy':
+                    case 'bid':
                         isValid = await validateBuyTx(op.data, sender);
                         break;
-                    case 'TRANSFER':
+                    case 'transfer':
                         isValid = await validateTransferTx(op.data, sender);
                         break;
                 }
@@ -58,8 +60,7 @@ export async function validateTx(data: NftBatchPayload, sender: string): Promise
         return false;
     }
 }
-
-export async function processTx(data: NftBatchPayload, sender: string, id: string): Promise<boolean> {
+export async function processTx(data: NftBatchPayload, sender: string, id: string, timestamp: number): Promise<boolean> {
     try {
         const isAtomic = data.atomic !== false;
 
@@ -70,17 +71,17 @@ export async function processTx(data: NftBatchPayload, sender: string, id: strin
             try {
                 const opId = `${id}_${i}`;
                 switch (op.operation) {
-                    case 'LIST':
+                    case 'list':
                         success = (await processList(op.data, sender, opId)) !== null;
                         break;
-                    case 'DELIST':
+                    case 'delist':
                         success = await processDelist(op.data, sender, opId);
                         break;
-                    case 'BUY':
-                    case 'BID':
-                        success = await processBuy(op.data, sender, opId);
+                    case 'buy':
+                    case 'bid':
+                        success = await processBuy(op.data, sender, opId, timestamp);
                         break;
-                    case 'TRANSFER':
+                    case 'transfer':
                         success = await processTransfer(op.data, sender, opId);
                         break;
                 }

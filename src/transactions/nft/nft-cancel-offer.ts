@@ -20,7 +20,7 @@ export async function validateTx(data: NftCancelOfferData, sender: string): Prom
             return false;
         }
 
-        if (offer.status !== 'ACTIVE') {
+        if (offer.status !== 'active') {
             logger.warn(`[nft-cancel-offer] Cannot cancel offer with status ${offer.status}.`);
             return false;
         }
@@ -57,7 +57,7 @@ export async function processTx(data: NftCancelOfferData, sender: string, _id: s
             { _id: data.offerId },
             {
                 $set: {
-                    status: 'CANCELLED',
+                    status: 'cancelled',
                     cancelledAt: new Date().toISOString(),
                     cancelledBy: sender,
                 },

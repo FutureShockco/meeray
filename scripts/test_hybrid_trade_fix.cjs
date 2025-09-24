@@ -22,7 +22,7 @@ async function testHybridTrade() {
     console.log('\nExecuting hybrid trade...');
     const executeResponse = await axios.post(`${API_BASE}/market/hybrid/trade`, {
       ...tradeData,
-      sender: 'meeray-node1'
+      sender: 'echelon-node1'
     });
     
     console.log('Execute response:', JSON.stringify(executeResponse.data, null, 2));

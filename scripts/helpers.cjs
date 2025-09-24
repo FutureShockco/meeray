@@ -301,8 +301,30 @@ async function getMasterAccount() {
         }
 
         return {
-            username: 'meeray-node1',
+            username: 'echelon-node1',
             privateKey: PrivateKey.fromString(privateKeys[0])
+        };
+    } catch (err) {
+        console.error(`Error loading account data: ${err.message}`);
+        process.exit(1);
+    }
+}
+
+async function getSecondAccount() {
+    try {
+        let privateKeys;
+        try {
+            // Load private keys from external file that will be gitignored
+            const keysFile = fs.readFileSync(path.join(__dirname, 'keys.json'));
+            privateKeys = JSON.parse(keysFile);
+        } catch (err) {
+            console.error('Error loading keys.json file:', err);
+            process.exit(1);
+        }
+
+        return {
+            username: 'echelon-node2',
+            privateKey: PrivateKey.fromString(privateKeys[1])
         };
     } catch (err) {
         console.error(`Error loading account data: ${err.message}`);
@@ -374,6 +396,7 @@ module.exports = {
     getGlobalProperties,
     getRandomAccount,
     getMasterAccount,
+    getSecondAccount,
     generateRandomTokenData,
     generateRandomNFTCollectionData,
     generateRandomPoolData,

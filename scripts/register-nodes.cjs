@@ -16,10 +16,10 @@ async function main() {
         process.exit(1);
     }
 
-    //const nodes = ['meeray-node1', 'meeray-node2', 'meeray-node3', 'meeray-node4', 'meeray-node5'];
+    //const nodes = ['echelon-node1', 'echelon-node2', 'echelon-node3', 'echelon-node4', 'echelon-node5'];
     //const publicKeys = ['e27B66QHwRLjnjxi5KAa9G7fLSDajtoB6CxuZ87oTdfS', 'mxRB23vGuuj4YjJNApTrjJ1D4urDoGJPt5Bqht26ZXm6', '29YugDTkCuz1L2sQ8SvknF89cUh9RzaPfhogXrzuTJ7YK', 'wKqHm9QWCbQnqNT2Vz2Pk6pPistXgzvANJm2jAXubuzP', 'onk2Dhko4JjxGL8arsP4F41vCq5UPDNZKBaCRTMhd51J'];
 
-    const nodes = ['meeray-node1', 'meeray-node2', 'meeray-node3'];
+    const nodes = ['echelon-node1', 'echelon-node2', 'echelon-node3'];
     const publicKeys = ['e27B66QHwRLjnjxi5KAa9G7fLSDajtoB6CxuZ87oTdfS', 'mxRB23vGuuj4YjJNApTrjJ1D4urDoGJPt5Bqht26ZXm6', '29YugDTkCuz1L2sQ8SvknF89cUh9RzaPfhogXrzuTJ7YK'];
 
 
@@ -76,7 +76,7 @@ async function main() {
                 const voteOperation = [
                     'custom_json',
                     {
-                        required_auths: ['meeray-node1'],
+                        required_auths: ['echelon-node1'],
                         required_posting_auths: [],
                         id: 'sidechain',
                         json: JSON.stringify({

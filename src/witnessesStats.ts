@@ -21,7 +21,7 @@ interface IWitnessIndexer {
 
 const indexer: IWitnessIndexer = {
     witnesses: {
-        'meeray-node1': {
+        'echelon-node1': {
             sinceTs: 0,
             sinceBlock: 0,
             produced: 1,

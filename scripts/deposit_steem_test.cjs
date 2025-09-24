@@ -6,7 +6,7 @@ const { getClient,transfer,sendCustomJson } = require('./helpers.cjs');
 async function main() {
     // Get client and random account
     const { client, sscId } = await getClient();
-    const username = "meeray-node2"
+    const username = "echelon-node2"
     let privateKeys;
     try {
         // Load private keys from external file that will be gitignored
@@ -21,7 +21,7 @@ async function main() {
         await transfer(
             client,
             username,
-            'meeray-node1',
+            'echelon-node1',
             '1.789 TESTS',
             username,
             PrivateKey.fromString(privateKeys[1])

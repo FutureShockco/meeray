@@ -47,7 +47,7 @@ export async function validateTx(data: NftBuyPayload, sender: string): Promise<b
         const bidAmount = data.bidAmount ? toBigInt(data.bidAmount) : listingPrice;
 
         // For auctions, validate bid logic
-        if (listing.listingType === 'AUCTION' || listing.listingType === 'RESERVE_AUCTION') {
+        if (listing.listingType === 'auction' || listing.listingType === 'reserve_auction') {
             if (!data.bidAmount) {
                 logger.warn(`[nft-buy-item] Auction listings require bidAmount.`);
                 return false;
@@ -87,7 +87,7 @@ export async function validateTx(data: NftBuyPayload, sender: string): Promise<b
     }
 }
 
-export async function processTx(data: NftBuyPayload, sender: string, id: string): Promise<boolean> {
+export async function processTx(data: NftBuyPayload, sender: string, id: string, timestamp: number): Promise<boolean> {
     try {
         const listing = (await cache.findOnePromise('nftListings', {
             _id: data.listingId,
@@ -95,12 +95,12 @@ export async function processTx(data: NftBuyPayload, sender: string, id: string)
         })) as NFTListingData;
         const bidAmount = data.bidAmount ? toBigInt(data.bidAmount) : toBigInt(listing.price);
         const listingPrice = toBigInt(listing.price);
-        const isImmediatePurchase = bidAmount >= listingPrice || (listing.listingType === 'FIXED_PRICE' && !data.bidAmount);
+        const isImmediatePurchase = bidAmount >= listingPrice || (listing.listingType === 'fixed_price' && !data.bidAmount);
 
         if (isImmediatePurchase) {
             return await executeImmediatePurchase(listing, sender, bidAmount, id);
         } else {
-            return await submitBid(listing, sender, bidAmount, id);
+            return await submitBid(listing, sender, bidAmount, id, timestamp);
         }
     } catch (error) {
         logger.error(`[nft-buy-item] Error processing: ${error}`);
@@ -182,19 +182,19 @@ async function executeImmediatePurchase(
     }
 }
 
-async function submitBid(listing: NFTListingData, bidder: string, bidAmount: bigint, _transactionId: string): Promise<boolean> {
+async function submitBid(listing: NFTListingData, bidder: string, bidAmount: bigint, id: string, timestamp: number): Promise<boolean> {
     try {
         const paymentToken = await getToken(listing.paymentToken.symbol);
         if (!paymentToken) return false;
 
         const paymentTokenIdentifier = `${paymentToken.symbol}${paymentToken.issuer ? '@' + paymentToken.issuer : ''}`;
-        const bidId = generateBidId(listing._id, bidder);
+        const bidId = generateBidId(listing._id, bidder, timestamp);
 
         // Handle existing bid
         const existingBid = (await cache.findOnePromise('nftBids', {
             listingId: listing._id,
             bidder,
-            status: 'ACTIVE',
+            status: 'active',
         })) as NftBid | null;
         if (existingBid) {
             await releaseEscrowedFunds(bidder, toBigInt(existingBid.escrowedAmount), paymentTokenIdentifier);
@@ -213,7 +213,7 @@ async function submitBid(listing: NFTListingData, bidder: string, bidAmount: big
             listingId: listing._id,
             bidder,
             bidAmount: toDbString(bidAmount),
-            status: isHighestBid ? 'WINNING' : 'ACTIVE',
+            status: isHighestBid ? 'winning' : 'active',
             paymentToken: { symbol: listing.paymentToken.symbol, issuer: listing.paymentToken.issuer },
             escrowedAmount: toDbString(bidAmount),
             createdAt: new Date().toISOString(),

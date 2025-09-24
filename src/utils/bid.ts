@@ -7,9 +7,8 @@ import { adjustUserBalance } from './account.js';
 import { toBigInt, toDbString } from './bigint.js';
 
 // Helper to generate a unique bid ID
-export function generateBidId(listingId: string, bidder: string, timestamp?: number): string {
-    const ts = timestamp || Date.now();
-    return crypto.createHash('sha256').update(`${listingId}_${bidder}_${ts}`).digest('hex').substring(0, 16);
+export function generateBidId(listingId: string, bidder: string, timestamp: number): string {
+    return crypto.createHash('sha256').update(`${listingId}_${bidder}_${timestamp}`).digest('hex').substring(0, 16);
 }
 
 // Get the current highest bid for a listing
@@ -146,7 +145,7 @@ export function validateBidAmount(
     }
 
     // Check reserve price for reserve auctions
-    if (listing.listingType === 'RESERVE_AUCTION' && listing.reservePrice) {
+    if (listing.listingType === 'reserve_auction' && listing.reservePrice) {
         const reservePrice = toBigInt(listing.reservePrice);
         if (bidAmount < reservePrice) {
             return {

@@ -20,7 +20,7 @@ export async function validateTx(data: NftCancelBidData, sender: string): Promis
             return false;
         }
 
-        if (bid.status !== 'ACTIVE' && bid.status !== 'WINNING' && bid.status !== 'OUTBID') {
+        if (bid.status !== 'active' && bid.status !== 'winning' && bid.status !== 'outbid') {
             logger.warn(`[nft-cancel-bid] Cannot cancel bid with status ${bid.status}.`);
             return false;
         }
@@ -57,7 +57,7 @@ export async function processTx(data: NftCancelBidData, sender: string, _id: str
             { _id: data.bidId },
             {
                 $set: {
-                    status: 'CANCELLED',
+                    status: 'cancelled',
                     cancelledAt: new Date().toISOString(),
                     cancelledBy: sender,
                 },
@@ -73,7 +73,7 @@ export async function processTx(data: NftCancelBidData, sender: string, _id: str
         if (bid.isHighestBid) {
             const remainingBids = (await cache.findPromise('nftBids', {
                 listingId: data.listingId,
-                status: { $in: ['ACTIVE', 'WINNING'] },
+                status: { $in: ['active', 'winning'] },
                 _id: { $ne: data.bidId },
             })) as NftBid[] | null;
 

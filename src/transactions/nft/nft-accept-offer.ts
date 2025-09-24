@@ -16,7 +16,7 @@ export async function validateTx(data: NftAcceptOfferData, sender: string): Prom
         }
 
         const offer = (await cache.findOnePromise('nftOffers', { _id: data.offerId })) as NftOffer | null;
-        if (!offer || offer.status !== 'ACTIVE') {
+        if (!offer || offer.status !== 'active') {
             logger.warn('[nft-accept-offer] Offer not found or not active.');
             return false;
         }
@@ -33,7 +33,7 @@ export async function validateTx(data: NftAcceptOfferData, sender: string): Prom
         }
 
         // Validate based on offer type
-        if (offer.targetType === 'NFT') {
+        if (offer.targetType === 'nft') {
             // For NFT offers, sender must own the specific NFT
             const nft = (await cache.findOnePromise('nfts', { _id: offer.targetId })) as NftInstance | null;
             if (!nft || nft.owner !== sender) {
@@ -42,9 +42,11 @@ export async function validateTx(data: NftAcceptOfferData, sender: string): Prom
             }
 
             // Check if NFT is currently listed (can't accept offer on listed NFT)
+            // offer.targetId uses underscore format (collection_instanceId) in this codebase
+            const parts = offer.targetId.split('_');
             const activeListing = await cache.findOnePromise('nftListings', {
-                collectionId: offer.targetId.split('-')[0],
-                tokenId: offer.targetId.split('-').slice(1).join('-'),
+                collectionId: parts[0],
+                tokenId: parts.slice(1).join('_'),
                 status: 'active',
             });
 
@@ -52,7 +54,7 @@ export async function validateTx(data: NftAcceptOfferData, sender: string): Prom
                 logger.warn(`[nft-accept-offer] Cannot accept offer on listed NFT ${offer.targetId}.`);
                 return false;
             }
-        } else if (offer.targetType === 'COLLECTION' || offer.targetType === 'TRAIT') {
+        } else if (offer.targetType === 'collection' || offer.targetType === 'trait') {
             // For collection/trait offers, sender must specify which NFT to sell
             if (!data.nftInstanceId || !validate.string(data.nftInstanceId, 256, 3)) {
                 logger.warn('[nft-accept-offer] nftInstanceId required for collection/trait offers.');
@@ -66,7 +68,7 @@ export async function validateTx(data: NftAcceptOfferData, sender: string): Prom
             }
 
             // For collection offers, NFT must be from the specified collection
-            if (offer.targetType === 'COLLECTION') {
+            if (offer.targetType === 'collection') {
                 const nftCollectionSymbol = data.nftInstanceId.split('-')[0];
                 if (nftCollectionSymbol !== offer.targetId) {
                     logger.warn(`[nft-accept-offer] NFT ${data.nftInstanceId} is not from collection ${offer.targetId}.`);
@@ -75,7 +77,7 @@ export async function validateTx(data: NftAcceptOfferData, sender: string): Prom
             }
 
             // For trait offers, NFT must have matching traits
-            if (offer.targetType === 'TRAIT' && offer.traits) {
+            if (offer.targetType === 'trait' && offer.traits) {
                 // This would require loading NFT metadata and checking traits
                 // For now, we'll assume trait validation is done at the application level
                 logger.debug(`[nft-accept-offer] Trait validation for ${data.nftInstanceId} would be done here.`);
@@ -83,7 +85,7 @@ export async function validateTx(data: NftAcceptOfferData, sender: string): Prom
         }
 
         // Validate collection transferability
-        const targetNftId = offer.targetType === 'NFT' ? offer.targetId : data.nftInstanceId!;
+        const targetNftId = offer.targetType === 'nft' ? offer.targetId : data.nftInstanceId!;
         const collectionSymbol = targetNftId.split('-')[0];
         const collection = (await cache.findOnePromise('nftCollections', {
             _id: collectionSymbol,
@@ -106,7 +108,7 @@ export async function processTx(data: NftAcceptOfferData, sender: string, _id: s
         const offer = (await cache.findOnePromise('nftOffers', { _id: data.offerId })) as NftOffer;
 
         // Determine which NFT is being sold
-        const nftInstanceId = offer.targetType === 'NFT' ? offer.targetId : data.nftInstanceId!;
+        const nftInstanceId = offer.targetType === 'nft' ? offer.targetId : data.nftInstanceId!;
         const collectionSymbol = nftInstanceId.split('-')[0];
 
         // Get collection for royalty calculation
@@ -180,7 +182,7 @@ export async function processTx(data: NftAcceptOfferData, sender: string, _id: s
         const otherOffers = await cache.findPromise('nftOffers', {
             targetType: 'NFT',
             targetId: nftInstanceId,
-            status: 'ACTIVE',
+            status: 'active',
             _id: { $ne: data.offerId },
         });
 

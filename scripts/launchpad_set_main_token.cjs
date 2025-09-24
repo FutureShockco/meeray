@@ -16,7 +16,7 @@ async function main() {
     const payload = {
         userId: username,
         launchpadId,
-        mainTokenId: `${launchpadId.split('_')[1] || 'MYT'}@meeray-node1`
+        mainTokenId: `${launchpadId.split('_')[1] || 'MYT'}@echelon-node1`
     };
 
     try {

@@ -11,7 +11,7 @@ services:
 
   meeray:
     build: .
-    container_name: meeray-node
+    container_name: echelon-node
     depends_on:
       - mongo
     env_file:

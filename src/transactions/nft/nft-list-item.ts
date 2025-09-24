@@ -2,14 +2,11 @@ import cache from '../../cache.js';
 import config from '../../config.js';
 import logger from '../../logger.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
-// Import toBigInt and toDbString
 import { logEvent } from '../../utils/event-logger.js';
 import { getToken } from '../../utils/token.js';
 import validate from '../../validation/index.js';
 import { NFTListingData, NftListPayload } from './nft-market-interfaces.js';
 import { CachedNftCollectionForTransfer, NftInstance } from './nft-transfer.js';
-
-// Assuming NftInstance is exported and suitable
 
 // Helper to generate a unique listing ID
 function generateListingId(collectionSymbol: string, instanceId: string, seller: string): string {
@@ -26,9 +23,9 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
         }
 
         // Validate auction-specific fields
-        const listingType = data.listingType || 'FIXED_PRICE';
+        const listingType = data.listingType || 'fixed_price';
 
-        if (listingType === 'AUCTION' || listingType === 'RESERVE_AUCTION') {
+        if (listingType === 'auction' || listingType === 'reserve_auction') {
             if (!data.auctionEndTime) {
                 logger.warn('[nft-list-item] Auction listings require auctionEndTime.');
                 return false;
@@ -48,7 +45,7 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
             }
         }
 
-        if (listingType === 'RESERVE_AUCTION') {
+        if (listingType === 'reserve_auction') {
             if (!data.reservePrice) {
                 logger.warn('[nft-list-item] Reserve auctions require reservePrice.');
                 return false;
@@ -153,7 +150,7 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
         const listingId = generateListingId(data.collectionSymbol, data.instanceId, sender);
         const existingListing = (await cache.findOnePromise('nftListings', {
             _id: listingId,
-            status: 'ACTIVE',
+            status: 'active',
         })) as NFTListingData | null;
         if (existingListing) {
             logger.warn(
@@ -190,7 +187,7 @@ export async function processTx(data: NftListPayload, sender: string, _id: strin
             createdAt: new Date().toISOString(),
 
             // NEW AUCTION FIELDS:
-            listingType: data.listingType || 'FIXED_PRICE',
+            listingType: data.listingType || 'fixed_price',
             reservePrice: data.reservePrice ? toDbString(data.reservePrice) : undefined,
             auctionEndTime: data.auctionEndTime,
             allowBuyNow: data.allowBuyNow || false,
@@ -215,7 +212,7 @@ export async function processTx(data: NftListPayload, sender: string, _id: strin
             return null; // Indicate failure
         }
 
-        const listingTypeStr = data.listingType || 'FIXED_PRICE';
+        const listingTypeStr = (data.listingType || 'fixed_price').toLowerCase();
         logger.debug(
             `[nft-list-item] NFT ${data.collectionSymbol}_${data.instanceId} listed by ${sender} as ${listingTypeStr} for ${data.price} ${data.paymentTokenSymbol}. Listing ID: ${listingId}`
         );

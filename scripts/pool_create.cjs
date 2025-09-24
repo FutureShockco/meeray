@@ -47,6 +47,30 @@ async function main() {
             client,
             sscId,
             'pool_create',
+            {
+                tokenA_symbol: "MRY",
+                tokenB_symbol: "TBD"
+            },
+            username,
+            privateKey
+        );
+
+        await sendCustomJson(
+            client,
+            sscId,
+            'pool_create',
+            {
+                tokenA_symbol: "TESTS",
+                tokenB_symbol: "TBD"
+            },
+            username,
+            privateKey
+        );
+
+        await sendCustomJson(
+            client,
+            sscId,
+            'pool_create',
             poolCreateData,
             username,
             privateKey

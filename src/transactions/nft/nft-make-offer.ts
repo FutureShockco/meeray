@@ -18,8 +18,12 @@ function generateOfferId(targetType: string, targetId: string, offerBy: string, 
 
 export async function validateTx(data: NftMakeOfferData, sender: string): Promise<boolean> {
     try {
-        // Validate basic inputs
-        if (!data.targetType || !['NFT', 'COLLECTION', 'TRAIT'].includes(data.targetType)) {
+        if (!data.targetType) {
+            logger.warn('[nft-make-offer] Invalid targetType.');
+            return false;
+        }
+        const targetType = String(data.targetType).toLowerCase();
+        if (!['nft', 'collection', 'trait'].includes(targetType)) {
             logger.warn('[nft-make-offer] Invalid targetType.');
             return false;
         }
@@ -70,8 +74,8 @@ export async function validateTx(data: NftMakeOfferData, sender: string): Promis
             return false;
         }
 
-        // Validate target based on type
-        if (data.targetType === 'NFT') {
+    // Validate target based on type (use normalized targetType)
+    if (targetType === 'nft') {
             // For NFT offers, validate the NFT exists
             const nft = (await cache.findOnePromise('nfts', { _id: data.targetId })) as NftInstance | null;
             if (!nft) {
@@ -85,7 +89,8 @@ export async function validateTx(data: NftMakeOfferData, sender: string): Promis
             }
 
             // Check if NFT collection is transferable
-            const parts = data.targetId.split('-');
+            // targetId uses underscore-separated format (collection_instanceId)
+            const parts = data.targetId.split('_');
             const collectionSymbol = parts[0];
             const collection = (await cache.findOnePromise('nftCollections', {
                 _id: collectionSymbol,
@@ -94,7 +99,7 @@ export async function validateTx(data: NftMakeOfferData, sender: string): Promis
                 logger.warn(`[nft-make-offer] Collection ${collectionSymbol} is not transferable.`);
                 return false;
             }
-        } else if (data.targetType === 'COLLECTION') {
+    } else if (targetType === 'collection') {
             // For collection offers, validate collection exists
             const collection = await cache.findOnePromise('nftCollections', { _id: data.targetId });
             if (!collection) {
@@ -106,7 +111,7 @@ export async function validateTx(data: NftMakeOfferData, sender: string): Promis
                 logger.warn(`[nft-make-offer] Collection ${data.targetId} is not transferable.`);
                 return false;
             }
-        } else if (data.targetType === 'TRAIT') {
+    } else if (targetType === 'trait') {
             // For trait offers, validate collection exists and traits are provided
             if (!data.traits || Object.keys(data.traits).length === 0) {
                 logger.warn('[nft-make-offer] Trait offers require traits specification.');
@@ -136,7 +141,7 @@ export async function validateTx(data: NftMakeOfferData, sender: string): Promis
     }
 }
 
-export async function processTx(data: NftMakeOfferData, sender: string, _id: string): Promise<boolean> {
+export async function processTx(data: NftMakeOfferData, sender: string, _id: string, timestamp: number): Promise<boolean> {
     try {
         const offerAmount = toBigInt(data.offerAmount);
         const paymentTokenIdentifier = `${data.paymentTokenSymbol}${data.paymentTokenIssuer ? '@' + data.paymentTokenIssuer : ''}`;
@@ -146,7 +151,7 @@ export async function processTx(data: NftMakeOfferData, sender: string, _id: str
             targetType: data.targetType,
             targetId: data.targetId,
             offerBy: sender,
-            status: 'ACTIVE',
+            status: 'active',
         })) as NftOffer | null;
 
         if (existingOffer) {
@@ -169,10 +174,12 @@ export async function processTx(data: NftMakeOfferData, sender: string, _id: str
         }
 
         // Create offer document
-        const offerId = generateOfferId(data.targetType, data.targetId, sender);
+        const offerId = generateOfferId(data.targetType, data.targetId, sender, timestamp);
+        // Normalize stored target type to lowercase to match interfaces
+        const storedTargetType = String(data.targetType).toLowerCase() as 'nft' | 'collection' | 'trait';
         const offerDocument: NftOffer = {
             _id: offerId,
-            targetType: data.targetType,
+            targetType: storedTargetType,
             targetId: data.targetId,
             offerBy: sender,
             offerAmount: toDbString(offerAmount),
@@ -180,7 +187,7 @@ export async function processTx(data: NftMakeOfferData, sender: string, _id: str
                 symbol: data.paymentTokenSymbol,
                 issuer: data.paymentTokenIssuer,
             },
-            status: 'ACTIVE',
+            status: 'active',
             createdAt: new Date().toISOString(),
             escrowedAmount: toDbString(offerAmount),
         };

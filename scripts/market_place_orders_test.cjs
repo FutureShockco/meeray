@@ -20,7 +20,7 @@ async function main() {
 
         // Get client and random account
         const { client, sscId } = await getClient();
-        const username = "meeray-node1"; 
+        const username = "echelon-node1"; 
         const privateKey = PrivateKey.fromString(privateKeys[0]);
 
         // Note: The old orderbook-only system has been replaced with hybrid trading

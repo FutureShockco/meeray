@@ -48,8 +48,8 @@ async function main() {
     }
     
     // Mint tokens using the last created symbol
-    await mintTokens(lastSymbol, "meeray-node1");
-    await mintTokens(lastSymbol, "meeray-node2");
+    await mintTokens(lastSymbol, "echelon-node1");
+    await mintTokens(lastSymbol, "echelon-node2");
 
 }
 

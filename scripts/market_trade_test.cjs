@@ -22,7 +22,7 @@ async function main() {
 
         // Get client and random account
         const { client, sscId } = await getClient();
-        const username = "meeray-node1"; 
+        const username = "echelon-node1"; 
         const privateKey = PrivateKey.fromString(privateKeys[0]);
 
         // Test data for a basic market trade (auto-routing)

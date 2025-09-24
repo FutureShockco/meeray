@@ -25,11 +25,11 @@ async function main() {
     // Generate random amounts for both tokens
     const tokenAOp = {
         amount: "10000",
-        issuer: "meeray-node1"
+        issuer: "echelon-node1"
     }
     const tokenBOp = {
         amount: "287000",
-        issuer: "meeray-node1"
+        issuer: "echelon-node1"
     }
 
     const addLiquidityData = {
