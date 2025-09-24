@@ -35,3 +35,4 @@ build/mongod.exe
 MeerayNodeSetup.exe
 *.gz
 .env
+.vscode/settings.json
