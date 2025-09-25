@@ -9,13 +9,8 @@ import { FarmData, FarmStakeData, UserFarmPositionData } from './farm-interfaces
 
 export async function validateTx(data: FarmStakeData, sender: string): Promise<boolean> {
     try {
-        if (!data.farmId || !data.staker || !data.lpTokenAmount) {
+        if (!data.farmId || !data.lpTokenAmount) {
             logger.warn('[farm-stake] Invalid data: Missing required fields (farmId, staker, lpTokenAmount).');
-            return false;
-        }
-
-        if (sender !== data.staker) {
-            logger.warn('[farm-stake] Sender must be the staker.');
             return false;
         }
 
@@ -42,7 +37,7 @@ export async function validateTx(data: FarmStakeData, sender: string): Promise<b
 
         // The farm.stakingToken.issuer is assumed to be the poolId where these LP tokens originate
         const poolIdForLp = farm.stakingToken.issuer;
-        const userLpPositionId = `${data.staker}_${poolIdForLp}`;
+        const userLpPositionId = `${sender}_${poolIdForLp}`;
         const userLiquidityPosDB = (await cache.findOnePromise('userLiquidityPositions', {
             _id: userLpPositionId,
         })) as UserLiquidityPositionData | null;
@@ -52,14 +47,14 @@ export async function validateTx(data: FarmStakeData, sender: string): Promise<b
 
         if (!userLiquidityPos || toBigInt(userLiquidityPos.lpTokenBalance) < toBigInt(data.lpTokenAmount)) {
             logger.warn(
-                `[farm-stake] Staker ${data.staker} has insufficient LP token balance for pool ${poolIdForLp} (LP tokens for farm ${data.farmId}). Has ${userLiquidityPos?.lpTokenBalance || 0n}, needs ${data.lpTokenAmount}`
+                `[farm-stake] Staker ${sender} has insufficient LP token balance for pool ${poolIdForLp} (LP tokens for farm ${data.farmId}). Has ${userLiquidityPos?.lpTokenBalance || 0n}, needs ${data.lpTokenAmount}`
             );
             return false;
         }
 
-        const stakerAccount = await getAccount(data.staker);
+        const stakerAccount = await getAccount(sender);
         if (!stakerAccount) {
-            logger.warn(`[farm-stake] Staker account ${data.staker} not found.`);
+            logger.warn(`[farm-stake] Staker account ${sender} not found.`);
             return false;
         }
 
@@ -91,14 +86,14 @@ export async function processTx(data: FarmStakeData, sender: string, id: string,
             return false;
         }
         const poolIdForLp = farm!.stakingToken.issuer;
-        const userLpSourcePositionId = `${data.staker}_${poolIdForLp}`;
+        const userLpSourcePositionId = `${sender}_${poolIdForLp}`;
         const userLiquidityPosDB = (await cache.findOnePromise('userLiquidityPositions', {
             _id: userLpSourcePositionId,
         })) as UserLiquidityPositionData;
         const userLiquidityPos = userLiquidityPosDB;
 
         if (!userLiquidityPos || userLiquidityPos.lpTokenBalance < data.lpTokenAmount) {
-            logger.error(`[farm-stake] CRITICAL: Staker ${data.staker} has insufficient LP balance for ${poolIdForLp} during processing.`);
+            logger.error(`[farm-stake] CRITICAL: Staker ${sender} has insufficient LP balance for ${poolIdForLp} during processing.`);
             return false;
         }
 
@@ -130,7 +125,7 @@ export async function processTx(data: FarmStakeData, sender: string, id: string,
         );
 
         // 3. Create or update UserFarmPosition
-        const userFarmPositionId = `${data.staker}_${data.farmId}`;
+        const userFarmPositionId = `${sender}_${data.farmId}`;
 
         const existingUserFarmPosDB = (await cache.findOnePromise('userFarmPositions', {
             _id: userFarmPositionId,
@@ -153,7 +148,7 @@ export async function processTx(data: FarmStakeData, sender: string, id: string,
             // Create new position
             const newUserFarmPosition: UserFarmPositionData = {
                 _id: userFarmPositionId,
-                userId: data.staker,
+                userId: sender,
                 farmId: data.farmId,
                 stakedAmount: toDbString(data.lpTokenAmount),
                 pendingRewards: toDbString(0n),
@@ -174,12 +169,12 @@ export async function processTx(data: FarmStakeData, sender: string, id: string,
             });
         }
 
-        logger.debug(`[farm-stake] Staker ${data.staker} staked ${data.lpTokenAmount} LP tokens (from pool ${poolIdForLp}) into farm ${data.farmId}.`);
+        logger.debug(`[farm-stake] Staker ${sender} staked ${data.lpTokenAmount} LP tokens (from pool ${poolIdForLp}) into farm ${data.farmId}.`);
 
         // Log event
-        await logTransactionEvent('farm_stake', data.staker, {
+        await logTransactionEvent('farm_stake', sender, {
             farmId: data.farmId,
-            staker: data.staker,
+            staker: sender,
             lpTokenAmount: toDbString(data.lpTokenAmount),
             poolId: poolIdForLp,
             totalStaked: toDbString(newTotalStaked),
