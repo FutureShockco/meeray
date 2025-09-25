@@ -5,6 +5,10 @@ import { Account } from '../mongo.js';
 import { toBigInt, toDbString } from './bigint.js';
 
 export async function getAccount(accountId: string): Promise<Account | null> {
+    // Allow test hook to override account fetch
+    if ((getAccount as any).__TEST_HOOK__) {
+        return (getAccount as any).__TEST_HOOK__(accountId);
+    }
     return (await cache.findOnePromise('accounts', { name: accountId })) as Account | null;
 }
 
@@ -34,6 +38,10 @@ const adjustWitnessVoteWeights = async (account: Account | null, currentBalance:
 
 export async function adjustUserBalance(accountId: string, tokenSymbol: string, amount: bigint | string): Promise<boolean> {
     try {
+        // Allow test hook to override adjust behavior
+        if ((adjustUserBalance as any).__TEST_HOOK__) {
+            return (adjustUserBalance as any).__TEST_HOOK__(accountId, tokenSymbol, amount);
+        }
         const account = await getAccount(accountId);
         const currentBalance = toBigInt(account!.balances?.[tokenSymbol] || '0');
         const newBalance = currentBalance + (typeof amount === 'string' ? toBigInt(amount) : amount);
@@ -57,4 +65,13 @@ export async function adjustUserBalance(accountId: string, tokenSymbol: string, 
         logger.error(`[account-utils] Error adjusting balance for ${accountId}: ${error}`);
         return false;
     }
+}
+
+// Test hook setter to inject mock implementations in unit tests without overwriting exports
+export function __setTestHooks(hooks: {
+    getAccount?: (accountId: string) => Promise<Account | null>;
+    adjustUserBalance?: (accountId: string, tokenSymbol: string, amount: bigint | string) => Promise<boolean>;
+}) {
+    if (hooks.getAccount) (getAccount as any).__TEST_HOOK__ = hooks.getAccount;
+    if (hooks.adjustUserBalance) (adjustUserBalance as any).__TEST_HOOK__ = hooks.adjustUserBalance;
 }

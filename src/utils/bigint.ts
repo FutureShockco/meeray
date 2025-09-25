@@ -110,31 +110,24 @@ export function calculateDecimalAwarePrice(
     tokenInSymbol: string,
     tokenOutSymbol: string
 ): bigint {
-    // Validate inputs - both must be positive
     if (amountOut <= 0n || amountIn <= 0n) return 0n;
-
     const tokenInDecimals = getTokenDecimals(tokenInSymbol);
     const tokenOutDecimals = getTokenDecimals(tokenOutSymbol);
     const decimalDifference = tokenOutDecimals - tokenInDecimals;
-
     let price: bigint;
-    // Handle decimal differences properly
-    if (amountOut === 0n) {
-        logger.error(
-            `[calculateDecimalAwarePrice] Division by zero! Inputs: ${amountIn}, ${amountOut}, ${tokenInSymbol}, ${tokenOutSymbol}, ${tokenInDecimals}, ${tokenOutDecimals}, ${decimalDifference}`
-        );
+    try {
+        const quoteDecimals = getTokenDecimals(tokenOutSymbol);
+        const quoteScale = 10n ** BigInt(quoteDecimals);
+        if (decimalDifference >= 0) {
+            const scalingFactor = 10n ** BigInt(decimalDifference);
+            price = (amountIn * scalingFactor * quoteScale) / amountOut;
+        } else {
+            const scalingFactor = 10n ** BigInt(-decimalDifference);
+            price = (amountIn * quoteScale) / (amountOut * scalingFactor);
+        }
+    } catch (err) {
+        logger.error(`[calculateDecimalAwarePrice] Error computing price: ${String(err)}`);
         return 0n;
-    }
-    if (decimalDifference >= 0) {
-        // TokenOut has more decimals, scale up amountIn
-        const scalingFactor = BigInt(10 ** decimalDifference);
-        const quoteDecimals = getTokenDecimals(tokenOutSymbol);
-        price = (amountIn * scalingFactor * BigInt(10 ** quoteDecimals)) / amountOut;
-    } else {
-        // TokenIn has more decimals, scale up amountOut
-        const scalingFactor = BigInt(10 ** -decimalDifference);
-        const quoteDecimals = getTokenDecimals(tokenOutSymbol);
-        price = (amountIn * BigInt(10 ** quoteDecimals)) / (amountOut * scalingFactor);
     }
     if (price < 0n) {
         logger.error(
@@ -142,7 +135,6 @@ export function calculateDecimalAwarePrice(
         );
         return 0n;
     }
-
     return price;
 }
 
@@ -158,63 +150,23 @@ export function calculateDecimalAwarePrice(
 export function calculateTradeValue(price: bigint, quantity: bigint, baseTokenSymbol: string, quoteTokenSymbol: string): bigint {
     const baseDecimals = getTokenDecimals(baseTokenSymbol);
     const quoteDecimals = getTokenDecimals(quoteTokenSymbol);
-    // Price is scaled by quote token decimals, so we need to:
-    // 1. Calculate the raw value: (price * quantity) / 10^quoteDecimals
-    // 2. Adjust for decimal differences between base and quote tokens
-    let rawValue = (price * quantity) / BigInt(10) ** BigInt(quoteDecimals);
-    // Then adjust for decimal differences
+    // Ensure exponentiation happens on BigInt and parenthesize to avoid precedence issues
+    let rawValue = (price * quantity) / 10n ** BigInt(quoteDecimals);
     const decimalDifference = quoteDecimals - baseDecimals;
     if (decimalDifference > 0) {
-        // Quote has more decimals than base, scale up the result
-        const scalingFactor = BigInt(10 ** decimalDifference);
+        const scalingFactor = 10n ** BigInt(decimalDifference);
         rawValue = rawValue * scalingFactor;
     } else if (decimalDifference < 0) {
-        // Base has more decimals than quote, scale down the result
-        const scalingFactor = BigInt(10 ** -decimalDifference);
+        const scalingFactor = 10n ** BigInt(-decimalDifference);
         rawValue = rawValue / scalingFactor;
     }
     return rawValue;
 }
 
-/**
- * Type utility for database conversions
- */
 export type BigIntToString<T> = {
     [K in keyof T]: T[K] extends bigint ? string : T[K];
 };
 
-export type RecursiveBigIntToString<T> = {
-    [P in keyof T]: T[P] extends bigint
-        ? string
-        : T[P] extends Array<infer U>
-          ? Array<RecursiveBigIntToString<U>>
-          : T[P] extends object | null | undefined
-            ? T[P] extends null | undefined
-                ? T[P]
-                : RecursiveBigIntToString<T[P]>
-            : T[P];
-};
-
-export type StringToBigInt<T> = {
-    [K in keyof T]: T[K] extends string ? bigint : T[K];
-};
-
-/**
- * Convert an object's numeric fields from strings to BigInt
- */
-export function convertToBigInt<T>(obj: BigIntToString<T>, numericFields: (keyof T)[]): T {
-    const result = { ...obj };
-    for (const field of numericFields) {
-        if (obj[field] !== undefined && obj[field] !== null) {
-            (result[field] as any) = toBigInt(obj[field]);
-        }
-    }
-    return result as T;
-}
-
-/**
- * Safely perform arithmetic with BigInt values
- */
 export const BigIntMath = {
     max(...values: bigint[]): bigint {
         return values.reduce((max, val) => (val > max ? val : max));
@@ -361,7 +313,6 @@ export const BigIntMath = {
     },
 };
 
-// Integer square root function for BigInt
 export function sqrt(value: bigint): bigint {
     if (value < 0n) {
         throw new Error('Cannot calculate square root of negative number');
@@ -369,15 +320,11 @@ export function sqrt(value: bigint): bigint {
     if (value < 2n) {
         return value;
     }
-
-    // Binary search for square root
     let x = value;
     let y = (x + 1n) / 2n;
-
     while (y < x) {
         x = y;
         y = (x + value / x) / 2n;
     }
-
     return x;
 }

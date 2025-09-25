@@ -63,39 +63,7 @@ async function searchForHandlers(dirPath: string) {
 
             logger.trace(`Loading transaction handler from: ${filePath}`);
             try {
-                // If we're looking at a TypeScript source file, prefer importing the
-                // corresponding compiled JavaScript in `build/dist` or `dist` when
-                // available. This prevents Node from attempting to resolve `.js`
-                // imports relative to `src/` (e.g. `../../utils/account.js`) where
-                // only `.ts` files exist.
-                let importTargetPath = filePath;
-                if (file.endsWith('.ts')) {
-                    // Candidate 1: build/dist counterpart
-                    const cand1 = filePath.replace(`${path.sep}src${path.sep}`, `${path.sep}build${path.sep}dist${path.sep}`).replace(/\.ts$/, '.js');
-                    try {
-                        const stats = await fs.stat(cand1);
-                        if (stats.isFile()) {
-                            importTargetPath = cand1;
-                        }
-                    } catch (e) {
-                        // ignore -- fallback to next candidate
-                    }
-
-                    if (importTargetPath === filePath) {
-                        // Candidate 2: dist counterpart
-                        const cand2 = filePath.replace(`${path.sep}src${path.sep}`, `${path.sep}dist${path.sep}`).replace(/\.ts$/, '.js');
-                        try {
-                            const stats2 = await fs.stat(cand2);
-                            if (stats2.isFile()) {
-                                importTargetPath = cand2;
-                            }
-                        } catch (e) {
-                            // ignore -- will fall back to importing the .ts file directly
-                        }
-                    }
-                }
-
-                const module = await import(pathToFileURL(importTargetPath).href);
+                const module = await import(pathToFileURL(filePath).href);
 
                 // Check if the file exports validate and process functions
                 if (module.validateTx && module.processTx) {

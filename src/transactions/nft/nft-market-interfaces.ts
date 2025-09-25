@@ -28,11 +28,11 @@ export interface NFTListingData {
         symbol: string;
         issuer?: string;
     };
-    status: 'active' | 'sold' | 'cancelled' | 'ended';
+    status: 'ACTIVE' | 'SOLD' | 'CANCELLED' | 'ENDED';
     expiration?: string;
     createdAt: string;
     lastUpdatedAt?: string;
-    listingType?: 'fixed_price' | 'auction' | 'reserve_auction';
+    listingType?: 'FIXED_PRICE' | 'AUCTION' | 'RESERVE_AUCTION';
     reservePrice?: string | bigint;
     auctionEndTime?: string;
     allowBuyNow?: boolean;
@@ -64,7 +64,7 @@ export interface NftListPayload {
     price: string;
     paymentTokenSymbol: string;
     paymentTokenIssuer?: string;
-    listingType?: 'fixed_price' | 'auction' | 'reserve_auction';
+    listingType?: 'FIXED_PRICE' | 'AUCTION' | 'RESERVE_AUCTION';
     reservePrice?: string;
     auctionEndTime?: string;
     allowBuyNow?: boolean;
@@ -78,7 +78,7 @@ export interface NftDelistPayload {
 export interface NftBuyPayload {
     listingId: string;
     bidAmount?: string;
-    bidType?: 'full_price' | 'bid';
+    bidType?: 'FULL_PRICE' | 'BID';
 }
 
 export interface NftBid {
@@ -86,7 +86,7 @@ export interface NftBid {
     listingId: string;
     bidder: string;
     bidAmount: string | bigint;
-    status: 'active' | 'outbid' | 'winning' | 'won' | 'lost' | 'cancelled' | 'expired';
+    status: 'ACTIVE' | 'OUTBID' | 'WINNING' | 'WON' | 'LOST' | 'CANCELLED' | 'EXPIRED';
     paymentToken: {
         symbol: string;
         issuer?: string;
@@ -111,7 +111,7 @@ export interface CloseAuctionData {
 }
 
 export interface NftBatchOperation {
-    operation: 'list' | 'delist' | 'buy' | 'bid' | 'transfer';
+    operation: 'LIST' | 'DELIST' | 'BUY' | 'BID' | 'TRANSFER';
     data: NftListPayload | NftDelistPayload | NftBuyPayload | any;
 }
 
@@ -127,7 +127,7 @@ export interface NftCancelBidData {
 
 export interface NftOffer {
     _id: string;
-    targetType: 'nft' | 'collection' | 'trait';
+    targetType: 'NFT' | 'COLLECTION' | 'TRAIT';
     targetId: string;
     offerBy: string;
     offerAmount: string | bigint;
@@ -135,7 +135,7 @@ export interface NftOffer {
         symbol: string;
         issuer?: string;
     };
-    status: 'active' | 'accepted' | 'expired' | 'cancelled';
+    status: 'ACTIVE' | 'ACCEPTED' | 'EXPIRED' | 'CANCELLED';
     expiresAt?: string;
     createdAt: string;
     escrowedAmount: string | bigint;
@@ -146,7 +146,7 @@ export interface NftOffer {
 }
 
 export interface NftMakeOfferData {
-    targetType: 'nft' | 'collection' | 'trait';
+    targetType: 'NFT' | 'COLLECTION' | 'TRAIT';
     targetId: string;
     offerAmount: string;
     paymentTokenSymbol: string;
@@ -166,4 +166,3 @@ export interface NftAcceptOfferData {
 export interface NftCancelOfferData {
     offerId: string;
 }
-

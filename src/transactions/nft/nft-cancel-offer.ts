@@ -20,7 +20,7 @@ export async function validateTx(data: NftCancelOfferData, sender: string): Prom
             return false;
         }
 
-        if (offer.status !== 'active') {
+        if (offer.status !== 'ACTIVE') {
             logger.warn(`[nft-cancel-offer] Cannot cancel offer with status ${offer.status}.`);
             return false;
         }

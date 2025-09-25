@@ -26,21 +26,21 @@ export async function validateTx(data: PoolSwapData, sender: string): Promise<bo
             logger.warn('[pool-swap] slippagePercent must be between 0 and 100 percent.');
             return false;
         }
-        const traderAccount = await getAccount(sender);
-        if (!traderAccount) {
+        const senderAccount = await getAccount(sender);
+        if (!senderAccount) {
             logger.warn(`[pool-swap] Trader account ${sender} not found.`);
             return false;
         }
         // Check if this is a routed swap or single-hop swap
         if (data.hops && data.hops.length > 0) {
             // Multi-hop routed swap
-            return await validateRoutedSwap(data, sender, traderAccount);
+            return await validateRoutedSwap(data, senderAccount);
         } else if (data.poolId) {
             // Single-hop swap
-            return await validateSingleHopSwap(data, sender, traderAccount);
+            return await validateSingleHopSwap(data, senderAccount);
         } else if (data.fromTokenSymbol && data.toTokenSymbol) {
             // Auto-route swap - find the best route
-            return await validateAutoRouteSwap(data, sender, traderAccount);
+            return await validateAutoRouteSwap(data, senderAccount);
         } else {
             logger.warn(
                 '[pool-swap] Invalid swap data: must specify either poolId for single-hop, hops for multi-hop, or fromTokenSymbol/toTokenSymbol for auto-routing.'

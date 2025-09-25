@@ -3,6 +3,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import winston from 'winston';
 
+import { deterministicNodeIdentifier } from './utils/deterministic-id.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -22,7 +24,7 @@ if (!validLogLevels.includes(logLevel)) {
     logLevel = 'info';
 }
 
-const nodeIdentifier = process.env.STEEM_ACCOUNT || Math.random().toString(36).substring(7);
+const nodeIdentifier = process.env.STEEM_ACCOUNT || deterministicNodeIdentifier(process.env.STEEM_ACCOUNT || String(process.pid));
 const logFile = path.join(logsDir, `output-${nodeIdentifier}.log`);
 
 // Console format with timestamp first

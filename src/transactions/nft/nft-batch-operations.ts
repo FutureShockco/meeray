@@ -71,17 +71,17 @@ export async function processTx(data: NftBatchPayload, sender: string, id: strin
             try {
                 const opId = `${id}_${i}`;
                 switch (op.operation) {
-                    case 'list':
+                    case 'LIST':
                         success = (await processList(op.data, sender, opId)) !== null;
                         break;
-                    case 'delist':
+                    case 'DELIST':
                         success = await processDelist(op.data, sender, opId);
                         break;
-                    case 'buy':
-                    case 'bid':
+                    case 'BUY':
+                    case 'BID':
                         success = await processBuy(op.data, sender, opId, timestamp);
                         break;
-                    case 'transfer':
+                    case 'TRANSFER':
                         success = await processTransfer(op.data, sender, opId);
                         break;
                 }

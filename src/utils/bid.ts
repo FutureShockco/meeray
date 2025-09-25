@@ -6,31 +6,26 @@ import { NFTListingData, NftBid } from '../transactions/nft/nft-market-interface
 import { adjustUserBalance } from './account.js';
 import { toBigInt, toDbString } from './bigint.js';
 
-// Helper to generate a unique bid ID
+
 export function generateBidId(listingId: string, bidder: string, timestamp: number): string {
     return crypto.createHash('sha256').update(`${listingId}_${bidder}_${timestamp}`).digest('hex').substring(0, 16);
 }
 
-// Get the current highest bid for a listing
 export async function getHighestBid(listingId: string): Promise<NftBid | null> {
     try {
         const bids = (await cache.findPromise('nftBids', {
             listingId,
-            status: 'active',
+            status: 'ACTIVE',
             isHighestBid: true,
         })) as NftBid[] | null;
-
         if (!bids || bids.length === 0) {
             return null;
         }
-
-        // Should only be one highest bid, but sort just in case
         const sortedBids = bids.sort((a, b) => {
             const amountA = toBigInt(a.bidAmount);
             const amountB = toBigInt(b.bidAmount);
             return amountA > amountB ? -1 : 1;
         });
-
         return sortedBids[0];
     } catch (error) {
         logger.error(`[bid-utils] Error getting highest bid for ${listingId}: ${error}`);
@@ -38,17 +33,13 @@ export async function getHighestBid(listingId: string): Promise<NftBid | null> {
     }
 }
 
-// Get all active bids for a listing
 export async function getActiveBids(listingId: string): Promise<NftBid[]> {
     try {
         const bids = (await cache.findPromise('nftBids', {
             listingId,
-            status: 'active',
+            status: 'ACTIVE',
         })) as NftBid[] | null;
-
         if (!bids) return [];
-
-        // Sort by bid amount (highest first)
         return bids.sort((a, b) => {
             const amountA = toBigInt(a.bidAmount);
             const amountB = toBigInt(b.bidAmount);
@@ -60,18 +51,13 @@ export async function getActiveBids(listingId: string): Promise<NftBid[]> {
     }
 }
 
-// Update bid statuses when a new highest bid is placed
 export async function updateBidStatuses(listingId: string, newHighestBidId: string): Promise<boolean> {
     try {
-        // Mark all other bids as OUTBID
-        // Note: Using updateOnePromise in a loop since updateManyPromise doesn't exist
-        // Get all other active bids first
         const otherBids = (await cache.findPromise('nftBids', {
             listingId,
-            status: 'active',
+            status: 'ACTIVE',
             _id: { $ne: newHighestBidId },
         })) as any[] | null;
-
         let updateOthersSuccess = true;
         if (otherBids && otherBids.length > 0) {
             for (const bid of otherBids) {
@@ -91,8 +77,6 @@ export async function updateBidStatuses(listingId: string, newHighestBidId: stri
                 }
             }
         }
-
-        // Mark the new highest bid as WINNING
         const updateWinnerSuccess = await cache.updateOnePromise(
             'nftBids',
             { _id: newHighestBidId },
@@ -103,7 +87,6 @@ export async function updateBidStatuses(listingId: string, newHighestBidId: stri
                 },
             }
         );
-
         return updateOthersSuccess && updateWinnerSuccess;
     } catch (error) {
         logger.error(`[bid-utils] Error updating bid statuses for ${listingId}: ${error}`);
@@ -111,41 +94,32 @@ export async function updateBidStatuses(listingId: string, newHighestBidId: stri
     }
 }
 
-// Calculate minimum bid amount for a listing
 export function calculateMinimumBid(listing: NFTListingData, currentHighestBid?: NftBid): bigint {
     const minimumIncrement = toBigInt(listing.minimumBidIncrement || '100000');
 
     if (currentHighestBid) {
         return toBigInt(currentHighestBid.bidAmount) + minimumIncrement;
     } else {
-        // First bid - use starting price
         return toBigInt(listing.price);
     }
 }
 
-// Validate bid amount against listing requirements
 export function validateBidAmount(
     bidAmount: bigint,
     listing: NFTListingData,
     currentHighestBid?: NftBid
 ): { valid: boolean; reason?: string } {
-    // Check if auction has ended
     if (listing.auctionEndTime && new Date() > new Date(listing.auctionEndTime)) {
         return { valid: false, reason: 'Auction has ended' };
     }
-
-    // Calculate minimum required bid
     const minimumBid = calculateMinimumBid(listing, currentHighestBid);
-
     if (bidAmount < minimumBid) {
         return {
             valid: false,
             reason: `Bid amount ${bidAmount} is below minimum required ${minimumBid}`,
         };
     }
-
-    // Check reserve price for reserve auctions
-    if (listing.listingType === 'reserve_auction' && listing.reservePrice) {
+    if (listing.listingType === 'RESERVE_AUCTION' && listing.reservePrice) {
         const reservePrice = toBigInt(listing.reservePrice);
         if (bidAmount < reservePrice) {
             return {
@@ -158,7 +132,6 @@ export function validateBidAmount(
     return { valid: true };
 }
 
-// Escrow funds for a bid
 export async function escrowBidFunds(bidder: string, amount: bigint, paymentTokenIdentifier: string): Promise<boolean> {
     try {
         const success = await adjustUserBalance(bidder, paymentTokenIdentifier, -amount);
@@ -172,7 +145,7 @@ export async function escrowBidFunds(bidder: string, amount: bigint, paymentToke
     }
 }
 
-// Release escrowed funds for a bid
+
 export async function releaseEscrowedFunds(bidder: string, amount: bigint, paymentTokenIdentifier: string): Promise<boolean> {
     try {
         const success = await adjustUserBalance(bidder, paymentTokenIdentifier, amount);
@@ -186,7 +159,6 @@ export async function releaseEscrowedFunds(bidder: string, amount: bigint, payme
     }
 }
 
-// Update listing with new highest bid info
 export async function updateListingWithBid(listingId: string, bidAmount: bigint, bidder: string): Promise<boolean> {
     try {
         const success = await cache.updateOnePromise(
@@ -201,7 +173,6 @@ export async function updateListingWithBid(listingId: string, bidAmount: bigint,
                 $inc: { totalBids: 1 },
             }
         );
-
         return success;
     } catch (error) {
         logger.error(`[bid-utils] Error updating listing ${listingId} with bid: ${error}`);

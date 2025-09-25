@@ -1466,10 +1466,7 @@ router.get('/search', (async (req: Request, res: Response) => {
         if (searchType === 'listings' || searchType === 'all') {
             const listingQuery = {
                 status: 'active',
-                $or: [
-                    { collectionId: { $regex: searchTerm, $options: 'i' } },
-                    { seller: { $regex: searchTerm, $options: 'i' } },
-                ],
+                $or: [{ collectionId: { $regex: searchTerm, $options: 'i' } }, { seller: { $regex: searchTerm, $options: 'i' } }],
             };
 
             const listingsFromDB = await cache.findPromise('nftListings', listingQuery, {
@@ -1966,7 +1963,7 @@ router.get('/marketplace/stats', (async (req: Request, res: Response) => {
         const cutoffDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
         // Get total collections
-    const totalCollections = await mongo.getDb().collection('nftCollections').countDocuments();
+        const totalCollections = await mongo.getDb().collection('nftCollections').countDocuments();
 
         // Get total NFTs
         const totalNfts = await mongo.getDb().collection('nfts').countDocuments();
@@ -1980,7 +1977,7 @@ router.get('/marketplace/stats', (async (req: Request, res: Response) => {
         const totalOwners = totalOwnersData[0]?.totalOwners || 0;
 
         // Get active listings
-    const activeListings = await mongo.getDb().collection('nftListings').countDocuments({ status: 'active' });
+        const activeListings = await mongo.getDb().collection('nftListings').countDocuments({ status: 'active' });
 
         // Get sales stats for the period
         const salesStats = await mongo
@@ -2024,8 +2021,8 @@ router.get('/marketplace/stats', (async (req: Request, res: Response) => {
         };
 
         // Get active bids and offers
-    const activeBids = await mongo.getDb().collection('nftBids').countDocuments({ status: 'active' });
-    const activeOffers = await mongo.getDb().collection('nftOffers').countDocuments({ status: 'active' });
+        const activeBids = await mongo.getDb().collection('nftBids').countDocuments({ status: 'active' });
+        const activeOffers = await mongo.getDb().collection('nftOffers').countDocuments({ status: 'active' });
 
         res.json({
             period: `${days} days`,

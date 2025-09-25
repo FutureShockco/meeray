@@ -163,35 +163,28 @@ export function isAlignedToLotSize(value: bigint, lotSize: bigint): boolean {
 
 // Represents an executed trade between two orders
 export interface TradeData {
-    _id: string; // Unique trade ID
-    pairId: string; // Reference to TradingPairData._id
-
+    _id: string;
+    pairId: string;
     baseAssetSymbol: string;
     quoteAssetSymbol: string;
-
-    makerOrderId: string; // ID of the order that was resting on the book (maker)
-    takerOrderId: string; // ID of the order that matched with the maker (taker)
-
-    price: string | bigint; // Price at which the trade was executed
-    quantity: string | bigint; // Amount of baseAsset traded
-
-    buyerUserId: string; // User ID of the buyer
-    sellerUserId: string; // User ID of the seller
-
-    timestamp: string; // ISO Date string of when the trade occurred
-
-    isMakerBuyer: boolean; // True if the buyer was the maker, false if taker was buyer
+    makerOrderId: string;
+    takerOrderId: string;
+    price: string | bigint;
+    quantity: string | bigint;
+    buyerUserId: string;
+    sellerUserId: string;
+    timestamp: string;
+    isMakerBuyer: boolean;
     // (Alternatively, could deduce from makerOrderId's side)
 
     // Fees
     feeAmount?: string | bigint; // Total fee paid for this trade
-    feeCurrency?: string; // Symbol of the currency the fee was paid in (could be base, quote, or a native token)
-    // individual fees for maker/taker can also be stored if they differ
+    feeCurrency?: string;
     makerFee?: string | bigint;
     takerFee?: string | bigint;
-    total: string | bigint; // Total in quote asset (amount * price)
-    maker: string; // User ID of the maker
-    taker: string; // User ID of the taker
+    total: string | bigint;
+    maker: string;
+    taker: string;
 }
 
 // Represents a single price level in the order book

@@ -20,7 +20,7 @@ export async function validateTx(data: NftCancelBidData, sender: string): Promis
             return false;
         }
 
-        if (bid.status !== 'active' && bid.status !== 'winning' && bid.status !== 'outbid') {
+        if (bid.status !== 'ACTIVE' && bid.status !== 'WINNING' && bid.status !== 'OUTBID') {
             logger.warn(`[nft-cancel-bid] Cannot cancel bid with status ${bid.status}.`);
             return false;
         }

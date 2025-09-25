@@ -1,11 +1,10 @@
-import { ObjectId } from 'mongodb';
-
 // Import ObjectId from mongodb
 import cache from '../cache.js';
 import logger from '../logger.js';
 import { initializeKafkaProducer, sendKafkaEvent } from '../modules/kafka.js';
 // Added Kafka producer import
 import settings from '../settings.js';
+import { deterministicIdFrom } from '../utils/deterministic-id.js';
 
 const KAFKA_NOTIFICATIONS_TOPIC = 'notifications';
 const KAFKA_MARKET_EVENTS_TOPIC = 'dex-market-updates';
@@ -109,8 +108,11 @@ export async function logTransactionEvent(
                 typeof originalTransactionIdOrEventData === 'string' ? originalTransactionIdOrEventData : legacyTransactionId;
         }
 
+        const deterministicParts = [finalCategory, finalAction, finalActor || 'anon', finalTransactionId || '', Date.now()];
+        const eventId = deterministicIdFrom(deterministicParts, 24);
+
         const eventDocument: EventDocument = {
-            _id: new ObjectId().toHexString(),
+            _id: eventId,
             category: finalCategory,
             action: finalAction,
             type: `${finalCategory}_${finalAction}`, // Legacy compatibility

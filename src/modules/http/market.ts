@@ -267,14 +267,16 @@ router.get('/stats/:pairId', (async (req: Request, res: Response) => {
         const tradeCount24h = recentTrades.length;
 
         // Get price statistics
-        let priceChange24h = 0;
+        // Compute price change over 24h using BigInt arithmetic to avoid Number overflow
+        let priceChange24hBig = 0n;
         let priceChange24hPercent = 0;
         if (recentTrades.length > 0) {
-            const latestPrice = Number(toBigInt(recentTrades[0]?.price || 0));
-            const oldestPrice = Number(toBigInt(recentTrades[recentTrades.length - 1]?.price || 0));
-            if (oldestPrice > 0) {
-                priceChange24h = latestPrice - oldestPrice;
-                priceChange24hPercent = (priceChange24h / oldestPrice) * 100;
+            const latestPriceBig = toBigInt(recentTrades[0]?.price || 0);
+            const oldestPriceBig = toBigInt(recentTrades[recentTrades.length - 1]?.price || 0);
+            if (oldestPriceBig > 0n) {
+                priceChange24hBig = latestPriceBig - oldestPriceBig;
+                // Percent as Number (safe for display)
+                priceChange24hPercent = (Number(priceChange24hBig) / Number(oldestPriceBig)) * 100;
             }
         }
 
@@ -285,31 +287,40 @@ router.get('/stats/:pairId', (async (req: Request, res: Response) => {
             order => order.side === 'sell' && (order.status === 'open' || order.status === 'partial')
         );
 
-        // Calculate spread
-        const highestBid = buyOrders.length > 0 ? Math.max(...buyOrders.map(order => Number(toBigInt(order.price || 0)))) : 0;
-        const lowestAsk = sellOrders.length > 0 ? Math.min(...sellOrders.map(order => Number(toBigInt(order.price || 0)))) : 0;
-        const spread = lowestAsk > 0 && highestBid > 0 ? lowestAsk - highestBid : 0;
-        const spreadPercent = highestBid > 0 ? (spread / highestBid) * 100 : 0;
-
+        // Calculate spread using BigInt-safe comparisons
+        const highestBidBig =
+            buyOrders.length > 0
+                ? buyOrders.reduce((m, order) => {
+                      const p = toBigInt(order.price || 0);
+                      return p > m ? p : m;
+                  }, 0n)
+                : 0n;
+        const lowestAskBig =
+            sellOrders.length > 0
+                ? sellOrders.reduce((m, order) => {
+                      const p = toBigInt(order.price || 0);
+                      return m === 0n || p < m ? p : m;
+                  }, 0n)
+                : 0n;
+        const spreadBig = lowestAskBig > 0n && highestBidBig > 0n ? lowestAskBig - highestBidBig : 0n;
+        const spreadPercent = highestBidBig > 0n ? (Number(spreadBig) / Number(highestBidBig)) * 100 : 0;
         res.json({
             pairId,
             pair,
             volume24h: formatAmount(volume24h, pair.quoteAssetSymbol),
             rawVolume24h: volume24h.toString(),
             tradeCount24h,
-            priceChange24h: formatAmount(
-                toBigInt(Math.round(priceChange24h * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))
-            ),
-            rawPriceChange24h: priceChange24h.toString(),
+            priceChange24h: formatAmount(priceChange24hBig, pair.quoteAssetSymbol),
+            rawPriceChange24h: priceChange24hBig.toString(),
             priceChange24hPercent,
             currentPrice: recentTrades[0] ? formatAmount(toBigInt(recentTrades[0].price || 0)) : '0.00000000',
             rawCurrentPrice: recentTrades[0] ? toBigInt(recentTrades[0].price || 0).toString() : '0',
-            highestBid: formatAmount(toBigInt(Math.round(highestBid * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
-            rawHighestBid: Math.round(highestBid * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))).toString(),
-            lowestAsk: formatAmount(toBigInt(Math.round(lowestAsk * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
-            rawLowestAsk: Math.round(lowestAsk * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))).toString(),
-            spread: formatAmount(toBigInt(Math.round(spread * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))))),
-            rawSpread: Math.round(spread * Math.pow(10, getTokenDecimals(pair.quoteAssetSymbol))).toString(),
+            highestBid: formatAmount(highestBidBig, pair.quoteAssetSymbol),
+            rawHighestBid: highestBidBig.toString(),
+            lowestAsk: formatAmount(lowestAskBig, pair.quoteAssetSymbol),
+            rawLowestAsk: lowestAskBig.toString(),
+            spread: formatAmount(spreadBig, pair.quoteAssetSymbol),
+            rawSpread: spreadBig.toString(),
             spreadPercent,
             buyOrderCount: buyOrders.length,
             sellOrderCount: sellOrders.length,

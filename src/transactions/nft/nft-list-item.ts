@@ -23,9 +23,9 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
         }
 
         // Validate auction-specific fields
-        const listingType = data.listingType || 'fixed_price';
+        const listingType = data.listingType || 'FIXED_PRICE';
 
-        if (listingType === 'auction' || listingType === 'reserve_auction') {
+        if (listingType === 'AUCTION' || listingType === 'RESERVE_AUCTION') {
             if (!data.auctionEndTime) {
                 logger.warn('[nft-list-item] Auction listings require auctionEndTime.');
                 return false;
@@ -45,7 +45,7 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
             }
         }
 
-        if (listingType === 'reserve_auction') {
+        if (listingType === 'RESERVE_AUCTION') {
             if (!data.reservePrice) {
                 logger.warn('[nft-list-item] Reserve auctions require reservePrice.');
                 return false;
@@ -183,11 +183,11 @@ export async function processTx(data: NftListPayload, sender: string, _id: strin
                 symbol: data.paymentTokenSymbol,
                 issuer: data.paymentTokenIssuer,
             },
-            status: 'active',
+            status: 'ACTIVE',
             createdAt: new Date().toISOString(),
 
             // NEW AUCTION FIELDS:
-            listingType: data.listingType || 'fixed_price',
+            listingType: data.listingType || 'FIXED_PRICE',
             reservePrice: data.reservePrice ? toDbString(data.reservePrice) : undefined,
             auctionEndTime: data.auctionEndTime,
             allowBuyNow: data.allowBuyNow || false,

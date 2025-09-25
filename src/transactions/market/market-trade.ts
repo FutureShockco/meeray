@@ -2,7 +2,6 @@ import cache from '../../cache.js';
 import logger from '../../logger.js';
 import { adjustUserBalance, getAccount } from '../../utils/account.js';
 import { getTokenDecimals, toBigInt } from '../../utils/bigint.js';
-// Import transaction processors for different route types
 import { calculateExpectedAMMOutput } from '../../utils/pool.js';
 import { determineOrderSide, findTradingPairId, recordAMMTrade } from '../../utils/trade.js';
 import validate from '../../validation/index.js';
@@ -20,48 +19,18 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
             logger.warn('[hybrid-trade] Invalid data: Missing required fields (tokenIn, tokenOut, amountIn).');
             return false;
         }
-
-        if (!validate.string(data.tokenIn, 64, 1)) {
-            logger.warn('[hybrid-trade] Invalid tokenIn format.');
+        if (!validate.tokenSymbols([data.tokenIn, data.tokenOut])) {
+            logger.warn('[hybrid-trade] Invalid token symbols.');
             return false;
         }
-
-        if (!validate.string(data.tokenOut, 64, 1)) {
-            logger.warn('[hybrid-trade] Invalid tokenOut format.');
-            return false;
-        }
-
-        // Validate tokens by symbol only (issuer optional/ignored)
-        const tokenInSymbol = data.tokenIn;
-        const tokenOutSymbol = data.tokenOut;
-
-        // Check if tokenIn exists by symbol
-        const tokenInExists = await cache.findOnePromise('tokens', {
-            symbol: tokenInSymbol,
-        });
-        if (!tokenInExists) {
-            logger.warn(
-                `[hybrid-trade] Token ${data.tokenIn} does not exist. Symbol "${tokenInSymbol}" not found in the system.`
-            );
-            return false;
-        }
-
-        // Check if tokenOut exists by symbol
-        const tokenOutExists = await cache.findOnePromise('tokens', {
-            symbol: tokenOutSymbol,
-        });
-        if (!tokenOutExists) {
-            logger.warn(
-                `[hybrid-trade] Token ${data.tokenOut} does not exist. Symbol "${tokenOutSymbol}" not found in the system.`
-            );
-            return false;
-        }
-
         if (data.tokenIn === data.tokenOut) {
             logger.warn('[hybrid-trade] Cannot trade the same token.');
             return false;
         }
-
+        if (!(await validate.tokenExists(data.tokenIn)) || !(await validate.tokenExists(data.tokenOut))) {
+            logger.warn('[hybrid-trade] Invalid token symbols.');
+            return false;
+        }
         if (toBigInt(data.amountIn) <= toBigInt(0)) {
             logger.warn('[hybrid-trade] amountIn must be positive.');
             return false;
@@ -276,7 +245,7 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
                             // Rearranging: orderPrice = (amountIn * 10^baseDecimals) / quantity
                             // where quantity is the desired amount of base token (minAmountOut)
                             calculatedPrice =
-                                (toBigInt(data.amountIn) * toBigInt(10 ** baseDecimals)) / toBigInt(data.minAmountOut);
+                                (toBigInt(data.amountIn) * 10n ** BigInt(baseDecimals)) / toBigInt(data.minAmountOut);
                         } else {
                             // User wants to sell base token for quote token
                             // For sell orders, amountIn is base token, minAmountOut is quote token
@@ -288,7 +257,7 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
                             // price = (minAmountOut in quote units) / (amountIn in base units)
                             // Then scale to the orderbook's expected precision
                             calculatedPrice =
-                                (toBigInt(data.minAmountOut) * toBigInt(10 ** baseDecimals)) / toBigInt(data.amountIn);
+                                (toBigInt(data.minAmountOut) * 10n ** BigInt(baseDecimals)) / toBigInt(data.amountIn);
                         }
 
                         logger.info(
@@ -466,10 +435,16 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
     }
 }
 
+// Test hooks
+const TEST_HOOKS: any = {};
+export function __setTestHooks(hooks: any) {
+    Object.assign(TEST_HOOKS, hooks);
+}
+
 /**
  * Execute trade through AMM route
  */
-async function executeAMMRoute(
+export async function executeAMMRoute(
     route: HybridRoute,
     tradeData: HybridTradeData,
     amountIn: bigint,
@@ -505,15 +480,17 @@ async function executeAMMRoute(
             return { success: false, amountOut: toBigInt(0), error: 'AMM swap validation failed' };
         }
 
-        // Use the new processWithResult function to get the actual output amount
-        const swapResult: PoolSwapResult = await processWithResult(swapData, sender, transactionId);
+        // Use injected test hook or real processWithResult function to get the actual output amount
+        const processWithResultFn = TEST_HOOKS.processWithResult || processWithResult;
+        const swapResult: PoolSwapResult = await processWithResultFn(swapData, sender, transactionId);
 
         if (!swapResult.success) {
             return { success: false, amountOut: toBigInt(0), error: swapResult.error || 'AMM swap execution failed' };
         }
 
-        // Record the AMM trade in the trades collection for market statistics
-        await recordAMMTrade({
+        // Record the AMM trade in the trades collection for market statistics (use test hook if provided)
+        const recordAMMTradeFn = TEST_HOOKS.recordAMMTrade || recordAMMTrade;
+        await recordAMMTradeFn({
             poolId: ammDetails.poolId,
             tokenIn: tradeData.tokenIn,
             tokenOut: tradeData.tokenOut,
@@ -533,7 +510,7 @@ async function executeAMMRoute(
 /**
  * Execute trade through orderbook route
  */
-async function executeOrderbookRoute(
+export async function executeOrderbookRoute(
     route: HybridRoute,
     tradeData: HybridTradeData,
     amountIn: bigint,
@@ -570,15 +547,13 @@ async function executeOrderbookRoute(
         if (orderPrice) {
             const quoteDecimals = getTokenDecimals(pair.quoteAssetSymbol);
             const baseDecimals = getTokenDecimals(pair.baseAssetSymbol);
+            // Avoid Number/Math.pow conversions which lose precision for BigInt values.
             logger.info(
                 `[executeOrderbookRoute] Price formatting debug: raw=${orderPrice}, quoteDecimals=${quoteDecimals}, baseDecimals=${baseDecimals}`
             );
-            logger.info(
-                `[executeOrderbookRoute] Price formatted with quote decimals: ${Number(orderPrice) / Math.pow(10, quoteDecimals)}`
-            );
-            logger.info(
-                `[executeOrderbookRoute] Price formatted with base decimals: ${Number(orderPrice) / Math.pow(10, baseDecimals)}`
-            );
+            // Show raw integer price and note the decimals instead of attempting floating formatting
+            logger.info(`[executeOrderbookRoute] Price (raw integer) = ${orderPrice}`);
+            logger.info(`[executeOrderbookRoute] Price decimals: quote=${quoteDecimals}, base=${baseDecimals}`);
         }
 
         // Calculate the correct quantity based on order side
@@ -593,11 +568,9 @@ async function executeOrderbookRoute(
             }
 
             const baseDecimals = getTokenDecimals(pair.baseAssetSymbol);
-            // const quoteDecimals = getTokenDecimals(pair.quoteAssetSymbol);
-            // This formula works for any decimals:
-            // With price in quoteDecimals, use:
-            // quantity = (amountIn * 10^baseDecimals) / orderPrice
-            orderQuantity = (amountIn * toBigInt(10 ** baseDecimals)) / toBigInt(orderPrice);
+            // Use BigInt exponentiation to avoid floating point errors
+            const scale = 10n ** BigInt(baseDecimals);
+            orderQuantity = (amountIn * scale) / toBigInt(orderPrice);
         } else {
             // For sell orders, quantity is the amount of base currency to sell
             // amountIn is the amount of base token (MRY) the user wants to sell
@@ -632,14 +605,16 @@ async function executeOrderbookRoute(
         } else {
             deductToken = pair.baseAssetSymbol;
         }
-        const deductionSuccess = await adjustUserBalance(sender, deductToken, -amountIn);
+        const adjustUserBalanceFn = TEST_HOOKS.adjustUserBalance || adjustUserBalance;
+        const deductionSuccess = await adjustUserBalanceFn(sender, deductToken, -amountIn);
         if (!deductionSuccess) {
             logger.warn(`[executeOrderbookRoute] Failed to deduct ${amountIn} ${deductToken} from user ${sender}`);
             return { success: false, amountOut: toBigInt(0), error: `Insufficient balance for ${deductToken}` };
         }
 
-        // Submit to matching engine
-        const result = await matchingEngine.addOrder(createdOrder);
+        // Submit to matching engine (use test-injected matching engine if provided)
+        const matchingEngineInstance = TEST_HOOKS.matchingEngine || matchingEngine;
+        const result = await matchingEngineInstance.addOrder(createdOrder);
 
         if (!result.accepted) {
             return { success: false, amountOut: toBigInt(0), error: result.rejectReason };
@@ -652,7 +627,7 @@ async function executeOrderbookRoute(
         }
 
         // Calculate output from trades (for market orders or partially filled limit orders)
-        const totalOutput = result.trades.reduce((sum, trade) => sum + toBigInt(trade.quantity), toBigInt(0));
+        const totalOutput = result.trades.reduce((sum: bigint, trade: any) => sum + toBigInt(trade.quantity), toBigInt(0));
 
         return { success: true, amountOut: totalOutput };
     } catch (error) {

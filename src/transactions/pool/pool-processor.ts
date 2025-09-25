@@ -6,17 +6,14 @@ import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
 import { findBestTradeRoute, getOutputAmountBigInt } from '../../utils/pool.js';
 import { recordPoolSwapTrade } from './pool-helpers.js';
-import { PoolSwapData, PoolSwapResult } from './pool-interfaces.js';
+import { LiquidityPoolData, PoolSwapData, PoolSwapResult } from './pool-interfaces.js';
 
-export async function validateSingleHopSwap(data: PoolSwapData, sender: string, traderAccount: Account): Promise<boolean> {
-    // Get pool data
+export async function validateSingleHopSwap(data: PoolSwapData, senderAccount: Account): Promise<boolean> {
     const poolFromDb = (await cache.findOnePromise('liquidityPools', { _id: data.poolId }))!;
     if (!poolFromDb) {
         logger.warn(`[pool-swap] Pool ${data.poolId} not found.`);
         return false;
     }
-
-    // Verify token symbols match
     if (
         !(
             (poolFromDb.tokenA_symbol === data.tokenIn_symbol && poolFromDb.tokenB_symbol === data.tokenOut_symbol) ||
@@ -26,165 +23,231 @@ export async function validateSingleHopSwap(data: PoolSwapData, sender: string, 
         logger.warn('[pool-swap] Token symbols do not match pool configuration.');
         return false;
     }
-
-    // Check pool liquidity
     if (toBigInt(poolFromDb.tokenA_reserve) <= 0n || toBigInt(poolFromDb.tokenB_reserve) <= 0n) {
         logger.warn(`[pool-swap] Pool ${data.poolId} has insufficient liquidity.`);
         return false;
     }
-
-    // Check trader balance
     const tokenInIdentifier = data.tokenIn_symbol;
-    const traderBalance = toBigInt(traderAccount.balances?.[tokenInIdentifier] || '0');
-    if (traderBalance < toBigInt(data.amountIn)) {
-        logger.warn(`[pool-swap] Insufficient balance for ${tokenInIdentifier}. Has ${traderBalance}, needs ${data.amountIn}`);
+    const senderBalance = toBigInt(senderAccount.balances?.[tokenInIdentifier] || '0');
+    if (senderBalance < toBigInt(data.amountIn)) {
+        logger.warn(`[pool-swap] Insufficient balance for ${tokenInIdentifier}. Has ${senderBalance}, needs ${data.amountIn}`);
         return false;
     }
-
     return true;
 }
 
-export async function validateRoutedSwap(data: PoolSwapData, sender: string, traderAccount: Account): Promise<boolean> {
-    // Validate each hop using the same calculation logic as execution
-    let currentAmountIn = data.amountIn;
-    for (let i = 0; i < data.hops!.length; i++) {
-        const hop = data.hops![i];
-
-        // Get pool data for this hop
-        const poolFromDb = (await cache.findOnePromise('liquidityPools', { _id: hop.poolId }))!;
-        if (!poolFromDb) {
-            logger.warn(`[pool-swap] Pool ${hop.poolId} not found for hop ${i + 1}.`);
+export async function validateRoutedSwap(data: PoolSwapData, traderAccount: Account): Promise<boolean> {
+    try {
+        // Validate input data
+        if (!data.hops || data.hops.length === 0) {
+            logger.warn(`[pool-swap] No hops provided for validation.`);
             return false;
         }
 
-        // Verify token symbols match for this hop
-        if (
-            !(
+        // Check initial balance first (fastest check)
+        const initialTokenSymbol = data.hops[0].tokenIn_symbol;
+        const traderBalance = toBigInt(traderAccount.balances?.[initialTokenSymbol] || '0');
+        if (traderBalance < toBigInt(data.amountIn)) {
+            logger.warn(
+                `[pool-swap] Insufficient balance for ${initialTokenSymbol}. Has ${traderBalance}, needs ${data.amountIn}`
+            );
+            return false;
+        }
+
+        // Batch fetch all required pools
+        const poolIds = data.hops.map(hop => hop.poolId);
+        const poolPromises = poolIds.map(poolId => cache.findOnePromise('liquidityPools', { _id: poolId }));
+
+        let pools: (LiquidityPoolData | null)[];
+        try {
+            pools = (await Promise.all(poolPromises)) as (LiquidityPoolData | null)[];
+        } catch (error) {
+            logger.error(`[pool-swap] Failed to fetch pool data during validation:`, error);
+            return false;
+        }
+
+        // Validate each hop
+        let currentAmountIn = toBigInt(data.amountIn);
+        for (let i = 0; i < data.hops.length; i++) {
+            const hop = data.hops[i];
+            const poolFromDb = pools[i];
+
+            if (!poolFromDb) {
+                logger.warn(`[pool-swap] Pool ${hop.poolId} not found for hop ${i + 1}.`);
+                return false;
+            }
+
+            // Validate token symbols match pool configuration
+            const validTokenPair =
                 (poolFromDb.tokenA_symbol === hop.tokenIn_symbol && poolFromDb.tokenB_symbol === hop.tokenOut_symbol) ||
-                (poolFromDb.tokenB_symbol === hop.tokenIn_symbol && poolFromDb.tokenA_symbol === hop.tokenOut_symbol)
-            )
-        ) {
-            logger.warn(`[pool-swap] Token symbols do not match pool configuration for hop ${i + 1}.`);
-            return false;
+                (poolFromDb.tokenB_symbol === hop.tokenIn_symbol && poolFromDb.tokenA_symbol === hop.tokenOut_symbol);
+
+            if (!validTokenPair) {
+                logger.warn(`[pool-swap] Token symbols do not match pool configuration for hop ${i + 1}.`);
+                return false;
+            }
+
+            // Check pool liquidity
+            const reserveA = toBigInt(poolFromDb.tokenA_reserve);
+            const reserveB = toBigInt(poolFromDb.tokenB_reserve);
+            if (reserveA <= 0n || reserveB <= 0n) {
+                logger.warn(`[pool-swap] Pool ${hop.poolId} has insufficient liquidity for hop ${i + 1}.`);
+                return false;
+            }
+
+            // Calculate reserves for this specific swap direction
+            const tokenInIsA = hop.tokenIn_symbol === poolFromDb.tokenA_symbol;
+            const reserveIn = tokenInIsA ? reserveA : reserveB;
+            const reserveOut = tokenInIsA ? reserveB : reserveA;
+
+            // Calculate output amount
+            let amountOut: bigint;
+            try {
+                amountOut = getOutputAmountBigInt(currentAmountIn, reserveIn, reserveOut);
+            } catch (error) {
+                logger.error(`[pool-swap] Error calculating output for hop ${i + 1}:`, error);
+                return false;
+            }
+
+            // Validate output is positive
+            if (amountOut <= 0n) {
+                logger.warn(`[pool-swap] Invalid output amount ${amountOut} for hop ${i + 1}.`);
+                return false;
+            }
+
+            // Check hop-specific minimum output
+            if (hop.minAmountOut && amountOut < toBigInt(hop.minAmountOut)) {
+                logger.warn(
+                    `[pool-swap] Validation: Output amount ${amountOut} is less than minimum required ${hop.minAmountOut} for hop ${i + 1}.`
+                );
+                return false;
+            }
+
+            // Update for next hop
+            currentAmountIn = amountOut;
         }
 
-        // Check pool liquidity
-        if (toBigInt(poolFromDb.tokenA_reserve) <= 0n || toBigInt(poolFromDb.tokenB_reserve) <= 0n) {
-            logger.warn(`[pool-swap] Pool ${hop.poolId} has insufficient liquidity for hop ${i + 1}.`);
-            return false;
-        }
-
-        // Calculate actual output for this hop (same as HTTP API)
-        const tokenInIsA = hop.tokenIn_symbol === poolFromDb.tokenA_symbol;
-        const reserveIn = tokenInIsA ? toBigInt(poolFromDb.tokenA_reserve) : toBigInt(poolFromDb.tokenB_reserve);
-        const reserveOut = tokenInIsA ? toBigInt(poolFromDb.tokenB_reserve) : toBigInt(poolFromDb.tokenA_reserve);
-
-        const amountOut = getOutputAmountBigInt(toBigInt(currentAmountIn), reserveIn, reserveOut);
-
-        // Check if actual calculation meets minimum (same as execution)
-        if (hop.minAmountOut && amountOut < toBigInt(hop.minAmountOut)) {
+        // Check final minimum output
+        if (data.minAmountOut && currentAmountIn < toBigInt(data.minAmountOut)) {
             logger.warn(
-                `[pool-swap] Validation: Output amount ${amountOut} is less than minimum required ${hop.minAmountOut} for hop ${i + 1}.`
+                `[pool-swap] Validation: Final output amount ${currentAmountIn} is less than minimum required ${data.minAmountOut}.`
             );
             return false;
         }
 
-        // Update for next hop
-        currentAmountIn = amountOut;
-    }
-
-    // Check final minimum output
-    if (data.minAmountOut && toBigInt(currentAmountIn) < toBigInt(data.minAmountOut)) {
-        logger.warn(
-            `[pool-swap] Validation: Final output amount ${currentAmountIn} is less than minimum required ${data.minAmountOut}.`
-        );
+        return true;
+    } catch (error) {
+        logger.error(`[pool-swap] Validation error:`, error);
         return false;
     }
-
-    // Check initial balance (only need to check the first token)
-    const initialTokenSymbol = data.hops![0].tokenIn_symbol;
-    const traderBalance = toBigInt(traderAccount.balances?.[initialTokenSymbol] || '0');
-    if (traderBalance < toBigInt(data.amountIn)) {
-        logger.warn(`[pool-swap] Insufficient balance for ${initialTokenSymbol}. Has ${traderBalance}, needs ${data.amountIn}`);
-        return false;
-    }
-
-    return true;
 }
 
-export async function validateAutoRouteSwap(data: PoolSwapData, sender: string, traderAccount: Account): Promise<boolean> {
-    // Find the best route
-    const bestRoute = await findBestTradeRoute(data.fromTokenSymbol!, data.toTokenSymbol!, toBigInt(data.amountIn));
-    if (!bestRoute) {
-        logger.warn(`[pool-swap] No route found from ${data.fromTokenSymbol} to ${data.toTokenSymbol}.`);
-        return false;
-    }
-
-    // Apply slippage tolerance (same logic as execution)
-    const slippagePercent = data.slippagePercent || 1.0;
-    // const expectedFinalOutput = toBigInt(bestRoute.finalAmountOut);
-
-    // Calculate minimum output (same logic as execution)
-    // const finalMinAmountOut =
-    //     data.minAmountOut || (expectedFinalOutput * toBigInt(10000 - Math.floor(slippagePercent * 100))) / toBigInt(10000);
-
-    // Validate each hop using the same calculation logic as execution
-    let currentAmountIn = toBigInt(data.amountIn);
-    for (let i = 0; i < bestRoute.hops.length; i++) {
-        const hop = bestRoute.hops[i];
-
-        // Get current pool data (same as execution)
-        const poolFromDb = (await cache.findOnePromise('liquidityPools', { _id: hop.poolId })) as {
-            tokenA_symbol: string;
-            tokenA_reserve: string;
-            tokenB_symbol: string;
-            tokenB_reserve: string;
-        };
-        if (!poolFromDb) {
-            logger.warn(`[pool-swap] Pool ${hop.poolId} not found during validation for hop ${i + 1}.`);
-            return false;
-        }
-
-        // Determine token indices (same as execution)
-        const tokenInIsA = hop.tokenIn === poolFromDb.tokenA_symbol;
-        const reserveIn = tokenInIsA ? toBigInt(poolFromDb.tokenA_reserve) : toBigInt(poolFromDb.tokenB_reserve);
-        const reserveOut = tokenInIsA ? toBigInt(poolFromDb.tokenB_reserve) : toBigInt(poolFromDb.tokenA_reserve);
-
-        // Calculate output amount using the same formula as HTTP API
-        const amountOut = getOutputAmountBigInt(currentAmountIn, reserveIn, reserveOut);
-
-        // Calculate minimum for this hop (same as execution)
-        const expectedOutput = toBigInt(hop.amountOut);
-        const hopMinAmountOut = (expectedOutput * toBigInt(10000 - Math.floor(slippagePercent * 100))) / toBigInt(10000);
-
-        // Check if actual calculation meets minimum (same as execution)
-        if (amountOut < hopMinAmountOut) {
+export async function validateAutoRouteSwap(data: PoolSwapData, traderAccount: Account): Promise<boolean> {
+    try {
+        // Check balance first (fastest check)
+        const traderBalance = toBigInt(traderAccount.balances?.[data.fromTokenSymbol!] || '0');
+        if (traderBalance < toBigInt(data.amountIn)) {
             logger.warn(
-                `[pool-swap] Validation: Output amount ${amountOut} is less than minimum required ${hopMinAmountOut} for hop ${i + 1}.`
+                `[pool-swap] Insufficient balance for ${data.fromTokenSymbol}. Has ${traderBalance}, needs ${data.amountIn}`
             );
             return false;
         }
 
-        // Update for next hop
-        currentAmountIn = amountOut;
-    }
+        // Find the best route
+        const bestRoute = await findBestTradeRoute(data.fromTokenSymbol!, data.toTokenSymbol!, toBigInt(data.amountIn));
+        if (!bestRoute || !bestRoute.hops || bestRoute.hops.length === 0) {
+            logger.warn(`[pool-swap] No route found from ${data.fromTokenSymbol} to ${data.toTokenSymbol}.`);
+            return false;
+        }
 
-    // Check final minimum output
-    if (data.minAmountOut && currentAmountIn < toBigInt(data.minAmountOut)) {
-        logger.warn(
-            `[pool-swap] Validation: Final output amount ${currentAmountIn} is less than minimum required ${data.minAmountOut}.`
-        );
+        // Apply slippage tolerance (same logic as execution)
+        const slippagePercent = data.slippagePercent || 1.0;
+        const slippageMultiplier = toBigInt(10000 - Math.floor(slippagePercent * 100));
+
+        // Batch fetch all required pools to avoid sequential database calls
+        const poolIds = bestRoute.hops.map(hop => hop.poolId);
+        const poolPromises = poolIds.map(poolId => cache.findOnePromise('liquidityPools', { _id: poolId }));
+
+        let pools: (LiquidityPoolData | null)[];
+
+        try {
+            pools = (await Promise.all(poolPromises)) as (LiquidityPoolData | null)[];
+        } catch (error) {
+            logger.error(`[pool-swap] Failed to fetch pool data during validation:`, error);
+            return false;
+        }
+
+        // Validate each hop using the same calculation logic as execution
+        let currentAmountIn = toBigInt(data.amountIn);
+        for (let i = 0; i < bestRoute.hops.length; i++) {
+            const hop = bestRoute.hops[i];
+            // Get current pool data (same as execution)
+            const poolFromDb = pools[i];
+
+            if (!poolFromDb) {
+                logger.warn(`[pool-swap] Pool ${hop.poolId} not found during validation for hop ${i + 1}.`);
+                return false;
+            }
+
+            // Determine token indices (same as execution)
+            const tokenInIsA = hop.tokenIn === poolFromDb.tokenA_symbol;
+            const reserveIn = tokenInIsA ? toBigInt(poolFromDb.tokenA_reserve) : toBigInt(poolFromDb.tokenB_reserve);
+            const reserveOut = tokenInIsA ? toBigInt(poolFromDb.tokenB_reserve) : toBigInt(poolFromDb.tokenA_reserve);
+
+            // Validate reserves are not zero (prevent division by zero)
+            if (reserveIn <= 0n || reserveOut <= 0n) {
+                logger.warn(
+                    `[pool-swap] Pool ${hop.poolId} has invalid reserves (${reserveIn}, ${reserveOut}) during validation for hop ${i + 1}.`
+                );
+                return false;
+            }
+
+            // Calculate output amount using the same formula as execution
+            let amountOut: bigint;
+            try {
+                amountOut = getOutputAmountBigInt(currentAmountIn, reserveIn, reserveOut);
+            } catch (error) {
+                logger.error(`[pool-swap] Error calculating output for hop ${i + 1}:`, error);
+                return false;
+            }
+
+            // Validate output is positive
+            if (amountOut <= 0n) {
+                logger.warn(`[pool-swap] Invalid output amount ${amountOut} for hop ${i + 1}.`);
+                return false;
+            }
+
+            // Calculate minimum for this hop (same as execution)
+            const expectedOutput = toBigInt(hop.amountOut);
+            const hopMinAmountOut = (expectedOutput * slippageMultiplier) / toBigInt(10000);
+
+            // Check if actual calculation meets minimum (same as execution)
+            if (amountOut < hopMinAmountOut) {
+                logger.warn(
+                    `[pool-swap] Validation: Output amount ${amountOut} is less than minimum required ${hopMinAmountOut} for hop ${i + 1} (${slippagePercent}% slippage).`
+                );
+                return false;
+            }
+
+            // Update for next hop
+            currentAmountIn = amountOut;
+        }
+
+        // Check final minimum output
+        if (data.minAmountOut && currentAmountIn < toBigInt(data.minAmountOut)) {
+            logger.warn(
+                `[pool-swap] Validation: Final output amount ${currentAmountIn} is less than minimum required ${data.minAmountOut}.`
+            );
+            return false;
+        }
+
+        // All validations passed
+        logger.debug(`[pool-swap] Validation passed: ${bestRoute.hops.length} hops, final output: ${currentAmountIn}`);
+        return true;
+    } catch (error) {
+        logger.error(`[pool-swap] Validation error:`, error);
         return false;
     }
-
-    // Check initial balance
-    const traderBalance = toBigInt(traderAccount.balances?.[data.fromTokenSymbol!] || '0');
-    if (traderBalance < toBigInt(data.amountIn)) {
-        logger.warn(`[pool-swap] Insufficient balance for ${data.fromTokenSymbol}. Has ${traderBalance}, needs ${data.amountIn}`);
-        return false;
-    }
-
-    return true;
 }
 
 /**
@@ -460,11 +523,23 @@ export async function processSingleHopSwapWithResult(
 }
 
 export async function processRoutedSwap(data: PoolSwapData, sender: string, transactionId: string): Promise<boolean> {
+    // Debit the initial input token from the user once up-front
     let currentAmountIn = toBigInt(data.amountIn);
     let totalAmountOut = toBigInt(0);
     const swapResults: Array<{ poolId: string; tokenIn: string; tokenOut: string; amountIn: string; amountOut: string }> = [];
 
-    // Process each hop in sequence
+    // Deduct initial amount from user once. Rollback system will handle failures later.
+    const initialTokenSymbol = data.hops![0].tokenIn_symbol;
+    const initialDeduct = await adjustUserBalance(sender, initialTokenSymbol, -currentAmountIn);
+    if (!initialDeduct) {
+        logger.error(`[pool-swap] Failed to deduct initial amount ${currentAmountIn} ${initialTokenSymbol} from ${sender}.`);
+        return false;
+    }
+
+    // Track accumulated fee (sum of per-hop fees) for logging
+    let accumulatedFee = toBigInt(0);
+
+    // Process each hop in sequence; do NOT modify user balances for intermediate hops
     for (let i = 0; i < data.hops!.length; i++) {
         const hop = data.hops![i];
 
@@ -484,6 +559,7 @@ export async function processRoutedSwap(data: PoolSwapData, sender: string, tran
         // Calculate fee amount and update feeGrowthGlobal
         const feeDivisor = toBigInt(10000);
         const feeAmount = (currentAmountIn * toBigInt(300)) / feeDivisor; // Fixed 0.3% fee
+        accumulatedFee = accumulatedFee + feeAmount;
         const totalLpTokens = toBigInt(poolFromDb.totalLpTokens);
         let newFeeGrowthGlobalA = toBigInt(poolFromDb.feeGrowthGlobalA || '0');
         let newFeeGrowthGlobalB = toBigInt(poolFromDb.feeGrowthGlobalB || '0');
@@ -508,18 +584,6 @@ export async function processRoutedSwap(data: PoolSwapData, sender: string, tran
         // Update pool reserves for this hop
         const newReserveIn = reserveIn + currentAmountIn;
         const newReserveOut = reserveOut - amountOut;
-
-        // Update user balances for this hop
-        const deductSuccess = await adjustUserBalance(sender, tokenIn_symbol, -currentAmountIn);
-        if (!deductSuccess) {
-            logger.error(`[pool-swap] Failed to deduct ${currentAmountIn} ${tokenIn_symbol} from ${sender} in hop ${i + 1}.`);
-            return false;
-        }
-        const creditSuccess = await adjustUserBalance(sender, tokenOut_symbol, amountOut);
-        if (!creditSuccess) {
-            logger.error(`[pool-swap] Failed to credit ${amountOut} ${tokenOut_symbol} to ${sender} in hop ${i + 1}.`);
-            return false;
-        }
 
         // Save updated pool state for this hop
         const poolUpdateSet: any = {
@@ -570,15 +634,23 @@ export async function processRoutedSwap(data: PoolSwapData, sender: string, tran
         return false;
     }
 
+    // Credit the final output token to the user once
+    const finalTokenSymbol = data.hops![data.hops!.length - 1].tokenOut_symbol;
+    const creditSuccess = await adjustUserBalance(sender, finalTokenSymbol, totalAmountOut);
+    if (!creditSuccess) {
+        logger.error(`[pool-swap] Failed to credit final amount ${totalAmountOut} ${finalTokenSymbol} to ${sender}.`);
+        return false;
+    }
+
     logger.info(
-        `[pool-swap] Successful multi-hop swap by ${sender}: ${data.amountIn} ${data.hops![0].tokenIn_symbol} -> ${totalAmountOut} ${data.hops![data.hops!.length - 1].tokenOut_symbol} through ${data.hops!.length} hops`
+        `[pool-swap] Successful multi-hop swap by ${sender}: ${data.amountIn} ${data.hops![0].tokenIn_symbol} -> ${totalAmountOut} ${finalTokenSymbol} through ${data.hops!.length} hops (accumulated fee: ${accumulatedFee})`
     );
 
     // Record the multi-hop swap as a market trade (overall trade from first token to last token)
     await recordPoolSwapTrade({
         poolId: data.hops![0].poolId, // Use first hop's pool ID
         tokenIn: data.hops![0].tokenIn_symbol,
-        tokenOut: data.hops![data.hops!.length - 1].tokenOut_symbol,
+        tokenOut: finalTokenSymbol,
         amountIn: toBigInt(data.amountIn),
         amountOut: totalAmountOut,
         sender: sender,
@@ -594,10 +666,10 @@ export async function processRoutedSwap(data: PoolSwapData, sender: string, tran
         {
             poolId: data.hops![0].poolId, // Use the first hop's poolId instead of data.poolId
             tokenIn: data.hops![0].tokenIn_symbol,
-            tokenOut: data.hops![data.hops!.length - 1].tokenOut_symbol,
+            tokenOut: finalTokenSymbol,
             amountIn: toDbString(data.amountIn),
             amountOut: toDbString(totalAmountOut),
-            fee: toDbString((totalAmountOut * toBigInt(10000)) / toBigInt(data.amountIn)),
+            fee: toDbString(accumulatedFee),
             tokenA_symbol: firstPoolData?.tokenA_symbol || data.hops![0].tokenIn_symbol,
             tokenB_symbol: firstPoolData?.tokenB_symbol || data.hops![0].tokenOut_symbol,
         },

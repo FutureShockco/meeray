@@ -44,22 +44,18 @@ export interface PoolSwapData {
     }>;
 }
 
-// Represents a liquidity pool in the cache/database
 export interface LiquidityPoolData {
-    _id: string; // Pool identifier (tokenA_symbol-tokenB_symbol)
-    tokenA_symbol: string; // Symbol of token A
-    tokenA_reserve: string | bigint; // Current balance of token A in the pool
-    tokenB_symbol: string; // Symbol of token B
-    tokenB_reserve: string | bigint; // Current balance of token B in the pool
-    totalLpTokens: string | bigint; // Total amount of LP tokens issued for this pool
-    createdAt: string; // ISO date string
-    lastTradeAt?: string; // ISO date string of last trade
-    status: string; // Pool status (e.g., 'active', 'paused')
-    // Note: Fee is fixed at 0.3% (300 basis points) - no longer stored per pool
-
-    // Fee accounting fields
-    feeGrowthGlobalA?: string | bigint; // Cumulative fee per LP token for token A (scaled by 1e18)
-    feeGrowthGlobalB?: string | bigint; // Cumulative fee per LP token for token B (scaled by 1e18)
+    _id: string;
+    tokenA_symbol: string;
+    tokenA_reserve: string | bigint;
+    tokenB_symbol: string;
+    tokenB_reserve: string | bigint;
+    totalLpTokens: string | bigint;
+    createdAt: string;
+    lastTradeAt?: string;
+    status: string;
+    feeGrowthGlobalA?: string | bigint;
+    feeGrowthGlobalB?: string | bigint;
 }
 
 // Represents a user's share in a liquidity pool

@@ -74,8 +74,8 @@ export async function validateTx(data: NftMakeOfferData, sender: string): Promis
             return false;
         }
 
-    // Validate target based on type (use normalized targetType)
-    if (targetType === 'nft') {
+        // Validate target based on type (use normalized targetType)
+        if (targetType === 'nft') {
             // For NFT offers, validate the NFT exists
             const nft = (await cache.findOnePromise('nfts', { _id: data.targetId })) as NftInstance | null;
             if (!nft) {
@@ -99,7 +99,7 @@ export async function validateTx(data: NftMakeOfferData, sender: string): Promis
                 logger.warn(`[nft-make-offer] Collection ${collectionSymbol} is not transferable.`);
                 return false;
             }
-    } else if (targetType === 'collection') {
+        } else if (targetType === 'collection') {
             // For collection offers, validate collection exists
             const collection = await cache.findOnePromise('nftCollections', { _id: data.targetId });
             if (!collection) {
@@ -111,7 +111,7 @@ export async function validateTx(data: NftMakeOfferData, sender: string): Promis
                 logger.warn(`[nft-make-offer] Collection ${data.targetId} is not transferable.`);
                 return false;
             }
-    } else if (targetType === 'trait') {
+        } else if (targetType === 'trait') {
             // For trait offers, validate collection exists and traits are provided
             if (!data.traits || Object.keys(data.traits).length === 0) {
                 logger.warn('[nft-make-offer] Trait offers require traits specification.');
