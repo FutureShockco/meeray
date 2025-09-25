@@ -107,6 +107,68 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
             return false;
         }
 
+        // Additional route-level validation: ensure user has sufficient funds for ORDERBOOK routes
+        // (especially important for ORDERBOOK BUY where the deducted token may be the quote token)
+        if (data.routes && data.routes.length > 0) {
+            for (const route of data.routes) {
+                if (route.type !== 'ORDERBOOK') continue;
+                try {
+                    const obDetails = route.details as any;
+                    const pair = await cache.findOnePromise('tradingPairs', { _id: obDetails.pairId });
+                    if (!pair) {
+                        logger.warn(`[hybrid-trade] Validation: Trading pair ${obDetails.pairId} not found for route.`);
+                        return false;
+                    }
+
+                    // Determine side (prefer server-side determination when possible)
+                    let side: any = obDetails.side;
+                    if (!side) {
+                        side = await determineOrderSide(data.tokenIn, data.tokenOut, obDetails.pairId);
+                    }
+
+                    // Determine price used for this route (either global trade price or route price)
+                    const orderPriceRaw = data.price !== undefined ? data.price : obDetails.price;
+                    if (side === OrderSide.BUY && orderPriceRaw === undefined) {
+                        logger.warn('[hybrid-trade] Validation: ORDERBOOK BUY route requires a price to validate required quote balance.');
+                        return false;
+                    }
+
+                    const allocation = route.allocation || 100;
+                    const routeAmountIn = (toBigInt(data.amountIn) * toBigInt(allocation)) / toBigInt(100);
+                    if (routeAmountIn <= 0n) continue;
+
+                    let requiredToken: string;
+                    let requiredAmount: bigint = toBigInt(0);
+
+                    if (side === OrderSide.BUY) {
+                        // Follow same math as execution: compute orderQuantity then recompute quote required
+                        const baseDecimals = getTokenDecimals(pair.baseAssetSymbol);
+                        const priceBI = toBigInt(orderPriceRaw as any);
+                        const scale = 10n ** BigInt(baseDecimals);
+                        const orderQuantity = (routeAmountIn * scale) / priceBI; // integer division
+                        const computedQuote = (orderQuantity * priceBI) / scale; // integer division mirrors execution
+                        requiredToken = pair.quoteAssetSymbol;
+                        requiredAmount = computedQuote;
+                    } else {
+                        // SELL: user spends base token equal to routeAmountIn
+                        requiredToken = pair.baseAssetSymbol;
+                        requiredAmount = routeAmountIn;
+                    }
+
+                    const senderBalForRequired = toBigInt((senderAccount!.balances && senderAccount!.balances[requiredToken]) || '0');
+                    if (senderBalForRequired < requiredAmount) {
+                        logger.warn(
+                            `[hybrid-trade] Insufficient balance for ${requiredToken}. Required: ${requiredAmount}, Available: ${senderBalForRequired} (needed for ORDERBOOK route)`
+                        );
+                        return false;
+                    }
+                } catch (err) {
+                    logger.error(`[hybrid-trade] Error during route-level validation: ${err}`);
+                    return false;
+                }
+            }
+        }
+
         if (data.routes && data.routes.length > 0) {
             const totalAllocation = data.routes.reduce((sum, route) => sum + route.allocation, 0);
             if (Math.abs(totalAllocation - 100) > 0.01) {
@@ -155,6 +217,68 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
                             );
                             return false;
                         }
+                    }
+                }
+
+                // If user provided minAmountOut, we must also ensure that automatic fallback to orderbook
+                // (which happens in processTx when AMM output < minAmountOut) would be affordable by the sender.
+                if (hasMinAmountOut) {
+                    try {
+                        const bestQuote = await liquidityAggregator.getBestQuote(data);
+                        if (bestQuote) {
+                            const ammOutput = toBigInt(bestQuote.amountOut);
+                            const minOut = toBigInt(data.minAmountOut!);
+                            if (ammOutput < minOut) {
+                                // ProcessTx will create an ORDERBOOK route using calculatedPrice. Mirror that calculation
+                                const pairId = await findTradingPairId(data.tokenIn, data.tokenOut);
+                                if (!pairId) {
+                                    logger.error(`[hybrid-trade] No trading pair found for ${data.tokenIn} and ${data.tokenOut} when validating orderbook fallback`);
+                                    return false;
+                                }
+                                const pair = await cache.findOnePromise('tradingPairs', { _id: pairId });
+                                if (!pair) {
+                                    logger.error(`[hybrid-trade] Trading pair ${pairId} not found when validating orderbook fallback`);
+                                    return false;
+                                }
+
+                                const orderSide = await determineOrderSide(data.tokenIn, data.tokenOut, pairId);
+                                const baseDecimals = getTokenDecimals(pair.baseAssetSymbol);
+
+                                let calculatedPrice: bigint;
+                                if (orderSide === OrderSide.BUY) {
+                                    // User wants to buy base token with quote token
+                                    calculatedPrice = (toBigInt(data.amountIn) * 10n ** BigInt(baseDecimals)) / toBigInt(data.minAmountOut);
+                                } else {
+                                    calculatedPrice = (toBigInt(data.minAmountOut!) * 10n ** BigInt(baseDecimals)) / toBigInt(data.amountIn);
+                                }
+
+                                // Now compute required deduction similarly to execution
+                                let requiredToken: string;
+                                let requiredAmount: bigint = 0n;
+                                if (orderSide === OrderSide.BUY) {
+                                    // Orderbook BUY will deduct quote token equal to roughly amountIn (see execution math)
+                                    // Compute orderQuantity and then quote required
+                                    const scale = 10n ** BigInt(baseDecimals);
+                                    const orderQuantity = (toBigInt(data.amountIn) * scale) / calculatedPrice;
+                                    requiredToken = pair.quoteAssetSymbol;
+                                    requiredAmount = (orderQuantity * calculatedPrice) / scale;
+                                } else {
+                                    requiredToken = pair.baseAssetSymbol;
+                                    requiredAmount = toBigInt(data.amountIn);
+                                }
+
+                                const senderBalForRequired = toBigInt((senderAccount!.balances && senderAccount!.balances[requiredToken]) || '0');
+                                if (senderBalForRequired < requiredAmount) {
+                                    logger.warn(
+                                        `[hybrid-trade] Insufficient balance for ${requiredToken} to cover potential ORDERBOOK fallback. Required: ${requiredAmount}, Available: ${senderBalForRequired}`
+                                    );
+                                    return false;
+                                }
+                            }
+                        }
+                    } catch (err) {
+                        logger.error(`[hybrid-trade] Error checking ORDERBOOK fallback affordability: ${err}`);
+                        return false;
                     }
                 }
             }
@@ -539,15 +663,25 @@ export async function executeOrderbookRoute(
         const createdOrder = createOrder(orderData);
 
         let deductToken: string;
+        let deductAmount: bigint;
         if (orderbookDetails.side === OrderSide.BUY) {
+            // For buy orders the user spends quote token. Compute required quote amount from
+            // order quantity and price using token decimals to avoid unit mismatches.
             deductToken = pair.quoteAssetSymbol;
+            const baseDecimals = getTokenDecimals(pair.baseAssetSymbol);
+            // orderData.quantity is in base token smallest units (BigInt), orderPrice is raw integer quote-per-base
+            // quoteAmount = (quantity * price) / 10^baseDecimals
+            deductAmount = (orderQuantity * toBigInt(orderData.price || orderPrice || '0')) / (10n ** BigInt(baseDecimals));
         } else {
+            // For sell orders the user spends base token; amountIn is already in base units
             deductToken = pair.baseAssetSymbol;
+            deductAmount = amountIn;
         }
+        logger.info(`[executeOrderbookRoute] Deducting ${deductAmount} ${deductToken} from user ${sender}`);
         const adjustUserBalanceFn = TEST_HOOKS.adjustUserBalance || adjustUserBalance;
-        const deductionSuccess = await adjustUserBalanceFn(sender, deductToken, -amountIn);
+        const deductionSuccess = await adjustUserBalanceFn(sender, deductToken, -deductAmount);
         if (!deductionSuccess) {
-            logger.warn(`[executeOrderbookRoute] Failed to deduct ${amountIn} ${deductToken} from user ${sender}`);
+            logger.warn(`[executeOrderbookRoute] Failed to deduct ${deductAmount} ${deductToken} from user ${sender}`);
             return { success: false, amountOut: toBigInt(0), error: `Insufficient balance for ${deductToken}` };
         }
 
