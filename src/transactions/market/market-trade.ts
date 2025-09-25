@@ -420,6 +420,71 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
             return false;
         }
 
+        // Pre-execution affordability check: ensure sender has sufficient balances for deductions
+        try {
+            const senderAccountForCheck = await getAccount(sender);
+            if (!senderAccountForCheck) {
+                logger.warn(`[hybrid-trade] Sender account ${sender} not found before execution.`);
+                return false;
+            }
+
+            for (const route of routes) {
+                const allocation = route.allocation || 100;
+                const routeAmountIn = (toBigInt(data.amountIn) * toBigInt(allocation)) / toBigInt(100);
+                if (routeAmountIn <= 0n) continue;
+
+                if (route.type === 'ORDERBOOK') {
+                    const obDetails = route.details as any;
+                    const pair = await cache.findOnePromise('tradingPairs', { _id: obDetails.pairId });
+                    if (!pair) {
+                        logger.warn(`[hybrid-trade] Execution validation: Trading pair ${obDetails.pairId} not found for route.`);
+                        return false;
+                    }
+
+                    // Determine order side and price
+                    const side = obDetails.side || (await determineOrderSide(data.tokenIn, data.tokenOut, obDetails.pairId));
+                    const orderPriceRaw = data.price !== undefined ? data.price : obDetails.price;
+                    if (side === OrderSide.BUY && orderPriceRaw === undefined) {
+                        logger.warn('[hybrid-trade] Execution validation: ORDERBOOK BUY route requires a price to validate required quote balance.');
+                        return false;
+                    }
+
+                    let requiredToken: string;
+                    let requiredAmount: bigint = 0n;
+
+                    if (side === OrderSide.BUY) {
+                        const baseDecimals = getTokenDecimals(pair.baseAssetSymbol);
+                        const scale = 10n ** BigInt(baseDecimals);
+                        const priceBI = toBigInt(orderPriceRaw as any);
+                        const orderQuantity = (routeAmountIn * scale) / priceBI;
+                        requiredToken = pair.quoteAssetSymbol;
+                        requiredAmount = (orderQuantity * priceBI) / scale;
+                    } else {
+                        requiredToken = pair.baseAssetSymbol;
+                        requiredAmount = routeAmountIn;
+                    }
+
+                    const senderBalForRequired = toBigInt((senderAccountForCheck.balances && senderAccountForCheck.balances[requiredToken]) || '0');
+                    if (senderBalForRequired < requiredAmount) {
+                        logger.warn(
+                            `[hybrid-trade] Execution validation: Insufficient balance for ${requiredToken}. Required: ${requiredAmount}, Available: ${senderBalForRequired}`
+                        );
+                        return false;
+                    }
+                } else if (route.type === 'AMM') {
+                    // For AMM routes, ensure user has the input token (data.tokenIn) for the allocation
+                    const senderBal = toBigInt((senderAccountForCheck.balances && senderAccountForCheck.balances[data.tokenIn]) || '0');
+                    if (senderBal < routeAmountIn) {
+                        logger.warn(`[hybrid-trade] Execution validation: Insufficient balance for ${data.tokenIn}. Required: ${routeAmountIn}, Available: ${senderBal}`);
+                        return false;
+                    }
+                }
+            }
+        } catch (err) {
+            logger.error(`[hybrid-trade] Error during pre-execution affordability check: ${err}`);
+            return false;
+        }
+
         const results: HybridTradeResult['executedRoutes'] = [];
         let totalAmountOut = toBigInt(0);
         let totalAmountIn = toBigInt(0);
