@@ -6,6 +6,7 @@ import { adjustUserBalance } from '../../utils/account.js';
 import { toBigInt, toDbString, calculateTradeValue, calculateDecimalAwarePrice } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 import { generatePoolId } from '../../utils/pool.js';
+import { chain } from '../../chain.js';
 
 async function distributeOrderbookFeesToLiquidityProviders(
   baseAssetSymbol: string,
@@ -87,11 +88,145 @@ class MatchingEngine {
   private orderBooks: Map<string, OrderBook>; // Key: pairId
   private initializationPromise: Promise<void>;
   private isInitialized: boolean = false;
+  // Deterministic reconciliation based on blockchain head block numbers
+  // How many blocks between reconciliations (1 = every block). Must be >= 1.
+  private reconcileEveryNBlocks: number = Math.max(1, parseInt(process.env.ORDERBOOK_RECONCILE_EVERY_BLOCKS || '1', 10));
+  // How often to poll the chain head to detect new blocks (ms)
+  private pollIntervalMs: number = Math.max(250, parseInt(process.env.ORDERBOOK_RECONCILE_POLL_MS || '1000', 10));
+  private reconcileTimer: NodeJS.Timeout | null = null;
+  private lastReconciledBlock: number = 0;
 
   constructor() {
     logger.trace('[MatchingEngine] Initializing...');
     this.orderBooks = new Map<string, OrderBook>();
-    this.initializationPromise = this._initializeBooks();
+    this.initializationPromise = this._initializeBooks().then(() => {
+      // Start background reconciler after initial load
+      try {
+        this.startAutoReconcile();
+      } catch (err) {
+        logger.error('[MatchingEngine] Failed to start auto-reconcile:', err);
+      }
+    });
+  }
+
+  /**
+   * Start periodic reconciliation loop which compares DB authoritative state
+   * with in-memory order books and rebuilds books when discrepancies are found.
+   */
+  private startAutoReconcile(): void {
+    if (this.reconcileTimer) return; // already running
+    if (this.reconcileEveryNBlocks <= 0) {
+      logger.info('[MatchingEngine] Auto-reconcile disabled (ORDERBOOK_RECONCILE_EVERY_BLOCKS <= 0)');
+      return;
+    }
+    logger.debug(`[MatchingEngine] Starting deterministic auto-reconcile: poll=${this.pollIntervalMs}ms every ${this.reconcileEveryNBlocks} block(s)`);
+
+    this.reconcileTimer = setInterval(async () => {
+      try {
+        // Read chain head deterministically. `chain` is available globally in this codebase.
+        const head = (typeof chain !== 'undefined' && chain.getLatestBlock) ? chain.getLatestBlock() : null;
+        if (!head || typeof head._id !== 'number') return; // can't determine head
+        const headId = head._id as number;
+
+        // Only reconcile once per target block that meets the modulus condition
+        if (headId !== this.lastReconciledBlock && (headId % this.reconcileEveryNBlocks) === 0) {
+          this.lastReconciledBlock = headId;
+          logger.debug(`[MatchingEngine] Triggering reconcile at block ${headId}`);
+          await this.reconcileAllPairs();
+        }
+      } catch (err) {
+        logger.error('[MatchingEngine] Auto-reconcile error:', err);
+      }
+    }, this.pollIntervalMs) as unknown as NodeJS.Timeout;
+  }
+
+  /**
+   * Stop the periodic reconciliation loop (used in tests/shutdown)
+   */
+  public stopAutoReconcile(): void {
+    if (this.reconcileTimer) {
+      clearInterval(this.reconcileTimer as any);
+      this.reconcileTimer = null;
+      logger.debug('[MatchingEngine] Auto-reconcile stopped');
+    }
+  }
+
+  /**
+   * Reconcile all loaded pairs by comparing DB open orders vs in-memory snapshot.
+   * If a mismatch is detected, the pair's in-memory book is rebuilt from DB.
+   */
+  private async reconcileAllPairs(): Promise<void> {
+    const pairIds = Array.from(this.orderBooks.keys());
+    for (const pairId of pairIds) {
+      try {
+        await this.reconcilePair(pairId);
+      } catch (err) {
+        logger.error(`[MatchingEngine] Error reconciling pair ${pairId}:`, err);
+      }
+    }
+  }
+
+  private async reconcilePair(pairId: string): Promise<void> {
+    const orderBook = this.orderBooks.get(pairId);
+    if (!orderBook) return;
+
+    // Build in-memory price-level snapshot
+    let inMemorySnapshot;
+    try {
+      inMemorySnapshot = orderBook.getSnapshot(1000); // large depth to include all levels
+    } catch (err) {
+      logger.error(`[MatchingEngine] Failed to get in-memory snapshot for ${pairId}:`, err);
+      return;
+    }
+
+    // Build DB price-level snapshot
+    const openOrdersDB = await cache.findPromise('orders', {
+      pairId,
+      status: { $in: [OrderStatus.OPEN, OrderStatus.PARTIALLY_FILLED] }
+    }) as any[] | null;
+
+    const dbPriceLevels = new Map<string, bigint>();
+    if (openOrdersDB && openOrdersDB.length > 0) {
+      for (const o of openOrdersDB) {
+        try {
+          const priceStr = o.price ? o.price.toString() : '0';
+          const remaining = o.remainingQuantity ? toBigInt(o.remainingQuantity) : (toBigInt(o.quantity) - toBigInt(o.filledQuantity || '0'));
+          if (remaining <= 0n) continue;
+          dbPriceLevels.set(priceStr, (dbPriceLevels.get(priceStr) || 0n) + remaining);
+        } catch (err) {
+          logger.error(`[MatchingEngine] Error parsing DB order for pair ${pairId}:`, err);
+        }
+      }
+    }
+
+    // Compare DB levels vs in-memory
+    const inLevels = inMemorySnapshot.bids.concat(inMemorySnapshot.asks);
+    let mismatch = false;
+    // Quick compare by number of levels
+    if (inLevels.length !== dbPriceLevels.size) {
+      mismatch = true;
+    } else {
+      for (const lvl of inLevels) {
+        const priceStr = lvl.price.toString();
+        const dbQty = dbPriceLevels.get(priceStr) || 0n;
+        if (dbQty !== lvl.quantity) {
+          mismatch = true;
+          break;
+        }
+      }
+    }
+
+    if (mismatch) {
+      logger.info(`[MatchingEngine] Detected orderbook mismatch for ${pairId}. Rebuilding in-memory book from DB authoritative state.`);
+      try {
+        const rebuilt = new OrderBook(pairId);
+        await this._loadOpenOrdersForPair(pairId, rebuilt);
+        this.orderBooks.set(pairId, rebuilt);
+        logger.debug(`[MatchingEngine] Successfully rebuilt order book for ${pairId} during reconciliation.`);
+      } catch (err) {
+        logger.error(`[MatchingEngine] Failed to rebuild order book for ${pairId}:`, err);
+      }
+    }
   }
 
   /**
@@ -697,7 +832,16 @@ class MatchingEngine {
     } else {
       const currentOrderState = await cache.findOnePromise('orders', { _id: orderId }) as OrderData | null;
       if (currentOrderState && (currentOrderState.status === OrderStatus.FILLED || currentOrderState.status === OrderStatus.CANCELLED)) {
-        logger.debug(`[MatchingEngine] Order ${orderId} already filled or cancelled in DB. Considered success for cancellation attempt.`);
+        logger.debug(`[MatchingEngine] Order ${orderId} already filled or cancelled in DB. In-memory removal may have failed; rebuilding order book for ${pairId} to remove stale entries.`);
+        try {
+          // Rebuild the in-memory book for this pair from DB authoritative state to remove any stale orders
+          const rebuilt = new OrderBook(pairId);
+          await this._loadOpenOrdersForPair(pairId, rebuilt);
+          this.orderBooks.set(pairId, rebuilt);
+          logger.debug(`[MatchingEngine] Rebuilt order book for ${pairId} after cancellation of ${orderId}.`);
+        } catch (rebuildErr) {
+          logger.error(`[MatchingEngine] Failed to rebuild order book for ${pairId}: ${rebuildErr}`);
+        }
         return true;
       }
       logger.warn(`[MatchingEngine] Failed to remove order ${orderId} from book. It might not have been found or already processed.`);
