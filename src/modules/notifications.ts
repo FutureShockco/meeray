@@ -7,12 +7,7 @@ const isEnabled = process.env.NOTIFICATIONS === 'true' || false;
 
 export const notifications = {
     processBlock: async (block: any) => {
-        if (
-            !isEnabled ||
-            (chain.restoredBlocks &&
-                chain.getLatestBlock()._id + config.notifPurge * config.notifPurgeAfter < chain.restoredBlocks)
-        )
-            return;
+        if (!isEnabled || (chain.restoredBlocks && chain.getLatestBlock()._id + config.notifPurge * config.notifPurgeAfter < chain.restoredBlocks)) return;
 
         if (block._id % config.notifPurge === 0) await notifications.purgeOld(block);
 

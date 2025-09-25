@@ -59,17 +59,13 @@ export async function validateTx(data: NFTTransferData, sender: string): Promise
             return false;
         }
         if (nft.owner !== sender) {
-            logger.warn(
-                `[nft-transfer/burn] Sender ${sender} is not the owner of NFT ${fullInstanceId}. Current owner: ${nft.owner}.`
-            );
+            logger.warn(`[nft-transfer/burn] Sender ${sender} is not the owner of NFT ${fullInstanceId}. Current owner: ${nft.owner}.`);
             return false;
         }
 
         const collectionFromCache = await cache.findOnePromise('nftCollections', { _id: data.collectionSymbol });
         if (!collectionFromCache) {
-            logger.warn(
-                `[nft-transfer/burn] Collection ${data.collectionSymbol} for NFT ${fullInstanceId} not found. This indicates a data integrity issue.`
-            );
+            logger.warn(`[nft-transfer/burn] Collection ${data.collectionSymbol} for NFT ${fullInstanceId} not found. This indicates a data integrity issue.`);
             return false; // Should not happen if NFT exists
         }
         const collection = collectionFromCache as CachedNftCollectionForTransfer;
@@ -110,9 +106,7 @@ export async function processTx(data: NFTTransferData, sender: string, _id: stri
 
     // Ensure required fields are present
     if (!data.collectionSymbol || !data.instanceId) {
-        logger.error(
-            `[nft-transfer] Missing required fields: collectionSymbol=${data.collectionSymbol}, instanceId=${data.instanceId}`
-        );
+        logger.error(`[nft-transfer] Missing required fields: collectionSymbol=${data.collectionSymbol}, instanceId=${data.instanceId}`);
         return false;
     }
 
@@ -121,9 +115,7 @@ export async function processTx(data: NFTTransferData, sender: string, _id: stri
         // Fetch NFT to confirm current owner again before proceeding (safeguard against race conditions)
         const nftToProcess = (await cache.findOnePromise('nfts', { _id: fullInstanceId })) as NftInstance;
         if (nftToProcess.owner !== sender) {
-            logger.error(
-                `[${isBurning ? 'nft-burn' : 'nft-transfer'}] CRITICAL: Sender ${sender} is not owner during processing. Validation might be stale.`
-            );
+            logger.error(`[${isBurning ? 'nft-burn' : 'nft-transfer'}] CRITICAL: Sender ${sender} is not owner during processing. Validation might be stale.`);
             return false;
         }
 
@@ -138,11 +130,7 @@ export async function processTx(data: NFTTransferData, sender: string, _id: stri
             }
 
             // 2. Decrement currentSupply in the collection
-            const collectionUpdateSuccess = await cache.updateOnePromise(
-                'nftCollections',
-                { _id: data.collectionSymbol },
-                { $inc: { currentSupply: -1 } }
-            );
+            const collectionUpdateSuccess = await cache.updateOnePromise('nftCollections', { _id: data.collectionSymbol }, { $inc: { currentSupply: -1 } });
             if (!collectionUpdateSuccess) {
                 logger.error(
                     `[nft-burn] CRITICAL: Failed to update currentSupply for collection ${data.collectionSymbol} after burning ${fullInstanceId}. NFT deleted but collection supply incorrect.`
@@ -174,9 +162,7 @@ export async function processTx(data: NFTTransferData, sender: string, _id: stri
                 return false;
             }
 
-            logger.debug(
-                `[nft-transfer] NFT ${fullInstanceId} successfully transferred from ${sender} to ${data.to}. Memo: ${data.memo || 'N/A'}`
-            );
+            logger.debug(`[nft-transfer] NFT ${fullInstanceId} successfully transferred from ${sender} to ${data.to}. Memo: ${data.memo || 'N/A'}`);
 
             // Log transfer event
             await logEvent('nft', 'transfer', sender, {
@@ -190,9 +176,7 @@ export async function processTx(data: NFTTransferData, sender: string, _id: stri
         }
         return true;
     } catch (error) {
-        logger.error(
-            `[${isBurning ? 'nft-burn' : 'nft-transfer'}] Error processing NFT operation for ${fullInstanceId}: ${error}`
-        );
+        logger.error(`[${isBurning ? 'nft-burn' : 'nft-transfer'}] Error processing NFT operation for ${fullInstanceId}: ${error}`);
         return false;
     }
 }

@@ -5,20 +5,11 @@ import config from '../../config.js';
 
 const router = express.Router();
 
-/**
- * GET /config
- * Returns the complete configuration with hardfork updates applied
- */
 router.get('/', (req, res) => {
     try {
-        // Get the latest block to determine which hardfork config to use
         const latestBlock = chain.getLatestBlock();
         const blockNum = latestBlock ? latestBlock._id : 0;
-
-        // Get the config with hardfork updates applied
         const currentConfig = config.read(blockNum);
-
-        // Get the base config and history for transparency
         const response = {
             current: currentConfig,
             base: config,
@@ -50,16 +41,11 @@ router.get('/', (req, res) => {
     }
 });
 
-/**
- * GET /config/current
- * Returns only the current configuration with hardfork updates applied
- */
 router.get('/current', (req, res) => {
     try {
         const latestBlock = chain.getLatestBlock();
         const blockNum = latestBlock ? latestBlock._id : 0;
         const currentConfig = config.read(blockNum);
-
         res.json({
             config: currentConfig,
             blockNum: blockNum,
@@ -74,10 +60,6 @@ router.get('/current', (req, res) => {
     }
 });
 
-/**
- * GET /config/history
- * Returns the hardfork history
- */
 router.get('/history', (req, res) => {
     try {
         res.json({

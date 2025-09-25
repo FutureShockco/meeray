@@ -29,9 +29,7 @@ export class PeerDiscovery {
 
         // Request peer lists more aggressively if below consensus threshold
         const shouldRequestAll = currentPeerCount < minPeersForConsensus;
-        const peersToQuery = shouldRequestAll
-            ? connectedPeers
-            : connectedPeers.slice(0, Math.max(1, Math.ceil(connectedPeers.length / 2)));
+        const peersToQuery = shouldRequestAll ? connectedPeers : connectedPeers.slice(0, Math.max(1, Math.ceil(connectedPeers.length / 2)));
 
         logger.debug(
             `[PEER_REQUEST] Requesting peer lists from ${peersToQuery.length}/${connectedPeers.length} peers (current: ${currentPeerCount}, min needed: ${minPeersForConsensus})`
@@ -53,22 +51,16 @@ export class PeerDiscovery {
         // Rate limiting for non-init calls
         const now = Date.now();
         if (!isInit && now - this.state.lastEmergencyDiscovery < P2P_CONFIG.RATE_LIMIT_EMERGENCY) {
-            logger.debug(
-                `[DISCOVERY] Rate limited - last emergency discovery ${Math.round((now - this.state.lastEmergencyDiscovery) / 1000)}s ago`
-            );
+            logger.debug(`[DISCOVERY] Rate limited - last emergency discovery ${Math.round((now - this.state.lastEmergencyDiscovery) / 1000)}s ago`);
             return;
         }
 
-        logger.debug(
-            `[DISCOVERY] Current peers: ${currentPeerCount}, Min needed: ${minPeersForConsensus}, Optimal: ${optimalPeerCount}`
-        );
+        logger.debug(`[DISCOVERY] Current peers: ${currentPeerCount}, Min needed: ${minPeersForConsensus}, Optimal: ${optimalPeerCount}`);
 
         // Only use witness endpoints if we're critically low on peers or during init
         if (isInit || currentPeerCount < Math.max(1, minPeersForConsensus - 1)) {
             if (!isInit) {
-                logger.warn(
-                    `[DISCOVERY] Critically low peer count (${currentPeerCount})! Using witness endpoints as emergency fallback`
-                );
+                logger.warn(`[DISCOVERY] Critically low peer count (${currentPeerCount})! Using witness endpoints as emergency fallback`);
                 this.state.lastEmergencyDiscovery = now;
             }
             const block = chain.getLatestBlock();
@@ -94,9 +86,7 @@ export class PeerDiscovery {
                 }
 
                 if (!isConnected) {
-                    logger[isInit ? 'info' : 'warn'](
-                        `[DISCOVERY] Connecting to witness ${witness.name} at ${witness.ws} (${isInit ? 'init' : 'emergency'})`
-                    );
+                    logger[isInit ? 'info' : 'warn'](`[DISCOVERY] Connecting to witness ${witness.name} at ${witness.ws} (${isInit ? 'init' : 'emergency'})`);
                     this.connect([witness.ws], isInit);
                 }
             }
@@ -170,19 +160,14 @@ export class PeerDiscovery {
         const cooldownPeriod = isEmergency ? P2P_CONFIG.RATE_LIMIT_EMERGENCY : P2P_CONFIG.RATE_LIMIT_NORMAL;
 
         if (now - this.state.lastPeerListConnection < cooldownPeriod) {
-            logger.debug(
-                `[PEER_LIST] Rate limited - last connection attempt ${Math.round((now - this.state.lastPeerListConnection) / 1000)}s ago`
-            );
+            logger.debug(`[PEER_LIST] Rate limited - last connection attempt ${Math.round((now - this.state.lastPeerListConnection) / 1000)}s ago`);
             return;
         }
 
         // Calculate how many new peers we need based on consensus requirements
         let maxNewPeers = 0;
         if (isEmergency) {
-            maxNewPeers = Math.min(
-                minPeersForConsensus - currentPeerCount + 1,
-                P2P_RUNTIME_CONFIG.MAX_PEERS - this.state.sockets.length
-            );
+            maxNewPeers = Math.min(minPeersForConsensus - currentPeerCount + 1, P2P_RUNTIME_CONFIG.MAX_PEERS - this.state.sockets.length);
             logger.warn(
                 `[PEER_LIST] Below consensus threshold! (${currentPeerCount}/${minPeersForConsensus}) - attempting to connect to ${maxNewPeers} new peers`
             );

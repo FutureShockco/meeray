@@ -76,16 +76,12 @@ export const validateUserBalances = async (
     const tokenBBalance = toBigInt(userAccount.balances[tokenBSymbol] || '0');
 
     if (tokenABalance < toBigInt(tokenAAmount)) {
-        logger.warn(
-            `[pool-validation] Insufficient balance for ${tokenASymbol}. Required: ${tokenAAmount}, Available: ${tokenABalance}`
-        );
+        logger.warn(`[pool-validation] Insufficient balance for ${tokenASymbol}. Required: ${tokenAAmount}, Available: ${tokenABalance}`);
         return false;
     }
 
     if (tokenBBalance < toBigInt(tokenBAmount)) {
-        logger.warn(
-            `[pool-validation] Insufficient balance for ${tokenBSymbol}. Required: ${tokenBAmount}, Available: ${tokenBBalance}`
-        );
+        logger.warn(`[pool-validation] Insufficient balance for ${tokenBSymbol}. Required: ${tokenBAmount}, Available: ${tokenBBalance}`);
         return false;
     }
 
@@ -99,11 +95,7 @@ export const validateUserBalances = async (
  * @param tokenBAmount Token B amount to add
  * @returns True if ratio is within tolerance, false otherwise
  */
-export const validatePoolRatioTolerance = (
-    pool: LiquidityPoolData,
-    tokenAAmount: string | bigint,
-    tokenBAmount: string | bigint
-): boolean => {
+export const validatePoolRatioTolerance = (pool: LiquidityPoolData, tokenAAmount: string | bigint, tokenBAmount: string | bigint): boolean => {
     // For initial liquidity provision, both token amounts must be positive
     if (toBigInt(pool.totalLpTokens) === toBigInt(0)) {
         if (toBigInt(tokenAAmount) <= toBigInt(0) || toBigInt(tokenBAmount) <= toBigInt(0)) {

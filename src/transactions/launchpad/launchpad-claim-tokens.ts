@@ -7,9 +7,7 @@ import { calculateUserAllocation, calculateVestedAmount, parseSteemTimestamp } f
 import { LaunchpadClaimTokensData, LaunchpadStatus, TokenDistributionRecipient } from './launchpad-interfaces.js';
 
 export async function validateTx(data: LaunchpadClaimTokensData, sender: string, _blockTimestamp: string): Promise<boolean> {
-    logger.debug(
-        `[launchpad-claim-tokens] Validating claim from ${sender} for launchpad ${data.launchpadId}, type ${data.allocationType}`
-    );
+    logger.debug(`[launchpad-claim-tokens] Validating claim from ${sender} for launchpad ${data.launchpadId}, type ${data.allocationType}`);
     // Sender is the claimant; payload `userId` is optional/back-compat. Use sender for checks below.
 
     if (!data.launchpadId || !data.allocationType) {
@@ -32,9 +30,7 @@ export async function validateTx(data: LaunchpadClaimTokensData, sender: string,
     ];
 
     if (!claimableStatuses.includes(launchpad.status)) {
-        logger.warn(
-            `[launchpad-claim-tokens] Launchpad ${data.launchpadId} is not in a claimable status. Current status: ${launchpad.status}`
-        );
+        logger.warn(`[launchpad-claim-tokens] Launchpad ${data.launchpadId} is not in a claimable status. Current status: ${launchpad.status}`);
         return false;
     }
 
@@ -93,12 +89,7 @@ export async function validateTx(data: LaunchpadClaimTokensData, sender: string,
     return true;
 }
 
-export async function processTx(
-    data: LaunchpadClaimTokensData,
-    sender: string,
-    transactionId: string,
-    blockTimestamp: string
-): Promise<boolean> {
+export async function processTx(data: LaunchpadClaimTokensData, sender: string, transactionId: string, blockTimestamp: string): Promise<boolean> {
     logger.debug(`[launchpad-claim-tokens] Processing claim from ${sender} for ${data.launchpadId}, type ${data.allocationType}`);
 
     try {
@@ -191,9 +182,7 @@ export async function processTx(
             tokensToMint = vestingResult.availableToClaim;
 
             if (tokensToMint <= toBigInt(0)) {
-                logger.warn(
-                    `[launchpad-claim-tokens] No tokens available to claim for ${sender}. Still locked: ${vestingResult.stillLocked}`
-                );
+                logger.warn(`[launchpad-claim-tokens] No tokens available to claim for ${sender}. Still locked: ${vestingResult.stillLocked}`);
                 return false;
             }
 

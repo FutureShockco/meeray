@@ -13,12 +13,7 @@ function generateLaunchpadId(sender: string, tokenSymbol: string, transactionId?
     return `pad-${crypto.createHash('sha256').update(`${sender}_${tokenSymbol}_${txId}`).digest('hex').substring(0, 12)}`;
 }
 
-export async function validateTx(
-    data: LaunchpadLaunchTokenData,
-    _sender: string,
-    _transactionId?: string,
-    _timestamp?: number
-): Promise<boolean> {
+export async function validateTx(data: LaunchpadLaunchTokenData, _sender: string, _transactionId?: string, _timestamp?: number): Promise<boolean> {
     if (!data.tokenName || !data.tokenSymbol || !data.totalSupply) {
         logger.warn('[launchpad-launch-token] Missing core token information: tokenName, tokenSymbol, totalSupply.');
         return false;
@@ -109,9 +104,7 @@ export async function processTx(launchData: LaunchpadLaunchTokenData, sender: st
         await new Promise<void>((resolve, reject) => {
             cache.insertOne('launchpads', launchpadProjectData, (err, result) => {
                 if (err || !result) {
-                    logger.error(
-                        `[launchpad-launch-token] CRITICAL: Failed to save launchpad ${launchpadId}: ${err || 'no result'}.`
-                    );
+                    logger.error(`[launchpad-launch-token] CRITICAL: Failed to save launchpad ${launchpadId}: ${err || 'no result'}.`);
                     return reject(err || new Error('Failed to save launchpad'));
                 }
                 logger.debug(`[launchpad-launch-token] Launchpad ${launchpadId} created for ${launchData.tokenSymbol}.`);
@@ -119,9 +112,7 @@ export async function processTx(launchData: LaunchpadLaunchTokenData, sender: st
             });
         });
 
-        logger.debug(
-            `[launchpad-launch-token] Launch request for ${launchData.tokenSymbol} by ${sender} processed successfully. Launchpad ID: ${launchpadId}`
-        );
+        logger.debug(`[launchpad-launch-token] Launch request for ${launchData.tokenSymbol} by ${sender} processed successfully. Launchpad ID: ${launchpadId}`);
 
         await logEvent('launchpad', 'created', sender, {
             launchpadId,

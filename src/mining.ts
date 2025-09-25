@@ -47,9 +47,7 @@ export const mining = {
                 cb(true, null);
                 return;
             }
-            logger.trace(
-                `prepareBlock: Successfully processed Steem block ${nextSteemBlockNum}. Transactions found: ${newSteemBlock.transactions.length}`
-            );
+            logger.trace(`prepareBlock: Successfully processed Steem block ${nextSteemBlockNum}. Transactions found: ${newSteemBlock.transactions.length}`);
 
             // Add mempool transactions
             let txs = [];
@@ -134,13 +132,9 @@ export const mining = {
                 return;
             }
 
-            logger.trace(
-                `mineBlock: Before executeBlockTransactions for _id ${newBlock._id}. Initial Txs: ${newBlock.txs?.length}`
-            );
+            logger.trace(`mineBlock: Before executeBlockTransactions for _id ${newBlock._id}. Initial Txs: ${newBlock.txs?.length}`);
             chain.executeBlockTransactions(newBlock, true, function (validTxs: Transaction[], distributed: string) {
-                logger.trace(
-                    `mineBlock: After executeBlockTransactions for _id ${newBlock._id}. Valid Txs: ${validTxs?.length}, Distributed: ${distributed}`
-                );
+                logger.trace(`mineBlock: After executeBlockTransactions for _id ${newBlock._id}. Valid Txs: ${validTxs?.length}, Distributed: ${distributed}`);
                 try {
                     cache.rollback();
                     // Assign the executed transactions to the block (fix)
@@ -151,16 +145,11 @@ export const mining = {
                         const shuffleLength = chain.schedule.shuffle.length;
                         const missedWitnessIndex = (newBlock._id - 1) % shuffleLength;
                         // Ensure the index is valid before accessing, though modulo shuffleLength should guarantee this.
-                        if (
-                            missedWitnessIndex < shuffleLength &&
-                            chain.schedule.shuffle[missedWitnessIndex].name !== process.env.STEEM_ACCOUNT
-                        ) {
+                        if (missedWitnessIndex < shuffleLength && chain.schedule.shuffle[missedWitnessIndex].name !== process.env.STEEM_ACCOUNT) {
                             newBlock.missedBy = chain.schedule.shuffle[missedWitnessIndex].name;
                         }
                     } else {
-                        logger.warn(
-                            `mineBlock: Witness schedule not available or shuffle array empty when trying to set missedBy for block ${newBlock._id}.`
-                        );
+                        logger.warn(`mineBlock: Witness schedule not available or shuffle array empty when trying to set missedBy for block ${newBlock._id}.`);
                     }
 
                     if (distributed) newBlock.dist = distributed;
@@ -180,9 +169,7 @@ export const mining = {
                     };
                     for (let r = 0; r < config.consensusRounds; r++) possBlock[r] = [];
 
-                    logger.trace(
-                        `mineBlock: Proposing block _id ${newBlock._id} to consensus. Witness: ${process.env.STEEM_ACCOUNT}`
-                    );
+                    logger.trace(`mineBlock: Proposing block _id ${newBlock._id} to consensus. Witness: ${process.env.STEEM_ACCOUNT}`);
                     possBlock[0].push(process.env.STEEM_ACCOUNT);
                     consensus.possBlocks.push(possBlock);
                     consensus.endRound(0, newBlock);
@@ -217,9 +204,7 @@ export const mining = {
         const minPeersForConsensus = Math.ceil(totalWitnesses * 0.66);
         // If we're in sync mode but consensus is not met, exit sync mode
         if (steem.isInSyncMode() && !consensus.getConsensus().consensus_is_met) {
-            logger.warn(
-                `[SYNC-EXIT] Below consensus threshold (${currentPeerCount}/${minPeersForConsensus}) while in sync mode. Forcing sync mode exit.`
-            );
+            logger.warn(`[SYNC-EXIT] Below consensus threshold (${currentPeerCount}/${minPeersForConsensus}) while in sync mode. Forcing sync mode exit.`);
             const currentBlock = chain.getLatestBlock();
             steem.exitSyncMode(currentBlock._id, currentBlock.steemBlockNum || 0);
         }
@@ -335,10 +320,7 @@ export const mining = {
                     const minedBlockId = block._id + 1;
 
                     if (error) {
-                        logger.warn(
-                            `Witness ${primaryWitnessForNextBlock} could not mine block ${minedBlockId}. finalBlock._id: ${finalBlock?._id}`,
-                            error
-                        );
+                        logger.warn(`Witness ${primaryWitnessForNextBlock} could not mine block ${minedBlockId}. finalBlock._id: ${finalBlock?._id}`, error);
                     }
                 });
             }, mineInMs);

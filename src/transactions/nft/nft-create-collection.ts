@@ -89,10 +89,7 @@ export async function validateTx(data: NFTCollectionCreateData, sender: string):
                 return false;
             }
         }
-        if (
-            data.metadata?.imageUrl !== undefined &&
-            (!validate.string(data.metadata.imageUrl, 2048, 10) || !data.metadata.imageUrl.startsWith('http'))
-        ) {
+        if (data.metadata?.imageUrl !== undefined && (!validate.string(data.metadata.imageUrl, 2048, 10) || !data.metadata.imageUrl.startsWith('http'))) {
             logger.warn('[nft-create-collection] Invalid metadata imageUrl.');
             return false;
         }
@@ -119,9 +116,7 @@ export async function validateTx(data: NFTCollectionCreateData, sender: string):
         }
 
         if (toBigInt(creatorAccount.balances[config.nativeTokenSymbol]) < toBigInt(config.nftCollectionCreationFee)) {
-            logger.warn(
-                `[nft-create-collection] Sender account ${sender} does not have enough balance to create an NFT collection.`
-            );
+            logger.warn(`[nft-create-collection] Sender account ${sender} does not have enough balance to create an NFT collection.`);
             return false;
         }
 
@@ -188,15 +183,9 @@ export async function processTx(data: NFTCollectionCreateData, sender: string, _
             return false;
         }
 
-        const deductSuccess = await adjustUserBalance(
-            sender,
-            config.nativeTokenSymbol,
-            toBigInt(-config.nftCollectionCreationFee)
-        );
+        const deductSuccess = await adjustUserBalance(sender, config.nativeTokenSymbol, toBigInt(-config.nftCollectionCreationFee));
         if (!deductSuccess) {
-            logger.error(
-                `[nft-create-collection] Failed to deduct ${config.nftCollectionCreationFee} of ${config.nativeTokenSymbol} from ${sender}.`
-            );
+            logger.error(`[nft-create-collection] Failed to deduct ${config.nftCollectionCreationFee} of ${config.nativeTokenSymbol} from ${sender}.`);
             return false;
         }
 

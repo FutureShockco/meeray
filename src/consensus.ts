@@ -53,9 +53,7 @@ const processSyncCollisionWindow = (height: number) => {
     // Check if this block height has already been processed (chain already advanced)
     const currentChainHead = chain.getLatestBlock()._id;
     if (currentChainHead >= height) {
-        logger.debug(
-            `[SYNC-COLLISION-WINDOW] Block height ${height} already processed (chain head: ${currentChainHead}). Skipping collision window.`
-        );
+        logger.debug(`[SYNC-COLLISION-WINDOW] Block height ${height} already processed (chain head: ${currentChainHead}). Skipping collision window.`);
         // Cleanup and return
         delete syncCollisionTimers[height];
         delete syncPendingBlocks[height];
@@ -77,9 +75,7 @@ const processSyncCollisionWindow = (height: number) => {
         consensus.processBlockNormally(0, block, cb);
     } else {
         // Multiple blocks - apply deterministic resolution
-        logger.info(
-            `[SYNC-COLLISION-WINDOW] Collision detected for height ${height} with ${pendingBlocks.length} blocks. Applying deterministic resolution.`
-        );
+        logger.info(`[SYNC-COLLISION-WINDOW] Collision detected for height ${height} with ${pendingBlocks.length} blocks. Applying deterministic resolution.`);
 
         // Sort by timestamp first, then by hash for deterministic ordering
         pendingBlocks.sort((a, b) => {
@@ -140,9 +136,7 @@ export const consensus: Consensus = {
         }
         if (process.env.WITNESS_PUBLIC_KEY !== thPub) {
             this.observer = true;
-            logger.warn(
-                'Witness key does not match blockchain data, observing instead ' + thPub + ' ' + process.env.WITNESS_PUBLIC_KEY
-            );
+            logger.warn('Witness key does not match blockchain data, observing instead ' + thPub + ' ' + process.env.WITNESS_PUBLIC_KEY);
             return false;
         }
         return true;
@@ -163,9 +157,7 @@ export const consensus: Consensus = {
 
         const currentWitness = chain.schedule.shuffle[(blockNum - 1) % config.witnesses].name;
         const currentWitnessKey = consensus.getActiveWitnessKey(currentWitness);
-        logger.debug(
-            `[DEBUG-ACTIVE-WITNESSES] Current witness for block ${blockNum}: ${currentWitness}, hasKey: ${!!currentWitnessKey}`
-        );
+        logger.debug(`[DEBUG-ACTIVE-WITNESSES] Current witness for block ${blockNum}: ${currentWitness}, hasKey: ${!!currentWitnessKey}`);
 
         // Only add current witness if they have a key and haven't timed out
         if (currentWitnessKey) {
@@ -174,9 +166,7 @@ export const consensus: Consensus = {
 
             if (timeSinceLastSeen <= witnessTimeoutMs) {
                 actives.push(currentWitness);
-                logger.debug(
-                    `[DEBUG-ACTIVE-WITNESSES] Added current witness ${currentWitness} (last seen ${timeSinceLastSeen}ms ago)`
-                );
+                logger.debug(`[DEBUG-ACTIVE-WITNESSES] Added current witness ${currentWitness} (last seen ${timeSinceLastSeen}ms ago)`);
             } else {
                 logger.debug(
                     `[DEBUG-ACTIVE-WITNESSES] Excluding timed out current witness ${currentWitness} (last seen ${timeSinceLastSeen}ms ago, timeout: ${witnessTimeoutMs}ms)`
@@ -198,9 +188,7 @@ export const consensus: Consensus = {
 
                     if (timeSinceLastSeen <= witnessTimeoutMs) {
                         actives.push(recentBlock.witness);
-                        logger.debug(
-                            `[DEBUG-ACTIVE-WITNESSES] Added recent witness ${recentBlock.witness} (last seen ${timeSinceLastSeen}ms ago)`
-                        );
+                        logger.debug(`[DEBUG-ACTIVE-WITNESSES] Added recent witness ${recentBlock.witness} (last seen ${timeSinceLastSeen}ms ago)`);
                     } else {
                         logger.debug(
                             `[DEBUG-ACTIVE-WITNESSES] Excluding timed out witness ${recentBlock.witness} (last seen ${timeSinceLastSeen}ms ago, timeout: ${witnessTimeoutMs}ms)`
@@ -219,9 +207,7 @@ export const consensus: Consensus = {
 
             if (!alreadyAdded && witnessKey && timeSinceLastSeen <= witnessTimeoutMs) {
                 actives.push(witness);
-                logger.debug(
-                    `[DEBUG-ACTIVE-WITNESSES] Added witness ${witness} based on recent P2P activity (last seen ${timeSinceLastSeen}ms ago)`
-                );
+                logger.debug(`[DEBUG-ACTIVE-WITNESSES] Added witness ${witness} based on recent P2P activity (last seen ${timeSinceLastSeen}ms ago)`);
             }
         }
 
@@ -268,10 +254,7 @@ export const consensus: Consensus = {
                 if (possBlocksById[possBlock.block._id] && possBlocksById[possBlock.block._id].length > 1) {
                     const collisions = [];
                     for (let j = 0; j < possBlocksById[possBlock.block._id].length; j++) {
-                        collisions.push([
-                            possBlocksById[possBlock.block._id][j].block.witness,
-                            possBlocksById[possBlock.block._id][j].block.timestamp,
-                        ]);
+                        collisions.push([possBlocksById[possBlock.block._id][j].block.witness, possBlocksById[possBlock.block._id][j].block.timestamp]);
                     }
 
                     logger.warn('Block collision detected at height ' + possBlock.block._id + ', the witnesses are:', collisions);
@@ -289,10 +272,7 @@ export const consensus: Consensus = {
                                 winningBlock = collidingPossBlock;
                             }
                             // Tie-breaker: Lexicographically smallest hash wins
-                            else if (
-                                currentBlock.timestamp === winningBlockData.timestamp &&
-                                currentBlock.hash < winningBlockData.hash
-                            ) {
+                            else if (currentBlock.timestamp === winningBlockData.timestamp && currentBlock.hash < winningBlockData.hash) {
                                 winningBlock = collidingPossBlock;
                             }
                         }
@@ -334,9 +314,7 @@ export const consensus: Consensus = {
                     this.possBlocks = newPossBlocks;
                     this.finalizing = false; // Reset finalizing status here.
                 });
-            } else
-                for (let y = 0; y < (config.consensusRounds || 2) - 1; y++)
-                    if (possBlock[y].length > threshold) this.round(y + 1, possBlock.block);
+            } else for (let y = 0; y < (config.consensusRounds || 2) - 1; y++) if (possBlock[y].length > threshold) this.round(y + 1, possBlock.block);
         }
     },
     round: function (round: number, block: any, cb?: (result: number) => void) {
@@ -345,9 +323,7 @@ export const consensus: Consensus = {
         );
 
         if (block._id && block._id !== chain.getLatestBlock?.()._id + 1) {
-            logger.debug(
-                `consensus.round: Rejecting block - wrong _id. Expected ${chain.getLatestBlock?.()._id + 1}, got ${block._id}`
-            );
+            logger.debug(`consensus.round: Rejecting block - wrong _id. Expected ${chain.getLatestBlock?.()._id + 1}, got ${block._id}`);
             if (cb) cb(-1);
             return;
         }
@@ -479,10 +455,7 @@ export const consensus: Consensus = {
                 this.possBlocks.push(possBlock);
 
                 for (let i = 0; i < this.possBlocks.length; i++)
-                    if (
-                        block.hash === this.possBlocks[i].block.hash &&
-                        this.possBlocks[i][0].indexOf(process.env.STEEM_ACCOUNT) === -1
-                    ) {
+                    if (block.hash === this.possBlocks[i].block.hash && this.possBlocks[i][0].indexOf(process.env.STEEM_ACCOUNT) === -1) {
                         possBlock[0].push(process.env.STEEM_ACCOUNT);
                     }
                 for (let i = 0; i < this.queue.length; i++) {
@@ -503,10 +476,7 @@ export const consensus: Consensus = {
             }
         } else {
             for (let b = 0; b < this.possBlocks.length; b++)
-                if (
-                    this.possBlocks[b].block.hash === block.hash &&
-                    this.possBlocks[b][round].indexOf(process.env.STEEM_ACCOUNT) === -1
-                ) {
+                if (this.possBlocks[b].block.hash === block.hash && this.possBlocks[b][round].indexOf(process.env.STEEM_ACCOUNT) === -1) {
                     this.possBlocks[b][round].push(process.env.STEEM_ACCOUNT);
                     this.endRound(round, block);
                 }
@@ -542,9 +512,7 @@ export const consensus: Consensus = {
         }
         this.witnessLastSeen.set(witness, Date.now());
 
-        logger.debug(
-            `consensus.remoteRoundConfirm: witness=${witness}, round=${round}, blockHash=${block.hash}, possBlocks.length=${this.possBlocks.length}`
-        );
+        logger.debug(`consensus.remoteRoundConfirm: witness=${witness}, round=${round}, blockHash=${block.hash}, possBlocks.length=${this.possBlocks.length}`);
         for (let i = 0; i < this.possBlocks.length; i++) {
             if (block.hash === this.possBlocks[i].block.hash) {
                 logger.debug(`consensus.remoteRoundConfirm: Found matching block at index ${i}`);
@@ -575,10 +543,7 @@ export const consensus: Consensus = {
 
         // Query peer head blocks to see if majority advanced
         const peersWithStatus = p2p.sockets.filter(
-            ws =>
-                ws.node_status &&
-                ws.node_status.head_block !== undefined &&
-                ws.node_status.origin_block === config.read(0).originHash
+            ws => ws.node_status && ws.node_status.head_block !== undefined && ws.node_status.origin_block === config.read(0).originHash
         );
 
         if (peersWithStatus.length === 0) {

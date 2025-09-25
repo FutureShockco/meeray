@@ -95,15 +95,11 @@ export async function recordAMMTrade(params: {
             );
         }
         logger.info(`[recordAMMTrade] Trade: ${params.amountIn} ${params.tokenIn} -> ${params.amountOut} ${params.tokenOut}`);
-        logger.info(
-            `[recordAMMTrade] Mapped: ${quantity} ${baseSymbol} (quantity), ${volume} ${quoteSymbol} (volume), price: ${priceValue}`
-        );
+        logger.info(`[recordAMMTrade] Mapped: ${quantity} ${baseSymbol} (quantity), ${volume} ${quoteSymbol} (volume), price: ${priceValue}`);
         logger.info(`[recordAMMTrade] Pair: ${pairId}, Base: ${baseSymbol}, Quote: ${quoteSymbol}`);
         if (priceValue === 0n) {
             logger.error(`[recordAMMTrade] CRITICAL: Price is still 0 after all calculations!`);
-            logger.error(
-                `[recordAMMTrade] Input: ${params.amountIn} ${params.tokenIn}, Output: ${params.amountOut} ${params.tokenOut}`
-            );
+            logger.error(`[recordAMMTrade] Input: ${params.amountIn} ${params.tokenIn}, Output: ${params.amountOut} ${params.tokenOut}`);
             logger.error(`[recordAMMTrade] Quantity: ${quantity}, Volume: ${volume}`);
         }
         if (priceValue < 0n) {
@@ -122,9 +118,7 @@ export async function recordAMMTrade(params: {
             buyerUserId = 'AMM';
             sellerUserId = params.sender;
         } else {
-            logger.warn(
-                `[recordAMMTrade] Could not determine trade side for ${params.tokenIn} -> ${params.tokenOut}, defaulting to buy`
-            );
+            logger.warn(`[recordAMMTrade] Could not determine trade side for ${params.tokenIn} -> ${params.tokenOut}, defaulting to buy`);
             tradeSide = 'BUY';
             buyerUserId = params.sender;
             sellerUserId = 'AMM';

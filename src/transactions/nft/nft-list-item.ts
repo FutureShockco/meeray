@@ -16,9 +16,7 @@ function generateListingId(collectionSymbol: string, instanceId: string, seller:
 export async function validateTx(data: NftListPayload, sender: string): Promise<boolean> {
     try {
         if (!data.collectionSymbol || !data.instanceId || !data.price || !data.paymentTokenSymbol) {
-            logger.warn(
-                '[nft-list-item] Invalid data: Missing required fields (collectionSymbol, instanceId, price, paymentTokenSymbol).'
-            );
+            logger.warn('[nft-list-item] Invalid data: Missing required fields (collectionSymbol, instanceId, price, paymentTokenSymbol).');
             return false;
         }
 
@@ -74,9 +72,7 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
         }
 
         if (!validate.string(data.price, 64, 1) || !/^[1-9]\d*$/.test(data.price)) {
-            logger.warn(
-                `[nft-list-item] Invalid price format. Must be a string representing a positive integer. Received: ${data.price}`
-            );
+            logger.warn(`[nft-list-item] Invalid price format. Must be a string representing a positive integer. Received: ${data.price}`);
             return false;
         }
         const priceBigInt = toBigInt(data.price);
@@ -98,20 +94,14 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
             logger.warn(`[nft-list-item] paymentTokenIssuer is required for non-native token ${data.paymentTokenSymbol}.`);
             return false;
         }
-        if (
-            data.paymentTokenSymbol !== config.nativeTokenSymbol &&
-            data.paymentTokenIssuer &&
-            !validate.string(data.paymentTokenIssuer, 64, 3)
-        ) {
+        if (data.paymentTokenSymbol !== config.nativeTokenSymbol && data.paymentTokenIssuer && !validate.string(data.paymentTokenIssuer, 64, 3)) {
             logger.warn(`[nft-list-item] Invalid paymentTokenIssuer format for ${data.paymentTokenSymbol}.`);
             return false;
         }
 
         const paymentToken = await getToken(data.paymentTokenSymbol);
         if (!paymentToken) {
-            logger.warn(
-                `[nft-list-item] Payment token ${data.paymentTokenSymbol}${data.paymentTokenIssuer ? '@' + data.paymentTokenIssuer : ''} not found.`
-            );
+            logger.warn(`[nft-list-item] Payment token ${data.paymentTokenSymbol}${data.paymentTokenIssuer ? '@' + data.paymentTokenIssuer : ''} not found.`);
             return false;
         }
 
@@ -123,9 +113,7 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
             return false;
         }
         if (nft.owner !== sender) {
-            logger.warn(
-                `[nft-list-item] Sender ${sender} is not the owner of NFT ${fullInstanceId}. Current owner: ${nft.owner}.`
-            );
+            logger.warn(`[nft-list-item] Sender ${sender} is not the owner of NFT ${fullInstanceId}. Current owner: ${nft.owner}.`);
             return false;
         }
 
@@ -133,16 +121,12 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
             _id: data.collectionSymbol,
         })) as CachedNftCollectionForTransfer | null;
         if (!collection) {
-            logger.warn(
-                `[nft-list-item] Collection ${data.collectionSymbol} for NFT ${fullInstanceId} not found. Indicates data integrity issue.`
-            );
+            logger.warn(`[nft-list-item] Collection ${data.collectionSymbol} for NFT ${fullInstanceId} not found. Indicates data integrity issue.`);
             return false;
         }
         if (collection.transferable === false) {
             // Explicitly check for false
-            logger.warn(
-                `[nft-list-item] NFT Collection ${data.collectionSymbol} does not allow transfer of its NFTs, cannot be listed.`
-            );
+            logger.warn(`[nft-list-item] NFT Collection ${data.collectionSymbol} does not allow transfer of its NFTs, cannot be listed.`);
             return false;
         }
 
@@ -153,17 +137,13 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
             status: 'active',
         })) as NFTListingData | null;
         if (existingListing) {
-            logger.warn(
-                `[nft-list-item] NFT ${fullInstanceId} is already actively listed by ${sender} under listing ID ${listingId}.`
-            );
+            logger.warn(`[nft-list-item] NFT ${fullInstanceId} is already actively listed by ${sender} under listing ID ${listingId}.`);
             return false;
         }
 
         return true;
     } catch (error) {
-        logger.error(
-            `[nft-list-item] Error validating NFT listing payload for ${data.collectionSymbol}_${data.instanceId} by ${sender}: ${error}`
-        );
+        logger.error(`[nft-list-item] Error validating NFT listing payload for ${data.collectionSymbol}_${data.instanceId} by ${sender}: ${error}`);
         return false;
     }
 }
@@ -236,9 +216,7 @@ export async function processTx(data: NftListPayload, sender: string, _id: strin
 
         return listingId; // Return the ID of the created listing
     } catch (error) {
-        logger.error(
-            `[nft-list-item] Error processing NFT listing for ${data.collectionSymbol}_${data.instanceId} by ${sender}: ${error}`
-        );
+        logger.error(`[nft-list-item] Error processing NFT listing for ${data.collectionSymbol}_${data.instanceId} by ${sender}: ${error}`);
         return null;
     }
 }

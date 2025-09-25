@@ -1,14 +1,7 @@
 import cache from '../../cache.js';
 import logger from '../../logger.js';
 import { adjustUserBalance, getAccount } from '../../utils/account.js';
-import {
-    escrowBidFunds,
-    generateBidId,
-    getHighestBid,
-    releaseEscrowedFunds,
-    updateListingWithBid,
-    validateBidAmount,
-} from '../../utils/bid.js';
+import { escrowBidFunds, generateBidId, getHighestBid, releaseEscrowedFunds, updateListingWithBid, validateBidAmount } from '../../utils/bid.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
 import { getToken } from '../../utils/token.js';
@@ -108,12 +101,7 @@ export async function processTx(data: NftBuyPayload, sender: string, id: string,
     }
 }
 
-async function executeImmediatePurchase(
-    listing: NFTListingData,
-    buyer: string,
-    amount: bigint,
-    _transactionId: string
-): Promise<boolean> {
+async function executeImmediatePurchase(listing: NFTListingData, buyer: string, amount: bigint, _transactionId: string): Promise<boolean> {
     try {
         const collection = (await cache.findOnePromise('nftCollections', {
             _id: listing.collectionId,
@@ -182,13 +170,7 @@ async function executeImmediatePurchase(
     }
 }
 
-async function submitBid(
-    listing: NFTListingData,
-    bidder: string,
-    bidAmount: bigint,
-    id: string,
-    timestamp: number
-): Promise<boolean> {
+async function submitBid(listing: NFTListingData, bidder: string, bidAmount: bigint, id: string, timestamp: number): Promise<boolean> {
     try {
         const paymentToken = await getToken(listing.paymentToken.symbol);
         if (!paymentToken) return false;

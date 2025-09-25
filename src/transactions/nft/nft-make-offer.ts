@@ -46,9 +46,7 @@ export async function validateTx(data: NftMakeOfferData, sender: string): Promis
         // Validate payment token
         const paymentToken = await getToken(data.paymentTokenSymbol);
         if (!paymentToken) {
-            logger.warn(
-                `[nft-make-offer] Payment token ${data.paymentTokenSymbol}${data.paymentTokenIssuer ? '@' + data.paymentTokenIssuer : ''} not found.`
-            );
+            logger.warn(`[nft-make-offer] Payment token ${data.paymentTokenSymbol}${data.paymentTokenIssuer ? '@' + data.paymentTokenIssuer : ''} not found.`);
             return false;
         }
 
@@ -160,11 +158,7 @@ export async function processTx(data: NftMakeOfferData, sender: string, _id: str
             await adjustUserBalance(sender, paymentTokenIdentifier, previousEscrowAmount);
 
             // Cancel the previous offer
-            await cache.updateOnePromise(
-                'nftOffers',
-                { _id: existingOffer._id },
-                { $set: { status: 'CANCELLED', cancelledAt: new Date().toISOString() } }
-            );
+            await cache.updateOnePromise('nftOffers', { _id: existingOffer._id }, { $set: { status: 'CANCELLED', cancelledAt: new Date().toISOString() } });
         }
 
         // Escrow funds for new offer

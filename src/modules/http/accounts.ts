@@ -45,14 +45,7 @@ router.get('/', (async (req: Request, res: Response) => {
         const sortDirection = req.query.sortDirection === 'desc' ? -1 : 1;
         const sort: any = {};
         sort[sortField] = sortDirection;
-        const accountsFromDB: any[] = await mongo
-            .getDb()
-            .collection('accounts')
-            .find(query)
-            .sort(sort)
-            .limit(limit)
-            .skip(skip)
-            .toArray();
+        const accountsFromDB: any[] = await mongo.getDb().collection('accounts').find(query).sort(sort).limit(limit).skip(skip).toArray();
         const total = await mongo.getDb().collection('accounts').countDocuments(query);
         const accounts = accountsFromDB.map(acc => {
             const { _id, totalVoteWeight, balances, ...rest } = acc;
@@ -217,14 +210,7 @@ router.get('/:name/transactions', async (req: Request, res: Response) => {
         if (dataKey && dataValue) {
             query[`data.${dataKey as string}`] = dataValue;
         }
-        const transactionsFromDB = await mongo
-            .getDb()
-            .collection('transactions')
-            .find(query)
-            .sort({ ts: -1 })
-            .limit(limit)
-            .skip(skip)
-            .toArray();
+        const transactionsFromDB = await mongo.getDb().collection('transactions').find(query).sort({ ts: -1 }).limit(limit).skip(skip).toArray();
         const total = await mongo.getDb().collection('transactions').countDocuments(query);
         const transactions = transactionsFromDB.map((tx: any) => {
             const { _id, ...restOfTx } = tx;

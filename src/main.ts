@@ -91,9 +91,7 @@ export async function main() {
         let timeStart = new Date().getTime();
         const warmupAccountsCount = parseInt(process.env.WARMUP_ACCOUNTS || '10000');
         await cache.warmup('accounts', warmupAccountsCount);
-        logger.info(
-            `${Object.keys(cache.accounts || {}).length} accounts loaded in RAM in ${new Date().getTime() - timeStart} ms`
-        );
+        logger.info(`${Object.keys(cache.accounts || {}).length} accounts loaded in RAM in ${new Date().getTime() - timeStart} ms`);
 
         // Warmup tokens
         timeStart = new Date().getTime();
@@ -123,9 +121,7 @@ export async function main() {
         }
 
         if (process.env.REBUILD_STATE === '1' && !isResumingRebuild) {
-            logger.info(
-                `Chain state rebuild requested${process.env.UNZIP_BLOCKS === '1' && !blocks.isOpen ? ', unzipping blocks.zip...' : ''}`
-            );
+            logger.info(`Chain state rebuild requested${process.env.UNZIP_BLOCKS === '1' && !blocks.isOpen ? ', unzipping blocks.zip...' : ''}`);
             if (!blocks.isOpen) {
                 mongo.restoreBlocks((e?: string | null) => {
                     if (e) {
@@ -206,17 +202,8 @@ function startRebuild(startBlock: number) {
             erroredRebuild = true;
             return logger.error('Error rebuilding chain at block', headBlockNum, e);
         } else if (headBlockNum <= chain.restoredBlocks)
-            logger.info(
-                'Rebuild interrupted at block ' +
-                    headBlockNum +
-                    ', so far it took ' +
-                    (new Date().getTime() - rebuildStartTime) +
-                    ' ms.'
-            );
-        else
-            logger.info(
-                'Rebuilt ' + headBlockNum + ' blocks successfully in ' + (new Date().getTime() - rebuildStartTime) + ' ms'
-            );
+            logger.info('Rebuild interrupted at block ' + headBlockNum + ', so far it took ' + (new Date().getTime() - rebuildStartTime) + ' ms.');
+        else logger.info('Rebuilt ' + headBlockNum + ' blocks successfully in ' + (new Date().getTime() - rebuildStartTime) + ' ms');
         logger.info('Writing rebuild data to disk...');
         const cacheWriteStart = new Date().getTime();
         cache.writeToDisk(true, () => {
@@ -226,11 +213,7 @@ function startRebuild(startBlock: number) {
                 return process.exit(0);
             }
             const latestBlockForRebuild = chain.getLatestBlock();
-            const configForDaemon = latestBlockForRebuild
-                ? config.read
-                    ? config.read(latestBlockForRebuild._id)
-                    : config
-                : config;
+            const configForDaemon = latestBlockForRebuild ? (config.read ? config.read(latestBlockForRebuild._id) : config) : config;
             startDaemon(configForDaemon);
         });
     });

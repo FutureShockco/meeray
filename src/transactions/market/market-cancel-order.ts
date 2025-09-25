@@ -35,9 +35,7 @@ export async function validateTx(data: MarketCancelOrderData, sender: string): P
         });
 
         if (!orderFromCache) {
-            logger.warn(
-                `[market-cancel-order] Order ${data.orderId} for pair ${data.pairId} by user ${sender} not found or not owned by sender.`
-            );
+            logger.warn(`[market-cancel-order] Order ${data.orderId} for pair ${data.pairId} by user ${sender} not found or not owned by sender.`);
             return false;
         }
 
@@ -48,9 +46,7 @@ export async function validateTx(data: MarketCancelOrderData, sender: string): P
             orderFromCache.status === OrderStatus.REJECTED ||
             orderFromCache.status === OrderStatus.EXPIRED
         ) {
-            logger.warn(
-                `[market-cancel-order] Order ${data.orderId} is already in a final state: ${orderFromCache.status}. Cannot cancel.`
-            );
+            logger.warn(`[market-cancel-order] Order ${data.orderId} is already in a final state: ${orderFromCache.status}. Cannot cancel.`);
             return false;
         }
 
@@ -125,12 +121,7 @@ export async function processTx(data: MarketCancelOrderData, sender: string, _id
             let amountToReturn: bigint;
             if (order.side === OrderSide.BUY) {
                 // Buy order: return quote currency, considering decimal differences
-                amountToReturn = calculateTradeValue(
-                    toBigInt(order.price || 0),
-                    unfilledQuantity,
-                    order.baseAssetSymbol,
-                    order.quoteAssetSymbol
-                );
+                amountToReturn = calculateTradeValue(toBigInt(order.price || 0), unfilledQuantity, order.baseAssetSymbol, order.quoteAssetSymbol);
             } else {
                 // Sell order: return base currency (no price conversion needed)
                 amountToReturn = unfilledQuantity;

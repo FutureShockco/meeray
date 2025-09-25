@@ -98,9 +98,7 @@ export async function processTx(data: FarmStakeData, sender: string, id: string,
         const userLiquidityPos = userLiquidityPosDB;
 
         if (!userLiquidityPos || userLiquidityPos.lpTokenBalance < data.lpTokenAmount) {
-            logger.error(
-                `[farm-stake] CRITICAL: Staker ${data.staker} has insufficient LP balance for ${poolIdForLp} during processing.`
-            );
+            logger.error(`[farm-stake] CRITICAL: Staker ${data.staker} has insufficient LP balance for ${poolIdForLp} during processing.`);
             return false;
         }
 
@@ -167,9 +165,7 @@ export async function processTx(data: FarmStakeData, sender: string, id: string,
             await new Promise<boolean>(resolve => {
                 cache.insertOne('userFarmPositions', newUserFarmPosition, (err, success) => {
                     if (err || !success) {
-                        logger.error(
-                            `[farm-stake] System error: Failed to insert user farm position ${userFarmPositionId}: ${err || 'insert not successful'}`
-                        );
+                        logger.error(`[farm-stake] System error: Failed to insert user farm position ${userFarmPositionId}: ${err || 'insert not successful'}`);
                         resolve(false);
                     } else {
                         resolve(true);
@@ -178,9 +174,7 @@ export async function processTx(data: FarmStakeData, sender: string, id: string,
             });
         }
 
-        logger.debug(
-            `[farm-stake] Staker ${data.staker} staked ${data.lpTokenAmount} LP tokens (from pool ${poolIdForLp}) into farm ${data.farmId}.`
-        );
+        logger.debug(`[farm-stake] Staker ${data.staker} staked ${data.lpTokenAmount} LP tokens (from pool ${poolIdForLp}) into farm ${data.farmId}.`);
 
         // Log event
         await logTransactionEvent('farm_stake', data.staker, {

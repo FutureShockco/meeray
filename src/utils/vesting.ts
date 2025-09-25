@@ -59,8 +59,7 @@ export function calculateVestedAmount(
             const vestingMonths = vestingSchedule.durationMonths;
             const monthsVested = Math.min(timeElapsedMonths - cliffMonths, vestingMonths);
             const vestingProgress = monthsVested / vestingMonths;
-            vestedAmount =
-                initialUnlockAmount + (vestingAmount * toBigInt(Math.floor(vestingProgress * 10000))) / toBigInt(10000);
+            vestedAmount = initialUnlockAmount + (vestingAmount * toBigInt(Math.floor(vestingProgress * 10000))) / toBigInt(10000);
             break;
         }
 
@@ -69,8 +68,7 @@ export function calculateVestedAmount(
             const timeElapsedDays = timeElapsedMs / (1000 * 60 * 60 * 24);
             const daysVested = Math.min(timeElapsedDays - cliffMonths * 30.44, vestingDays);
             const vestingProgress = daysVested / vestingDays;
-            vestedAmount =
-                initialUnlockAmount + (vestingAmount * toBigInt(Math.floor(vestingProgress * 10000))) / toBigInt(10000);
+            vestedAmount = initialUnlockAmount + (vestingAmount * toBigInt(Math.floor(vestingProgress * 10000))) / toBigInt(10000);
             break;
         }
 

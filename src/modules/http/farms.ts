@@ -144,11 +144,7 @@ router.get('/positions/user/:userId', (async (req: Request, res: Response) => {
     const { userId } = req.params; // Assuming userId is the staker
     const { limit, skip } = getPagination(req);
     try {
-        const positionsFromDB = await cache.findPromise(
-            'userFarmPositions',
-            { userId: userId },
-            { limit, skip, sort: { _id: 1 } }
-        );
+        const positionsFromDB = await cache.findPromise('userFarmPositions', { userId: userId }, { limit, skip, sort: { _id: 1 } });
         const total = await mongo.getDb().collection('userFarmPositions').countDocuments({ userId: userId });
         const positions = (positionsFromDB || []).map(transformUserFarmPositionData);
         res.json({ data: positions, total, limit, skip });
@@ -162,11 +158,7 @@ router.get('/positions/farm/:farmId', (async (req: Request, res: Response) => {
     const { farmId } = req.params;
     const { limit, skip } = getPagination(req);
     try {
-        const positionsFromDB = await cache.findPromise(
-            'userFarmPositions',
-            { farmId: farmId },
-            { limit, skip, sort: { _id: 1 } }
-        );
+        const positionsFromDB = await cache.findPromise('userFarmPositions', { farmId: farmId }, { limit, skip, sort: { _id: 1 } });
         const total = await mongo.getDb().collection('userFarmPositions').countDocuments({ farmId: farmId });
         const positions = (positionsFromDB || []).map(transformUserFarmPositionData);
         res.json({ data: positions, total, limit, skip });

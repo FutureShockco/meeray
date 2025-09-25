@@ -56,11 +56,7 @@ export async function validateTx(data: CloseAuctionData, sender: string): Promis
             }
 
             const winningBid = (await cache.findOnePromise('nftBids', { _id: data.winningBidId })) as NftBid | null;
-            if (
-                !winningBid ||
-                winningBid.listingId !== data.listingId ||
-                (winningBid.status !== 'ACTIVE' && winningBid.status !== 'WINNING')
-            ) {
+            if (!winningBid || winningBid.listingId !== data.listingId || (winningBid.status !== 'ACTIVE' && winningBid.status !== 'WINNING')) {
                 logger.warn('[nft-close-auction] Invalid winning bid.');
                 return false;
             }
@@ -134,9 +130,7 @@ export async function processTx(data: CloseAuctionData, sender: string): Promise
         const royaltyAmount = (bidAmount * royaltyBps) / toBigInt(10000); // basis points to percentage
         const sellerProceeds = bidAmount - royaltyAmount;
 
-        logger.debug(
-            `[nft-close-auction] Processing auction close: Bid=${bidAmount}, Royalty=${royaltyAmount}, SellerGets=${sellerProceeds}`
-        );
+        logger.debug(`[nft-close-auction] Processing auction close: Bid=${bidAmount}, Royalty=${royaltyAmount}, SellerGets=${sellerProceeds}`);
 
         // 1. Pay seller their proceeds
         if (!(await adjustUserBalance(listing.seller, paymentTokenIdentifier, sellerProceeds))) {
@@ -166,9 +160,7 @@ export async function processTx(data: CloseAuctionData, sender: string): Promise
             return false;
         }
 
-        logger.debug(
-            `[nft-close-auction] NFT ${fullInstanceId} ownership transferred from ${listing.seller} to ${winningBid.bidder}.`
-        );
+        logger.debug(`[nft-close-auction] NFT ${fullInstanceId} ownership transferred from ${listing.seller} to ${winningBid.bidder}.`);
 
         // 4. Update listing status
         const updateListingSuccess = await cache.updateOnePromise(
@@ -221,9 +213,7 @@ export async function processTx(data: CloseAuctionData, sender: string): Promise
             logger.debug(`[nft-close-auction] Released escrow for ${losingBids.length} losing bids.`);
         }
 
-        logger.debug(
-            `[nft-close-auction] Auction ${data.listingId} successfully closed by ${sender}. Winner: ${winningBid.bidder}.`
-        );
+        logger.debug(`[nft-close-auction] Auction ${data.listingId} successfully closed by ${sender}. Winner: ${winningBid.bidder}.`);
 
         // Log event
         await logEvent('nft', 'auction_closed', sender, {

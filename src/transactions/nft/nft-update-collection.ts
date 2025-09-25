@@ -36,19 +36,13 @@ export async function validateTx(data: NFTUpdateCollectionData, sender: string):
         }
 
         // Validate websiteUrl if provided
-        if (
-            data.websiteUrl !== undefined &&
-            (!validate.string(data.websiteUrl, 2048, 10) || !data.websiteUrl.startsWith('http'))
-        ) {
+        if (data.websiteUrl !== undefined && (!validate.string(data.websiteUrl, 2048, 10) || !data.websiteUrl.startsWith('http'))) {
             logger.warn('[nft-update-collection] Invalid websiteUrl: incorrect format, or length (10-2048 chars).');
             return false;
         }
 
         // Validate baseCoverUrl if provided
-        if (
-            data.baseCoverUrl !== undefined &&
-            (!validate.string(data.baseCoverUrl, 2048, 10) || !data.baseCoverUrl.startsWith('http'))
-        ) {
+        if (data.baseCoverUrl !== undefined && (!validate.string(data.baseCoverUrl, 2048, 10) || !data.baseCoverUrl.startsWith('http'))) {
             logger.warn('[nft-update-collection] Invalid baseCoverUrl: incorrect format, or length (10-2048 chars).');
             return false;
         }
@@ -56,9 +50,7 @@ export async function validateTx(data: NFTUpdateCollectionData, sender: string):
         // Validate royaltyBps if provided
         if (data.royaltyBps !== undefined) {
             if (!validate.integer(data.royaltyBps, true, false, 2500, 0)) {
-                logger.warn(
-                    `[nft-update-collection] Invalid royaltyBps: ${data.royaltyBps}. Must be 0-2500 basis points (0-25%).`
-                );
+                logger.warn(`[nft-update-collection] Invalid royaltyBps: ${data.royaltyBps}. Must be 0-2500 basis points (0-25%).`);
                 return false;
             }
         }
@@ -71,9 +63,7 @@ export async function validateTx(data: NFTUpdateCollectionData, sender: string):
         }
 
         if (collection.creator !== sender) {
-            logger.warn(
-                `[nft-update-collection] Sender ${sender} is not the creator of collection ${data.symbol}. Only creator can update.`
-            );
+            logger.warn(`[nft-update-collection] Sender ${sender} is not the creator of collection ${data.symbol}. Only creator can update.`);
             return false;
         }
 
@@ -89,9 +79,7 @@ export async function processTx(data: NFTUpdateCollectionData, sender: string, _
         // Fetch collection to confirm current creator again before proceeding
         const collection = await cache.findOnePromise('nftCollections', { _id: data.symbol });
         if (!collection || collection.creator !== sender) {
-            logger.error(
-                `[nft-update-collection] CRITICAL: Collection ${data.symbol} not found or sender ${sender} is not creator during processing.`
-            );
+            logger.error(`[nft-update-collection] CRITICAL: Collection ${data.symbol} not found or sender ${sender} is not creator during processing.`);
             return false;
         }
 

@@ -25,9 +25,7 @@ export async function validateTx(data: NftDelistPayload, sender: string): Promis
         }
 
         if (listing.seller !== sender) {
-            logger.warn(
-                `[nft-delist-item] Sender ${sender} is not the seller of listing ${data.listingId}. Seller: ${listing.seller}.`
-            );
+            logger.warn(`[nft-delist-item] Sender ${sender} is not the seller of listing ${data.listingId}. Seller: ${listing.seller}.`);
             return false;
         }
 
@@ -38,9 +36,7 @@ export async function validateTx(data: NftDelistPayload, sender: string): Promis
 
         return true;
     } catch (error) {
-        logger.error(
-            `[nft-delist-item] Error validating NFT delist payload for listing ${data.listingId} by ${sender}: ${error}`
-        );
+        logger.error(`[nft-delist-item] Error validating NFT delist payload for listing ${data.listingId} by ${sender}: ${error}`);
         return false;
     }
 }

@@ -24,17 +24,13 @@ export async function processTx(data: TokenTransferData, sender: string): Promis
     try {
         const debitSender = await adjustUserBalance(sender, data.symbol, -toBigInt(data.amount));
         if (!debitSender) {
-            logger.error(
-                `[token-transfer:process] Failed to debit sender ${sender} for ${toBigInt(data.amount).toString()} ${data.symbol}`
-            );
+            logger.error(`[token-transfer:process] Failed to debit sender ${sender} for ${toBigInt(data.amount).toString()} ${data.symbol}`);
             return false;
         }
 
         const creditReceiver = await adjustUserBalance(data.to, data.symbol, toBigInt(data.amount));
         if (!creditReceiver) {
-            logger.error(
-                `[token-transfer:process] Failed to credit recipient ${data.to} for ${toBigInt(data.amount).toString()} ${data.symbol}`
-            );
+            logger.error(`[token-transfer:process] Failed to credit recipient ${data.to} for ${toBigInt(data.amount).toString()} ${data.symbol}`);
             return false;
         }
 

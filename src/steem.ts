@@ -40,9 +40,7 @@ const initSteemSync = (blockNum: number): void => {
 
                 const behindBlocks = Math.max(0, latestBlock - lastProcessedSteemBlock);
                 syncManager.updateBehindBlocks(behindBlocks);
-                logger.info(
-                    `Initialized Steem Sync - ${behindBlocks} behind (Steem: ${latestBlock}, Sidechain Steem Block: ${lastProcessedSteemBlock})`
-                );
+                logger.info(`Initialized Steem Sync - ${behindBlocks} behind (Steem: ${latestBlock}, Sidechain Steem Block: ${lastProcessedSteemBlock})`);
 
                 if (behindBlocks > 0) {
                     blockProcessor.prefetchBlocks(lastProcessedSteemBlock + 1, syncManager.isInSyncMode());
@@ -109,9 +107,7 @@ const init = (blockNum: number): void => {
                             logger.info(`Requested blocks ${currentBlock + 1} to ${lastRequestedBlock} from peers`);
                         }
                     }
-                    logger.info(
-                        `Catching up with network, head block: ${currentBlock}, target: ${referenceBlock}, ${blocksBehindTarget} blocks behind`
-                    );
+                    logger.info(`Catching up with network, head block: ${currentBlock}, target: ${referenceBlock}, ${blocksBehindTarget} blocks behind`);
                 };
 
                 const waitForNetworkSync = setInterval(requestBlocks, 3000);
@@ -204,9 +200,7 @@ const checkNetworkSyncStatus = async (): Promise<void> => {
             networkSyncStatus.referenceNodeId !== 'self' &&
             networkSyncStatus.highestBlock > (chain?.getLatestBlock()?._id || 0) + 10
         ) {
-            logger.warn(
-                `Significantly behind network: our block ${chain?.getLatestBlock()?._id || 0} vs network ${networkSyncStatus.highestBlock}`
-            );
+            logger.warn(`Significantly behind network: our block ${chain?.getLatestBlock()?._id || 0} vs network ${networkSyncStatus.highestBlock}`);
 
             if (!p2p.recovering && !syncManager.isInSyncMode()) {
                 logger.info('Requesting recent blocks from network to catch up with sidechain peers.');
@@ -259,11 +253,9 @@ const steemModule = {
     getCurrentSteemBlock: () => currentSteemBlock,
 
     // Delegated methods
-    updateLocalSteemState: (localDelay: number, headSteemBlock: number) =>
-        networkStatus.updateLocalSteemState(localDelay, headSteemBlock),
+    updateLocalSteemState: (localDelay: number, headSteemBlock: number) => networkStatus.updateLocalSteemState(localDelay, headSteemBlock),
     getNetworkOverallBehindBlocks: () => networkStatus.getNetworkOverallBehindBlocks(),
-    isNetworkReadyToEnterSyncMode: (localBehind: number, isSyncing: boolean) =>
-        networkStatus.isNetworkReadyToEnterSyncMode(localBehind, isSyncing),
+    isNetworkReadyToEnterSyncMode: (localBehind: number, isSyncing: boolean) => networkStatus.isNetworkReadyToEnterSyncMode(localBehind, isSyncing),
     shouldExitSyncMode: async (blockId: number) => await syncManager.shouldExitSyncMode(blockId),
     enterSyncMode: () => syncManager.enterSyncMode(),
     exitSyncMode: (blockId: number, steemBlock: number) => syncManager.exitSyncMode(blockId, steemBlock),

@@ -104,12 +104,7 @@ export function parseTokenAmount(value: string, symbol: string): bigint {
  * @param tokenOutSymbol Output token symbol
  * @returns Price scaled with proper decimal consideration
  */
-export function calculateDecimalAwarePrice(
-    amountIn: bigint,
-    amountOut: bigint,
-    tokenInSymbol: string,
-    tokenOutSymbol: string
-): bigint {
+export function calculateDecimalAwarePrice(amountIn: bigint, amountOut: bigint, tokenInSymbol: string, tokenOutSymbol: string): bigint {
     if (amountOut <= 0n || amountIn <= 0n) return 0n;
     // amountIn is in tokenIn smallest units (quote), amountOut is in tokenOut smallest units (base)
     // Desired price (quote per base) scaled to quote decimals is:
@@ -117,9 +112,9 @@ export function calculateDecimalAwarePrice(
     try {
         const baseDecimals = getTokenDecimals(tokenOutSymbol);
         const scale = 10n ** BigInt(baseDecimals);
-    // Use rounding to nearest integer: (numerator + denom/2) / denom
-    const numerator = amountIn * scale;
-    const price = (numerator + amountOut / 2n) / amountOut;
+        // Use rounding to nearest integer: (numerator + denom/2) / denom
+        const numerator = amountIn * scale;
+        const price = (numerator + amountOut / 2n) / amountOut;
         if (price < 0n) {
             logger.error(
                 `[calculateDecimalAwarePrice] CRITICAL: Negative price calculated! amountIn: ${amountIn}, amountOut: ${amountOut}, baseDecimals: ${baseDecimals}`

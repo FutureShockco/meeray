@@ -11,12 +11,7 @@ export async function validateTx(data: TokenData, sender: string): Promise<boole
     try {
         if (!(await validate.newToken(data))) return false;
 
-        if (
-            !(await validate.userBalances(sender, [
-                { symbol: config.nativeTokenSymbol, amount: toBigInt(config.tokenCreationFee) },
-            ]))
-        )
-            return false;
+        if (!(await validate.userBalances(sender, [{ symbol: config.nativeTokenSymbol, amount: toBigInt(config.tokenCreationFee) }]))) return false;
         return true;
     } catch (error) {
         logger.error(`[token-create:validation] Error validating token creation: ${error}`);
@@ -45,9 +40,7 @@ export async function processTx(data: TokenData, sender: string): Promise<boolea
         if (initialSupply > toBigInt(0)) {
             const adjustedSupply = await adjustUserBalance(sender, tokenToStore.symbol, toBigInt(initialSupply));
             if (!adjustedSupply) {
-                logger.error(
-                    `[token-create:process] Failed to adjust balance for ${sender} when creating token ${tokenToStore.symbol}.`
-                );
+                logger.error(`[token-create:process] Failed to adjust balance for ${sender} when creating token ${tokenToStore.symbol}.`);
                 return false;
             }
         }

@@ -3,13 +3,7 @@ import logger from '../../logger.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
 import { calculateLpTokensToMint } from '../../utils/pool.js';
-import {
-    poolExists,
-    validateLpTokenExists,
-    validatePoolAddLiquidityFields,
-    validatePoolRatioTolerance,
-    validateUserBalances,
-} from '../../validation/pool.js';
+import { poolExists, validateLpTokenExists, validatePoolAddLiquidityFields, validatePoolRatioTolerance, validateUserBalances } from '../../validation/pool.js';
 import { creditLpTokens, debitLiquidityTokens, updatePoolReserves, updateUserLiquidityPosition } from './pool-helpers.js';
 import { LiquidityPoolData, PoolAddLiquidityData } from './pool-interfaces.js';
 
@@ -27,9 +21,7 @@ export async function validateTx(data: PoolAddLiquidityData, sender: string): Pr
         }
 
         // Validate user balances
-        if (
-            !(await validateUserBalances(sender, pool.tokenA_symbol, pool.tokenB_symbol, data.tokenA_amount, data.tokenB_amount))
-        ) {
+        if (!(await validateUserBalances(sender, pool.tokenA_symbol, pool.tokenB_symbol, data.tokenA_amount, data.tokenB_amount))) {
             return false;
         }
 
@@ -62,18 +54,14 @@ export async function processTx(data: PoolAddLiquidityData, sender: string, id: 
         };
 
         // Debit tokens from the provider's account
-        if (
-            !(await debitLiquidityTokens(sender, pool.tokenA_symbol, pool.tokenB_symbol, data.tokenA_amount, data.tokenB_amount))
-        ) {
+        if (!(await debitLiquidityTokens(sender, pool.tokenA_symbol, pool.tokenB_symbol, data.tokenA_amount, data.tokenB_amount))) {
             return false;
         }
 
         // Calculate LP tokens to mint
         const lpTokensToMint = calculateLpTokensToMint(toBigInt(data.tokenA_amount), toBigInt(data.tokenB_amount), pool);
         if (lpTokensToMint <= toBigInt(0)) {
-            logger.error(
-                '[pool-add-liquidity] Insufficient liquidity amount. For initial liquidity, provide more tokens to meet minimum requirements.'
-            );
+            logger.error('[pool-add-liquidity] Insufficient liquidity amount. For initial liquidity, provide more tokens to meet minimum requirements.');
             return false;
         }
 

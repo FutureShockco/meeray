@@ -102,15 +102,11 @@ export const cms = {
                                 try {
                                     jsonMetadata = JSON.parse(opData.json_metadata);
                                 } catch {
-                                    logger.warn(
-                                        `[CMS] Failed to parse JSON metadata in block ${blockNum} for post ${opData.author}/${opData.permlink}`
-                                    );
+                                    logger.warn(`[CMS] Failed to parse JSON metadata in block ${blockNum} for post ${opData.author}/${opData.permlink}`);
                                 }
                             }
                             const tags = jsonMetadata.tags || [];
-                            const shouldStore = cmsConfig.tags.some(
-                                id => tags.includes(id) || (opData.parent_permlink && opData.parent_permlink === id)
-                            );
+                            const shouldStore = cmsConfig.tags.some(id => tags.includes(id) || (opData.parent_permlink && opData.parent_permlink === id));
                             if (shouldStore) {
                                 const cmsPost: CmsPost = {
                                     tags: tags,
@@ -125,15 +121,9 @@ export const cms = {
                                 };
                                 await dbInstance
                                     .collection<CmsPost>('cms_posts')
-                                    .updateOne(
-                                        { author: cmsPost.author, permlink: cmsPost.permlink },
-                                        { $set: cmsPost },
-                                        { upsert: true }
-                                    );
+                                    .updateOne({ author: cmsPost.author, permlink: cmsPost.permlink }, { $set: cmsPost }, { upsert: true });
 
-                                logger.info(
-                                    `[CMS] Stored post: ${cmsPost.author}/${cmsPost.permlink} for Steem ID: ${cmsPost.tags}`
-                                );
+                                logger.info(`[CMS] Stored post: ${cmsPost.author}/${cmsPost.permlink} for Steem ID: ${cmsPost.tags}`);
                             }
                         }
                     } catch (error) {

@@ -116,24 +116,18 @@ async function searchForHandlers(dirPath: string) {
                                     validate: module.validateTx,
                                     process: module.processTx,
                                 };
-                                logger.debug(
-                                    `Registered transaction handler for ${typeName} using alternative mapping: ${altName} (type ${altType})`
-                                );
+                                logger.debug(`Registered transaction handler for ${typeName} using alternative mapping: ${altName} (type ${altType})`);
                                 found = true;
                                 break;
                             }
                         }
 
                         if (!found) {
-                            logger.warn(
-                                `Couldn't find mapping for ${typeName} after trying alternatives: ${alternativeNames.join(', ')}`
-                            );
+                            logger.warn(`Couldn't find mapping for ${typeName} after trying alternatives: ${alternativeNames.join(', ')}`);
                         }
                     }
                 } else {
-                    logger.warn(
-                        `File ${filePath} doesn't export both validate and process functions. Exports: ${Object.keys(module).join(', ')}`
-                    );
+                    logger.warn(`File ${filePath} doesn't export both validate and process functions. Exports: ${Object.keys(module).join(', ')}`);
                 }
             } catch (error) {
                 logger.error(`Error importing ${filePath}: ${error}`);

@@ -87,9 +87,7 @@ export async function isValidHashAndSignature(newBlock: any): Promise<boolean> {
         logger.debug(`Hash types: received = ${typeof newBlock.hash}, calculated = ${typeof theoreticalHash}`);
         logger.error(`invalid hash: calculated = ${theoreticalHash}, received = ${newBlock.hash}`);
         // Log the full newBlock object when there's a hash mismatch
-        logger.error(
-            `[isValidHashAndSignature] Mismatch detected. Received newBlock object: ${JSON.stringify(newBlock, null, 2)}`
-        );
+        logger.error(`[isValidHashAndSignature] Mismatch detected. Received newBlock object: ${JSON.stringify(newBlock, null, 2)}`);
         return false;
     }
 
@@ -162,11 +160,7 @@ export const isBlockValid = (newBlock: any, verifyHashAndSignature: boolean): bo
     return true;
 };
 
-export async function isValidNewBlock(
-    newBlock: any,
-    verifyHashAndSignature: boolean,
-    verifyTxValidity: boolean
-): Promise<boolean> {
+export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boolean, verifyTxValidity: boolean): Promise<boolean> {
     if (!newBlock) return false;
 
     if (!isBlockValid(newBlock, verifyHashAndSignature)) {
@@ -174,9 +168,7 @@ export async function isValidNewBlock(
     }
     // Prevent true duplicate blocks (same hash) but allow collision scenarios
     // Check recentBlocks for IDENTICAL blocks (true duplicates)
-    const actualDuplicate = chain.recentBlocks.find(
-        b => b._id === newBlock._id && b.witness === newBlock.witness && b.hash === newBlock.hash
-    );
+    const actualDuplicate = chain.recentBlocks.find(b => b._id === newBlock._id && b.witness === newBlock.witness && b.hash === newBlock.hash);
     if (actualDuplicate) {
         logger.error(`[BLOCK-COLLISION] Identical block already exists in recentBlocks. Rejecting true duplicate.`);
         return false;

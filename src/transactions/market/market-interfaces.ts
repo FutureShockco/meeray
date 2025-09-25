@@ -6,7 +6,6 @@ import { toBigInt, toDbString } from '../../utils/bigint.js';
 export enum OrderType {
     LIMIT = 'LIMIT',
     MARKET = 'MARKET',
-    
 }
 
 export enum OrderSide {
@@ -15,12 +14,12 @@ export enum OrderSide {
 }
 
 export enum OrderStatus {
-    OPEN = 'OPEN', 
+    OPEN = 'OPEN',
     PARTIALLY_FILLED = 'PARTIALLY_FILLED',
     FILLED = 'FILLED',
-    CANCELLED = 'CANCELLED', 
-    REJECTED = 'REJECTED', 
-    EXPIRED = 'EXPIRED', 
+    CANCELLED = 'CANCELLED',
+    REJECTED = 'REJECTED',
+    EXPIRED = 'EXPIRED',
 }
 
 export interface TradingPairData {
@@ -37,7 +36,6 @@ export interface TradingPairData {
     lastUpdatedAt?: string;
 }
 
-
 export interface TradeData {
     _id: string;
     pairId: string;
@@ -53,7 +51,7 @@ export interface TradeData {
     isMakerBuyer: boolean;
     // Added for UI/API clarity
     side?: string; // 'BUY' | 'SELL'
-    feeAmount?: string | bigint; 
+    feeAmount?: string | bigint;
     feeCurrency?: string;
     makerFee?: string | bigint;
     takerFee?: string | bigint;
@@ -83,25 +81,11 @@ export interface OrderData {
     expiresAt?: string;
 }
 
-
-function generateOrderId(
-    userId: string,
-    pairId: string,
-    side: OrderSide,
-    type: OrderType,
-    quantity: bigint,
-    price?: bigint,
-    transactionId?: string
-): string {
+function generateOrderId(userId: string, pairId: string, side: OrderSide, type: OrderType, quantity: bigint, price?: bigint, transactionId?: string): string {
     const priceStr = price ? price.toString() : 'market';
     const txId = transactionId || 'no-tx';
-    return crypto
-        .createHash('sha256')
-        .update(`${userId}_${pairId}_${side}_${type}_${quantity}_${priceStr}_${txId}`)
-        .digest('hex')
-        .substring(0, 16);
+    return crypto.createHash('sha256').update(`${userId}_${pairId}_${side}_${type}_${quantity}_${priceStr}_${txId}`).digest('hex').substring(0, 16);
 }
-
 
 export function createOrder(
     data: Partial<
@@ -114,9 +98,7 @@ export function createOrder(
         }
     >
 ): OrderData {
-    
-    const quantityValue =
-        data.quantity !== undefined ? toBigInt(data.quantity) : data.amount !== undefined ? toBigInt(data.amount) : toBigInt(0);
+    const quantityValue = data.quantity !== undefined ? toBigInt(data.quantity) : data.amount !== undefined ? toBigInt(data.amount) : toBigInt(0);
 
     const priceValue = data.price !== undefined ? toBigInt(data.price) : undefined;
     const userId = data.userId || '';
@@ -128,19 +110,17 @@ export function createOrder(
 
     let expiresAtValue: string | undefined = data.expiresAt;
     if (data.expirationTimestamp !== undefined) {
-        expiresAtValue = new Date(Number(data.expirationTimestamp) * 1000).toISOString(); 
+        expiresAtValue = new Date(Number(data.expirationTimestamp) * 1000).toISOString();
         if (data.expiresAt && data.expiresAt !== expiresAtValue) {
             logger.warn('Both expiresAt (string) and expirationTimestamp (number) provided. Using expirationTimestamp.');
         }
     }
 
-    
     const priceValueString = data.price !== undefined ? toDbString(data.price) : undefined;
     const paddedQuantity = toDbString(quantityValue);
     const paddedFilledQuantity = data.filledQuantity !== undefined ? toDbString(data.filledQuantity) : toDbString(0);
     const paddedAverageFillPrice = data.averageFillPrice !== undefined ? toDbString(data.averageFillPrice) : undefined;
-    const paddedCumulativeQuoteValue =
-        data.cumulativeQuoteValue !== undefined ? toDbString(data.cumulativeQuoteValue) : undefined;
+    const paddedCumulativeQuoteValue = data.cumulativeQuoteValue !== undefined ? toDbString(data.cumulativeQuoteValue) : undefined;
     const paddedQuoteOrderQty = data.quoteOrderQty !== undefined ? toDbString(data.quoteOrderQty) : undefined;
 
     return {
@@ -165,7 +145,6 @@ export function createOrder(
     };
 }
 
-
 export function isAlignedToTickSize(value: bigint, tickSize: bigint): boolean {
     return tickSize > 0n ? value % tickSize === 0n : true;
 }
@@ -173,112 +152,71 @@ export function isAlignedToLotSize(value: bigint, lotSize: bigint): boolean {
     return lotSize > 0n ? value % lotSize === 0n : true;
 }
 
-
-export interface TradeData {
-    _id: string;
-    pairId: string;
-    baseAssetSymbol: string;
-    quoteAssetSymbol: string;
-    makerOrderId: string;
-    takerOrderId: string;
-    price: string | bigint;
-    quantity: string | bigint;
-    buyerUserId: string;
-    sellerUserId: string;
-    timestamp: string;
-    isMakerBuyer: boolean;
-    
-
-    
-    feeAmount?: string | bigint; 
-    feeCurrency?: string;
-    makerFee?: string | bigint;
-    takerFee?: string | bigint;
-    total: string | bigint;
-    maker: string;
-    taker: string;
-}
-
-
 export interface OrderBookLevelData {
     price: string | bigint;
-    quantity: string | bigint; 
-    orderCount?: number; 
+    quantity: string | bigint;
+    orderCount?: number;
 }
-
 
 export interface OrderBookSnapshotData {
-    pairId: string; 
-    timestamp: string; 
-    lastUpdateId?: number; 
-    bids: OrderBookLevelData[]; 
-    asks: OrderBookLevelData[]; 
+    pairId: string;
+    timestamp: string;
+    lastUpdateId?: number;
+    bids: OrderBookLevelData[];
+    asks: OrderBookLevelData[];
 }
-
 
 export interface MarketCreatePairData {
     baseAssetSymbol: string;
     quoteAssetSymbol: string;
-    tickSize: string | bigint; 
-    lotSize: string | bigint; 
-    minNotional: string | bigint; 
-    initialStatus?: string; 
-    minTradeAmount?: string | bigint; 
-    maxTradeAmount?: string | bigint; 
+    tickSize: string | bigint;
+    lotSize: string | bigint;
+    minNotional: string | bigint;
+    initialStatus?: string;
+    minTradeAmount?: string | bigint;
+    maxTradeAmount?: string | bigint;
 }
 
 export interface MarketPlaceOrderData {
     pairId: string;
     type: OrderType;
     side: OrderSide;
-    price?: string | bigint; 
+    price?: string | bigint;
     quantity: string | bigint;
-    quoteOrderQty?: string | bigint; 
+    quoteOrderQty?: string | bigint;
     timeInForce?: 'GTC' | 'IOC' | 'FOK';
-    expiresAt?: string; 
-    expirationTimestamp?: number; 
+    expiresAt?: string;
+    expirationTimestamp?: number;
 }
 
 export interface MarketCancelOrderData {
     orderId: string;
-    pairId: string; 
+    pairId: string;
 }
-
-
-
-
 
 export interface HybridTradeData {
-    tokenIn: string; 
-    tokenOut: string; 
-    amountIn: string | bigint; 
+    tokenIn: string;
+    tokenOut: string;
+    amountIn: string | bigint;
 
-    
-    price?: string | bigint; 
-    
+    price?: string | bigint;
 
-    
-    maxSlippagePercent?: number; 
-    
+    maxSlippagePercent?: number;
 
-    minAmountOut?: string | bigint; 
-    
-    
+    minAmountOut?: string | bigint;
 
-    routes?: HybridRoute[]; 
+    routes?: HybridRoute[];
 }
-
 
 export interface HybridRoute {
     type: 'AMM' | 'ORDERBOOK';
-    allocation: number; 
+    allocation: number;
     details: AMMRouteDetails | OrderbookRouteDetails;
 }
 
 export interface AMMRouteDetails {
-    poolId?: string; 
+    poolId?: string;
     hops?: Array<{
-        
         poolId: string;
         tokenIn: string;
         tokenOut: string;
@@ -286,27 +224,25 @@ export interface AMMRouteDetails {
 }
 
 export interface OrderbookRouteDetails {
-    pairId: string; 
-    side: OrderSide; 
-    orderType?: OrderType; 
-    price?: string | bigint; 
+    pairId: string;
+    side: OrderSide;
+    orderType?: OrderType;
+    price?: string | bigint;
 }
-
 
 export interface LiquiditySource {
     type: 'AMM' | 'ORDERBOOK';
-    id: string; 
+    id: string;
     tokenA: string;
     tokenB: string;
-    reserveA?: string | bigint; 
-    reserveB?: string | bigint; 
-    bestBid?: string | bigint; 
-    bestAsk?: string | bigint; 
-    bidDepth?: string | bigint; 
-    askDepth?: string | bigint; 
-    hasLiquidity?: boolean; 
+    reserveA?: string | bigint;
+    reserveB?: string | bigint;
+    bestBid?: string | bigint;
+    bestAsk?: string | bigint;
+    bidDepth?: string | bigint;
+    askDepth?: string | bigint;
+    hasLiquidity?: boolean;
 }
-
 
 export interface HybridQuote {
     amountIn: string;
@@ -322,9 +258,8 @@ export interface HybridQuote {
         priceImpact: number;
         details: any;
     }>;
-    warning?: string; 
+    warning?: string;
 }
-
 
 export interface HybridTradeResult {
     success: boolean;

@@ -110,10 +110,7 @@ export class MessageHandler {
             let signature = '';
             if (this.state.nodeId?.priv) {
                 try {
-                    const sigObj = secp256k1.ecdsaSign(
-                        Buffer.from(receivedChallenge, 'hex'),
-                        bs58.decode(this.state.nodeId.priv)
-                    );
+                    const sigObj = secp256k1.ecdsaSign(Buffer.from(receivedChallenge, 'hex'), bs58.decode(this.state.nodeId.priv));
                     signature = bs58.encode(sigObj.signature);
                 } catch (error) {
                     logger.error('Failed to sign challenge:', error);
@@ -164,11 +161,7 @@ export class MessageHandler {
         }
 
         try {
-            const isValidSignature = secp256k1.ecdsaVerify(
-                bs58.decode(message.d.sign),
-                Buffer.from(challengeHash, 'hex'),
-                bs58.decode(message.d.nodeId || '')
-            );
+            const isValidSignature = secp256k1.ecdsaVerify(bs58.decode(message.d.sign), Buffer.from(challengeHash, 'hex'), bs58.decode(message.d.nodeId || ''));
 
             if (!isValidSignature) {
                 logger.warn('Wrong NODE_STATUS signature, disconnecting');
@@ -177,11 +170,7 @@ export class MessageHandler {
             }
 
             for (let i = 0; i < this.state.sockets.length; i++) {
-                if (
-                    i !== wsIndex &&
-                    this.state.sockets[i].node_status &&
-                    this.state.sockets[i].node_status?.nodeId === message.d.nodeId
-                ) {
+                if (i !== wsIndex && this.state.sockets[i].node_status && this.state.sockets[i].node_status?.nodeId === message.d.nodeId) {
                     logger.debug('Peer disconnected: duplicate connection');
                     this.state.sockets[i].close();
                 }

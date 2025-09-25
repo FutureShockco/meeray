@@ -31,14 +31,7 @@ export const tokenSymbols = (symbols: any[] | any): boolean => {
  * @param memo Optional memo
  * @returns True if the transfer is valid, false otherwise
  */
-export const tokenTransfer = (
-    sender: string,
-    symbol: string,
-    to: string,
-    amount: string | bigint,
-    memo?: string,
-    isTransfer?: boolean
-): boolean => {
+export const tokenTransfer = (sender: string, symbol: string, to: string, amount: string | bigint, memo?: string, isTransfer?: boolean): boolean => {
     if (!symbol || !to || !amount) {
         logger.warn('[token-transfer:validation] Invalid data: Missing required fields (symbol, to, amount).');
         return false;
@@ -75,16 +68,8 @@ export const tokenTransfer = (
  */
 
 export const newToken = async (data: any): Promise<boolean> => {
-    if (
-        !data.symbol ||
-        !data.name ||
-        data.maxSupply === undefined ||
-        data.precision === undefined ||
-        data.initialSupply === undefined
-    ) {
-        logger.warn(
-            '[token-config:validation] Invalid data: Missing required fields (symbol, name, maxSupply, precision, initialSupply).'
-        );
+    if (!data.symbol || !data.name || data.maxSupply === undefined || data.precision === undefined || data.initialSupply === undefined) {
+        logger.warn('[token-config:validation] Invalid data: Missing required fields (symbol, name, maxSupply, precision, initialSupply).');
         return false;
     }
     if (!validate.tokenSymbols(data.symbol)) {
@@ -92,9 +77,7 @@ export const newToken = async (data: any): Promise<boolean> => {
         return false;
     }
     if (data.symbol.startsWith('LP_')) {
-        logger.warn(
-            '[token-config:validation] Token symbol cannot start with "LP_". This prefix is reserved for liquidity pool tokens.'
-        );
+        logger.warn('[token-config:validation] Token symbol cannot start with "LP_". This prefix is reserved for liquidity pool tokens.');
         return false;
     }
     if (!validate.string(data.name, config.tokenNameMaxLength, 3, config.tokenNameAllowedChars)) {

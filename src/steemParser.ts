@@ -57,8 +57,7 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
             try {
                 const [opType, opData] = op;
                 const isCustomJsonForChain = opType === 'custom_json' && opData.id === config.chainId;
-                const isTransferAndBridgeEnabled =
-                    opType === 'transfer' && settings.steemBridgeEnabled === true && opData.to === settings.steemBridgeAccount;
+                const isTransferAndBridgeEnabled = opType === 'transfer' && settings.steemBridgeEnabled === true && opData.to === settings.steemBridgeAccount;
                 if (!isCustomJsonForChain && !isTransferAndBridgeEnabled) {
                     opIndex++;
                     continue;
@@ -85,9 +84,7 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                     // Validate that the first required auth is a valid non-empty string
                     const sender = opData.required_auths[0];
                     if (!sender || typeof sender !== 'string' || sender.trim() === '') {
-                        logger.warn(
-                            `Skipping transaction in block ${blockNum}, operation ${opIndex}: Invalid sender (${sender})`
-                        );
+                        logger.warn(`Skipping transaction in block ${blockNum}, operation ${opIndex}: Invalid sender (${sender})`);
                         opIndex++;
                         continue;
                     }
@@ -215,10 +212,7 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                             if (!isNaN(typeNum) && TransactionType[typeNum]) {
                                 txType = typeNum;
                             } else {
-                                logger.debug(
-                                    `Unknown transaction type in block ${blockNum}, operation ${opIndex}:`,
-                                    json.contract
-                                );
+                                logger.debug(`Unknown transaction type in block ${blockNum}, operation ${opIndex}:`, json.contract);
                                 opIndex++;
                                 continue;
                             }
@@ -239,19 +233,14 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                         logger.error(`Error processing transaction in block ${blockNum}, operation ${opIndex}:`, error);
                     }
                 }
-                if (
-                    isTransferAndBridgeEnabled &&
-                    settings.skipBridgeOperationsUntilBlock > 0 &&
-                    blockNum <= settings.skipBridgeOperationsUntilBlock
-                ) {
+                if (isTransferAndBridgeEnabled && settings.skipBridgeOperationsUntilBlock > 0 && blockNum <= settings.skipBridgeOperationsUntilBlock) {
                     const [opType, opData] = op;
                     const { from, to, amount } = opData;
                     if (to !== settings.steemBridgeAccount && opType !== 'transfer') {
                         opIndex++;
                         continue;
                     }
-                    const tokenSymbol =
-                        amount?.split(' ')[1] === settings.steemTokenSymbol ? settings.steemTokenSymbol : settings.sbdTokenSymbol;
+                    const tokenSymbol = amount?.split(' ')[1] === settings.steemTokenSymbol ? settings.steemTokenSymbol : settings.sbdTokenSymbol;
                     const amountValue = amount?.split(' ')[0] || '0';
 
                     const issuedByNode = await isTokenIssuedByNode(tokenSymbol);
@@ -267,9 +256,7 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                     };
 
                     await steemBridge.enqueueDeposit(mintData);
-                    logger.info(
-                        `[steemParser] Bridge deposit detected: ${amountValue} ${tokenSymbol} from ${from}, queued for broadcast`
-                    );
+                    logger.info(`[steemParser] Bridge deposit detected: ${amountValue} ${tokenSymbol} from ${from}, queued for broadcast`);
                 }
             } catch (error) {
                 logger.error(`Error processing operation in block ${blockNum}, operation ${opIndex}:`, error);

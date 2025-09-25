@@ -11,12 +11,7 @@ const maxValue: bigint = toBigInt(config.maxValue);
  * @param minValue - Optional minimum value
  * @returns boolean indicating if value meets all constraints
  */
-export default function validateBigInt(
-    value: string | bigint,
-    allowZero = false,
-    allowNegative = false,
-    minValue: bigint = toBigInt(0)
-): boolean {
+export default function validateBigInt(value: string | bigint, allowZero = false, allowNegative = false, minValue: bigint = toBigInt(0)): boolean {
     let numValue: bigint;
     try {
         numValue = typeof value === 'bigint' ? value : toBigInt(value);

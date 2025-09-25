@@ -110,9 +110,7 @@ export const mongo = {
                     setTokenDecimals(tokenDoc.symbol, tokenDoc.precision);
                     logger.trace(`[mongo] Registered decimals for ${tokenDoc.symbol}: ${tokenDoc.precision}`);
                 } else {
-                    logger.warn(
-                        `[mongo] Token document ${tokenDoc._id} is missing symbol or precision, or precision is not a number. Skipping registration.`
-                    );
+                    logger.warn(`[mongo] Token document ${tokenDoc._id} is missing symbol or precision, or precision is not a number. Skipping registration.`);
                 }
             }
             logger.info(`[mongo] Finished registering decimals for ${allTokens.length} token(s).`);
@@ -435,10 +433,7 @@ export const mongo = {
             const tradingPairsCollection = currentDb.collection('tradingPairs');
             await tradingPairsCollection.createIndex({ _id: 1 }); // pairId is _id
             await tradingPairsCollection.createIndex({ status: 1 });
-            await tradingPairsCollection.createIndex(
-                { baseAssetSymbol: 1, quoteAssetSymbol: 1 },
-                { name: 'assets_combination_idx' }
-            );
+            await tradingPairsCollection.createIndex({ baseAssetSymbol: 1, quoteAssetSymbol: 1 }, { name: 'assets_combination_idx' });
             logger.debug('[DB Indexes] Finished creating indexes for tradingPairs collection.');
 
             // Launchpads Collection Indexes

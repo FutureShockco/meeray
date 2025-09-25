@@ -14,8 +14,7 @@ export class RecoveryManager {
 
     recover(): void {
         if (!SocketManager.getSocketCount()) return;
-        if (Object.keys(this.state.recoveredBlocks).length + this.state.recoveringBlocks.length > P2P_CONFIG.MAX_BLOCKS_BUFFER)
-            return;
+        if (Object.keys(this.state.recoveredBlocks).length + this.state.recoveringBlocks.length > P2P_CONFIG.MAX_BLOCKS_BUFFER) return;
 
         if (!this.state.recovering) {
             this.state.recovering = chain.getLatestBlock()._id;
@@ -36,10 +35,7 @@ export class RecoveryManager {
         });
 
         const peersAhead = SocketManager.getSockets().filter(
-            socket =>
-                socket.node_status &&
-                socket.node_status.head_block > chain.getLatestBlock()._id &&
-                socket.node_status.origin_block === config.originHash
+            socket => socket.node_status && socket.node_status.head_block > chain.getLatestBlock()._id && socket.node_status.origin_block === config.originHash
         );
 
         if (peersAhead.length === 0) {

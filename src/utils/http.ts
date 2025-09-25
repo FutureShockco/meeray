@@ -66,9 +66,7 @@ export const transformTransactionData = (txData: any): any => {
     if (transformedData.presale && typeof transformedData.presale === 'object') {
         transformedData.presale = transformTransactionData(transformedData.presale);
         if (transformedData.presale.participants && Array.isArray(transformedData.presale.participants)) {
-            transformedData.presale.participants = transformedData.presale.participants.map((p: any) =>
-                transformTransactionData(p)
-            );
+            transformedData.presale.participants = transformedData.presale.participants.map((p: any) => transformTransactionData(p));
         }
     }
 

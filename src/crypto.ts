@@ -78,11 +78,7 @@ export async function isValidSignature(user: string, hash: string, sign: string)
     const account = await cache.findOnePromise('accounts', { name: user });
     if (!account) {
         return false;
-    } else if (
-        chain.restoredBlocks &&
-        chain.getLatestBlock()._id < chain.restoredBlocks &&
-        process.env.REBUILD_NO_VERIFY === '1'
-    ) {
+    } else if (chain.restoredBlocks && chain.getLatestBlock()._id < chain.restoredBlocks && process.env.REBUILD_NO_VERIFY === '1') {
         // no verify rebuild mode, only use if you trust the contents of blocks.zip
         return account;
     }

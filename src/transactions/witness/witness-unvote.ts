@@ -23,10 +23,8 @@ export async function processTx(data: { target: string }, sender: string): Promi
         const votedWitnesses = senderAccount!.votedWitnesses || [];
         const newVotedWitnesses = votedWitnesses.filter((w: string) => w !== data.target);
         const balanceStr = senderAccount!.balances?.[config.nativeTokenSymbol] || toBigInt(0);
-        const newVoteWeightBigIntCalculated =
-            newVotedWitnesses.length > 0 ? toBigInt(balanceStr) / toBigInt(newVotedWitnesses.length) : toBigInt(0);
-        const oldVoteWeightBigIntCalculated =
-            votedWitnesses.length > 0 ? toBigInt(balanceStr) / toBigInt(votedWitnesses.length) : toBigInt(0);
+        const newVoteWeightBigIntCalculated = newVotedWitnesses.length > 0 ? toBigInt(balanceStr) / toBigInt(newVotedWitnesses.length) : toBigInt(0);
+        const oldVoteWeightBigIntCalculated = votedWitnesses.length > 0 ? toBigInt(balanceStr) / toBigInt(votedWitnesses.length) : toBigInt(0);
 
         try {
             await cache.updateOnePromise('accounts', { name: sender }, { $set: { votedWitnesses: newVotedWitnesses } });
@@ -38,15 +36,9 @@ export async function processTx(data: { target: string }, sender: string): Promi
                     if (witnessAccount) {
                         const currentVoteWeightStr = witnessAccount.totalVoteWeight || toBigInt(0);
                         const newVoteWeightBigInt = toBigInt(currentVoteWeightStr) + adjustmentForRemainingBigInt;
-                        await cache.updateOnePromise(
-                            'accounts',
-                            { name: witnessName },
-                            { $set: { totalVoteWeight: toDbString(newVoteWeightBigInt) } }
-                        );
+                        await cache.updateOnePromise('accounts', { name: witnessName }, { $set: { totalVoteWeight: toDbString(newVoteWeightBigInt) } });
                     } else {
-                        logger.error(
-                            `[witness-unvote] Witness account ${witnessName} not found when trying to adjust totalVoteWeight during share increase.`
-                        );
+                        logger.error(`[witness-unvote] Witness account ${witnessName} not found when trying to adjust totalVoteWeight during share increase.`);
                         throw new Error(`Witness ${witnessName} not found for vote weight adjustment.`);
                     }
                 }
@@ -57,11 +49,7 @@ export async function processTx(data: { target: string }, sender: string): Promi
             if (newTotalVoteWeightBigInt < toBigInt(0)) {
                 newTotalVoteWeightBigInt = toBigInt(0);
             }
-            await cache.updateOnePromise(
-                'accounts',
-                { name: data.target },
-                { $set: { totalVoteWeight: toDbString(newTotalVoteWeightBigInt) } }
-            );
+            await cache.updateOnePromise('accounts', { name: data.target }, { $set: { totalVoteWeight: toDbString(newTotalVoteWeightBigInt) } });
             logger.debug(`Witness unvote from ${sender} to ${data.target} processed successfully`);
             return true;
         } catch (updateError: any) {

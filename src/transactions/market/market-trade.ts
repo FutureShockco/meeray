@@ -56,9 +56,7 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
         }
 
         if (hasMinAmountOut && hasMaxSlippage) {
-            logger.warn(
-                '[hybrid-trade] Cannot specify both minAmountOut and maxSlippagePercent. Choose one slippage protection method.'
-            );
+            logger.warn('[hybrid-trade] Cannot specify both minAmountOut and maxSlippagePercent. Choose one slippage protection method.');
             return false;
         }
 
@@ -79,8 +77,6 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
             return false;
         }
 
-        // Log info for very unusual minAmountOut ratios but allow all transactions
-        // Token decimals can vary from 0 to 18, creating legitimate ratios up to 10^18
         if (hasMinAmountOut) {
             const amountIn = toBigInt(data.amountIn);
             const minAmountOut = toBigInt(data.minAmountOut!);
@@ -99,7 +95,6 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
             return false;
         }
 
-        // Check sender's balance
         const senderAccount = await getAccount(sender);
         if (!senderAccount) {
             logger.warn(`[hybrid-trade] Sender account ${sender} not found.`);
@@ -108,13 +103,10 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
 
         const tokenInBalance = toBigInt((senderAccount!.balances && senderAccount!.balances[data.tokenIn]) || '0');
         if (tokenInBalance < toBigInt(data.amountIn)) {
-            logger.warn(
-                `[hybrid-trade] Insufficient balance for ${data.tokenIn}. Required: ${data.amountIn}, Available: ${tokenInBalance}`
-            );
+            logger.warn(`[hybrid-trade] Insufficient balance for ${data.tokenIn}. Required: ${data.amountIn}, Available: ${tokenInBalance}`);
             return false;
         }
 
-        // Validate routes if provided
         if (data.routes && data.routes.length > 0) {
             const totalAllocation = data.routes.reduce((sum, route) => sum + route.allocation, 0);
             if (Math.abs(totalAllocation - 100) > 0.01) {
@@ -129,18 +121,13 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
                 }
             }
         } else {
-            // No routes provided - check if liquidity exists for auto-routing
-            // Only check for market orders (no specific price) since limit orders default to orderbook
             if (!data.price) {
                 const sources = await liquidityAggregator.getLiquiditySources(data.tokenIn, data.tokenOut);
                 if (sources.length === 0) {
-                    logger.warn(
-                        `[hybrid-trade] No liquidity sources found for ${data.tokenIn}/${data.tokenOut}. Cannot auto-route trade.`
-                    );
+                    logger.warn(`[hybrid-trade] No liquidity sources found for ${data.tokenIn}/${data.tokenOut}. Cannot auto-route trade.`);
                     return false;
                 }
 
-                // Check if any source has actual liquidity
                 const hasLiquidity = sources.some(source => {
                     if (source.type === 'AMM') {
                         return source.hasLiquidity;
@@ -157,16 +144,10 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
                     return false;
                 }
 
-                // For AMM sources, validate that the expected output would be greater than 0
                 const ammSources = sources.filter(source => source.type === 'AMM');
                 for (const ammSource of ammSources) {
                     if (ammSource.hasLiquidity) {
-                        const expectedOutput = calculateExpectedAMMOutput(
-                            toBigInt(data.amountIn),
-                            data.tokenIn,
-                            data.tokenOut,
-                            ammSource
-                        );
+                        const expectedOutput = calculateExpectedAMMOutput(toBigInt(data.amountIn), data.tokenIn, data.tokenOut, ammSource);
 
                         if (expectedOutput === toBigInt(0)) {
                             logger.warn(
@@ -188,9 +169,7 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
 
 export async function processTx(data: HybridTradeData, sender: string, transactionId: string): Promise<boolean> {
     try {
-        logger.debug(
-            `[hybrid-trade] Processing hybrid trade from ${sender}: ${data.amountIn} ${data.tokenIn} -> ${data.tokenOut}`
-        );
+        logger.debug(`[hybrid-trade] Processing hybrid trade from ${sender}: ${data.amountIn} ${data.tokenIn} -> ${data.tokenOut}`);
 
         // Get optimal route if not provided
         let routes = data.routes;
@@ -199,9 +178,7 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
             if (!data.price) {
                 const quote = await liquidityAggregator.getBestQuote(data);
                 if (!quote) {
-                    logger.warn(
-                        '[hybrid-trade] No liquidity available for this trade. This should have been caught during validation.'
-                    );
+                    logger.warn('[hybrid-trade] No liquidity available for this trade. This should have been caught during validation.');
                     return false;
                 }
 
@@ -209,9 +186,7 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
                 if (data.minAmountOut) {
                     const ammOutput = toBigInt(quote.amountOut);
                     const minOut = toBigInt(data.minAmountOut);
-                    logger.info(
-                        `[hybrid-trade] Comparing AMM output ${ammOutput} (${quote.amountOut}) with minAmountOut ${minOut} (${data.minAmountOut})`
-                    );
+                    logger.info(`[hybrid-trade] Comparing AMM output ${ammOutput} (${quote.amountOut}) with minAmountOut ${minOut} (${data.minAmountOut})`);
                     if (ammOutput < minOut) {
                         // AMM output too low - use orderbook as limit order with calculated price
 
@@ -244,20 +219,17 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
                             // From orderbook formula: quantity = (amountIn * 10^baseDecimals) / orderPrice
                             // Rearranging: orderPrice = (amountIn * 10^baseDecimals) / quantity
                             // where quantity is the desired amount of base token (minAmountOut)
-                            calculatedPrice =
-                                (toBigInt(data.amountIn) * 10n ** BigInt(baseDecimals)) / toBigInt(data.minAmountOut);
+                            calculatedPrice = (toBigInt(data.amountIn) * 10n ** BigInt(baseDecimals)) / toBigInt(data.minAmountOut);
                         } else {
                             // User wants to sell base token for quote token
                             // For sell orders, amountIn is base token, minAmountOut is quote token
                             // We need price in quote per base, so: price = minAmountOut / amountIn
                             // But we need to scale to the correct decimal precision for the orderbook
                             // const quoteDecimals = getTokenDecimals(pair.quoteAssetSymbol);
-
                             // Calculate the price in the smallest units of both tokens
                             // price = (minAmountOut in quote units) / (amountIn in base units)
                             // Then scale to the orderbook's expected precision
-                            calculatedPrice =
-                                (toBigInt(data.minAmountOut) * 10n ** BigInt(baseDecimals)) / toBigInt(data.amountIn);
+                            calculatedPrice = (toBigInt(data.minAmountOut) * 10n ** BigInt(baseDecimals)) / toBigInt(data.amountIn);
                         }
 
                         logger.info(
@@ -277,9 +249,7 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
                             },
                         ];
                     } else {
-                        logger.info(
-                            `[hybrid-trade] AMM output ${ammOutput} meets minAmountOut ${minOut} requirement. Using AMM route.`
-                        );
+                        logger.info(`[hybrid-trade] AMM output ${ammOutput} meets minAmountOut ${minOut} requirement. Using AMM route.`);
                     }
                 }
 
@@ -353,9 +323,7 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
                     continue;
                 }
                 if (!isAlignedToLotSize(quantity, lotSize)) {
-                    logger.warn(
-                        `[hybrid-trade] Order quantity ${quantity} is not aligned to lot size ${lotSize}. Rejecting order.`
-                    );
+                    logger.warn(`[hybrid-trade] Order quantity ${quantity} is not aligned to lot size ${lotSize}. Rejecting order.`);
                     continue;
                 }
             }
@@ -413,9 +381,7 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
                     return false;
                 }
             } else {
-                logger.info(
-                    '[hybrid-trade] Limit order placed with no immediate fills; minAmountOut check deferred until fills occur.'
-                );
+                logger.info('[hybrid-trade] Limit order placed with no immediate fills; minAmountOut check deferred until fills occur.');
                 // For limit orders with no immediate fills, we consider the trade successful
                 // The order is placed and will be filled when matching orders are available
                 return true;
@@ -425,9 +391,7 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
         // Calculate actual price impact
         // const actualPriceImpact = results.length > 0 ? Number(totalAmountIn - totalAmountOut) / Number(totalAmountIn) : 0;
 
-        logger.debug(
-            `[hybrid-trade] Hybrid trade completed: ${totalAmountIn} ${data.tokenIn} -> ${totalAmountOut} ${data.tokenOut}`
-        );
+        logger.debug(`[hybrid-trade] Hybrid trade completed: ${totalAmountIn} ${data.tokenIn} -> ${totalAmountOut} ${data.tokenOut}`);
         return true;
     } catch (error) {
         logger.error(`[hybrid-trade] Error processing hybrid trade by ${sender}: ${error}`);
@@ -435,15 +399,11 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
     }
 }
 
-// Test hooks
 const TEST_HOOKS: any = {};
 export function __setTestHooks(hooks: any) {
     Object.assign(TEST_HOOKS, hooks);
 }
 
-/**
- * Execute trade through AMM route
- */
 export async function executeAMMRoute(
     route: HybridRoute,
     tradeData: HybridTradeData,
@@ -453,17 +413,10 @@ export async function executeAMMRoute(
 ): Promise<{ success: boolean; amountOut: bigint; error?: string }> {
     try {
         const ammDetails = route.details as any; // AMMRouteDetails
-
-        // Use user's slippagePercent if provided, otherwise default to 1%
         const slippagePercent = tradeData.maxSlippagePercent || 1.0;
-
-        // Pre-validate that this route would produce non-zero output
-        // This is an additional safeguard beyond the main validation
         if (ammDetails.expectedOutput && toBigInt(ammDetails.expectedOutput) === toBigInt(0)) {
             return { success: false, amountOut: toBigInt(0), error: 'Expected output is zero for this AMM route' };
         }
-
-        // Create pool swap data
         const swapData = {
             tokenIn_symbol: tradeData.tokenIn,
             tokenOut_symbol: tradeData.tokenOut,
@@ -474,21 +427,15 @@ export async function executeAMMRoute(
             hops: ammDetails.hops,
         };
 
-        // Validate and execute the swap using the new function that returns output amount
         const isValid = await poolSwap.validateTx(swapData, sender);
         if (!isValid) {
             return { success: false, amountOut: toBigInt(0), error: 'AMM swap validation failed' };
         }
-
-        // Use injected test hook or real processWithResult function to get the actual output amount
         const processWithResultFn = TEST_HOOKS.processWithResult || processWithResult;
         const swapResult: PoolSwapResult = await processWithResultFn(swapData, sender, transactionId);
-
         if (!swapResult.success) {
             return { success: false, amountOut: toBigInt(0), error: swapResult.error || 'AMM swap execution failed' };
         }
-
-        // Record the AMM trade in the trades collection for market statistics (use test hook if provided)
         const recordAMMTradeFn = TEST_HOOKS.recordAMMTrade || recordAMMTrade;
         await recordAMMTradeFn({
             poolId: ammDetails.poolId,
@@ -499,8 +446,6 @@ export async function executeAMMRoute(
             sender: sender,
             transactionId: transactionId,
         });
-
-        // Return the actual output amount from the swap
         return { success: true, amountOut: swapResult.amountOut };
     } catch (error) {
         return { success: false, amountOut: toBigInt(0), error: `AMM route error: ${error}` };
@@ -544,9 +489,7 @@ export async function executeOrderbookRoute(
             const quoteDecimals = getTokenDecimals(pair.quoteAssetSymbol);
             const baseDecimals = getTokenDecimals(pair.baseAssetSymbol);
             // Avoid Number/Math.pow conversions which lose precision for BigInt values.
-            logger.info(
-                `[executeOrderbookRoute] Price formatting debug: raw=${orderPrice}, quoteDecimals=${quoteDecimals}, baseDecimals=${baseDecimals}`
-            );
+            logger.info(`[executeOrderbookRoute] Price formatting debug: raw=${orderPrice}, quoteDecimals=${quoteDecimals}, baseDecimals=${baseDecimals}`);
             // Show raw integer price and note the decimals instead of attempting floating formatting
             logger.info(`[executeOrderbookRoute] Price (raw integer) = ${orderPrice}`);
             logger.info(`[executeOrderbookRoute] Price decimals: quote=${quoteDecimals}, base=${baseDecimals}`);

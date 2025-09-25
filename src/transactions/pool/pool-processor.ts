@@ -54,9 +54,7 @@ export async function validateRoutedSwap(data: PoolSwapData, traderAccount: Acco
         const initialTokenSymbol = data.hops[0].tokenIn_symbol;
         const traderBalance = toBigInt(traderAccount.balances?.[initialTokenSymbol] || '0');
         if (traderBalance < toBigInt(data.amountIn)) {
-            logger.warn(
-                `[pool-swap] Insufficient balance for ${initialTokenSymbol}. Has ${traderBalance}, needs ${data.amountIn}`
-            );
+            logger.warn(`[pool-swap] Insufficient balance for ${initialTokenSymbol}. Has ${traderBalance}, needs ${data.amountIn}`);
             return false;
         }
 
@@ -123,9 +121,7 @@ export async function validateRoutedSwap(data: PoolSwapData, traderAccount: Acco
 
             // Check hop-specific minimum output
             if (hop.minAmountOut && amountOut < toBigInt(hop.minAmountOut)) {
-                logger.warn(
-                    `[pool-swap] Validation: Output amount ${amountOut} is less than minimum required ${hop.minAmountOut} for hop ${i + 1}.`
-                );
+                logger.warn(`[pool-swap] Validation: Output amount ${amountOut} is less than minimum required ${hop.minAmountOut} for hop ${i + 1}.`);
                 return false;
             }
 
@@ -135,9 +131,7 @@ export async function validateRoutedSwap(data: PoolSwapData, traderAccount: Acco
 
         // Check final minimum output
         if (data.minAmountOut && currentAmountIn < toBigInt(data.minAmountOut)) {
-            logger.warn(
-                `[pool-swap] Validation: Final output amount ${currentAmountIn} is less than minimum required ${data.minAmountOut}.`
-            );
+            logger.warn(`[pool-swap] Validation: Final output amount ${currentAmountIn} is less than minimum required ${data.minAmountOut}.`);
             return false;
         }
 
@@ -153,9 +147,7 @@ export async function validateAutoRouteSwap(data: PoolSwapData, traderAccount: A
         // Check balance first (fastest check)
         const traderBalance = toBigInt(traderAccount.balances?.[data.fromTokenSymbol!] || '0');
         if (traderBalance < toBigInt(data.amountIn)) {
-            logger.warn(
-                `[pool-swap] Insufficient balance for ${data.fromTokenSymbol}. Has ${traderBalance}, needs ${data.amountIn}`
-            );
+            logger.warn(`[pool-swap] Insufficient balance for ${data.fromTokenSymbol}. Has ${traderBalance}, needs ${data.amountIn}`);
             return false;
         }
 
@@ -202,9 +194,7 @@ export async function validateAutoRouteSwap(data: PoolSwapData, traderAccount: A
 
             // Validate reserves are not zero (prevent division by zero)
             if (reserveIn <= 0n || reserveOut <= 0n) {
-                logger.warn(
-                    `[pool-swap] Pool ${hop.poolId} has invalid reserves (${reserveIn}, ${reserveOut}) during validation for hop ${i + 1}.`
-                );
+                logger.warn(`[pool-swap] Pool ${hop.poolId} has invalid reserves (${reserveIn}, ${reserveOut}) during validation for hop ${i + 1}.`);
                 return false;
             }
 
@@ -241,9 +231,7 @@ export async function validateAutoRouteSwap(data: PoolSwapData, traderAccount: A
 
         // Check final minimum output
         if (data.minAmountOut && currentAmountIn < toBigInt(data.minAmountOut)) {
-            logger.warn(
-                `[pool-swap] Validation: Final output amount ${currentAmountIn} is less than minimum required ${data.minAmountOut}.`
-            );
+            logger.warn(`[pool-swap] Validation: Final output amount ${currentAmountIn} is less than minimum required ${data.minAmountOut}.`);
             return false;
         }
 
@@ -348,9 +336,7 @@ export async function processSingleHopSwap(data: PoolSwapData, sender: string, t
     );
 
     if (!updateSuccess) {
-        logger.error(
-            `[pool-swap] Failed to update pool ${data.poolId} reserves. Critical: Balances changed but pool reserves not.`
-        );
+        logger.error(`[pool-swap] Failed to update pool ${data.poolId} reserves. Critical: Balances changed but pool reserves not.`);
         return false;
     }
 
@@ -394,11 +380,7 @@ export async function processSingleHopSwap(data: PoolSwapData, sender: string, t
  * Single-hop swap that returns detailed result including output amount
  * This is a copy of processSingleHopSwap but returns PoolSwapResult instead of boolean
  */
-export async function processSingleHopSwapWithResult(
-    data: PoolSwapData,
-    sender: string,
-    transactionId: string
-): Promise<PoolSwapResult> {
+export async function processSingleHopSwapWithResult(data: PoolSwapData, sender: string, transactionId: string): Promise<PoolSwapResult> {
     try {
         // Get pool data
         const poolFromDb = await cache.findOnePromise('liquidityPools', { _id: data.poolId });
@@ -581,9 +563,7 @@ export async function processRoutedSwap(data: PoolSwapData, sender: string, tran
 
         // Check minimum output for this hop
         if (hop.minAmountOut && amountOut < toBigInt(hop.minAmountOut)) {
-            logger.warn(
-                `[pool-swap] Output amount ${amountOut} is less than minimum required ${hop.minAmountOut} for hop ${i + 1}.`
-            );
+            logger.warn(`[pool-swap] Output amount ${amountOut} is less than minimum required ${hop.minAmountOut} for hop ${i + 1}.`);
             return false;
         }
 

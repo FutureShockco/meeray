@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 
 import logger from '../../logger.js';
-import { toBigInt, calculateDecimalAwarePrice, getTokenDecimals } from '../../utils/bigint.js';
+import { calculateDecimalAwarePrice, getTokenDecimals, toBigInt } from '../../utils/bigint.js';
 import { OrderBookLevelData, OrderData, OrderSide, OrderStatus, OrderType, TradeData } from './market-interfaces.js';
 
 function compareOrders(a: OrderData, b: OrderData, side: OrderSide): number {
@@ -86,8 +86,7 @@ export class OrderBook {
                 if (takerOrder.side === OrderSide.SELL && takerPrice > makerPrice) break;
             }
             const makerQuantityAvailable = toBigInt(makerOrder.quantity) - toBigInt(makerOrder.filledQuantity || '0');
-            const quantityToTrade =
-                takerQuantityRemaining < makerQuantityAvailable ? takerQuantityRemaining : makerQuantityAvailable;
+            const quantityToTrade = takerQuantityRemaining < makerQuantityAvailable ? takerQuantityRemaining : makerQuantityAvailable;
 
             if (quantityToTrade <= 0n) {
                 continue;
@@ -100,8 +99,10 @@ export class OrderBook {
             // Calculate the quote total for this trade (in quote smallest units)
             // makerOrder.price is price expressed as quote-per-base scaled integer
             // total = price * quantity / 10^baseDecimals
-            const quoteAmount = (toBigInt(makerOrder.price) * quantityToTrade) / (10n ** BigInt(baseDecimals));
-            logger.info(`[OrderBook:DEBUG] scaled price formula: quantityToTrade=${quantityToTrade}, quoteAmount=${quoteAmount}, base=${baseSymbol} (${baseDecimals}), quote=${quoteSymbol} (${quoteDecimals}), side=${takerOrder.side}`);
+            const quoteAmount = (toBigInt(makerOrder.price) * quantityToTrade) / 10n ** BigInt(baseDecimals);
+            logger.info(
+                `[OrderBook:DEBUG] scaled price formula: quantityToTrade=${quantityToTrade}, quoteAmount=${quoteAmount}, base=${baseSymbol} (${baseDecimals}), quote=${quoteSymbol} (${quoteDecimals}), side=${takerOrder.side}`
+            );
             // Use centralized decimal-aware price calculation to produce the stored price value
             const tradePrice = calculateDecimalAwarePrice(quoteAmount, quantityToTrade, quoteSymbol, baseSymbol);
             const tradeId = crypto
@@ -162,16 +163,13 @@ export class OrderBook {
                     `[OrderBook-${this.pairId}] Taker LIMIT order ${takerOrder._id} partially filled. Unfilled amount: ${takerQuantityRemaining.toString()}`
                 );
             } else {
-                takerOrder.status =
-                    toBigInt(takerOrder.filledQuantity || '0') > 0n ? OrderStatus.PARTIALLY_FILLED : OrderStatus.REJECTED;
+                takerOrder.status = toBigInt(takerOrder.filledQuantity || '0') > 0n ? OrderStatus.PARTIALLY_FILLED : OrderStatus.REJECTED;
                 logger.debug(`[OrderBook-${this.pairId}] Taker MARKET order ${takerOrder._id} could not be fully filled.`);
             }
         } else {
             takerOrder.status = OrderStatus.FILLED;
         }
-        logger.debug(
-            `[OrderBook-${this.pairId}] Match complete: ${trades.length} trades, ${removedMakerOrderIds.length} makers removed`
-        );
+        logger.debug(`[OrderBook-${this.pairId}] Match complete: ${trades.length} trades, ${removedMakerOrderIds.length} makers removed`);
         return {
             trades,
             removedMakerOrders: removedMakerOrderIds,

@@ -68,10 +68,8 @@ export async function processTx(data: PoolRemoveLiquidityData, sender: string, t
             return false;
         }
 
-        const tokenAAmountToReturn =
-            (toBigInt(data.lpTokenAmount) * toBigInt(pool.tokenA_reserve)) / toBigInt(pool.totalLpTokens);
-        const tokenBAmountToReturn =
-            (toBigInt(data.lpTokenAmount) * toBigInt(pool.tokenB_reserve)) / toBigInt(pool.totalLpTokens);
+        const tokenAAmountToReturn = (toBigInt(data.lpTokenAmount) * toBigInt(pool.tokenA_reserve)) / toBigInt(pool.totalLpTokens);
+        const tokenBAmountToReturn = (toBigInt(data.lpTokenAmount) * toBigInt(pool.tokenB_reserve)) / toBigInt(pool.totalLpTokens);
 
         if (tokenAAmountToReturn <= toBigInt(0) || tokenBAmountToReturn <= toBigInt(0)) {
             logger.error(`[pool-remove-liquidity] Calculated zero or negative tokens to return for ${data.poolId}.`);
@@ -126,17 +124,13 @@ export async function processTx(data: PoolRemoveLiquidityData, sender: string, t
         // Credit the user's account with the withdrawn tokens
         const creditASuccess = await adjustUserBalance(sender, pool.tokenA_symbol, tokenAAmountToReturn);
         if (!creditASuccess) {
-            logger.error(
-                `[pool-remove-liquidity] CRITICAL: Failed to credit ${tokenAAmountToReturn} ${pool.tokenA_symbol} to ${sender}.`
-            );
+            logger.error(`[pool-remove-liquidity] CRITICAL: Failed to credit ${tokenAAmountToReturn} ${pool.tokenA_symbol} to ${sender}.`);
             return false;
         }
 
         const creditBSuccess = await adjustUserBalance(sender, pool.tokenB_symbol, tokenBAmountToReturn);
         if (!creditBSuccess) {
-            logger.error(
-                `[pool-remove-liquidity] CRITICAL: Failed to credit ${tokenBAmountToReturn} ${pool.tokenB_symbol} to ${sender}.`
-            );
+            logger.error(`[pool-remove-liquidity] CRITICAL: Failed to credit ${tokenBAmountToReturn} ${pool.tokenB_symbol} to ${sender}.`);
             return false;
         }
 

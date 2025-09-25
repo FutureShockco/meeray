@@ -10,13 +10,7 @@ const KAFKA_NOTIFICATIONS_TOPIC = 'notifications';
 const KAFKA_MARKET_EVENTS_TOPIC = 'dex-market-updates';
 
 // List of event types considered market-specific
-const MARKET_EVENT_TYPES = new Set([
-    'TRADE_EXECUTED',
-    'ORDER_CREATED',
-    'ORDER_CANCELLED',
-    'ORDERBOOK_SNAPSHOT',
-    'ORDERBOOK_DELTA_UPDATE',
-]);
+const MARKET_EVENT_TYPES = new Set(['TRADE_EXECUTED', 'ORDER_CREATED', 'ORDER_CANCELLED', 'ORDERBOOK_SNAPSHOT', 'ORDERBOOK_DELTA_UPDATE']);
 
 /**
  * Represents the structure of an event document to be stored.
@@ -83,8 +77,7 @@ export async function logTransactionEvent(
             const legacyEventType = category;
             finalActor = action;
             finalEventData = eventDataOrActor;
-            finalTransactionId =
-                typeof originalTransactionIdOrEventData === 'string' ? originalTransactionIdOrEventData : legacyTransactionId;
+            finalTransactionId = typeof originalTransactionIdOrEventData === 'string' ? originalTransactionIdOrEventData : legacyTransactionId;
 
             // Parse legacy event type into category + action
             const parts = legacyEventType.split('_');
@@ -100,12 +93,8 @@ export async function logTransactionEvent(
             finalCategory = category;
             finalAction = action;
             finalActor = eventDataOrActor;
-            finalEventData =
-                originalTransactionIdOrEventData && typeof originalTransactionIdOrEventData === 'object'
-                    ? originalTransactionIdOrEventData
-                    : {};
-            finalTransactionId =
-                typeof originalTransactionIdOrEventData === 'string' ? originalTransactionIdOrEventData : legacyTransactionId;
+            finalEventData = originalTransactionIdOrEventData && typeof originalTransactionIdOrEventData === 'object' ? originalTransactionIdOrEventData : {};
+            finalTransactionId = typeof originalTransactionIdOrEventData === 'string' ? originalTransactionIdOrEventData : legacyTransactionId;
         }
 
         const deterministicParts = [finalCategory, finalAction, finalActor || 'anon', finalTransactionId || '', Date.now()];
@@ -161,9 +150,7 @@ export async function logTransactionEvent(
                 if (settings.useNotification)
                     sendKafkaEvent(kafkaTopic, eventDocument, kafkaKey)
                         .then(() => {
-                            logger.debug(
-                                `[event-logger] Event ${eventDocument._id} (Key: ${kafkaKey}) successfully queued to Kafka topic '${kafkaTopic}'.`
-                            );
+                            logger.debug(`[event-logger] Event ${eventDocument._id} (Key: ${kafkaKey}) successfully queued to Kafka topic '${kafkaTopic}'.`);
                         })
                         .catch(kafkaError => {
                             // This error is for Kafka sending, the event is already in cache.
@@ -178,9 +165,7 @@ export async function logTransactionEvent(
             });
         });
     } catch (error) {
-        logger.error(
-            `[event-logger] Unexpected error in logTransactionEvent: ${error instanceof Error ? error.message : String(error)}`
-        );
+        logger.error(`[event-logger] Unexpected error in logTransactionEvent: ${error instanceof Error ? error.message : String(error)}`);
         // If this outer catch is hit, the event wasn't logged to cache or sent to Kafka.
     }
 }
@@ -194,13 +179,7 @@ export async function logTransactionEvent(
  * @param eventData - The specific data associated with the event
  * @param transactionId - Optional: The ID of the blockchain transaction
  */
-export async function logEvent(
-    category: string,
-    action: string,
-    actor: string,
-    eventData: any,
-    transactionId?: string
-): Promise<void> {
+export async function logEvent(category: string, action: string, actor: string, eventData: any, transactionId?: string): Promise<void> {
     logger.info(`${category}:${action} transaction: ${JSON.stringify(eventData)} created successfully by ${actor}.`);
     return logTransactionEvent(category, action, actor, eventData, transactionId);
 }

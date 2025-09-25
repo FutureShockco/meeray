@@ -34,17 +34,13 @@ export async function processTx(data: TokenTransferData, sender: string): Promis
     try {
         const adjustedSender = await adjustUserBalance(sender, data.symbol, -toBigInt(data.amount));
         if (!adjustedSender) {
-            logger.error(
-                `[token-withdraw] Failed to debit sender ${sender} for ${toBigInt(data.amount).toString()} ${data.symbol}`
-            );
+            logger.error(`[token-withdraw] Failed to debit sender ${sender} for ${toBigInt(data.amount).toString()} ${data.symbol}`);
             return false;
         }
 
         const adjustedRecipient = await adjustUserBalance(BURN_ACCOUNT_NAME, data.symbol, toBigInt(data.amount));
         if (!adjustedRecipient) {
-            logger.error(
-                `[token-withdraw] Failed to credit burn account ${BURN_ACCOUNT_NAME} for ${toBigInt(data.amount).toString()} ${data.symbol}`
-            );
+            logger.error(`[token-withdraw] Failed to credit burn account ${BURN_ACCOUNT_NAME} for ${toBigInt(data.amount).toString()} ${data.symbol}`);
             return false;
         }
 
@@ -56,9 +52,7 @@ export async function processTx(data: TokenTransferData, sender: string): Promis
 
         const adjustedSupply = await adjustTokenSupply(data.symbol, -toBigInt(data.amount));
         if (!adjustedSupply) {
-            logger.error(
-                `[token-withdraw] Failed to adjust supply for ${data.symbol} when burning ${toBigInt(data.amount).toString()}.`
-            );
+            logger.error(`[token-withdraw] Failed to adjust supply for ${data.symbol} when burning ${toBigInt(data.amount).toString()}.`);
             return false;
         }
         // Check if we should skip bridge operations (during replay)
@@ -70,10 +64,7 @@ export async function processTx(data: TokenTransferData, sender: string): Promis
                 `[token-withdraw] Skipping Steem bridge operation during replay for block ${currentBlockNum} (skip until: ${settings.skipBridgeOperationsUntilBlock})`
             );
         } else {
-            const formattedAmount = BigIntMath.formatWithDecimals(
-                toBigInt(data.amount),
-                isNaN(token.precision) ? 3 : token.precision
-            );
+            const formattedAmount = BigIntMath.formatWithDecimals(toBigInt(data.amount), isNaN(token.precision) ? 3 : token.precision);
             // Enqueue withdraw to process asynchronously off the block path
             await steemBridge.enqueueWithdraw(sender, formattedAmount, data.symbol, 'Withdraw from MeeRay');
         }

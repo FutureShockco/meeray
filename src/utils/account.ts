@@ -26,11 +26,7 @@ const adjustWitnessVoteWeights = async (account: Account | null, currentBalance:
                 const currentVoteWeight = toBigInt(witnessAccount?.totalVoteWeight || 0);
                 let updated = currentVoteWeight + diffPerWitness;
                 if (updated < 0n) updated = 0n;
-                await cache.updateOnePromise(
-                    'accounts',
-                    { name: witnessName },
-                    { $set: { totalVoteWeight: toDbString(updated) } }
-                );
+                await cache.updateOnePromise('accounts', { name: witnessName }, { $set: { totalVoteWeight: toDbString(updated) } });
             }
         }
     }
@@ -50,11 +46,7 @@ export async function adjustUserBalance(accountId: string, tokenSymbol: string, 
             logger.error(`[account-utils] Insufficient balance for ${accountId}: ${currentBalance} + ${amount} = ${newBalance}`);
             return false;
         }
-        await cache.updateOnePromise(
-            'accounts',
-            { name: accountId },
-            { $set: { [`balances.${tokenSymbol}`]: toDbString(newBalance) } }
-        );
+        await cache.updateOnePromise('accounts', { name: accountId }, { $set: { [`balances.${tokenSymbol}`]: toDbString(newBalance) } });
         // Adjust vote weights if native token changed
         if (tokenSymbol === config.nativeTokenSymbol && amount !== 0n) {
             adjustWitnessVoteWeights(account, currentBalance, newBalance);

@@ -104,17 +104,8 @@ interface CacheType extends CacheMainDataCollections {
         options?: FindOptions<BasicCacheDoc>,
         skipClone?: boolean
     ) => Promise<BasicCacheDoc[] | null>;
-    findOne: (
-        collection: string,
-        query: Filter<BasicCacheDoc>,
-        cb: StandardCallback<BasicCacheDoc | null>,
-        skipClone?: boolean
-    ) => void;
-    updateOnePromise: (
-        collection: string,
-        query: Filter<BasicCacheDoc>,
-        changes: UpdateFilter<BasicCacheDoc> | Partial<BasicCacheDoc>
-    ) => Promise<boolean>;
+    findOne: (collection: string, query: Filter<BasicCacheDoc>, cb: StandardCallback<BasicCacheDoc | null>, skipClone?: boolean) => void;
+    updateOnePromise: (collection: string, query: Filter<BasicCacheDoc>, changes: UpdateFilter<BasicCacheDoc> | Partial<BasicCacheDoc>) => Promise<boolean>;
     deleteOnePromise: (collection: string, query: Filter<BasicCacheDoc>) => Promise<boolean>;
     updateOne: (
         collection: string,
@@ -227,11 +218,7 @@ const cache: CacheType = {
             if (this.copy[collectionKey]) {
                 // Check if the collection exists on copy
                 for (const key in this.copy[collectionKey]) {
-                    if (
-                        this[collectionKey] &&
-                        (this[collectionKey] as CacheCollectionStore)[key] &&
-                        this.copy[collectionKey][key]
-                    ) {
+                    if (this[collectionKey] && (this[collectionKey] as CacheCollectionStore)[key] && this.copy[collectionKey][key]) {
                         (this[collectionKey] as CacheCollectionStore)[key] = cloneDeep(this.copy[collectionKey][key]);
                     }
                 }
@@ -304,16 +291,12 @@ const cache: CacheType = {
         // DEBUGGING LOGS START
         logger.trace(`[CACHE findOne] Checking collection: '${collection}', cast to collectionName: '${collectionName}'`);
         logger.trace(`[CACHE findOne] this.copy object keys: ${Object.keys(this.copy).join(', ')}`);
-        logger.trace(
-            `[CACHE findOne] Value of this.copy['${collectionName}']: ${JSON.stringify(this.copy[collectionName as keyof CacheCopyCollections])}`
-        );
+        logger.trace(`[CACHE findOne] Value of this.copy['${collectionName}']: ${JSON.stringify(this.copy[collectionName as keyof CacheCopyCollections])}`);
         // DEBUGGING LOGS END
 
         if (!this.copy[collectionName as keyof CacheCopyCollections]) {
             // Check against known copy collections
-            logger.warn(
-                `[CACHE findOne] Invalid collection in copy: '${collectionName}'. Available in copy: ${Object.keys(this.copy).join(', ')}`
-            );
+            logger.warn(`[CACHE findOne] Invalid collection in copy: '${collectionName}'. Available in copy: ${Object.keys(this.copy).join(', ')}`);
             return cb(new Error('invalid collection in copy'));
         }
         if (!db) return cb(new Error('Database not initialized'));
@@ -423,11 +406,7 @@ const cache: CacheType = {
                 const liveCollection = this[collectionName] as CacheCollectionStore;
                 const copyCollection = this.copy[copyCollectionName] as CacheCollectionStore;
                 const latestBlock = chain.getLatestBlock();
-                if (
-                    copyCollection &&
-                    !copyCollection[docId] &&
-                    (!chain.restoredBlocks || (latestBlock && latestBlock._id >= chain.restoredBlocks))
-                ) {
+                if (copyCollection && !copyCollection[docId] && (!chain.restoredBlocks || (latestBlock && latestBlock._id >= chain.restoredBlocks))) {
                     if (liveCollection && liveCollection[docId]) {
                         copyCollection[docId] = cloneDeep(liveCollection[docId]);
                     }
@@ -572,9 +551,7 @@ const cache: CacheType = {
                 (this[collectionName] as CacheCollectionStore)[docId] = document;
             } else {
                 // Handle documents without a predefined key if necessary, though JS logic implies key exists
-                logger.warn(
-                    `[CACHE insertOne] Document for ${collection} missing keyField '${keyField}'. DB will assign _id if this was the intended key.`
-                );
+                logger.warn(`[CACHE insertOne] Document for ${collection} missing keyField '${keyField}'. DB will assign _id if this was the intended key.`);
             }
         }
 
@@ -680,12 +657,8 @@ const cache: CacheType = {
         const dbExecutions: Promise<any>[] = [];
         for (const collectionName in bulkOpsByCollection) {
             if (bulkOpsByCollection[collectionName].length > 0) {
-                logger.trace(
-                    `cacheWriter: Preparing bulkWrite for ${collectionName} with ${bulkOpsByCollection[collectionName].length} ops.`
-                );
-                dbExecutions.push(
-                    currentDb.collection(collectionName).bulkWrite(bulkOpsByCollection[collectionName], { ordered: false })
-                );
+                logger.trace(`cacheWriter: Preparing bulkWrite for ${collectionName} with ${bulkOpsByCollection[collectionName].length} ops.`);
+                dbExecutions.push(currentDb.collection(collectionName).bulkWrite(bulkOpsByCollection[collectionName], { ordered: false }));
             }
         }
 
@@ -790,13 +763,9 @@ const cache: CacheType = {
         const logTimingAndCallDone = (err: Error | null, results: any[], execTime: number) => {
             const numOps = insertArr.length + changesArr.length + singleOpExecutions.length; // Approximate total original ops
             if (config && config.blockTime && !rebuild && execTime >= config.blockTime / 2) {
-                logger.warn(
-                    `cacheWriter: Slow DB batch: ${numOps} original ops (${totalBulkOps} bulk, ${totalSingleOps} single), ${execTime}ms`
-                );
+                logger.warn(`cacheWriter: Slow DB batch: ${numOps} original ops (${totalBulkOps} bulk, ${totalSingleOps} single), ${execTime}ms`);
             } else {
-                logger.trace(
-                    `cacheWriter: DB batch took ${execTime}ms for ${numOps} original ops (${totalBulkOps} bulk, ${totalSingleOps} single).`
-                );
+                logger.trace(`cacheWriter: DB batch took ${execTime}ms for ${numOps} original ops (${totalBulkOps} bulk, ${totalSingleOps} single).`);
             }
             allOpsDoneCallback(err ?? null, results as any[]);
         };

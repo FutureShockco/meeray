@@ -8,13 +8,7 @@
  * @returns True if the string is valid, false otherwise
  */
 
-const validateString = (
-    value: any,
-    maxLength?: number,
-    minLength?: number,
-    allowedChars?: string,
-    allowedCharsMiddle?: string
-): boolean => {
+const validateString = (value: any, maxLength?: number, minLength?: number, allowedChars?: string, allowedCharsMiddle?: string): boolean => {
     if (!maxLength) maxLength = Number.MAX_SAFE_INTEGER;
     if (!minLength) minLength = 0;
 

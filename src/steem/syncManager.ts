@@ -116,10 +116,7 @@ class SyncManager {
     private startSyncStatusBroadcasting(): void {
         this.stopSyncStatusBroadcasting();
         const jitter = Math.floor(Math.random() * 2000);
-        this.syncStatusBroadcastInterval = setInterval(
-            () => this.broadcastSyncStatusLoop(),
-            steemConfig.defaultBroadcastInterval + jitter
-        );
+        this.syncStatusBroadcastInterval = setInterval(() => this.broadcastSyncStatusLoop(), steemConfig.defaultBroadcastInterval + jitter);
         this.lastBroadcastInterval = steemConfig.defaultBroadcastInterval;
         this.broadcastSyncStatusLoop();
     }
@@ -236,9 +233,7 @@ class SyncManager {
         let nodesReadyToExit = 0;
         let consideredNodes = 0;
         const witnessAccounts = new Set(chain.schedule.active_witnesses || []);
-        const activePeerNodeIds = new Set(
-            p2p.sockets.filter(s => s.node_status && s.node_status.nodeId).map(s => s.node_status!.nodeId)
-        );
+        const activePeerNodeIds = new Set(p2p.sockets.filter(s => s.node_status && s.node_status.nodeId).map(s => s.node_status!.nodeId));
 
         this.networkSyncStatus.forEach((status, nodeId) => {
             if (activePeerNodeIds.has(nodeId) && now - status.timestamp < steemConfig.steemHeightExpiry) {
@@ -250,8 +245,7 @@ class SyncManager {
                     if (
                         (!status.isSyncing && status.behindBlocks <= steemConfig.syncExitThreshold) ||
                         (status.isSyncing && status.behindBlocks <= steemConfig.syncExitThreshold) ||
-                        (status.exitTarget !== null &&
-                            status.exitTarget <= (chain.getLatestBlock()?._id || 0) + steemConfig.syncExitThreshold)
+                        (status.exitTarget !== null && status.exitTarget <= (chain.getLatestBlock()?._id || 0) + steemConfig.syncExitThreshold)
                     ) {
                         nodesReadyToExit++;
                     }
@@ -268,12 +262,7 @@ class SyncManager {
     }
 
     receivePeerSyncStatus(nodeId: string, status: SyncStatus): void {
-        if (
-            !status ||
-            typeof status.behindBlocks !== 'number' ||
-            typeof status.isSyncing !== 'boolean' ||
-            typeof status.steemBlock !== 'number'
-        ) {
+        if (!status || typeof status.behindBlocks !== 'number' || typeof status.isSyncing !== 'boolean' || typeof status.steemBlock !== 'number') {
             logger.warn(`Received malformed sync status from ${nodeId}:`, status);
             return;
         }

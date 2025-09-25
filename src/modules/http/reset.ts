@@ -8,22 +8,15 @@ const router = express.Router();
 
 router.post('/', async (req, res) => {
     try {
-        logger.info('[MINING-RESET] Manual mining reset requested via API');
-
-        // Clear any existing mining timeout
         if (chain.worker) {
             clearTimeout(chain.worker);
             chain.worker = null;
-            logger.info('[MINING-RESET] Cleared existing mining timeout');
+            logger.info('[http-mining-reset] Cleared existing mining timeout');
         }
-
-        // Reset timing state
         chain.lastBlockTime = 0;
-
-        // Force restart mining with current state
         const latestBlock = chain.getLatestBlock();
         if (latestBlock) {
-            logger.info(`[MINING-RESET] Restarting mining from block ${latestBlock._id}`);
+            logger.info(`[http-mining-reset] Restarting mining from block ${latestBlock._id}`);
             mining.minerWorker(latestBlock);
             res.json({
                 success: true,
@@ -37,7 +30,7 @@ router.post('/', async (req, res) => {
             });
         }
     } catch (error) {
-        logger.error('[MINING-RESET] Error during mining reset:', error);
+        logger.error('[http-mining-reset] Error during mining reset:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to reset mining',

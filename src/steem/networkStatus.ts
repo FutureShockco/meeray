@@ -51,9 +51,7 @@ class NetworkStatusManager {
         let nodesInSyncCount = 0;
         let totalConsideredNodes = 0;
 
-        const activePeerNodeIds = new Set(
-            p2p.sockets.filter(s => s.node_status && s.node_status.nodeId).map(s => s.node_status!.nodeId)
-        );
+        const activePeerNodeIds = new Set(p2p.sockets.filter(s => s.node_status && s.node_status.nodeId).map(s => s.node_status!.nodeId));
 
         this.networkSyncStatus.forEach((status, nodeId) => {
             if (activePeerNodeIds.has(nodeId) && now - status.timestamp < steemConfig.steemHeightExpiry * 2) {
@@ -113,9 +111,7 @@ class NetworkStatusManager {
         let witnessesConsideredBehindCount = 0;
         const behindThresholdForWitness = config.steemBlockDelay || 10;
 
-        const activePeerNodeIds = new Set(
-            p2p.sockets.filter(s => s.node_status && s.node_status.nodeId).map(s => s.node_status!.nodeId)
-        );
+        const activePeerNodeIds = new Set(p2p.sockets.filter(s => s.node_status && s.node_status.nodeId).map(s => s.node_status!.nodeId));
 
         this.networkSyncStatus.forEach((status, nodeId) => {
             if (activePeerNodeIds.has(nodeId) && now - status.timestamp < steemConfig.steemHeightExpiry * 2) {
@@ -145,9 +141,7 @@ class NetworkStatusManager {
         const maxBehind = relevantBehindValues[relevantBehindValues.length - 1];
         const mid = Math.floor(relevantBehindValues.length / 2);
         const medianBehind =
-            relevantBehindValues.length % 2 !== 0
-                ? relevantBehindValues[mid]
-                : (relevantBehindValues[mid - 1] + relevantBehindValues[mid]) / 2;
+            relevantBehindValues.length % 2 !== 0 ? relevantBehindValues[mid] : (relevantBehindValues[mid - 1] + relevantBehindValues[mid]) / 2;
 
         return {
             maxBehind,
@@ -167,9 +161,7 @@ class NetworkStatusManager {
         let consideredWitnessPeersForEntry = 0;
         const delayThreshold = config.steemBlockDelay || 10;
 
-        const activePeerNodeIds = new Set(
-            p2p.sockets.filter(s => s.node_status && s.node_status.nodeId).map(s => s.node_status!.nodeId)
-        );
+        const activePeerNodeIds = new Set(p2p.sockets.filter(s => s.node_status && s.node_status.nodeId).map(s => s.node_status!.nodeId));
 
         this.networkSyncStatus.forEach((status, nodeId) => {
             if (activePeerNodeIds.has(nodeId) && now - status.timestamp < steemConfig.steemHeightExpiry * 2) {
@@ -223,9 +215,7 @@ class NetworkStatusManager {
 
         if (consideredPeersForEntry === 0) {
             if (localNodeBehindBlocks >= (config.steemBlockDelay * 5 || delayThreshold * 2)) {
-                logger.warn(
-                    `No recent peer sync status, but local node is critically behind (${localNodeBehindBlocks} blocks). Allowing sync mode entry.`
-                );
+                logger.warn(`No recent peer sync status, but local node is critically behind (${localNodeBehindBlocks} blocks). Allowing sync mode entry.`);
                 return true;
             }
             return false;
@@ -234,21 +224,16 @@ class NetworkStatusManager {
         let percentageIndicatingSync: number;
         let relevantConsideredNodesForEntry: number;
 
-        const minActiveWitnessesForPriority = Math.max(
-            steemConfig.minWitnessesForQuorumConsideration,
-            Math.floor(witnessAccounts.size * 0.1)
-        );
+        const minActiveWitnessesForPriority = Math.max(steemConfig.minWitnessesForQuorumConsideration, Math.floor(witnessAccounts.size * 0.1));
 
         if (witnessAccounts.size > 0 && consideredWitnessPeersForEntry >= minActiveWitnessesForPriority) {
-            percentageIndicatingSync =
-                consideredWitnessPeersForEntry > 0 ? (witnessPeersIndicatingSync / consideredWitnessPeersForEntry) * 100 : 0;
+            percentageIndicatingSync = consideredWitnessPeersForEntry > 0 ? (witnessPeersIndicatingSync / consideredWitnessPeersForEntry) * 100 : 0;
             relevantConsideredNodesForEntry = consideredWitnessPeersForEntry;
             logger.warn(
                 `Sync Entry Decision (Witness Priority): ${witnessPeersIndicatingSync}/${consideredWitnessPeersForEntry} relevant witnesses indicate sync needed. Quorum: ${steemConfig.syncEntryQuorumPercent}%`
             );
         } else {
-            percentageIndicatingSync =
-                consideredPeersForEntry > 0 ? (nodesIndicatingSyncNeeded / consideredPeersForEntry) * 100 : 0;
+            percentageIndicatingSync = consideredPeersForEntry > 0 ? (nodesIndicatingSyncNeeded / consideredPeersForEntry) * 100 : 0;
             relevantConsideredNodesForEntry = consideredPeersForEntry;
             logger.warn(
                 `Sync Entry Decision (General Peers): ${nodesIndicatingSyncNeeded}/${consideredPeersForEntry} relevant peers indicate sync needed. Quorum: ${steemConfig.syncEntryQuorumPercent}%`
@@ -269,12 +254,7 @@ class NetworkStatusManager {
     }
 
     receivePeerSyncStatus(nodeId: string, status: SyncStatus): void {
-        if (
-            !status ||
-            typeof status.behindBlocks !== 'number' ||
-            typeof status.isSyncing !== 'boolean' ||
-            typeof status.steemBlock !== 'number'
-        ) {
+        if (!status || typeof status.behindBlocks !== 'number' || typeof status.isSyncing !== 'boolean' || typeof status.steemBlock !== 'number') {
             logger.warn(`Received malformed sync status from ${nodeId}:`, status);
             return;
         }

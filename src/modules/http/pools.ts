@@ -3,13 +3,7 @@ import express, { Request, RequestHandler, Response, Router } from 'express';
 import cache from '../../cache.js';
 import logger from '../../logger.js';
 import { mongo } from '../../mongo.js';
-import {
-    toDbString as bigintToString,
-    formatTokenAmount,
-    getTokenDecimals,
-    parseTokenAmount,
-    toBigInt,
-} from '../../utils/bigint.js';
+import { toDbString as bigintToString, formatTokenAmount, getTokenDecimals, parseTokenAmount, toBigInt } from '../../utils/bigint.js';
 import { formatTokenAmountForResponse, formatTokenAmountSimple } from '../../utils/http.js';
 import { calculatePriceImpact, getOutputAmountBigInt } from '../../utils/pool.js';
 
@@ -98,11 +92,7 @@ async function findAllTradeRoutesBigInt(
             if (tokenInReserveBigInt <= 0n || tokenOutReserveBigInt <= 0n) continue;
             if (currentPath.length > 0 && currentPath[currentPath.length - 1].tokenIn === nextTokenSymbol) continue;
 
-            const amountOutFromHopBigInt = getOutputAmountBigInt(
-                currentAmountInBigInt,
-                tokenInReserveBigInt,
-                tokenOutReserveBigInt
-            );
+            const amountOutFromHopBigInt = getOutputAmountBigInt(currentAmountInBigInt, tokenInReserveBigInt, tokenOutReserveBigInt);
             if (amountOutFromHopBigInt <= 0n) continue;
 
             // Calculate price impact for this hop
@@ -196,14 +186,8 @@ const transformUserLiquidityPositionData = (positionData: any, poolData?: any): 
         const unclaimedFeesB = toBigInt(positionData.unclaimedFeesB || '0');
         const feeGrowthGlobalA = toBigInt(poolData.feeGrowthGlobalA || '0');
         const feeGrowthGlobalB = toBigInt(poolData.feeGrowthGlobalB || '0');
-        transformed.claimableFeesA = (
-            ((feeGrowthGlobalA - feeGrowthEntryA) * lpTokenBalance) / toBigInt(1e18) +
-            unclaimedFeesA
-        ).toString();
-        transformed.claimableFeesB = (
-            ((feeGrowthGlobalB - feeGrowthEntryB) * lpTokenBalance) / toBigInt(1e18) +
-            unclaimedFeesB
-        ).toString();
+        transformed.claimableFeesA = (((feeGrowthGlobalA - feeGrowthEntryA) * lpTokenBalance) / toBigInt(1e18) + unclaimedFeesA).toString();
+        transformed.claimableFeesB = (((feeGrowthGlobalB - feeGrowthEntryB) * lpTokenBalance) / toBigInt(1e18) + unclaimedFeesB).toString();
     }
     return transformed;
 };
@@ -386,11 +370,7 @@ router.get('/positions/user/:userId', (async (req: Request, res: Response) => {
     const { userId } = req.params;
     const { limit, skip } = getPagination(req);
     try {
-        const positionsFromDB = await cache.findPromise(
-            'userLiquidityPositions',
-            { user: userId },
-            { limit, skip, sort: { _id: 1 } }
-        );
+        const positionsFromDB = await cache.findPromise('userLiquidityPositions', { user: userId }, { limit, skip, sort: { _id: 1 } });
         const total = await mongo.getDb().collection('userLiquidityPositions').countDocuments({ user: userId });
         const positions = (positionsFromDB || []).map(transformUserLiquidityPositionData);
         res.json({ data: positions, total, limit, skip });
@@ -404,11 +384,7 @@ router.get('/positions/pool/:poolId', (async (req: Request, res: Response) => {
     const { poolId } = req.params;
     const { limit, skip } = getPagination(req);
     try {
-        const positionsFromDB = await cache.findPromise(
-            'userLiquidityPositions',
-            { poolId: poolId },
-            { limit, skip, sort: { _id: 1 } }
-        );
+        const positionsFromDB = await cache.findPromise('userLiquidityPositions', { poolId: poolId }, { limit, skip, sort: { _id: 1 } });
         const total = await mongo.getDb().collection('userLiquidityPositions').countDocuments({ poolId: poolId });
         const positions = (positionsFromDB || []).map(transformUserLiquidityPositionData);
         res.json({ data: positions, total, limit, skip });
@@ -483,9 +459,7 @@ router.post('/route-swap', (async (req: Request, res: Response) => {
         amountInBigInt = parseTokenAmount(amountInStr, fromTokenSymbol);
         if (amountInBigInt <= 0n) {
             // parseTokenAmount already throws for invalid format
-            return res
-                .status(400)
-                .json({ message: `Invalid amountIn: ${amountIn}. Must result in a positive value in smallest units.` });
+            return res.status(400).json({ message: `Invalid amountIn: ${amountIn}. Must result in a positive value in smallest units.` });
         }
     } catch (error: any) {
         logger.error(`Error parsing amountIn for swap route: ${amountIn}, token: ${fromTokenSymbol}`, error);

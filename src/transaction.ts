@@ -117,7 +117,6 @@ const transaction: TransactionModule = {
             cb(false, 'no transaction');
             return;
         }
-
         if (!validation.integer(tx.type, true, false) || !(tx.type in TransactionType)) {
             cb(false, 'invalid tx type');
             return;
@@ -138,7 +137,6 @@ const transaction: TransactionModule = {
             cb(false, 'invalid tx hash');
             return;
         }
-
         if (transaction.isPublished(tx)) {
             cb(false, 'transaction already in chain');
             return;
@@ -146,7 +144,6 @@ const transaction: TransactionModule = {
         const newTx = cloneDeep(tx);
         delete newTx.signature;
         delete newTx.hash;
-
         transaction.isValidTxData(tx, ts, tx.sender, function (isValid, error) {
             cb(isValid, error);
         });
@@ -171,9 +168,7 @@ const transaction: TransactionModule = {
                 });
         } else {
             // If no handler or validate function is not found, consider it invalid and call the callback
-            const reason = handler
-                ? `Validate function missing for handler type ${tx.type}`
-                : `Unknown transaction type handler for type ${tx.type}`;
+            const reason = handler ? `Validate function missing for handler type ${tx.type}` : `Unknown transaction type handler for type ${tx.type}`;
             logr.warn(`[transaction.isValidTxData] ${reason}`);
             cb(false, reason);
         }
@@ -186,9 +181,7 @@ const transaction: TransactionModule = {
                 .process(tx.data, tx.sender, tx.hash, tx.ts || ts)
                 .then((success: boolean) => {
                     if (!success) {
-                        logr.warn(
-                            `Execution failed for type ${TransactionType[tx.type as TransactionType]} by sender ${tx.sender}`
-                        );
+                        logr.warn(`Execution failed for type ${TransactionType[tx.type as TransactionType]} by sender ${tx.sender}`);
                         cb(false, undefined);
                     } else {
                         cb(true, undefined); // Executed

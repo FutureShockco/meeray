@@ -25,16 +25,12 @@ export async function processTx(data: TokenTransferData, sender: string): Promis
     try {
         const adjustedBalance = await adjustUserBalance(data.to, data.symbol, toBigInt(data.amount));
         if (!adjustedBalance) {
-            logger.error(
-                `[token-mint:process] Failed to adjust balance for ${data.to} when minting ${toBigInt(data.amount).toString()} ${data.symbol}.`
-            );
+            logger.error(`[token-mint:process] Failed to adjust balance for ${data.to} when minting ${toBigInt(data.amount).toString()} ${data.symbol}.`);
             return false;
         }
         const adjustedSupply = await adjustTokenSupply(data.symbol, toBigInt(data.amount));
         if (adjustedSupply === null) {
-            logger.error(
-                `[token-mint:process] Failed to adjust supply for ${data.symbol} when minting ${toBigInt(data.amount).toString()}.`
-            );
+            logger.error(`[token-mint:process] Failed to adjust supply for ${data.symbol} when minting ${toBigInt(data.amount).toString()}.`);
             return false;
         }
         await logEvent('token', 'mint', sender, {

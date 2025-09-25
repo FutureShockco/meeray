@@ -16,9 +16,6 @@ const app = express();
 
 app.use(bodyParser.json());
 
-/**
- * HTTP server module
- */
 export function init(): void {
     try {
         const app = express();
@@ -58,11 +55,9 @@ export function init(): void {
             }
         });
 
-        // Wait for all endpoints to initialize
         Promise.allSettled(endpointPromises).then(() => {
             logger.info('All available API endpoints initialized');
 
-            // Set host for Linux platform
             if (process.platform === 'linux') {
                 process.env.HOST = '0.0.0.0';
                 logger.debug('Linux platform detected, binding to all interfaces (0.0.0.0)');
@@ -72,7 +67,6 @@ export function init(): void {
 
             logger.debug(`Starting HTTP server on port ${port}`);
 
-            // Create the server
             const server = app.listen(port, () => {
                 const addr = server.address();
                 if (addr && typeof addr !== 'string') {
@@ -84,13 +78,9 @@ export function init(): void {
 
             server.on('error', (error: any) => {
                 if (error.code === 'EADDRINUSE') {
-                    logger.error(
-                        `HTTP port ${port} is already in use. Please use a different port by setting the API_PORT environment variable.`
-                    );
+                    logger.error(`HTTP port ${port} is already in use. Please use a different port by setting the API_PORT environment variable.`);
                 } else if (error.code === 'EACCES') {
-                    logger.error(
-                        `Permission denied to use port ${port}. Try using a port number > 1024 or running with elevated privileges.`
-                    );
+                    logger.error(`Permission denied to use port ${port}. Try using a port number > 1024 or running with elevated privileges.`);
                 } else {
                     logger.error('HTTP server error:', error);
                 }

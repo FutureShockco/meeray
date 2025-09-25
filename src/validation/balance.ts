@@ -9,10 +9,7 @@ import validate from './index.js';
  * @param requirements Array of { symbol, amount } objects
  * @returns True if all balances are sufficient, false otherwise
  */
-export const userBalances = async (
-    user: string,
-    requirements: Array<{ symbol: string; amount: string | bigint }>
-): Promise<boolean> => {
+export const userBalances = async (user: string, requirements: Array<{ symbol: string; amount: string | bigint }>): Promise<boolean> => {
     const userAccount = await getAccount(user);
     if (!userAccount) {
         logger.warn(`[balance-validation] User account ${user} not found.`);
@@ -30,9 +27,7 @@ export const userBalances = async (
             return false;
         }
         if (balance < toBigInt(req.amount)) {
-            logger.warn(
-                `[balance-validation] Insufficient balance for ${req.symbol}. Required: ${req.amount}, Available: ${balance}`
-            );
+            logger.warn(`[balance-validation] Insufficient balance for ${req.symbol}. Required: ${req.amount}, Available: ${balance}`);
             return false;
         }
     }

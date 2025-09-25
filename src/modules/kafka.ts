@@ -60,9 +60,7 @@ export async function initializeKafkaProducer(): Promise<void> {
     } catch (error) {
         isInitializing = false;
         isConnected = false;
-        logger.error(
-            `[kafka-producer] Failed to initialize or connect Kafka producer: ${error instanceof Error ? error.message : String(error)}`
-        );
+        logger.error(`[kafka-producer] Failed to initialize or connect Kafka producer: ${error instanceof Error ? error.message : String(error)}`);
         // Depending on the application's needs, you might want to throw the error
         // or implement a retry mechanism here.
         // For now, we'll just log it and the producer will remain null.
@@ -82,9 +80,7 @@ export async function sendKafkaEvent(topic: string, message: any, key?: string):
         logger.warn(`[kafka-producer] Kafka producer not initialized or not connected. Attempting to initialize...`);
         await initializeKafkaProducer(); // Attempt to initialize if not already
         if (!producer || !isConnected) {
-            logger.error(
-                `[kafka-producer] Failed to send event after re-initialization attempt. Producer unavailable. Topic: ${topic}`
-            );
+            logger.error(`[kafka-producer] Failed to send event after re-initialization attempt. Producer unavailable. Topic: ${topic}`);
             // Optionally, you could queue this message or handle the failure in another way
             return;
         }
@@ -92,9 +88,7 @@ export async function sendKafkaEvent(topic: string, message: any, key?: string):
 
     try {
         const stringMessage = JSON.stringify(message);
-        logger.debug(
-            `[kafka-producer] Sending event to Kafka topic '${topic}'. Key: '${key || 'none'}', Message: ${stringMessage}`
-        );
+        logger.debug(`[kafka-producer] Sending event to Kafka topic '${topic}'. Key: '${key || 'none'}', Message: ${stringMessage}`);
         await producer.send({
             topic: topic,
             messages: [{ key: key, value: stringMessage }],
@@ -118,9 +112,7 @@ export async function disconnectKafkaProducer(): Promise<void> {
             await producer.disconnect();
             logger.info('[kafka-producer] Kafka producer disconnected successfully.');
         } catch (error) {
-            logger.error(
-                `[kafka-producer] Error disconnecting Kafka producer: ${error instanceof Error ? error.message : String(error)}`
-            );
+            logger.error(`[kafka-producer] Error disconnecting Kafka producer: ${error instanceof Error ? error.message : String(error)}`);
         } finally {
             producer = null;
             isConnected = false;

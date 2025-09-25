@@ -36,10 +36,7 @@ export async function validateTx(data: NFTMintData, sender: string): Promise<boo
             return false;
         }
 
-        if (
-            data.uri !== undefined &&
-            (!validate.string(data.uri, 2048, 10) || !(data.uri.startsWith('http') || data.uri.startsWith('ipfs://')))
-        ) {
+        if (data.uri !== undefined && (!validate.string(data.uri, 2048, 10) || !(data.uri.startsWith('http') || data.uri.startsWith('ipfs://')))) {
             logger.warn('[nft-mint] Invalid uri: incorrect format, or length (10-2048 chars), must start with http or ipfs://.');
             return false;
         }
@@ -75,8 +72,7 @@ export async function validateTx(data: NFTMintData, sender: string): Promise<boo
         } else if (typeof collection.maxSupply === 'bigint') {
             effectiveMaxSupply = Number(collection.maxSupply);
         } else if (typeof collection.maxSupply === 'number') {
-            effectiveMaxSupply =
-                collection.maxSupply === Number.MAX_SAFE_INTEGER ? Number.MAX_SAFE_INTEGER : collection.maxSupply;
+            effectiveMaxSupply = collection.maxSupply === Number.MAX_SAFE_INTEGER ? Number.MAX_SAFE_INTEGER : collection.maxSupply;
         } else {
             effectiveMaxSupply = Number.MAX_SAFE_INTEGER;
         }
@@ -88,9 +84,7 @@ export async function validateTx(data: NFTMintData, sender: string): Promise<boo
 
         // Sender must be the collection creator to mint (typical initial model, can be changed by roles/permissions later)
         if (collection.creator !== sender) {
-            logger.warn(
-                `[nft-mint] Sender ${sender} is not the creator of collection ${data.collectionSymbol}. Only creator can mint.`
-            );
+            logger.warn(`[nft-mint] Sender ${sender} is not the creator of collection ${data.collectionSymbol}. Only creator can mint.`);
             return false;
         }
 

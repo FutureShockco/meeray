@@ -83,8 +83,7 @@ export const chain = {
 
     cleanMemoryTx: () => {
         for (const hash in chain.recentTxs)
-            if (chain.recentTxs[hash].ts + (config.txExpirationTime || 3600000) < chain.getLatestBlock().timestamp)
-                delete chain.recentTxs[hash];
+            if (chain.recentTxs[hash].ts + (config.txExpirationTime || 3600000) < chain.getLatestBlock().timestamp) delete chain.recentTxs[hash];
     },
 
     output: async (block: any, rebuilding?: boolean) => {
@@ -105,9 +104,7 @@ export const chain = {
         outputLog += '  delay: ' + (currentOutTime - block.timestamp);
         if (block.missedBy && !rebuilding) outputLog += '  MISS: ' + block.missedBy;
         if (!rebuilding && !p2p.recovering) {
-            const checkInterval = steem.isInSyncMode()
-                ? SYNC_MODE_BROADCAST_INTERVAL_BLOCKS
-                : NORMAL_MODE_BROADCAST_INTERVAL_BLOCKS;
+            const checkInterval = steem.isInSyncMode() ? SYNC_MODE_BROADCAST_INTERVAL_BLOCKS : NORMAL_MODE_BROADCAST_INTERVAL_BLOCKS;
             if (steem.isInSyncMode() || block._id % checkInterval === 0) {
                 try {
                     const currentSteemHead = await steem.getLatestSteemBlockNum();
@@ -159,8 +156,7 @@ export const chain = {
                             // Not in sync mode
                             // Evaluate entry conditions
                             const criticalLocalDelayThreshold = config.steemBlockMaxDelay || 10;
-                            const networkMedianEntryThreshold =
-                                config.steemBlockMaxDelay || Math.max(10, (config.steemBlockDelay || 10) * 1.5);
+                            const networkMedianEntryThreshold = config.steemBlockMaxDelay || Math.max(10, (config.steemBlockDelay || 10) * 1.5);
                             const witnessLagThreshold = config.steemBlockMaxDelay || config.steemBlockDelay || 10;
 
                             const activeWitnessAccounts = chain.schedule?.active_witnesses || config.witnesses || [];
@@ -170,8 +166,7 @@ export const chain = {
                             const isLocallyCritical = localSteemDelayCorrected > criticalLocalDelayThreshold;
                             const isNetworkMedianLagHigh = networkOverall.medianBehind > networkMedianEntryThreshold;
                             const areEnoughWitnessesLagging =
-                                activeWitnessAccounts.length > 0 &&
-                                networkOverall.witnessesBehindThreshold >= minWitnessesLaggingForEntryFactor;
+                                activeWitnessAccounts.length > 0 && networkOverall.witnessesBehindThreshold >= minWitnessesLaggingForEntryFactor;
 
                             let entryReason = '';
                             if (isLocallyCritical) entryReason += 'Local node critically lagging. ';
@@ -195,9 +190,7 @@ export const chain = {
                             }
                         }
                     } else {
-                        logger.warn(
-                            'Could not get currentSteemHead or ourLastProcessedSteemBlock for sync decision in chain.output.'
-                        );
+                        logger.warn('Could not get currentSteemHead or ourLastProcessedSteemBlock for sync decision in chain.output.');
                         outputLog += ' (Sync check skipped - missing Steem data)';
                     }
                 } catch (error) {
@@ -277,8 +270,7 @@ export const chain = {
 
                     cache.processRebuildOps(
                         () => {
-                            if (blockToRebuild._id % config.witnesses === 0)
-                                chain.schedule = witnessesModule.witnessSchedule(blockToRebuild);
+                            if (blockToRebuild._id % config.witnesses === 0) chain.schedule = witnessesModule.witnessSchedule(blockToRebuild);
                             chain.recentBlocks.push(blockToRebuild);
                             chain.output(blockToRebuild, true);
 
@@ -307,8 +299,7 @@ export const chain = {
                 try {
                     await mongo.getDb().collection('blocks').insertOne(block);
                 } catch (mongoError) {
-                    if (logger)
-                        logger.error(`Error inserting block into MongoDB after LevelDB fail: _id=${block._id}`, mongoError);
+                    if (logger) logger.error(`Error inserting block into MongoDB after LevelDB fail: _id=${block._id}`, mongoError);
                     return cb(mongoError);
                 }
             }
@@ -370,15 +361,11 @@ export const chain = {
     validateAndAddBlock: async (block: any, revalidate: boolean, cb: (err: any, newBlock: any) => void) => {
         if (chain.shuttingDown) return;
         const recoveryMode = p2p.recovering ? ' [RECOVERY]' : '';
-        logger.trace(
-            `validateAndAddBlock${recoveryMode}: Processing Block ID: ${block?._id}, Witness: ${block?.witness}, Timestamp: ${block?.timestamp}`
-        );
+        logger.trace(`validateAndAddBlock${recoveryMode}: Processing Block ID: ${block?._id}, Witness: ${block?.witness}, Timestamp: ${block?.timestamp}`);
         const isValid = await isValidNewBlock(block, revalidate, false);
         logger.trace(`validateAndAddBlock${recoveryMode}: isValidNewBlock for Block ID: ${block?._id} returned: ${isValid}`);
         if (!isValid) {
-            logger.warn(
-                `validateAndAddBlock${recoveryMode}: Block ID: ${block?._id} failed isValidNewBlock. Witness: ${block?.witness}`
-            );
+            logger.warn(`validateAndAddBlock${recoveryMode}: Block ID: ${block?._id} failed isValidNewBlock. Witness: ${block?.witness}`);
             return cb('Block failed basic validation', null);
         }
         logger.trace(`validateAndAddBlock: Block ID: ${block?._id} passed isValidNewBlock. Witness: ${block?.witness}`);
@@ -418,8 +405,7 @@ export const chain = {
             chain.addBlock(block, function () {
                 if (!p2p.recovering) p2p.broadcastBlock(block);
                 if (settings.useNotification) notifications.processBlock(block);
-                if (!p2p.recovering)
-                    for (let i = 0; i < block.txs.length; i++) transaction.eventConfirmation.emit(block.txs[i].hash);
+                if (!p2p.recovering) for (let i = 0; i < block.txs.length; i++) transaction.eventConfirmation.emit(block.txs[i].hash);
                 cb(null, block);
             });
         });
@@ -435,10 +421,7 @@ export const chain = {
                     transaction.isValid(tx, block.timestamp, (isValid: boolean, validationReason?: string) => {
                         if (!isValid) {
                             logger.error(`Transaction ${tx.hash} failed validation: ${validationReason}`);
-                            return seriesCallback(
-                                new Error(`Transaction validation failed for ${tx.hash}: ${validationReason}`),
-                                null
-                            );
+                            return seriesCallback(new Error(`Transaction validation failed for ${tx.hash}: ${validationReason}`), null);
                         }
                         if (revalidate) {
                             seriesCallback(null, { executed: true, distributed: 0 });

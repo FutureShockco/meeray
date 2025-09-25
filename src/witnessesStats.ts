@@ -83,8 +83,7 @@ const indexer: IWitnessIndexer = {
                         last: 0,
                     };
                 indexer.witnesses[block.txs[i].data.target]!.voters! += 1;
-                if (!indexer.updates.witnesses.includes(block.txs[i].data.target))
-                    indexer.updates.witnesses.push(block.txs[i].data.target);
+                if (!indexer.updates.witnesses.includes(block.txs[i].data.target)) indexer.updates.witnesses.push(block.txs[i].data.target);
             } else if (block.txs[i].type === 2) {
                 if (!indexer.witnesses[block.txs[i].data.target])
                     indexer.witnesses[block.txs[i].data.target] = {
@@ -94,8 +93,7 @@ const indexer: IWitnessIndexer = {
                         last: 0,
                     };
                 indexer.witnesses[block.txs[i].data.target]!.voters! -= 1;
-                if (!indexer.updates.witnesses.includes(block.txs[i].data.target))
-                    indexer.updates.witnesses.push(block.txs[i].data.target);
+                if (!indexer.updates.witnesses.includes(block.txs[i].data.target)) indexer.updates.witnesses.push(block.txs[i].data.target);
             } else if (block.txs[i].type === 18 && !indexer.witnesses[block.txs[i].sender]) {
                 indexer.witnesses[block.txs[i].sender] = {
                     produced: 0,

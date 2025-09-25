@@ -88,14 +88,7 @@ router.get('/', (async (req: Request, res: Response) => {
             query.timestamp.$lte = parseInt(req.query.maxTimestamp as string);
         }
         const sortDirection = req.query.sortDirection === 'asc' ? 1 : -1;
-        const blocksFromDB = await mongo
-            .getDb()
-            .collection('blocks')
-            .find(query)
-            .sort({ height: sortDirection })
-            .limit(limit)
-            .skip(skip)
-            .toArray();
+        const blocksFromDB = await mongo.getDb().collection('blocks').find(query).sort({ height: sortDirection }).limit(limit).skip(skip).toArray();
         const total = await mongo.getDb().collection('blocks').countDocuments(query);
         const blocks = blocksFromDB.map(transformBlockData);
         res.json({

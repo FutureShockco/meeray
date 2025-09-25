@@ -1,13 +1,13 @@
 import crypto from 'crypto';
 
 import cache from '../../cache.js';
+import config from '../../config.js';
 import logger from '../../logger.js';
 import { adjustUserBalance } from '../../utils/account.js';
-import { calculateDecimalAwarePrice, toBigInt, toDbString, formatTokenAmount } from '../../utils/bigint.js';
+import { calculateDecimalAwarePrice, formatTokenAmount, toBigInt, toDbString } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
 import { getLpTokenSymbol } from '../../utils/token.js';
 import { LiquidityPoolData, UserLiquidityPositionData } from './pool-interfaces.js';
-import config from '../../config.js';
 
 export async function createLiquidityPool(poolId: string, tokenA_symbol: string, tokenB_symbol: string): Promise<boolean> {
     try {
@@ -68,13 +68,7 @@ export async function createLpToken(tokenA_symbol: string, tokenB_symbol: string
     }
 }
 
-export async function createTradingPair(
-    poolId: string,
-    tokenA_symbol: string,
-    tokenB_symbol: string,
-    sender: string,
-    transactionId: string
-): Promise<boolean> {
+export async function createTradingPair(poolId: string, tokenA_symbol: string, tokenB_symbol: string, sender: string, transactionId: string): Promise<boolean> {
     try {
         const maxTradeAmount = toBigInt(config.maxValue) / toBigInt(1000);
         const tradingPairDocument = {
@@ -147,8 +141,7 @@ export async function updatePoolReserves(
         const BASE_MINIMUM = toBigInt(1000);
         const totalLiquidity = lpTokensToMint + BASE_MINIMUM;
         const ADAPTIVE_MINIMUM = totalLiquidity / toBigInt(1000);
-        minimumLiquidityBurned =
-            ADAPTIVE_MINIMUM > toBigInt(0) && ADAPTIVE_MINIMUM < BASE_MINIMUM ? ADAPTIVE_MINIMUM : BASE_MINIMUM;
+        minimumLiquidityBurned = ADAPTIVE_MINIMUM > toBigInt(0) && ADAPTIVE_MINIMUM < BASE_MINIMUM ? ADAPTIVE_MINIMUM : BASE_MINIMUM;
     }
     const totalLpTokensToAdd = isInitialLiquidity ? lpTokensToMint + minimumLiquidityBurned : lpTokensToMint;
     const poolUpdateSuccess = await cache.updateOnePromise(
@@ -172,34 +165,27 @@ export async function updatePoolReserves(
     return true;
 }
 
-export async function updateUserLiquidityPosition(
-    user: string,
-    poolId: string,
-    lpTokensToMint: bigint,
-    pool: LiquidityPoolData
-): Promise<boolean> {
+export async function updateUserLiquidityPosition(user: string, poolId: string, lpTokensToMint: bigint, pool: LiquidityPoolData): Promise<boolean> {
     const userPositionId = `${user}_${poolId}`;
     const existingUserPosDB = (await cache.findOnePromise('userLiquidityPositions', {
         _id: userPositionId,
     })) as UserLiquidityPositionData | null;
     const existingUserPos = existingUserPosDB
         ? {
-            ...existingUserPosDB,
-            lpTokenBalance: toBigInt(existingUserPosDB.lpTokenBalance),
-            feeGrowthEntryA: toBigInt(existingUserPosDB.feeGrowthEntryA || '0'),
-            feeGrowthEntryB: toBigInt(existingUserPosDB.feeGrowthEntryB || '0'),
-            unclaimedFeesA: toBigInt(existingUserPosDB.unclaimedFeesA || '0'),
-            unclaimedFeesB: toBigInt(existingUserPosDB.unclaimedFeesB || '0'),
-        }
+              ...existingUserPosDB,
+              lpTokenBalance: toBigInt(existingUserPosDB.lpTokenBalance),
+              feeGrowthEntryA: toBigInt(existingUserPosDB.feeGrowthEntryA || '0'),
+              feeGrowthEntryB: toBigInt(existingUserPosDB.feeGrowthEntryB || '0'),
+              unclaimedFeesA: toBigInt(existingUserPosDB.unclaimedFeesA || '0'),
+              unclaimedFeesB: toBigInt(existingUserPosDB.unclaimedFeesB || '0'),
+          }
         : null;
     let userPosUpdateSuccess = false;
     if (existingUserPos) {
         const deltaA = toBigInt(pool.feeGrowthGlobalA || '0') - toBigInt(existingUserPos.feeGrowthEntryA || '0');
         const deltaB = toBigInt(pool.feeGrowthGlobalB || '0') - toBigInt(existingUserPos.feeGrowthEntryB || '0');
-        const newUnclaimedFeesA =
-            (existingUserPos.unclaimedFeesA || toBigInt(0)) + (deltaA * existingUserPos.lpTokenBalance) / toBigInt(1e18);
-        const newUnclaimedFeesB =
-            (existingUserPos.unclaimedFeesB || toBigInt(0)) + (deltaB * existingUserPos.lpTokenBalance) / toBigInt(1e18);
+        const newUnclaimedFeesA = (existingUserPos.unclaimedFeesA || toBigInt(0)) + (deltaA * existingUserPos.lpTokenBalance) / toBigInt(1e18);
+        const newUnclaimedFeesB = (existingUserPos.unclaimedFeesB || toBigInt(0)) + (deltaB * existingUserPos.lpTokenBalance) / toBigInt(1e18);
         userPosUpdateSuccess = await cache.updateOnePromise(
             'userLiquidityPositions',
             { _id: userPositionId },
@@ -230,9 +216,7 @@ export async function updateUserLiquidityPosition(
         userPosUpdateSuccess = await new Promise<boolean>(resolve => {
             cache.insertOne('userLiquidityPositions', newUserPosition, (err, success) => {
                 if (err || !success) {
-                    logger.error(
-                        `[pool-helpers] Failed to insert new user position ${userPositionId}: ${err || 'insert not successful'}`
-                    );
+                    logger.error(`[pool-helpers] Failed to insert new user position ${userPositionId}: ${err || 'insert not successful'}`);
                     resolve(false);
                 } else {
                     resolve(true);
@@ -247,19 +231,11 @@ export async function updateUserLiquidityPosition(
     return true;
 }
 
-export async function creditLpTokens(
-    user: string,
-    tokenASymbol: string,
-    tokenBSymbol: string,
-    lpTokensToMint: bigint,
-    poolId: string
-): Promise<boolean> {
+export async function creditLpTokens(user: string, tokenASymbol: string, tokenBSymbol: string, lpTokensToMint: bigint, poolId: string): Promise<boolean> {
     const lpTokenSymbol = getLpTokenSymbol(tokenASymbol, tokenBSymbol);
     const existingLpToken = await cache.findOnePromise('tokens', { _id: lpTokenSymbol });
     if (!existingLpToken) {
-        logger.error(
-            `[pool-helpers] LP token ${lpTokenSymbol} does not exist for pool ${poolId}. This should be created during pool creation.`
-        );
+        logger.error(`[pool-helpers] LP token ${lpTokenSymbol} does not exist for pool ${poolId}. This should be created during pool creation.`);
         return false;
     }
     const creditLPSuccess = await adjustUserBalance(user, lpTokenSymbol, lpTokensToMint);
@@ -271,10 +247,7 @@ export async function creditLpTokens(
 }
 
 export async function findTradingPairId(tokenA: string, tokenB: string): Promise<string | null> {
-    const patterns = [
-        `${tokenA}_${tokenB}`,
-        `${tokenB}_${tokenA}`
-    ];
+    const patterns = [`${tokenA}_${tokenB}`, `${tokenB}_${tokenA}`];
     for (const pairId of patterns) {
         const tradingPair = await cache.findOnePromise('tradingPairs', { _id: pairId });
         if (tradingPair) {
@@ -283,7 +256,6 @@ export async function findTradingPairId(tokenA: string, tokenB: string): Promise
     }
     return null;
 }
-
 
 export async function recordPoolSwapTrade(params: {
     poolId: string;
@@ -295,19 +267,16 @@ export async function recordPoolSwapTrade(params: {
     transactionId: string;
 }): Promise<void> {
     try {
-
         const pairId = await findTradingPairId(params.tokenIn, params.tokenOut);
         if (!pairId) {
             logger.debug(`[pool-swap] No trading pair found for ${params.tokenIn}_${params.tokenOut}, skipping trade record`);
             return;
         }
 
-
         const pair = await cache.findOnePromise('tradingPairs', { _id: pairId });
         if (!pair) {
             logger.warn(`[pool-swap] Trading pair ${pairId} not found, using token symbols as-is`);
         }
-
 
         let baseSymbol, quoteSymbol, tradeSide: 'BUY' | 'SELL';
         let buyerUserId: string;
@@ -320,9 +289,7 @@ export async function recordPoolSwapTrade(params: {
             baseSymbol = pair.baseAssetSymbol;
             quoteSymbol = pair.quoteAssetSymbol;
 
-
             if (params.tokenOut === baseSymbol) {
-
                 tradeSide = 'BUY';
                 buyerUserId = params.sender;
                 sellerUserId = 'POOL';
@@ -331,7 +298,6 @@ export async function recordPoolSwapTrade(params: {
 
                 price = calculateDecimalAwarePrice(params.amountIn, params.amountOut, quoteSymbol, baseSymbol);
             } else if (params.tokenIn === baseSymbol) {
-
                 tradeSide = 'SELL';
                 buyerUserId = 'POOL';
                 sellerUserId = params.sender;
@@ -340,10 +306,7 @@ export async function recordPoolSwapTrade(params: {
 
                 price = calculateDecimalAwarePrice(params.amountOut, params.amountIn, quoteSymbol, baseSymbol);
             } else {
-
-                logger.warn(
-                    `[pool-swap] Could not determine trade side for ${params.tokenIn} -> ${params.tokenOut}, defaulting to buy`
-                );
+                logger.warn(`[pool-swap] Could not determine trade side for ${params.tokenIn} -> ${params.tokenOut}, defaulting to buy`);
                 tradeSide = 'BUY';
                 buyerUserId = params.sender;
                 sellerUserId = 'POOL';
@@ -352,7 +315,6 @@ export async function recordPoolSwapTrade(params: {
                 price = calculateDecimalAwarePrice(params.amountIn, params.amountOut, quoteSymbol, baseSymbol);
             }
         } else {
-
             baseSymbol = params.tokenOut;
             quoteSymbol = params.tokenIn;
             tradeSide = 'BUY';
@@ -362,7 +324,6 @@ export async function recordPoolSwapTrade(params: {
             volume = params.amountIn;
             price = calculateDecimalAwarePrice(params.amountIn, params.amountOut, quoteSymbol, baseSymbol);
         }
-
 
         const tradeId = crypto
             .createHash('sha256')
@@ -393,7 +354,6 @@ export async function recordPoolSwapTrade(params: {
             total: toDbString(volume),
         };
 
-
         await new Promise<void>((resolve, reject) => {
             cache.insertOne('trades', tradeRecord, (err, result) => {
                 if (err || !result) {
@@ -415,6 +375,7 @@ export async function recordPoolSwapTrade(params: {
             );
         } catch (e) {
             // Fallback to raw values if formatting fails for any reason
+            logger.debug(`[pool-swap] Could not format token amounts for logging, using raw values ${e}`);
             logger.debug(
                 `[pool-swap] Recorded trade: ${params.amountIn} ${params.tokenIn} -> ${params.amountOut} ${params.tokenOut} via pool ${params.poolId}`
             );
@@ -434,7 +395,6 @@ export async function claimFeesFromPool(
     lpTokenAmount?: bigint
 ): Promise<{ success: boolean; feesClaimedA: bigint; feesClaimedB: bigint; error?: string }> {
     try {
-
         const pool = (await cache.findOnePromise('liquidityPools', { _id: poolId })) as LiquidityPoolData | null;
         if (!pool) {
             return {
@@ -444,7 +404,6 @@ export async function claimFeesFromPool(
                 error: `Pool ${poolId} not found`,
             };
         }
-
 
         const userPositionId = `${user}_${poolId}`;
         const userPosition = (await cache.findOnePromise('userLiquidityPositions', {
@@ -459,7 +418,6 @@ export async function claimFeesFromPool(
             };
         }
 
-
         const currentFeeGrowthA = toBigInt(pool.feeGrowthGlobalA || '0');
         const currentFeeGrowthB = toBigInt(pool.feeGrowthGlobalB || '0');
         const userFeeGrowthEntryA = toBigInt(userPosition.feeGrowthEntryA || '0');
@@ -467,17 +425,13 @@ export async function claimFeesFromPool(
         const userUnclaimedFeesA = toBigInt(userPosition.unclaimedFeesA || '0');
         const userUnclaimedFeesB = toBigInt(userPosition.unclaimedFeesB || '0');
 
-
         const deltaA = currentFeeGrowthA - userFeeGrowthEntryA;
         const deltaB = currentFeeGrowthB - userFeeGrowthEntryB;
 
-
         const lpTokensToCalculate = lpTokenAmount || toBigInt(userPosition.lpTokenBalance);
-
 
         const newFeesA = (deltaA * lpTokensToCalculate) / toBigInt(1e18);
         const newFeesB = (deltaB * lpTokensToCalculate) / toBigInt(1e18);
-
 
         const totalClaimableFeesA = userUnclaimedFeesA + newFeesA;
         const totalClaimableFeesB = userUnclaimedFeesB + newFeesB;
@@ -485,7 +439,6 @@ export async function claimFeesFromPool(
         if (totalClaimableFeesA <= toBigInt(0) && totalClaimableFeesB <= toBigInt(0)) {
             return { success: true, feesClaimedA: toBigInt(0), feesClaimedB: toBigInt(0) };
         }
-
 
         if (totalClaimableFeesA > toBigInt(0)) {
             const creditASuccess = await adjustUserBalance(user, pool.tokenA_symbol, totalClaimableFeesA);
@@ -510,7 +463,6 @@ export async function claimFeesFromPool(
                 };
             }
         }
-
 
         const updateSuccess = await cache.updateOnePromise(
             'userLiquidityPositions',

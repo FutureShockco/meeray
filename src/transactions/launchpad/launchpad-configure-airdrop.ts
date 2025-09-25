@@ -75,9 +75,7 @@ export async function validateTx(data: LaunchpadConfigureAirdropData, sender: st
 
     // Check if tokenomics has airdrop allocation
     if (launchpad.tokenomicsSnapshot?.allocations) {
-        const airdropAllocation = launchpad.tokenomicsSnapshot.allocations.find(
-            (a: any) => a.recipient === TokenDistributionRecipient.AIRDROP_REWARDS
-        );
+        const airdropAllocation = launchpad.tokenomicsSnapshot.allocations.find((a: any) => a.recipient === TokenDistributionRecipient.AIRDROP_REWARDS);
 
         if (!airdropAllocation) {
             logger.warn('[launchpad-configure-airdrop] No AIRDROP_REWARDS allocation found in tokenomics.');
@@ -89,9 +87,7 @@ export async function validateTx(data: LaunchpadConfigureAirdropData, sender: st
         const maxAirdropAmount = (totalSupply * toBigInt(airdropAllocation.percentage)) / toBigInt(100);
 
         if (totalAirdropAmount > maxAirdropAmount) {
-            logger.warn(
-                `[launchpad-configure-airdrop] Total airdrop amount ${totalAirdropAmount} exceeds allocation ${maxAirdropAmount}.`
-            );
+            logger.warn(`[launchpad-configure-airdrop] Total airdrop amount ${totalAirdropAmount} exceeds allocation ${maxAirdropAmount}.`);
             return false;
         }
     }
@@ -131,9 +127,7 @@ export async function processTx(data: LaunchpadConfigureAirdropData, sender: str
             totalAmount: toDbString(data.recipients.reduce((sum, r) => sum + toBigInt(r.amount), toBigInt(0))),
         });
 
-        logger.debug(
-            `[launchpad-configure-airdrop] Airdrop configured for ${data.launchpadId} with ${data.recipients.length} recipients`
-        );
+        logger.debug(`[launchpad-configure-airdrop] Airdrop configured for ${data.launchpadId} with ${data.recipients.length} recipients`);
         return true;
     } catch (error) {
         logger.error(`[launchpad-configure-airdrop] Error processing: ${error}`);

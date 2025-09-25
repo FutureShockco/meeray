@@ -22,9 +22,7 @@ class BlockProcessor {
         logger.debug(`Processing block ${blockNum}, last processed: ${lastProcessedSteemBlockBySidechain}`);
 
         if (blockNum !== lastProcessedSteemBlockBySidechain + 1) {
-            logger.debug(
-                `Block ${blockNum} is not sequential. Expected ${lastProcessedSteemBlockBySidechain + 1}, returning null`
-            );
+            logger.debug(`Block ${blockNum} is not sequential. Expected ${lastProcessedSteemBlockBySidechain + 1}, returning null`);
             return null;
         }
 
@@ -62,9 +60,7 @@ class BlockProcessor {
             }
 
             this.processingBlocks = this.processingBlocks.filter(b => b !== blockNum);
-            logger.debug(
-                `Block processor returning result for block ${blockNum} with ${steemBlockResult.transactions.length} transactions`
-            );
+            logger.debug(`Block processor returning result for block ${blockNum} with ${steemBlockResult.transactions.length} transactions`);
             return steemBlockResult;
         } catch (error) {
             this.incrementConsecutiveErrors();
@@ -234,10 +230,7 @@ class BlockProcessor {
                     if (opData?.id === 'sidechain') {
                         try {
                             const jsonData = JSON.parse(opData.json);
-                            if (
-                                jsonData?.contract === tx.data?.contract &&
-                                JSON.stringify(jsonData.payload) === JSON.stringify(tx.data?.payload)
-                            ) {
+                            if (jsonData?.contract === tx.data?.contract && JSON.stringify(jsonData.payload) === JSON.stringify(tx.data?.payload)) {
                                 foundOnSteem = true;
                                 break;
                             }

@@ -80,12 +80,12 @@ export class LiquidityAggregator {
                         askDepth: depth.askDepth,
                     });
                 } else {
-                    logger.info(
+                    logger.debug(
                         `[LiquidityAggregator] NOT adding orderbook source for ${pair._id}: depth=${depth}, bidDepth=${depth?.bidDepth}, askDepth=${depth?.askDepth}`
                     );
                 }
             }
-            logger.info(`[LiquidityAggregator] Found ${sources.length} orderbook sources`);
+            logger.debug(`[LiquidityAggregator] Found ${sources.length} orderbook sources`);
         } catch (error) {
             logger.error(`[LiquidityAggregator] Error getting orderbook sources: ${error}`);
         }
@@ -138,9 +138,7 @@ export class LiquidityAggregator {
         const tokenInIsA = source.tokenA === tradeData.tokenIn;
         const reserveIn = tokenInIsA ? toBigInt(source.reserveA!) : toBigInt(source.reserveB!);
         const reserveOut = tokenInIsA ? toBigInt(source.reserveB!) : toBigInt(source.reserveA!);
-        logger.info(
-            `[LiquidityAggregator] Pool ${source.id} reserves: ${reserveIn} ${source.tokenA}, ${reserveOut} ${source.tokenB}`
-        );
+        logger.info(`[LiquidityAggregator] Pool ${source.id} reserves: ${reserveIn} ${source.tokenA}, ${reserveOut} ${source.tokenB}`);
         if (reserveIn <= 0n || reserveOut <= 0n) {
             logger.debug(`[LiquidityAggregator] Pool ${source.id} has insufficient reserves: ${reserveIn}/${reserveOut}`);
             return null;
@@ -194,12 +192,7 @@ export class LiquidityAggregator {
      * Get quote from orderbook
      */
     private async getOrderbookQuote(source: LiquiditySource, tradeData: HybridTradeData): Promise<any | null> {
-        // Implement orderbook quote calculation
         const amountIn = toBigInt(tradeData.amountIn);
-
-        logger.info(`[LiquidityAggregator] getOrderbookQuote called: source=${source.id}, amountIn=${amountIn}`);
-
-        // Determine if we're buying or selling the base asset
         const isBuyingBase = source.tokenA === tradeData.tokenOut;
 
         // For orderbook quotes, we need to match against the opposite side
@@ -220,9 +213,7 @@ export class LiquidityAggregator {
         );
 
         if (toBigInt(availableDepth) < amountIn) {
-            logger.warn(
-                `[LiquidityAggregator] Not enough orderbook liquidity: availableDepth=${availableDepth}, amountIn=${amountIn}`
-            );
+            logger.warn(`[LiquidityAggregator] Not enough orderbook liquidity: availableDepth=${availableDepth}, amountIn=${amountIn}`);
             return null;
         }
         const quoteDecimals = source.tokenB ? getTokenDecimals(source.tokenB) : 8;
@@ -242,14 +233,6 @@ export class LiquidityAggregator {
             // Scale properly: amountOut = (amountIn * price) / 10^baseDecimals
             amountOut = (amountIn * toBigInt(price)) / toBigInt(10 ** baseDecimals);
         }
-
-        logger.info(
-            `[LiquidityAggregator] Orderbook quote calculation: isBuyingBase=${isBuyingBase}, amountIn=${amountIn}, price=${price}, quoteDecimals=${quoteDecimals}, baseDecimals=${baseDecimals}, amountOut=${amountOut}`
-        );
-        logger.info(
-            `[LiquidityAggregator] Price formatting: raw price=${price}, formatted with quote decimals=${Number(price) / Math.pow(10, quoteDecimals)}, formatted with base decimals=${Number(price) / Math.pow(10, baseDecimals)}`
-        );
-
         return {
             type: 'ORDERBOOK',
             source,
@@ -277,9 +260,7 @@ export class LiquidityAggregator {
             const currentOutput = toBigInt(current.amountOut);
             const bestOutput = toBigInt(best.amountOut);
             if (currentOutput > bestOutput) {
-                logger.debug(
-                    `[LiquidityAggregator] Better quote found: ${current.type} with output ${currentOutput} vs ${bestOutput}`
-                );
+                logger.debug(`[LiquidityAggregator] Better quote found: ${current.type} with output ${currentOutput} vs ${bestOutput}`);
                 return current;
             }
             return best;
@@ -329,19 +310,8 @@ export class LiquidityAggregator {
             const bestAsk = asks.length > 0 ? toBigInt(asks[0].price || '0') : toBigInt(0);
 
             // Calculate available depth
-            const bidDepth = bids.reduce(
-                (total: bigint, order: any) => total + (toBigInt(order.quantity) - toBigInt(order.filledQuantity)),
-                toBigInt(0)
-            );
-            const askDepth = asks.reduce(
-                (total: bigint, order: any) => total + (toBigInt(order.quantity) - toBigInt(order.filledQuantity)),
-                toBigInt(0)
-            );
-
-            logger.info(
-                `[LiquidityAggregator] Orderbook depth for ${pairId}: bestBid=${bestBid}, bestAsk=${bestAsk}, bidDepth=${bidDepth}, askDepth=${askDepth}`
-            );
-
+            const bidDepth = bids.reduce((total: bigint, order: any) => total + (toBigInt(order.quantity) - toBigInt(order.filledQuantity)), toBigInt(0));
+            const askDepth = asks.reduce((total: bigint, order: any) => total + (toBigInt(order.quantity) - toBigInt(order.filledQuantity)), toBigInt(0));
             return { bestBid, bestAsk, bidDepth, askDepth };
         } catch (error) {
             logger.error(`[LiquidityAggregator] Error getting orderbook depth: ${error}`);
@@ -349,15 +319,10 @@ export class LiquidityAggregator {
         }
     }
 
-    /**
-     * Format amount for display
-     */
     private formatAmount(amount: bigint, tokenSymbol?: string): string {
-        // Use 8 decimals as fallback if no symbol provided
         const decimals = tokenSymbol ? getTokenDecimals(tokenSymbol) : 8;
         return (Number(amount) / Math.pow(10, decimals)).toFixed(decimals);
     }
 }
 
-// Export singleton instance
 export const liquidityAggregator = new LiquidityAggregator();

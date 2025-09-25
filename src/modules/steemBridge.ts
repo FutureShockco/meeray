@@ -153,24 +153,15 @@ export function startWorker(): void {
                     { returnDocument: 'after' as any, sort: { createdAt: 1 } }
                 );
             const withdrawDoc: any = (withdrawJob as any)?.value ?? withdrawJob;
-            const withdrawJobDoc: WithdrawDepositData | null =
-                withdrawDoc && (withdrawDoc as any)._id ? (withdrawDoc as WithdrawDepositData) : null;
+            const withdrawJobDoc: WithdrawDepositData | null = withdrawDoc && (withdrawDoc as any)._id ? (withdrawDoc as WithdrawDepositData) : null;
 
             if (withdrawJobDoc) {
                 delay = 200; // have backlog, poll a bit faster
                 try {
-                    const tx = await transfer(
-                        withdrawJobDoc.to,
-                        withdrawJobDoc.amount,
-                        withdrawJobDoc.symbol,
-                        withdrawJobDoc.memo ? withdrawJobDoc.memo : ''
-                    );
+                    const tx = await transfer(withdrawJobDoc.to, withdrawJobDoc.amount, withdrawJobDoc.symbol, withdrawJobDoc.memo ? withdrawJobDoc.memo : '');
                     await db
                         .collection('withdrawals')
-                        .updateOne(
-                            { _id: (withdrawJobDoc as any)._id },
-                            { $set: { status: 'done', updatedAt: new Date().toISOString(), txId: tx.id } }
-                        );
+                        .updateOne({ _id: (withdrawJobDoc as any)._id }, { $set: { status: 'done', updatedAt: new Date().toISOString(), txId: tx.id } });
                 } catch (err: any) {
                     await db.collection('withdrawals').updateOne(
                         { _id: (withdrawJobDoc as any)._id },
@@ -194,8 +185,7 @@ export function startWorker(): void {
                         { returnDocument: 'after' as any, sort: { createdAt: 1 } }
                     );
                 const depositDoc: any = (depositJob as any)?.value ?? depositJob;
-                const depositJobDoc: WithdrawDepositData | null =
-                    depositDoc && (depositDoc as any)._id ? (depositDoc as WithdrawDepositData) : null;
+                const depositJobDoc: WithdrawDepositData | null = depositDoc && (depositDoc as any)._id ? (depositDoc as WithdrawDepositData) : null;
 
                 if (depositJobDoc) {
                     delay = 200; // have backlog, poll a bit faster
@@ -208,10 +198,7 @@ export function startWorker(): void {
                         const tx = await broadcastTokenMint(mintData);
                         await db
                             .collection('deposits')
-                            .updateOne(
-                                { _id: (depositJobDoc as any)._id },
-                                { $set: { status: 'done', updatedAt: new Date().toISOString(), txId: tx.id } }
-                            );
+                            .updateOne({ _id: (depositJobDoc as any)._id }, { $set: { status: 'done', updatedAt: new Date().toISOString(), txId: tx.id } });
                     } catch (err: any) {
                         await db.collection('deposits').updateOne(
                             { _id: (depositJobDoc as any)._id },

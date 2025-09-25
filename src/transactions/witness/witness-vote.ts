@@ -26,8 +26,7 @@ export async function processTx(data: { target: string }, sender: string): Promi
         const senderAccount = await cache.findOnePromise('accounts', { name: sender });
         const originalVotedWitnesses = [...senderAccount!.votedWitnesses];
         const balanceStr = senderAccount!.balances?.[config.nativeTokenSymbol] || toBigInt(0);
-        const oldSharePerWitnessBigInt =
-            originalVotedWitnesses.length > 0 ? toBigInt(balanceStr) / toBigInt(originalVotedWitnesses.length) : toBigInt(0);
+        const oldSharePerWitnessBigInt = originalVotedWitnesses.length > 0 ? toBigInt(balanceStr) / toBigInt(originalVotedWitnesses.length) : toBigInt(0);
 
         const uniqueVotedWitnesses = new Set([...originalVotedWitnesses, data.target]);
         const newVotedWitnessesList = Array.from(uniqueVotedWitnesses);
@@ -46,20 +45,12 @@ export async function processTx(data: { target: string }, sender: string): Promi
                 if (newTotalVoteWeightBigInt < toBigInt(0)) {
                     newTotalVoteWeightBigInt = toBigInt(0);
                 }
-                await cache.updateOnePromise(
-                    'accounts',
-                    { name: witnessName },
-                    { $set: { totalVoteWeight: toDbString(newTotalVoteWeightBigInt) } }
-                );
+                await cache.updateOnePromise('accounts', { name: witnessName }, { $set: { totalVoteWeight: toDbString(newTotalVoteWeightBigInt) } });
             }
             const targetAccount = await cache.findOnePromise('accounts', { name: data.target });
             const currentTargetVoteWeightStr = targetAccount!.totalVoteWeight || toBigInt(0);
             const finalTargetVoteWeightBigInt = toBigInt(currentTargetVoteWeightStr) + newSharePerWitnessBigIntCalculated;
-            await cache.updateOnePromise(
-                'accounts',
-                { name: data.target },
-                { $set: { totalVoteWeight: toDbString(finalTargetVoteWeightBigInt) } }
-            );
+            await cache.updateOnePromise('accounts', { name: data.target }, { $set: { totalVoteWeight: toDbString(finalTargetVoteWeightBigInt) } });
             return true;
         } catch (updateError: any) {
             logger.error('Error updating accounts during witness vote:', updateError);

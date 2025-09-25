@@ -19,24 +19,18 @@ export async function validateTx(data: LaunchpadUpdateWhitelistData, sender: str
         }
 
         if (lp.issuer !== sender) {
-            logger.error(
-                `[launchpad-update-whitelist] validate failed: sender is not launchpad owner (sender=${sender} owner=${lp.issuer})`
-            );
+            logger.error(`[launchpad-update-whitelist] validate failed: sender is not launchpad owner (sender=${sender} owner=${lp.issuer})`);
             return false;
         }
 
         if (['ADD', 'REMOVE', 'REPLACE'].includes(data.action)) {
             if (!Array.isArray(data.addresses) || data.addresses.length === 0) {
-                logger.error(
-                    '[launchpad-update-whitelist] validate failed: addresses missing or not an array for action requiring addresses'
-                );
+                logger.error('[launchpad-update-whitelist] validate failed: addresses missing or not an array for action requiring addresses');
                 return false;
             }
             for (const addr of data.addresses) {
                 if (!validate.string(addr, 16, 3)) {
-                    logger.error(
-                        `[launchpad-update-whitelist] validate failed: invalid address in addresses array (address=${addr})`
-                    );
+                    logger.error(`[launchpad-update-whitelist] validate failed: invalid address in addresses array (address=${addr})`);
                     return false;
                 }
             }

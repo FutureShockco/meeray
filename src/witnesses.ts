@@ -84,9 +84,7 @@ export const witnessesModule = {
             }
 
             if (!account.totalVoteWeight || account.totalVoteWeight <= 0) {
-                logger.trace(
-                    `generateWitnesses: Account ${account.name} has no totalVoteWeight or totalVoteWeight is less than or equal to 0.`
-                );
+                logger.trace(`generateWitnesses: Account ${account.name} has no totalVoteWeight or totalVoteWeight is less than or equal to 0.`);
                 continue;
             }
 
@@ -103,13 +101,7 @@ export const witnessesModule = {
         }
         return witnesses.slice(start, limit);
     },
-    updateWitnessVoteWeights: async ({
-        sender,
-        balance,
-        targetWitness,
-        isVote,
-        isUnvote,
-    }: VoteWeightUpdate): Promise<boolean> => {
+    updateWitnessVoteWeights: async ({ sender, balance, targetWitness, isVote, isUnvote }: VoteWeightUpdate): Promise<boolean> => {
         try {
             const senderAccount = await cache.findOnePromise('accounts', { name: sender });
             if (!senderAccount) {
@@ -130,10 +122,8 @@ export const witnessesModule = {
                     $set: { votedWitnesses: newVotedWitnesses },
                 }
             );
-            const currentBalance =
-                balance !== undefined ? balance : toBigInt(senderAccount.balances?.[config.nativeTokenSymbol] || 0n);
-            const oldBalance =
-                senderAccount.previousBalance !== undefined ? toBigInt(senderAccount.previousBalance) : currentBalance;
+            const currentBalance = balance !== undefined ? balance : toBigInt(senderAccount.balances?.[config.nativeTokenSymbol] || 0n);
+            const oldBalance = senderAccount.previousBalance !== undefined ? toBigInt(senderAccount.previousBalance) : currentBalance;
             const oldShare = oldVotedWitnesses.length > 0 ? oldBalance / toBigInt(oldVotedWitnesses.length) : 0n;
             const newShare = newVotedWitnesses.length > 0 ? currentBalance / toBigInt(newVotedWitnesses.length) : 0n;
 

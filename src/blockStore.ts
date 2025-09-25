@@ -73,9 +73,7 @@ export const blocks: any = {
                 blocks.close();
                 process.exit(1);
             } else {
-                logger.info(
-                    'Inserting Block #0 with hash ' + (typeof config !== 'undefined' ? config.originHash : '[originHash]')
-                );
+                logger.info('Inserting Block #0 with hash ' + (typeof config !== 'undefined' ? config.originHash : '[originHash]'));
                 // blocks.appendBlock(chain.getGenesisBlock());
             }
         else {
@@ -141,8 +139,7 @@ export const blocks: any = {
     },
     read: (blockNum: number = 0) => {
         if (!blocks.isOpen) throw new Error(blocks.notOpenError);
-        else if (isNaN(blockNum) || parseInt(blockNum.toString()) < 0)
-            throw new Error('Block number must be a valid non-negative integer');
+        else if (isNaN(blockNum) || parseInt(blockNum.toString()) < 0) throw new Error('Block number must be a valid non-negative integer');
         else if (blockNum > blocks.height) throw new Error('Block not found');
 
         // Read position of block from index
@@ -175,10 +172,7 @@ export const blocks: any = {
         fs.readSync(blocks.fdIndex, indexBufEnd, { offset: 0, position: end * 8, length: 8 });
         const docPosition = Number(toBigInt(indexBuf.readUInt32LE(0)) << 8n) + indexBuf.readUInt32LE(4);
         const docPositionEnd = Number(toBigInt(indexBufEnd.readUInt32LE(0)) << 8n) + indexBufEnd.readUInt32LE(4);
-        assert(
-            toBigInt(docPosition) < blocks.bsonSize && toBigInt(docPositionEnd) < blocks.bsonSize,
-            'Bson position out of range'
-        );
+        assert(toBigInt(docPosition) < blocks.bsonSize && toBigInt(docPositionEnd) < blocks.bsonSize, 'Bson position out of range');
 
         // Read blocks BSON from start position to end position of last block
         const docSizeBufEnd = Buffer.alloc(4);

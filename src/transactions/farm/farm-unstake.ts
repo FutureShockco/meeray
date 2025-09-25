@@ -121,9 +121,7 @@ export async function processTx(data: FarmUnstakeData, sender: string, id: strin
                 { _id: userLpDestinationPositionId },
                 {
                     $set: {
-                        lpTokenBalance: toDbString(
-                            toBigInt(existingUserLiquidityPos.lpTokenBalance) + toBigInt(data.lpTokenAmount)
-                        ),
+                        lpTokenBalance: toDbString(toBigInt(existingUserLiquidityPos.lpTokenBalance) + toBigInt(data.lpTokenAmount)),
                         lastUpdatedAt: new Date().toISOString(),
                     },
                 }
@@ -153,9 +151,7 @@ export async function processTx(data: FarmUnstakeData, sender: string, id: strin
             });
         }
 
-        logger.debug(
-            `[farm-unstake] Staker ${data.staker} unstaked ${data.lpTokenAmount} LP tokens from farm ${data.farmId} to pool ${poolIdForLp}.`
-        );
+        logger.debug(`[farm-unstake] Staker ${data.staker} unstaked ${data.lpTokenAmount} LP tokens from farm ${data.farmId} to pool ${poolIdForLp}.`);
 
         // Log event
         await logTransactionEvent('farm_unstake', data.staker, {

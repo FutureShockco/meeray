@@ -6,9 +6,7 @@ import validate from '../../validation/index.js';
 import { LaunchpadConfigureTokenomicsData, LaunchpadStatus } from './launchpad-interfaces.js';
 
 export async function validateTx(data: LaunchpadConfigureTokenomicsData, sender: string): Promise<boolean> {
-    logger.debug(
-        `[launchpad-configure-tokenomics] Validating tokenomics config from ${sender} for launchpad ${data.launchpadId}`
-    );
+    logger.debug(`[launchpad-configure-tokenomics] Validating tokenomics config from ${sender} for launchpad ${data.launchpadId}`);
 
     // Validate that sender is launchpad owner
 
@@ -79,11 +77,7 @@ export async function validateTx(data: LaunchpadConfigureTokenomicsData, sender:
     return true;
 }
 
-export async function processTx(
-    data: LaunchpadConfigureTokenomicsData,
-    sender: string,
-    _transactionId: string
-): Promise<boolean> {
+export async function processTx(data: LaunchpadConfigureTokenomicsData, sender: string, _transactionId: string): Promise<boolean> {
     logger.debug(`[launchpad-configure-tokenomics] Processing tokenomics config from ${sender} for ${data.launchpadId}`);
 
     try {

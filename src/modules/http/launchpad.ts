@@ -4,31 +4,18 @@ import cache from '../../cache.js';
 import logger from '../../logger.js';
 import { toBigInt } from '../../utils/bigint.js';
 import { formatTokenAmountForResponse } from '../../utils/http.js';
-
-// Remove imports related to POST data and transaction module if no longer needed here
-// import { TransactionType } from '../../transactions/types.js';
-// import { LaunchpadLaunchTokenData } from '../../transactions/launchpad/launchpad-launch-token.js';
-// import { LaunchpadParticipatePresaleData } from '../../transactions/launchpad/launchpad-participate-presale.js';
-// import { LaunchpadClaimTokensData } from '../../transactions/launchpad/launchpad-claim-tokens.js';
-// import { Transaction as TransactionInterface } from '../../transactions/index.js';
+import { LaunchpadData } from '../../transactions/launchpad/launchpad-interfaces.js';
 
 const router: Router = express.Router();
 
-// Helper to transform numeric string fields in a launchpad object
 const transformLaunchpadData = (launchpadData: any): any => {
     if (!launchpadData) return launchpadData;
     const transformed = { ...launchpadData };
-
-    // Transform _id to id
     if (transformed._id && typeof transformed._id !== 'string') {
         transformed.id = transformed._id.toString();
         delete transformed._id;
     }
-
-    // Get token symbol for formatting
-    const tokenSymbol = transformed.tokenSymbol || 'UNKNOWN';
-
-    // Tokenomics Snapshot
+    const tokenSymbol = transformed.tokenSymbol || 'UNKNOWN'
     if (transformed.tokenomicsSnapshot) {
         const ts = { ...transformed.tokenomicsSnapshot };
         if (ts.totalSupply) {
@@ -36,7 +23,6 @@ const transformLaunchpadData = (launchpadData: any): any => {
             ts.totalSupply = formatted.amount;
             ts.rawTotalSupply = formatted.rawAmount;
         }
-        // allocations[].amount (if it exists and is a string)
         if (ts.allocations && Array.isArray(ts.allocations)) {
             ts.allocations = ts.allocations.map((alloc: any) => {
                 const transformedAlloc = { ...alloc };
@@ -50,16 +36,12 @@ const transformLaunchpadData = (launchpadData: any): any => {
         }
         transformed.tokenomicsSnapshot = ts;
     }
-
-    // Presale Data
     if (transformed.presale) {
         const presale = { ...transformed.presale };
         const presaleNumericFields = ['goal', 'raisedAmount', 'minContribution', 'maxContribution', 'tokenPrice'];
         for (const field of presaleNumericFields) {
             if (presale[field]) {
-                // For presale amounts, we need to determine the appropriate token symbol
-                // This might be the funding token (e.g., STEEM) or the project token
-                const appropriateSymbol = field === 'tokenPrice' ? tokenSymbol : 'STEEM'; // Assuming STEEM as funding token
+                const appropriateSymbol = field === 'tokenPrice' ? tokenSymbol : 'STEEM'; 
                 const formatted = formatTokenAmountForResponse(presale[field], appropriateSymbol);
                 presale[field] = formatted.amount;
                 presale[`raw${field.charAt(0).toUpperCase() + field.slice(1)}`] = formatted.rawAmount;
@@ -71,9 +53,8 @@ const transformLaunchpadData = (launchpadData: any): any => {
                 const participantNumericFields = ['amountContributed', 'tokensAllocated', 'claimedAmount'];
                 for (const field of participantNumericFields) {
                     if (participant[field]) {
-                        // Determine appropriate token symbol for each field
-                        const appropriateSymbol =
-                            field === 'tokensAllocated' || field === 'claimedAmount' ? tokenSymbol : 'STEEM';
+                        
+                        const appropriateSymbol = field === 'tokensAllocated' || field === 'claimedAmount' ? tokenSymbol : 'STEEM';
                         const formatted = formatTokenAmountForResponse(participant[field], appropriateSymbol);
                         participant[field] = formatted.amount;
                         participant[`raw${field.charAt(0).toUpperCase() + field.slice(1)}`] = formatted.rawAmount;
@@ -84,38 +65,32 @@ const transformLaunchpadData = (launchpadData: any): any => {
         }
         transformed.presale = presale;
     }
-
-    // Other potential top-level numeric fields
     const topLevelNumericFields = ['targetRaise', 'totalCommitted'];
     for (const field of topLevelNumericFields) {
         if (transformed[field]) {
-            // These are typically in the funding token (e.g., STEEM)
+            
             const formatted = formatTokenAmountForResponse(transformed[field], 'STEEM');
             transformed[field] = formatted.amount;
             transformed[`raw${field.charAt(0).toUpperCase() + field.slice(1)}`] = formatted.rawAmount;
         }
     }
-
     return transformed;
 };
 
-// GET endpoint to list all launchpad projects
-const listLaunchpadsHandler: RequestHandler = async (req: Request, res: Response) => {
+
+router.get('/', async (req: Request, res: Response) => {
     logger.debug('[API /launchpad] Received request to list launchpads');
     try {
         const query: any = {};
         if (req.query.status) {
             query.status = req.query.status;
         }
-        const launchpadsFromDB = await cache.findPromise('launchpads', query);
-
+        const launchpadsFromDB = await cache.findPromise('launchpads', query) as LaunchpadData[] | null;
         if (!launchpadsFromDB || launchpadsFromDB.length === 0) {
             logger.debug('[API /launchpad] No launchpads found or error fetching.');
-            // Return empty array if none found, consistent with other list endpoints
             res.status(200).json([]);
             return;
         }
-
         const launchpads = launchpadsFromDB.map(transformLaunchpadData);
         res.status(200).json(launchpads);
     } catch (error) {
@@ -126,12 +101,9 @@ const listLaunchpadsHandler: RequestHandler = async (req: Request, res: Response
             res.status(500).json({ error: 'Internal server error' });
         }
     }
-};
+});
 
-router.get('/', listLaunchpadsHandler);
-
-// TODO: Add GET endpoint for a specific launchpad: /launchpad/:launchpadId
-const getLaunchpadByIdHandler: RequestHandler = async (req: Request, res: Response) => {
+router.get('/:launchpadId', async (req: Request, res: Response) => {
     const { launchpadId } = req.params;
     logger.debug(`[API /launchpad/:launchpadId] Received request for launchpad: ${launchpadId}`);
     try {
@@ -153,15 +125,12 @@ const getLaunchpadByIdHandler: RequestHandler = async (req: Request, res: Respon
             res.status(500).json({ error: 'Internal server error' });
         }
     }
-};
-router.get('/:launchpadId', getLaunchpadByIdHandler);
+});
 
-// TODO: Add GET endpoint for user participation in a launchpad: /launchpad/:launchpadId/user/:userId
-const getUserParticipationHandler: RequestHandler = async (req: Request, res: Response) => {
+
+router.get('/:launchpadId/user/:userId', async (req: Request, res: Response) => {
     const { launchpadId, userId } = req.params;
-    logger.debug(
-        `[API /launchpad/:launchpadId/user/:userId] Received request for user ${userId} participation in launchpad ${launchpadId}`
-    );
+    logger.debug(`[API /launchpad/:launchpadId/user/:userId] Received request for user ${userId} participation in launchpad ${launchpadId}`);
     try {
         const launchpadFromDB = await cache.findOnePromise('launchpads', { _id: launchpadId });
 
@@ -171,14 +140,8 @@ const getUserParticipationHandler: RequestHandler = async (req: Request, res: Re
             return;
         }
 
-        // The launchpad itself might have fields to transform, though this route focuses on a participant
-        // For consistency, we could transform the whole launchpad then extract, or just transform participant data
-        // Let's assume the full launchpad transform might be too broad here if only participant is returned.
-
         if (!launchpadFromDB.presale || !launchpadFromDB.presale.participants) {
-            logger.debug(
-                `[API /launchpad/:launchpadId/user/:userId] Launchpad ${launchpadId} has no presale or participant data.`
-            );
+            logger.debug(`[API /launchpad/:launchpadId/user/:userId] Launchpad ${launchpadId} has no presale or participant data.`);
             res.status(404).json({ message: `No presale participation data found for launchpad ${launchpadId}` });
             return;
         }
@@ -186,18 +149,14 @@ const getUserParticipationHandler: RequestHandler = async (req: Request, res: Re
         const participantRaw = launchpadFromDB.presale.participants.find((p: any) => p.userId === userId);
 
         if (!participantRaw) {
-            logger.debug(
-                `[API /launchpad/:launchpadId/user/:userId] User ${userId} not found in participants for launchpad ${launchpadId}.`
-            );
+            logger.debug(`[API /launchpad/:launchpadId/user/:userId] User ${userId} not found in participants for launchpad ${launchpadId}.`);
             res.status(404).json({ message: `User ${userId} did not participate in launchpad ${launchpadId}` });
             return;
         }
 
-        // Transform only the participant object for this specific route
         const participant = { ...participantRaw };
         const tokenSymbol = launchpadFromDB.tokenSymbol || 'UNKNOWN';
 
-        // Format contribution amounts (in STEEM) and token amounts (in project token)
         if (participant.amountContributed) {
             const formatted = formatTokenAmountForResponse(participant.amountContributed, 'STEEM');
             participant.amountContributed = formatted.amount;
@@ -216,25 +175,19 @@ const getUserParticipationHandler: RequestHandler = async (req: Request, res: Re
 
         res.status(200).json(participant);
     } catch (error) {
-        logger.error(
-            `[API /launchpad/:launchpadId/user/:userId] Error fetching user participation for launchpad ${launchpadId}, user ${userId}:`,
-            error
-        );
+        logger.error(`[API /launchpad/:launchpadId/user/:userId] Error fetching user participation for launchpad ${launchpadId}, user ${userId}:`, error);
         if (error instanceof Error) {
             res.status(500).json({ error: 'Internal server error', details: error.message });
         } else {
             res.status(500).json({ error: 'Internal server error' });
         }
     }
-};
-router.get('/:launchpadId/user/:userId', getUserParticipationHandler);
+});
 
-// TODO: Add GET endpoint for claimable tokens for a user in a launchpad: /launchpad/:launchpadId/user/:userId/claimable
-const getClaimableTokensHandler: RequestHandler = async (req: Request, res: Response) => {
+
+router.get('/:launchpadId/user/:userId/claimable', async (req: Request, res: Response) => {
     const { launchpadId, userId } = req.params;
-    logger.debug(
-        `[API /launchpad/:launchpadId/user/:userId/claimable] Received request for claimable tokens for user ${userId} in launchpad ${launchpadId}`
-    );
+    logger.debug(`[API /launchpad/:launchpadId/user/:userId/claimable] Received request for claimable tokens for user ${userId} in launchpad ${launchpadId}`);
 
     try {
         const launchpadFromDB = (await cache.findOnePromise('launchpads', { _id: launchpadId })) as any | null;
@@ -245,7 +198,6 @@ const getClaimableTokensHandler: RequestHandler = async (req: Request, res: Resp
             return;
         }
 
-        // For calculations, convert to BigInt, then convert result back to string for response
         let totalAllocatedToUserBI = toBigInt(0);
         let claimedByUserBI = toBigInt(0);
 
@@ -255,15 +207,10 @@ const getClaimableTokensHandler: RequestHandler = async (req: Request, res: Resp
                 if (participantRaw.tokensAllocated && typeof participantRaw.tokensAllocated === 'string') {
                     totalAllocatedToUserBI += toBigInt(participantRaw.tokensAllocated);
                 }
-                // Assuming participantRaw.claimed might be a boolean or participantRaw.claimedAmount is a numeric string
+
                 if (participantRaw.claimedAmount && typeof participantRaw.claimedAmount === 'string') {
                     claimedByUserBI += toBigInt(participantRaw.claimedAmount);
-                } else if (
-                    participantRaw.claimed === true &&
-                    participantRaw.tokensAllocated &&
-                    typeof participantRaw.tokensAllocated === 'string'
-                ) {
-                    // If only a boolean `claimed` flag exists, and it's true, assume all presale tokensAllocated are claimed.
+                } else if (participantRaw.claimed === true && participantRaw.tokensAllocated && typeof participantRaw.tokensAllocated === 'string') {
                     claimedByUserBI += toBigInt(participantRaw.tokensAllocated);
                 }
             }
@@ -271,30 +218,21 @@ const getClaimableTokensHandler: RequestHandler = async (req: Request, res: Resp
 
         const tokenomics = launchpadFromDB.tokenomicsSnapshot;
         if (tokenomics && tokenomics.allocations && tokenomics.totalSupply) {
-            const totalSupplyBI =
-                typeof tokenomics.totalSupply === 'string' ? toBigInt(tokenomics.totalSupply) : toBigInt(tokenomics.totalSupply); // Ensure totalSupply is BigInt
+            const totalSupplyBI = typeof tokenomics.totalSupply === 'string' ? toBigInt(tokenomics.totalSupply) : toBigInt(tokenomics.totalSupply); 
             tokenomics.allocations.forEach((allocation: any) => {
                 if (allocation.customRecipientAddress === userId) {
-                    // Ensure allocation.amount is used if available, otherwise calculate from percentage
-                    let allocationAmountBI: bigint = toBigInt(0); // Initialize to 0
+                    let allocationAmountBI: bigint = toBigInt(0); 
                     if (allocation.amount && typeof allocation.amount === 'string') {
                         allocationAmountBI = toBigInt(allocation.amount);
                     } else if (allocation.percentage) {
-                        // Note: BigInt division truncates. For precision with percentages,
-                        // multiply first, then divide: (percentage * totalSupplyBI) / 100n
-                        // Or, ensure percentage calculations are done carefully if smallest units are critical.
-                        // Here, assuming percentage is a whole number like 10 for 10%.
-                        allocationAmountBI =
-                            (toBigInt(Math.round(allocation.percentage * 100)) * totalSupplyBI) / toBigInt(10000);
+                        allocationAmountBI = (toBigInt(Math.round(allocation.percentage * 100)) * totalSupplyBI) / toBigInt(10000);
                     }
                     if (allocationAmountBI) {
                         totalAllocatedToUserBI += allocationAmountBI;
-                        // TODO: Add logic for claimed amounts against specific non-presale allocations if needed
-                        // This might require a field like `allocation.claimedAmount` (numeric string)
                         if (allocation.claimedAmount && typeof allocation.claimedAmount === 'string') {
                             claimedByUserBI += toBigInt(allocation.claimedAmount);
                         } else if (allocation.claimed === true && allocationAmountBI) {
-                            claimedByUserBI += allocationAmountBI; // if boolean flag means fully claimed
+                            claimedByUserBI += allocationAmountBI; 
                         }
                     }
                 }
@@ -304,13 +242,9 @@ const getClaimableTokensHandler: RequestHandler = async (req: Request, res: Resp
         const claimableAmountBI = totalAllocatedToUserBI - claimedByUserBI;
         const tokenSymbol = launchpadFromDB.tokenSymbol || 'UNKNOWN';
 
-        // Format all amounts with proper decimals
         const totalAllocatedFormatted = formatTokenAmountForResponse(totalAllocatedToUserBI.toString(), tokenSymbol);
         const claimedFormatted = formatTokenAmountForResponse(claimedByUserBI.toString(), tokenSymbol);
-        const claimableFormatted = formatTokenAmountForResponse(
-            (claimableAmountBI < toBigInt(0) ? toBigInt(0) : claimableAmountBI).toString(),
-            tokenSymbol
-        );
+        const claimableFormatted = formatTokenAmountForResponse((claimableAmountBI < toBigInt(0) ? toBigInt(0) : claimableAmountBI).toString(), tokenSymbol);
 
         res.status(200).json({
             launchpadId,
@@ -333,10 +267,9 @@ const getClaimableTokensHandler: RequestHandler = async (req: Request, res: Resp
             res.status(500).json({ error: 'Internal server error' });
         }
     }
-};
-router.get('/:launchpadId/user/:userId/claimable', getClaimableTokensHandler);
+});
 
-// List participants with pagination
+
 router.get('/:launchpadId/participants', (async (req: Request, res: Response) => {
     try {
         const { launchpadId } = req.params;
@@ -355,7 +288,7 @@ router.get('/:launchpadId/participants', (async (req: Request, res: Response) =>
     }
 }) as RequestHandler);
 
-// Get whitelist and status
+
 router.get('/:launchpadId/whitelist', (async (req: Request, res: Response) => {
     try {
         const { launchpadId } = req.params;
@@ -370,7 +303,7 @@ router.get('/:launchpadId/whitelist', (async (req: Request, res: Response) => {
     }
 }) as RequestHandler);
 
-// Settlement preview
+
 router.get('/:launchpadId/settlement-preview', (async (req: Request, res: Response) => {
     try {
         const { launchpadId } = req.params;

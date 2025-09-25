@@ -15,9 +15,7 @@ export async function validateTx(data: { pub: string }, sender: string): Promise
             name: { $ne: sender },
         });
         if (existingWitnessWithKey) {
-            logger.warn(
-                `[witness-register:validation] Invalid witness register: public key ${data.pub} already in use by ${existingWitnessWithKey.name}.`
-            );
+            logger.warn(`[witness-register:validation] Invalid witness register: public key ${data.pub} already in use by ${existingWitnessWithKey.name}.`);
             return false;
         }
         return true;

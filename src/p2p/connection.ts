@@ -80,9 +80,7 @@ export class ConnectionManager {
                 // Check if trying to connect to self (localhost/127.0.0.1 + our port)
                 const isLocalhost = peerHost === 'localhost' || peerHost === '127.0.0.1' || peerHost === '::1';
                 if (isLocalhost && peerPort === P2P_RUNTIME_CONFIG.P2P_PORT) {
-                    logger.debug(
-                        `[SELF-CONNECTION] Skipping connection to self: ${peer} (our port: ${P2P_RUNTIME_CONFIG.P2P_PORT})`
-                    );
+                    logger.debug(`[SELF-CONNECTION] Skipping connection to self: ${peer} (our port: ${P2P_RUNTIME_CONFIG.P2P_PORT})`);
                     return;
                 }
             } catch {
@@ -132,10 +130,7 @@ export class ConnectionManager {
 
         // Check for duplicate connections
         for (const socket of this.state.sockets) {
-            if (
-                socket._socket.remoteAddress === ws._socket.remoteAddress &&
-                socket._socket.remotePort === ws._socket.remotePort
-            ) {
+            if (socket._socket.remoteAddress === ws._socket.remoteAddress && socket._socket.remotePort === ws._socket.remotePort) {
                 ws.close();
                 return;
             }
@@ -184,9 +179,7 @@ export class ConnectionManager {
             const totalWitnesses = config.witnesses || 5;
             const minPeersForConsensus = Math.ceil(totalWitnesses * 0.6);
 
-            logger.debug(
-                `Peer disconnected, ${this.state.sockets.length} total peers remaining (${currentPeerCount} with node status)`
-            );
+            logger.debug(`Peer disconnected, ${this.state.sockets.length} total peers remaining (${currentPeerCount} with node status)`);
 
             // Rate limiting for emergency actions
             const now = Date.now();
@@ -194,9 +187,7 @@ export class ConnectionManager {
             // Trigger emergency actions based on consensus requirements
             if (currentPeerCount < minPeersForConsensus) {
                 if (now - this.state.lastEmergencyDiscovery > P2P_CONFIG.EMERGENCY_COOLDOWN) {
-                    logger.warn(
-                        `[CONNECTION] Below consensus threshold! (${currentPeerCount}/${minPeersForConsensus}) - triggering emergency discovery`
-                    );
+                    logger.warn(`[CONNECTION] Below consensus threshold! (${currentPeerCount}/${minPeersForConsensus}) - triggering emergency discovery`);
                     this.state.lastEmergencyDiscovery = now;
                     if (steem.isInSyncMode()) {
                         logger.warn(`[CONNECTION] Exiting sync mode due to insufficient peers for consensus`);
@@ -212,9 +203,7 @@ export class ConnectionManager {
                     );
                 }
             } else if (currentPeerCount < minPeersForConsensus + 1) {
-                logger.debug(
-                    `[CONNECTION] Near consensus threshold (${currentPeerCount}/${minPeersForConsensus}) - requesting peer lists`
-                );
+                logger.debug(`[CONNECTION] Near consensus threshold (${currentPeerCount}/${minPeersForConsensus}) - requesting peer lists`);
                 // requestPeerLists() will be called by main P2P module
             }
         }

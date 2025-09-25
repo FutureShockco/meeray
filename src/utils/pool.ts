@@ -181,8 +181,7 @@ export function calculateLpTokensToMint(tokenA_amount: bigint, tokenB_amount: bi
         // This ensures small amounts can still provide liquidity
         const BASE_MINIMUM = toBigInt(1000);
         const ADAPTIVE_MINIMUM = liquidity / toBigInt(1000);
-        const MINIMUM_LIQUIDITY =
-            ADAPTIVE_MINIMUM > toBigInt(0) && ADAPTIVE_MINIMUM < BASE_MINIMUM ? ADAPTIVE_MINIMUM : BASE_MINIMUM;
+        const MINIMUM_LIQUIDITY = ADAPTIVE_MINIMUM > toBigInt(0) && ADAPTIVE_MINIMUM < BASE_MINIMUM ? ADAPTIVE_MINIMUM : BASE_MINIMUM;
 
         if (liquidity <= MINIMUM_LIQUIDITY) {
             return toBigInt(0); // Signal insufficient liquidity

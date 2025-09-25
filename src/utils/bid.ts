@@ -103,11 +103,7 @@ export function calculateMinimumBid(listing: NFTListingData, currentHighestBid?:
     }
 }
 
-export function validateBidAmount(
-    bidAmount: bigint,
-    listing: NFTListingData,
-    currentHighestBid?: NftBid
-): { valid: boolean; reason?: string } {
+export function validateBidAmount(bidAmount: bigint, listing: NFTListingData, currentHighestBid?: NftBid): { valid: boolean; reason?: string } {
     if (listing.auctionEndTime && new Date() > new Date(listing.auctionEndTime)) {
         return { valid: false, reason: 'Auction has ended' };
     }

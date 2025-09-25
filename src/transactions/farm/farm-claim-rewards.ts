@@ -98,15 +98,11 @@ export async function processTx(data: FarmClaimRewardsData, sender: string, id: 
         }
 
         if (pendingRewards <= toBigInt(0)) {
-            logger.warn(
-                `[farm-claim-rewards] No rewards available for ${data.staker} in farm ${data.farmId}. Elapsed: ${elapsedMs}ms`
-            );
+            logger.warn(`[farm-claim-rewards] No rewards available for ${data.staker} in farm ${data.farmId}. Elapsed: ${elapsedMs}ms`);
             return true; // Not an error, just no rewards
         }
 
-        logger.debug(
-            `[farm-claim-rewards] Calculated rewards for ${data.staker}: ${pendingRewards} (elapsedMs=${elapsedMs}, blocks=${blocksElapsed}).`
-        );
+        logger.debug(`[farm-claim-rewards] Calculated rewards for ${data.staker}: ${pendingRewards} (elapsedMs=${elapsedMs}, blocks=${blocksElapsed}).`);
 
         // Debit vault and credit user reward symbol (native farms should reward native token as well)
         const rewardSymbol = farm.rewardToken.symbol;
@@ -114,9 +110,7 @@ export async function processTx(data: FarmClaimRewardsData, sender: string, id: 
         if (vaultAccountName) {
             const debitVaultOk = await adjustUserBalance(vaultAccountName, rewardSymbol, -pendingRewards);
             if (!debitVaultOk) {
-                logger.error(
-                    `[farm-claim-rewards] Failed to debit vault ${vaultAccountName} for ${pendingRewards} ${rewardSymbol}.`
-                );
+                logger.error(`[farm-claim-rewards] Failed to debit vault ${vaultAccountName} for ${pendingRewards} ${rewardSymbol}.`);
                 return false;
             }
         }

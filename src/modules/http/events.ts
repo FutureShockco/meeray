@@ -14,10 +14,7 @@ const getPagination = (req: Request) => {
 router.get('/', (async (req: Request, res: Response) => {
     try {
         const { limit, skip } = getPagination(req);
-
         const query: any = {};
-
-        // Support new category + action structure with multiple values
         if (req.query.category) {
             const categories = Array.isArray(req.query.category) ? req.query.category : [req.query.category];
             query.category = categories.length === 1 ? categories[0] : { $in: categories };
@@ -28,7 +25,6 @@ router.get('/', (async (req: Request, res: Response) => {
             query.action = actions.length === 1 ? actions[0] : { $in: actions };
         }
 
-        // Legacy support for type field
         if (req.query.type) {
             query.type = req.query.type;
         }
@@ -42,8 +38,6 @@ router.get('/', (async (req: Request, res: Response) => {
         }
 
         if (req.query.poolId) {
-            // Search for poolId in the event data for pool-related events
-            // Pool create events use _id, while other pool events use poolId
             query.$or = [{ 'data.poolId': req.query.poolId }, { 'data._id': req.query.poolId }];
         }
 
@@ -54,18 +48,14 @@ router.get('/', (async (req: Request, res: Response) => {
             if (!query.timestamp) query.timestamp = {};
             query.timestamp.$lte = req.query.endTime;
         }
-
         const sortDirection = req.query.sortDirection === 'asc' ? 1 : -1;
-
         const events = await cache.findPromise('events', query, {
             sort: { timestamp: sortDirection },
             limit,
             skip,
         });
-
         const allEvents = await cache.findPromise('events', query);
         const total = allEvents ? allEvents.length : 0;
-
         res.json({
             success: true,
             data: events || [],
@@ -94,7 +84,6 @@ router.get('/types', (async (req: Request, res: Response) => {
     }
 }) as RequestHandler);
 
-// New endpoint: Get all categories and actions
 router.get('/categories', (async (req: Request, res: Response) => {
     try {
         const events = await cache.findPromise('events', {});
@@ -130,7 +119,6 @@ router.get('/categories', (async (req: Request, res: Response) => {
     }
 }) as RequestHandler);
 
-// New endpoint: Get event statistics by category
 router.get('/stats', (async (req: Request, res: Response) => {
     try {
         const events = await cache.findPromise('events', {});

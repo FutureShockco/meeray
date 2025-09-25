@@ -64,9 +64,7 @@ export async function calculateWeightedRewards(currentBlock: number): Promise<We
                     totalWeight,
                 });
 
-                logger.debug(
-                    `[farm-weights] Farm ${farm._id}: weight=${farmWeight}/${totalWeight}, reward=${farmReward.toString()}`
-                );
+                logger.debug(`[farm-weights] Farm ${farm._id}: weight=${farmWeight}/${totalWeight}, reward=${farmReward.toString()}`);
             }
         }
 
@@ -231,8 +229,7 @@ export async function getFarmWeightInfo(farmId: string): Promise<{
         // Assuming 1200 blocks per day (3 second blocks), 1 MRY per block
         const blocksPerDay = 1200;
         const totalDailyReward = toBigInt('1000000000000000000') * toBigInt(blocksPerDay); // 1200 MRY per day
-        const projectedDailyReward =
-            totalWeight > 0 ? (totalDailyReward * toBigInt(farmWeight)) / toBigInt(totalWeight) : toBigInt(0);
+        const projectedDailyReward = totalWeight > 0 ? (totalDailyReward * toBigInt(farmWeight)) / toBigInt(totalWeight) : toBigInt(0);
 
         return {
             farmId,

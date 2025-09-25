@@ -19,9 +19,7 @@ export async function validateTx(data: NFTUpdateMetadataData, sender: string): P
             return false;
         }
         if (data.uri !== undefined && (!validate.string(data.uri, 2048, 10) || !(data.uri.startsWith('http') || data.uri.startsWith('ipfs:')))) {
-            logger.warn(
-                '[nft-update] Invalid uri: incorrect format, or length (10-2048 chars), must start with http or ipfs:'
-            );
+            logger.warn('[nft-update] Invalid uri: incorrect format, or length (10-2048 chars), must start with http or ipfs:');
             return false;
         }
         if (data.coverUrl !== undefined && (!validate.string(data.coverUrl, 2048, 10) || !data.coverUrl.startsWith('http'))) {
@@ -49,9 +47,7 @@ export async function validateTx(data: NFTUpdateMetadataData, sender: string): P
         }
         return true;
     } catch (error) {
-        logger.error(
-            `[nft-update] Error validating NFT update for ${data.collectionSymbol}_${data.instanceId} by ${sender}: ${error}`
-        );
+        logger.error(`[nft-update] Error validating NFT update for ${data.collectionSymbol}_${data.instanceId} by ${sender}: ${error}`);
         return false;
     }
 }
@@ -61,9 +57,7 @@ export async function processTx(data: NFTUpdateMetadataData, sender: string, _id
         const fullInstanceId = `${data.collectionSymbol}_${data.instanceId}`;
         const nft = (await cache.findOnePromise('nfts', { _id: fullInstanceId })) as NFTTokenData | null;
         if (!nft || nft.owner !== sender) {
-            logger.error(
-                `[nft-update] CRITICAL: NFT ${fullInstanceId} not found or sender ${sender} is not owner during processing.`
-            );
+            logger.error(`[nft-update] CRITICAL: NFT ${fullInstanceId} not found or sender ${sender} is not owner during processing.`);
             return false;
         }
         const updateFields: any = {
@@ -78,11 +72,7 @@ export async function processTx(data: NFTUpdateMetadataData, sender: string, _id
         if (data.coverUrl !== undefined) {
             updateFields.coverUrl = data.coverUrl;
         }
-        const updateSuccess = await cache.updateOnePromise(
-            'nfts',
-            { _id: fullInstanceId, owner: sender }, 
-            { $set: updateFields }
-        );
+        const updateSuccess = await cache.updateOnePromise('nfts', { _id: fullInstanceId, owner: sender }, { $set: updateFields });
         if (!updateSuccess) {
             logger.error(`[nft-update] Failed to update NFT ${fullInstanceId}.`);
             return false;
@@ -97,9 +87,7 @@ export async function processTx(data: NFTUpdateMetadataData, sender: string, _id
         });
         return true;
     } catch (error) {
-        logger.error(
-            `[nft-update] Error processing NFT update for ${data.collectionSymbol}_${data.instanceId} by ${sender}: ${error}`
-        );
+        logger.error(`[nft-update] Error processing NFT update for ${data.collectionSymbol}_${data.instanceId} by ${sender}: ${error}`);
         return false;
     }
 }
