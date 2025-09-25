@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 
 import logger from '../../logger.js';
-import { toBigInt } from '../../utils/bigint.js';
+import { toBigInt, calculateDecimalAwarePrice, getTokenDecimals } from '../../utils/bigint.js';
 import { OrderBookLevelData, OrderData, OrderSide, OrderStatus, OrderType, TradeData } from './market-interfaces.js';
 
 function compareOrders(a: OrderData, b: OrderData, side: OrderSide): number {
@@ -92,7 +92,18 @@ export class OrderBook {
             if (quantityToTrade <= 0n) {
                 continue;
             }
-            const tradePrice = toBigInt(makerOrder.price);
+            // Calculate price/total as quote per base using helpers and token decimals
+            const baseSymbol = makerOrder.baseAssetSymbol || '';
+            const quoteSymbol = makerOrder.quoteAssetSymbol || '';
+            const baseDecimals = getTokenDecimals(baseSymbol);
+            const quoteDecimals = getTokenDecimals(quoteSymbol);
+            // Calculate the quote total for this trade (in quote smallest units)
+            // makerOrder.price is price expressed as quote-per-base scaled integer
+            // total = price * quantity / 10^baseDecimals
+            const quoteAmount = (toBigInt(makerOrder.price) * quantityToTrade) / (10n ** BigInt(baseDecimals));
+            logger.info(`[OrderBook:DEBUG] scaled price formula: quantityToTrade=${quantityToTrade}, quoteAmount=${quoteAmount}, base=${baseSymbol} (${baseDecimals}), quote=${quoteSymbol} (${quoteDecimals}), side=${takerOrder.side}`);
+            // Use centralized decimal-aware price calculation to produce the stored price value
+            const tradePrice = calculateDecimalAwarePrice(quoteAmount, quantityToTrade, quoteSymbol, baseSymbol);
             const tradeId = crypto
                 .createHash('sha256')
                 .update(`${this.pairId}_${makerOrder._id}_${takerOrder._id}_${quantityToTrade}_${tradePrice}`)
@@ -116,9 +127,11 @@ export class OrderBook {
                 feeCurrency: makerOrder.quoteAssetSymbol || '',
                 makerFee: 0n,
                 takerFee: 0n,
-                total: tradePrice * quantityToTrade,
+                // total should be the quote amount in smallest units
+                total: quoteAmount,
                 maker: makerOrder.userId,
                 taker: takerOrder.userId,
+                side: takerOrder.side, // <-- set side for API/UI
             };
             trades.push(trade);
             takerQuantityRemaining = takerQuantityRemaining - quantityToTrade;

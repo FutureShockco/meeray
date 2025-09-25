@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import cache from '../../cache.js';
 import logger from '../../logger.js';
 import { adjustUserBalance } from '../../utils/account.js';
-import { calculateDecimalAwarePrice, toBigInt, toDbString } from '../../utils/bigint.js';
+import { calculateDecimalAwarePrice, toBigInt, toDbString, formatTokenAmount } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
 import { getLpTokenSymbol } from '../../utils/token.js';
 import { LiquidityPoolData, UserLiquidityPositionData } from './pool-interfaces.js';
@@ -407,9 +407,18 @@ export async function recordPoolSwapTrade(params: {
             });
         });
 
-        logger.debug(
-            `[pool-swap] Recorded trade: ${params.amountIn} ${params.tokenIn} -> ${params.amountOut} ${params.tokenOut} via pool ${params.poolId}`
-        );
+        try {
+            const formattedIn = formatTokenAmount(params.amountIn, params.tokenIn);
+            const formattedOut = formatTokenAmount(params.amountOut, params.tokenOut);
+            logger.debug(
+                `[pool-swap] Recorded trade: ${params.amountIn} (${formattedIn} ${params.tokenIn}) -> ${params.amountOut} (${formattedOut} ${params.tokenOut}) via pool ${params.poolId}`
+            );
+        } catch (e) {
+            // Fallback to raw values if formatting fails for any reason
+            logger.debug(
+                `[pool-swap] Recorded trade: ${params.amountIn} ${params.tokenIn} -> ${params.amountOut} ${params.tokenOut} via pool ${params.poolId}`
+            );
+        }
     } catch (error) {
         logger.error(`[pool-swap] Error recording trade: ${error}`);
     }

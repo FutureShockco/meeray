@@ -111,31 +111,26 @@ export function calculateDecimalAwarePrice(
     tokenOutSymbol: string
 ): bigint {
     if (amountOut <= 0n || amountIn <= 0n) return 0n;
-    const tokenInDecimals = getTokenDecimals(tokenInSymbol);
-    const tokenOutDecimals = getTokenDecimals(tokenOutSymbol);
-    const decimalDifference = tokenOutDecimals - tokenInDecimals;
-    let price: bigint;
+    // amountIn is in tokenIn smallest units (quote), amountOut is in tokenOut smallest units (base)
+    // Desired price (quote per base) scaled to quote decimals is:
+    // price = (amountIn * 10^baseDecimals) / amountOut
     try {
-        const quoteDecimals = getTokenDecimals(tokenOutSymbol);
-        const quoteScale = 10n ** BigInt(quoteDecimals);
-        if (decimalDifference >= 0) {
-            const scalingFactor = 10n ** BigInt(decimalDifference);
-            price = (amountIn * scalingFactor * quoteScale) / amountOut;
-        } else {
-            const scalingFactor = 10n ** BigInt(-decimalDifference);
-            price = (amountIn * quoteScale) / (amountOut * scalingFactor);
+        const baseDecimals = getTokenDecimals(tokenOutSymbol);
+        const scale = 10n ** BigInt(baseDecimals);
+    // Use rounding to nearest integer: (numerator + denom/2) / denom
+    const numerator = amountIn * scale;
+    const price = (numerator + amountOut / 2n) / amountOut;
+        if (price < 0n) {
+            logger.error(
+                `[calculateDecimalAwarePrice] CRITICAL: Negative price calculated! amountIn: ${amountIn}, amountOut: ${amountOut}, baseDecimals: ${baseDecimals}`
+            );
+            return 0n;
         }
+        return price;
     } catch (err) {
         logger.error(`[calculateDecimalAwarePrice] Error computing price: ${String(err)}`);
         return 0n;
     }
-    if (price < 0n) {
-        logger.error(
-            `[calculateDecimalAwarePrice] CRITICAL: Negative price calculated! amountIn: ${amountIn}, amountOut: ${amountOut}, decimals: ${tokenInDecimals}/${tokenOutDecimals}`
-        );
-        return 0n;
-    }
-    return price;
 }
 
 /**

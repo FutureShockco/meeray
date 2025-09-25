@@ -3,7 +3,7 @@ import { OrderBook } from './orderbook.js';
 import logger from '../../logger.js';
 import cache from '../../cache.js';
 import { adjustUserBalance } from '../../utils/account.js';
-import { toBigInt, toDbString, calculateTradeValue } from '../../utils/bigint.js';
+import { toBigInt, toDbString, calculateTradeValue, calculateDecimalAwarePrice } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 import { generatePoolId } from '../../utils/pool.js';
 
@@ -431,12 +431,28 @@ class MatchingEngine {
       });
     }
 
+
     const matchOutput = orderBook.matchOrder(takerOrder);
-    const tradesAppFormat: TradeData[] = matchOutput.trades.map(t => ({
-      ...t,
-      price: toBigInt(t.price),
-      quantity: toBigInt(t.quantity)
-    }));
+    // Unify price calculation for all trades using calculateDecimalAwarePrice
+    const tradesAppFormat: TradeData[] = matchOutput.trades.map(t => {
+      // Determine trade side and assign base/quote symbols
+      // For orderbook, t.side should be 'BUY' or 'SELL', and t.quantity is always in base asset
+      const baseSymbol = t.baseAssetSymbol || pairDetails?.baseAssetSymbol;
+      const quoteSymbol = t.quoteAssetSymbol || pairDetails?.quoteAssetSymbol;
+      let price: bigint;
+      if (t.side === 'BUY') {
+        // Buying base, paying quote: price = quote per base
+        price = calculateDecimalAwarePrice(toBigInt(t.total), toBigInt(t.quantity), quoteSymbol, baseSymbol);
+      } else {
+        // Selling base, receiving quote: price = quote per base
+        price = calculateDecimalAwarePrice(toBigInt(t.total), toBigInt(t.quantity), quoteSymbol, baseSymbol);
+      }
+      return {
+        ...t,
+        price,
+        quantity: toBigInt(t.quantity)
+      };
+    });
 
     // Handle remaining portion of partially filled limit orders
     if (matchOutput.takerOrderRemaining && matchOutput.takerOrderRemaining.type === OrderType.LIMIT) {
