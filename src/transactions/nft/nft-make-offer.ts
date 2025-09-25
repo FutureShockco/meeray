@@ -176,7 +176,7 @@ export async function processTx(data: NftMakeOfferData, sender: string, _id: str
         // Create offer document
         const offerId = generateOfferId(data.targetType, data.targetId, sender, timestamp);
         // Normalize stored target type to lowercase to match interfaces
-        const storedTargetType = String(data.targetType).toLowerCase() as 'nft' | 'collection' | 'trait';
+        const storedTargetType = String(data.targetType).toUpperCase() as 'NFT' | 'COLLECTION' | 'TRAIT';
         const offerDocument: NftOffer = {
             _id: offerId,
             targetType: storedTargetType,
@@ -187,7 +187,7 @@ export async function processTx(data: NftMakeOfferData, sender: string, _id: str
                 symbol: data.paymentTokenSymbol,
                 issuer: data.paymentTokenIssuer,
             },
-            status: 'active',
+            status: 'ACTIVE',
             createdAt: new Date().toISOString(),
             escrowedAmount: toDbString(offerAmount),
         };
