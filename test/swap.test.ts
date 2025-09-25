@@ -5,6 +5,9 @@ import cache from '../src/cache.js';
 import * as accountUtils from '../src/utils/account.js';
 import { toBigInt } from '../src/utils/bigint.js';
 
+// Capture in-test log messages instead of spamming stdout so tests can assert on them later if desired
+const capturedLogs: string[] = [];
+
 const _tests: Array<{ desc: string; fn: () => Promise<void> | void }> = [];
 function it(desc: string, fn: () => Promise<void> | void) {
     _tests.push({ desc, fn });
@@ -50,6 +53,12 @@ it('processSingleHopSwap succeeds and updates balances & pool', async () => {
             // Provide a generic account doc with broad balances so adjustUserBalance can operate
             return { name, balances: { TKN_A: '1000000', TKN_B: '1000000', A: '1000000', B: '1000000', C: '1000000' } };
         }
+        // Return a trading pair so pool swaps record trades
+        if (collection === 'tradingPairs' && (query._id === 'TKN_A_TKN_B' || query._id === 'TKN_B_TKN_A')) {
+            return { _id: query._id, baseAssetSymbol: 'TKN_A', quoteAssetSymbol: 'TKN_B' } as any;
+        }
+        // capture unexpected reads for debugging without printing to stdout
+        capturedLogs.push(`[findOnePromise] ${collection} ${JSON.stringify(query)}`);
         return null;
     });
 
@@ -57,7 +66,20 @@ it('processSingleHopSwap succeeds and updates balances & pool', async () => {
     const updateCalls: Array<any> = [];
     const restoreUpdate = stub(cache, 'updateOnePromise', async (collection: string, query: any, update: any) => {
         updateCalls.push({ collection, query, update });
+        capturedLogs.push(`[updateOnePromise] ${collection} ${JSON.stringify(query)} ${JSON.stringify(update)}`);
         return true;
+    });
+
+    // Capture insertOne trade records
+    const tradeInserts: any[] = [];
+    const restoreInsert = stub(cache, 'insertOne', (collection: string, doc: any, cb: any) => {
+        if (collection === 'trades') {
+            tradeInserts.push(doc);
+            capturedLogs.push(`[insertOne trades] ${JSON.stringify(doc)}`);
+            return cb(null, true);
+        }
+        // default success for other inserts
+        return cb(null, true);
     });
 
 
@@ -88,8 +110,15 @@ it('processSingleHopSwap succeeds and updates balances & pool', async () => {
     if (accountUpdates.length < 2) throw new Error(`Expected at least 2 account updates, got ${accountUpdates.length}`);
     if (poolUpdates.length < 1) throw new Error(`Expected at least 1 pool update, got ${poolUpdates.length}`);
 
+    // Validate trade record was inserted and has expected shape
+    if (tradeInserts.length < 1) throw new Error('Expected at least 1 trade insert for single-hop swap');
+    const tr = tradeInserts[0];
+    if (!tr._id || typeof tr._id !== 'string' || tr._id.length < 4) throw new Error('Trade record _id missing or invalid');
+    if (!tr.price || !tr.quantity || !tr.volume) throw new Error('Trade record missing price/quantity/volume');
+
     restoreFind();
     restoreUpdate();
+    restoreInsert();
     accountUtils.__setTestHooks({});
 });
 
@@ -122,9 +151,9 @@ it('processRoutedSwap multi-hop succeeds and credits final output once', async (
     const sender = 'bob';
     const txid = 'tx2';
 
-    // Stub cache.findOnePromise to return pool1 for p1 and pool2 for p2
+    // Stub cache.findOnePromise to return pool1 for p1 and pool2 for p2 and trading pairs
     const restoreFind2 = stub(cache, 'findOnePromise', async (collection: string, query: any) => {
-        console.log('[test.stub] findOnePromise called for', collection, JSON.stringify(query));
+        capturedLogs.push(`[findOnePromise] ${collection} ${JSON.stringify(query)}`);
         if (collection === 'liquidityPools') {
             if (query._id === 'p1') return pool1;
             if (query._id === 'p2') return pool2;
@@ -133,15 +162,31 @@ it('processRoutedSwap multi-hop succeeds and credits final output once', async (
             const name = query.name || query._id || 'unknown';
             return { name, balances: { A: '1000000', B: '1000000', C: '1000000', TKN_A: '1000000', TKN_B: '1000000' } };
         }
+        if (collection === 'tradingPairs') {
+            if (query._id === 'A_B') return { _id: 'A_B', baseAssetSymbol: 'A', quoteAssetSymbol: 'B' } as any;
+            if (query._id === 'B_C') return { _id: 'B_C', baseAssetSymbol: 'B', quoteAssetSymbol: 'C' } as any;
+        }
         return null;
     });
 
     // Capture updateOnePromise calls to inspect account changes and pool writes
     const updateCalls2: Array<any> = [];
     const restoreUpdate2 = stub(cache, 'updateOnePromise', async (collection: string, query: any, update: any) => {
-        console.log('[test.stub] updateOnePromise called for', collection, JSON.stringify(query), JSON.stringify(update));
         updateCalls2.push({ collection, query, update });
+        capturedLogs.push(`[updateOnePromise] ${collection} ${JSON.stringify(query)} ${JSON.stringify(update)}`);
         return true;
+    });
+
+
+    // Capture trade inserts for routed swap
+    const tradeInserts2: any[] = [];
+    const restoreInsert2 = stub(cache, 'insertOne', (collection: string, doc: any, cb: any) => {
+        if (collection === 'trades') {
+            tradeInserts2.push(doc);
+            capturedLogs.push(`[insertOne trades] ${JSON.stringify(doc)}`);
+            return cb(null, true);
+        }
+        return cb(null, true);
     });
 
 
@@ -170,11 +215,13 @@ it('processRoutedSwap multi-hop succeeds and credits final output once', async (
 
     restoreFind2();
     restoreUpdate2();
+    restoreInsert2();
     // Clear test hooks
     accountUtils.__setTestHooks({});
 });
 
-console.log('Swap tests queued.');
+    // Tests queued (captured for debugging if needed)
+    capturedLogs.push('Swap tests queued');
 
 it('processRoutedSwap fails mid-hop and does not credit final token', async () => {
     const pool1 = {
@@ -207,7 +254,7 @@ it('processRoutedSwap fails mid-hop and does not credit final token', async () =
 
     // Stub pool reads
     const restoreFind = stub(cache, 'findOnePromise', async (collection: string, query: any) => {
-        console.log('[test.stub] findOnePromise called for', collection, JSON.stringify(query));
+        capturedLogs.push(`[findOnePromise] ${collection} ${JSON.stringify(query)}`);
         if (collection === 'liquidityPools') {
             if (query._id === 'p1') return pool1;
             if (query._id === 'p2') return pool2;
@@ -225,6 +272,7 @@ it('processRoutedSwap fails mid-hop and does not credit final token', async () =
     const restoreUpdate = stub(cache, 'updateOnePromise', async (collection: string, query: any, update: any) => {
         updateCount++;
         updateCalls3.push({ collection, query, update });
+        capturedLogs.push(`[updateOnePromise] ${collection} ${JSON.stringify(query)} ${JSON.stringify(update)}`);
         // Let first pool update succeed, second fail
         if (collection === 'liquidityPools' && updateCount === 2) return false;
         return true;

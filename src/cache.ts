@@ -143,6 +143,12 @@ interface CacheType extends CacheMainDataCollections {
 
 let db: Db | null = null; // Changed declaration
 
+// Test hooks seam for easier stubbing in tests
+const TEST_HOOKS: any = {};
+export function __setTestHooks(hooks: any) {
+    Object.assign(TEST_HOOKS, hooks);
+}
+
 export const setMongoDbInstance = (mongoDbInstance: Db): void => {
     if (!mongoDbInstance) {
         logger.fatal('[CACHE] Attempted to set a null or undefined MongoDB instance to cache.');
@@ -261,12 +267,14 @@ const cache: CacheType = {
     },
 
     findOnePromise: function (collection, query, skipClone) {
+        if (TEST_HOOKS.findOnePromise) return TEST_HOOKS.findOnePromise(collection, query, skipClone);
         return new Promise((rs, rj) => {
             this.findOne(collection, query, (e, d) => (e ? rj(e) : rs(d === undefined ? null : d)), skipClone);
         });
     },
 
     findPromise: async function (collection, query, options, skipClone) {
+        if (TEST_HOOKS.findPromise) return TEST_HOOKS.findPromise(collection, query, options, skipClone);
         if (!db) {
             logger.error(`[CACHE findPromise] Database not initialized for ${collection}.`);
             return Promise.resolve(null); // Or throw new Error('Database not initialized');
@@ -290,6 +298,7 @@ const cache: CacheType = {
     },
 
     findOne: function (collection, query, cb, skipClone) {
+        if (TEST_HOOKS.findOne) return TEST_HOOKS.findOne(collection, query, cb, skipClone);
         const collectionName = collection as keyof CacheMainDataCollections;
 
         // DEBUGGING LOGS START
@@ -337,12 +346,14 @@ const cache: CacheType = {
     },
 
     updateOnePromise: function (collection, query, changes) {
+        if (TEST_HOOKS.updateOnePromise) return TEST_HOOKS.updateOnePromise(collection, query, changes);
         return new Promise((rs, rj) => {
             this.updateOne(collection, query, changes, (e, d) => (e ? rj(e) : rs(d || false)));
         });
     },
 
     deleteOnePromise: async function (collection, query) {
+        if (TEST_HOOKS.deleteOnePromise) return TEST_HOOKS.deleteOnePromise(collection, query);
         if (!db) {
             logger.error(`[CACHE deleteOnePromise] Database not initialized for ${collection}.`);
             return Promise.resolve(false);
@@ -387,6 +398,7 @@ const cache: CacheType = {
         }
     },
     updateOne: function (collection, query, changes, cb) {
+        if (TEST_HOOKS.updateOne) return TEST_HOOKS.updateOne(collection, query, changes, cb);
         if (!db) return cb(new Error('Database not initialized'));
         const collectionName = collection as keyof CacheMainDataCollections;
         const copyCollectionName = collection as keyof CacheCopyCollections;
@@ -571,6 +583,7 @@ const cache: CacheType = {
     },
 
     insertOnePromise: function (collection, document) {
+        if (TEST_HOOKS.insertOnePromise) return TEST_HOOKS.insertOnePromise(collection, document);
         return new Promise((rs, rj) => {
             this.insertOne(collection, document, (e, d) => (e ? rj(e) : rs(d || false)));
         });

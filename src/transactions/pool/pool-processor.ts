@@ -36,6 +36,12 @@ export async function validateSingleHopSwap(data: PoolSwapData, senderAccount: A
     return true;
 }
 
+// Test hooks seam: allow tests to override behavior without replacing exports
+export const TEST_HOOKS: any = {};
+export function __setTestHooks(hooks: any) {
+    Object.assign(TEST_HOOKS, hooks);
+}
+
 export async function validateRoutedSwap(data: PoolSwapData, traderAccount: Account): Promise<boolean> {
     try {
         // Validate input data

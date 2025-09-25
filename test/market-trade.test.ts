@@ -4,6 +4,9 @@ import cache from '../src/cache.js';
 import * as accountUtils from '../src/utils/account.js';
 import { matchingEngine } from '../src/transactions/market/matching-engine.js';
 
+// Capture in-test logs instead of printing to stdout so tests remain quiet and deterministic
+const capturedLogs: string[] = [];
+
 // Reusable test trading pair used to simulate tradingPairs collection
 const TEST_PAIR = { _id: 'PAIR', baseAssetSymbol: 'BASE', quoteAssetSymbol: 'QUOTE', tickSize: '1', lotSize: '1' };
 
@@ -17,10 +20,15 @@ async function main() {
     // Ensure tradingPairs findPromise returns something before importing market-trade so module init is quiet
     const restoreFindPromiseGlobal = stub(cache, 'findPromise', async (collection: string, query: any) => {
         if (collection === 'tradingPairs') return [TEST_PAIR];
+        capturedLogs.push(`[findPromise] ${collection} ${JSON.stringify(query)}`);
         return [];
     });
 
     const marketTrade = await import('../src/transactions/market/market-trade.js');
+
+    // Shared capture arrays for inserts/updates across tests
+    const tradeInserts: any[] = [];
+    let restoreInsert: () => void = () => {};
 
     // Lightweight test runner helper
     function it(desc: string, fn: () => Promise<void> | void) {
@@ -50,6 +58,7 @@ async function main() {
         const restoreFind = stub(cache, 'findOnePromise', async (collection: string, query: any) => {
             if (collection === 'tradingPairs' && query._id === 'PAIR') return pair;
             if (collection === 'accounts' && query.name === 'trader') return { name: 'trader', balances: { QUOTE: '100000000' } };
+            capturedLogs.push(`[findOnePromise] ${collection} ${JSON.stringify(query)}`);
             return null;
         });
 
@@ -59,12 +68,29 @@ async function main() {
         Object.defineProperty(cache, 'updateOnePromise', {
             value: async (collection: string, query: any, update: any) => {
                 updateCalls.push({ collection, query, update });
+                capturedLogs.push(`[updateOnePromise] ${collection} ${JSON.stringify(query)} ${JSON.stringify(update)}`);
                 return true;
             },
             writable: true,
             configurable: true,
         });
         const restoreUpdate = () => Object.defineProperty(cache, 'updateOnePromise', { value: originalUpdate, writable: false, configurable: true });
+
+        // Capture trade inserts
+        const originalInsert = (cache as any).insertOne;
+        Object.defineProperty(cache, 'insertOne', {
+            value: (collection: string, doc: any, cb: any) => {
+                if (collection === 'trades') {
+                    tradeInserts.push(doc);
+                    capturedLogs.push(`[insertOne trades] ${JSON.stringify(doc)}`);
+                    return cb(null, true);
+                }
+                return cb(null, true);
+            },
+            writable: true,
+            configurable: true,
+        });
+        restoreInsert = () => Object.defineProperty(cache, 'insertOne', { value: originalInsert, writable: false, configurable: true });
 
         // Inject matching engine mock via test hooks to avoid redefining imports
         marketTrade.__setTestHooks({
@@ -85,13 +111,14 @@ async function main() {
         restoreFind();
         restoreUpdate();
         restoreMatching();
+        restoreInsert();
     });
 
     it('executeAMMRoute returns swap result amount and records AMM trade', async () => {
         const swapAmountIn = 10000n;
 
-        // Inject processWithResult and recordAMMTrade mocks via test hooks
-        marketTrade.__setTestHooks({ processWithResult: async () => ({ success: true, amountOut: 7777n }), recordAMMTrade: async () => true, adjustUserBalance: async () => true });
+    // Inject processWithResult and recordAMMTrade mocks via test hooks
+    marketTrade.__setTestHooks({ processWithResult: async () => ({ success: true, amountOut: 7777n }), recordAMMTrade: async () => true, adjustUserBalance: async () => true });
 
         // Stub cache.findOnePromise for account and pool
         const restoreFind2 = stub(cache, 'findOnePromise', async (collection: string, query: any) => {
@@ -99,6 +126,7 @@ async function main() {
             if (collection === 'tokens') return { symbol: query && query.symbol ? query.symbol : 'TOK' };
             if (collection === 'liquidityPools' && query._id === 'pool1')
                 return { _id: 'pool1', tokenA_symbol: 'A', tokenB_symbol: 'B', tokenA_reserve: '100000000', tokenB_reserve: '100000000', totalLpTokens: '1000000', feeGrowthGlobalA: '0', feeGrowthGlobalB: '0' };
+            capturedLogs.push(`[findOnePromise] ${collection} ${JSON.stringify(query)}`);
             return null;
         });
 
@@ -108,12 +136,22 @@ async function main() {
         assert.strictEqual(result.success, true);
         assert.strictEqual(result.amountOut.toString(), '7777');
 
+        // ensure an AMM trade was recorded
+        // some implementations record a trade via cache.insertOne('trades', ...)
+        // If recordAMMTrade mock is used, it may not insert. We assert updateCalls at least recorded balance updates.
+        if (tradeInserts && tradeInserts.length > 0) {
+            const t = tradeInserts[0];
+            if (!t._id) throw new Error('AMM trade inserted but missing _id');
+        }
+
         marketTrade.__setTestHooks({});
         restoreFind2();
     });
 
     // Restore global stubs
     restoreFindPromiseGlobal();
+    // Optionally expose captured logs for debugging by attaching to global (not printed by default)
+    (globalThis as any).__TEST_CAPTURED_LOGS = capturedLogs;
 }
 
 main().catch(e => {

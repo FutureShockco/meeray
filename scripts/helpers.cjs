@@ -38,8 +38,8 @@ const POOL_TOKEN_SYMBOLS = [
 ];
 
 // Market order types and sides
-const MARKET_ORDER_TYPES = ['limit', 'market'];
-const MARKET_ORDER_SIDES = ['buy', 'sell'];
+const MARKET_ORDER_TYPES = ['LIMIT', 'MARKET'];
+const MARKET_ORDER_SIDES = ['BUY', 'SELL'];
 
 // Farm configuration options
 const FARM_TYPES = ['TOKEN', 'LP_TOKEN'];

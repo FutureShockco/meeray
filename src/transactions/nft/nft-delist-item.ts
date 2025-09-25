@@ -31,7 +31,7 @@ export async function validateTx(data: NftDelistPayload, sender: string): Promis
             return false;
         }
 
-        if (listing.status !== 'active') {
+        if (listing.status !== 'ACTIVE') {
             logger.warn(`[nft-delist-item] Listing ${data.listingId} is not active. Current status: ${listing.status}.`);
             return false;
         }

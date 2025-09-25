@@ -21,7 +21,7 @@ export async function validateTx(data: NftBatchPayload, sender: string): Promise
 
             // normalize operation name locally to avoid mutating types
             const opName = String(op.operation).toLowerCase();
-            const validOperations = ['list', 'delist', 'buy', 'bid', 'transfer'];
+            const validOperations = ['LIST', 'DELIST', 'BUY', 'BID', 'TRANSFER'];
             if (!validOperations.includes(opName)) {
                 logger.warn(`[nft-batch] Invalid operation type: ${op.operation}.`);
                 return false;
@@ -30,17 +30,17 @@ export async function validateTx(data: NftBatchPayload, sender: string): Promise
             let isValid = false;
             try {
                 switch (opName) {
-                    case 'list':
+                    case 'LIST':
                         isValid = await validateListTx(op.data, sender);
                         break;
-                    case 'delist':
+                    case 'DELIST':
                         isValid = await validateDelistTx(op.data, sender);
                         break;
-                    case 'buy':
-                    case 'bid':
+                    case 'BUY':
+                    case 'BID':
                         isValid = await validateBuyTx(op.data, sender);
                         break;
-                    case 'transfer':
+                    case 'TRANSFER':
                         isValid = await validateTransferTx(op.data, sender);
                         break;
                 }

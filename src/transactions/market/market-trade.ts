@@ -523,10 +523,6 @@ export async function executeOrderbookRoute(
 
         // Determine order type based on whether price is specified in tradeData OR route details
         const orderType = tradeData.price || orderbookDetails.price ? OrderType.LIMIT : OrderType.MARKET;
-        logger.debug(
-            `[executeOrderbookRoute] Order type: ${orderType}, tradeData.price: ${tradeData.price}, orderbookDetails.price: ${orderbookDetails.price}`
-        );
-
         // Get the trading pair to determine correct base/quote assignment
         const pair = await cache.findOnePromise('tradingPairs', { _id: orderbookDetails.pairId });
         if (!pair) {

@@ -174,7 +174,7 @@ router.post('/compare', (async (req: Request, res: Response) => {
                 bestQuote: null as any,
                 totalDepth: orderbookSources.reduce((sum, s) => sum + Number(s.bidDepth || 0) + Number(s.askDepth || 0), 0),
             },
-            recommendation: 'hybrid' as 'amm' | 'orderbook' | 'hybrid',
+            recommendation: 'HYBRID' as 'AMM' | 'ORDERBOOK' | 'HYBRID',
         };
 
         // This would be enhanced with actual quote calculations
@@ -282,9 +282,9 @@ router.get('/stats/:pairId', (async (req: Request, res: Response) => {
 
         // Get current orders for this pair
         const orders = (await cache.findPromise('orders', { pairId }, { sort: { timestamp: -1 } })) || [];
-        const buyOrders = orders.filter(order => order.side === 'buy' && (order.status === 'open' || order.status === 'partial'));
+        const buyOrders = orders.filter(order => order.side === 'BUY' && (order.status === 'OPEN' || order.status === 'PARTIALLY_FILLED'));
         const sellOrders = orders.filter(
-            order => order.side === 'sell' && (order.status === 'open' || order.status === 'partial')
+            order => order.side === 'SELL' && (order.status === 'OPEN' || order.status === 'PARTIALLY_FILLED')
         );
 
         // Calculate spread using BigInt-safe comparisons
@@ -324,15 +324,24 @@ router.get('/stats/:pairId', (async (req: Request, res: Response) => {
             spreadPercent,
             buyOrderCount: buyOrders.length,
             sellOrderCount: sellOrders.length,
-            recentTrades: trades.slice(0, 10).map(trade => ({
-                ...trade,
-                price: formatAmount(toBigInt(trade.price || 0), pair.quoteAssetSymbol),
-                rawPrice: toBigInt(trade.price || 0).toString(),
-                quantity: formatAmount(toBigInt(trade.quantity || 0), pair.baseAssetSymbol),
-                rawQuantity: toBigInt(trade.quantity || 0).toString(),
-                volume: trade.volume ? formatAmount(toBigInt(trade.volume), pair.quoteAssetSymbol) : '0.00000000',
-                rawVolume: trade.volume ? toBigInt(trade.volume).toString() : '0',
-            })),
+            recentTrades: trades.slice(0, 10).map(trade => {
+                // Normalize padded DB values (orderbook) and plain values (pool)
+                function normalize(val: string | number | undefined) {
+                    if (typeof val === 'string') return val.replace(/^0+/, '') || '0';
+                    return val?.toString() || '0';
+                }
+                const priceBigInt = toBigInt(normalize(trade.price));
+                const quantityBigInt = toBigInt(normalize(trade.quantity));
+                return {
+                    ...trade,
+                    price: formatAmount(priceBigInt, pair.quoteAssetSymbol),
+                    rawPrice: priceBigInt.toString(),
+                    quantity: formatAmount(quantityBigInt, pair.baseAssetSymbol),
+                    rawQuantity: quantityBigInt.toString(),
+                    volume: trade.volume ? formatAmount(toBigInt(normalize(trade.volume)), pair.quoteAssetSymbol) : '0.00000000',
+                    rawVolume: trade.volume ? toBigInt(normalize(trade.volume)).toString() : '0',
+                };
+            }),
         });
     } catch (error: any) {
         logger.error('Error fetching pair stats:', error);
@@ -362,17 +371,17 @@ router.get('/orderbook/:pairId', (async (req: Request, res: Response) => {
         const orders =
             (await cache.findPromise('orders', {
                 pairId,
-                status: { $in: ['open', 'partially_filled'] },
+                status: { $in: ['OPEN', 'PARTIALLY_FILLED'] },
             })) || [];
 
         // Separate buy and sell orders
         const buyOrders = orders
-            .filter(order => order.side === 'buy')
+            .filter(order => order.side === 'BUY')
             .sort((a, b) => Number(toBigInt(b.price || 0)) - Number(toBigInt(a.price || 0))) // Highest price first
             .slice(0, Number(depth));
 
         const sellOrders = orders
-            .filter(order => order.side === 'sell')
+            .filter(order => order.side === 'SELL')
             .sort((a, b) => Number(toBigInt(a.price || 0)) - Number(toBigInt(b.price || 0))) // Lowest price first
             .slice(0, Number(depth));
         // Format orderbook data
@@ -502,8 +511,9 @@ router.get('/trades/:pairId', (async (req: Request, res: Response) => {
             // Determine correct price formatting based on trade side
             // For buy trades: price is in quote token units (TESTS per MRY)
             // For sell trades: price is in base token units (MRY per TESTS)
-            const priceTokenSymbol = trade.side === 'buy' ? pair.baseAssetSymbol : pair.quoteAssetSymbol;
-
+            let priceTokenSymbol = trade.side === 'SELL' && trade.source === 'pool' ? pair.baseAssetSymbol : pair.quoteAssetSymbol;
+            if(!trade.source)
+                priceTokenSymbol = pair.quoteAssetSymbol;
             return {
                 id: trade._id || trade.id,
                 timestamp: trade.timestamp,
@@ -518,8 +528,8 @@ router.get('/trades/:pairId', (async (req: Request, res: Response) => {
                 rawVolume: volumeBigInt.toString(),
                 total: formatAmount(volumeBigInt, pair.quoteAssetSymbol),
                 rawTotal: volumeBigInt.toString(),
-                side: trade.side || 'unknown', // 'buy' or 'sell'
-                type: trade.type || 'market', // 'market', 'limit', etc.
+                side: trade.side || 'unknown', // 'BUY' or 'SELL'
+                type: trade.type || 'MARKET', // 'MARKET', 'LIMIT', etc.
                 source: trade.source || 'unknown', // 'pool', 'orderbook', 'hybrid'
             };
         });
@@ -580,21 +590,21 @@ router.get('/health', (async (req: Request, res: Response) => {
     try {
         // Check if both AMM and orderbook systems are operational
         const health = {
-            status: 'healthy' as 'healthy' | 'degraded' | 'unhealthy',
+            status: 'HEALTHY' as 'HEALTHY' | 'DEGRADED' | 'UNHEALTHY',
             timestamp: new Date().toISOString(),
             systems: {
                 amm: {
-                    status: 'operational',
+                    status: 'OPERATIONAL',
                     pools: 0, // Would be fetched from database
                     lastUpdate: new Date().toISOString(),
                 },
                 orderbook: {
-                    status: 'operational',
+                    status: 'OPERATIONAL',
                     pairs: 0, // Would be fetched from database
                     lastUpdate: new Date().toISOString(),
                 },
                 aggregator: {
-                    status: 'operational',
+                    status: 'OPERATIONAL',
                     lastQuote: new Date().toISOString(),
                 },
             },
@@ -720,12 +730,12 @@ router.get('/orders/user/:userId', (async (req: Request, res: Response) => {
         }
 
         if (status === 'active') {
-            filter.status = { $in: ['open', 'partially_filled'] };
+            filter.status = { $in: ['OPEN', 'PARTIALLY_FILLED'] };
         } else if (status) {
             filter.status = status;
         } else {
             // By default, exclude cancelled and rejected orders
-            filter.status = { $in: ['cancelled', 'rejected', 'expired', 'filled'] };
+            filter.status = { $in: ['CANCELLED', 'REJECTED', 'EXPIRED', 'FILLED'] };
         }
 
         if (side) {
@@ -776,12 +786,12 @@ router.get('/orders/user/:userId', (async (req: Request, res: Response) => {
         // Calculate summary statistics
         const summary = {
             totalOrders: formattedOrders.length,
-            openOrders: formattedOrders.filter(o => o.status === 'open').length,
-            partialOrders: formattedOrders.filter(o => o.status === 'partial').length,
-            filledOrders: formattedOrders.filter(o => o.status === 'filled').length,
-            cancelledOrders: formattedOrders.filter(o => o.status === 'cancelled').length,
-            buyOrders: formattedOrders.filter(o => o.side === 'buy').length,
-            sellOrders: formattedOrders.filter(o => o.side === 'sell').length,
+            openOrders: formattedOrders.filter(o => o.status === 'OPEN').length,
+            partialOrders: formattedOrders.filter(o => o.status === 'PARTIALLY_FILLED').length,
+            filledOrders: formattedOrders.filter(o => o.status === 'FILLED').length,
+            cancelledOrders: formattedOrders.filter(o => o.status === 'CANCELLED').length,
+            buyOrders: formattedOrders.filter(o => o.side === 'BUY').length,
+            sellOrders: formattedOrders.filter(o => o.side === 'SELL').length,
         };
 
         res.json({

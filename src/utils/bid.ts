@@ -6,7 +6,6 @@ import { NFTListingData, NftBid } from '../transactions/nft/nft-market-interface
 import { adjustUserBalance } from './account.js';
 import { toBigInt, toDbString } from './bigint.js';
 
-
 export function generateBidId(listingId: string, bidder: string, timestamp: number): string {
     return crypto.createHash('sha256').update(`${listingId}_${bidder}_${timestamp}`).digest('hex').substring(0, 16);
 }
@@ -144,7 +143,6 @@ export async function escrowBidFunds(bidder: string, amount: bigint, paymentToke
         return false;
     }
 }
-
 
 export async function releaseEscrowedFunds(bidder: string, amount: bigint, paymentTokenIdentifier: string): Promise<boolean> {
     try {

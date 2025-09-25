@@ -5,13 +5,13 @@ import { TokenData } from '../transactions/token/token-interfaces.js';
 import { toBigInt, toDbString } from './bigint.js';
 
 export interface Token {
-    _id: string; // Typically the symbol
+    _id: string; 
     symbol: string;
     name: string;
-    precision: bigint; // Number of decimal places (0-18)
-    issuer?: string; // For non-native tokens
-    maxSupply: bigint; // Maximum token supply
-    currentSupply: bigint; // Current circulating supply
+    precision: bigint; 
+    issuer?: string; 
+    maxSupply: bigint; 
+    currentSupply: bigint; 
 }
 
 export async function getToken(symbol: string): Promise<TokenData | null> {
@@ -42,9 +42,6 @@ export async function adjustTokenSupply(tokenSymbol: string, amount: bigint): Pr
     return newSupply;
 }
 
-/**
- * Checks whether a token is issued by this node's configured bridge account
- */
 export async function isTokenIssuedByNode(symbol: string): Promise<boolean> {
     const token = await cache.findOnePromise('tokens', { _id: symbol });
     if (!token) {

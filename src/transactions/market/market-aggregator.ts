@@ -1,22 +1,25 @@
 import cache from '../../cache.js';
 import logger from '../../logger.js';
 import { getTokenDecimals, toBigInt } from '../../utils/bigint.js';
+import { generatePoolId } from '../../utils/pool.js';
 import { LiquidityPoolData } from '../pool/pool-interfaces.js';
 import { HybridQuote, HybridTradeData, LiquiditySource, TradingPairData } from './market-interfaces.js';
 
 export class LiquidityAggregator {
+    static TEST_HOOKS: any = {};
+    static __setTestHooks(hooks: any) {
+        Object.assign(LiquidityAggregator.TEST_HOOKS, hooks);
+    }
     async getLiquiditySources(tokenA: string, tokenB: string): Promise<LiquiditySource[]> {
         const sources: LiquiditySource[] = [];
-
         try {
-            // Get AMM pools
+            if (LiquidityAggregator.TEST_HOOKS.getLiquiditySources) {
+                return LiquidityAggregator.TEST_HOOKS.getLiquiditySources(tokenA, tokenB);
+            }
             const ammPools = await this.getAMMPools(tokenA, tokenB);
             sources.push(...ammPools);
-
-            // Get orderbook pairs
             const orderbookSources = await this.getOrderbookSources(tokenA, tokenB);
             sources.push(...orderbookSources);
-
             return sources;
         } catch (error) {
             logger.error(`[LiquidityAggregator] Error getting liquidity sources: ${error}`);
@@ -26,29 +29,18 @@ export class LiquidityAggregator {
 
     private async getAMMPools(tokenA: string, tokenB: string): Promise<LiquiditySource[]> {
         const pools: LiquiditySource[] = [];
-
         try {
-            // Find pools containing both tokens
             const poolsData = (await cache.findPromise('liquidityPools', {
                 $or: [
                     { tokenA_symbol: tokenA, tokenB_symbol: tokenB },
                     { tokenA_symbol: tokenB, tokenB_symbol: tokenA },
                 ],
             })) as LiquidityPoolData[];
-
             logger.debug(`[LiquidityAggregator] Found ${poolsData?.length || 0} pools in database`);
-
             for (const pool of poolsData || []) {
                 const reserveA = toBigInt(pool.tokenA_reserve);
                 const reserveB = toBigInt(pool.tokenB_reserve);
                 const hasLiquidity = reserveA > 0n && reserveB > 0n;
-
-                logger.debug(
-                    `[LiquidityAggregator] Pool ${pool._id}: ${pool.tokenA_symbol}(${reserveA})/${pool.tokenB_symbol}(${reserveB}) - Has liquidity: ${hasLiquidity}`
-                );
-
-                // Include pools even with 0 reserves for routing purposes
-                // They can still be used for price discovery and routing
                 pools.push({
                     type: 'AMM',
                     id: pool._id,
@@ -59,44 +51,24 @@ export class LiquidityAggregator {
                     hasLiquidity: hasLiquidity,
                 });
             }
-
             logger.debug(`[LiquidityAggregator] Found ${pools.length} AMM pools`);
         } catch (error) {
             logger.error(`[LiquidityAggregator] Error getting AMM pools: ${error}`);
         }
-
         return pools;
     }
 
-    /**
-     * Get orderbook liquidity sources
-     */
     private async getOrderbookSources(tokenA: string, tokenB: string): Promise<LiquiditySource[]> {
         const sources: LiquiditySource[] = [];
-
+        const pairId = generatePoolId(tokenA, tokenB);
         try {
-            // Find trading pairs
             const pairs = (await cache.findPromise('tradingPairs', {
-                $or: [
-                    { baseAssetSymbol: tokenA, quoteAssetSymbol: tokenB },
-                    { baseAssetSymbol: tokenB, quoteAssetSymbol: tokenA },
-                ],
+                _id: pairId,
                 status: 'TRADING',
             })) as TradingPairData[];
-
-            logger.info(`[LiquidityAggregator] Found ${pairs?.length || 0} trading pairs for ${tokenA}/${tokenB}`);
-
             for (const pair of pairs || []) {
-                logger.info(
-                    `[LiquidityAggregator] Checking pair ${pair._id} (${pair.baseAssetSymbol}/${pair.quoteAssetSymbol}) for orderbook depth`
-                );
-                // Get orderbook depth (you'll need to implement this based on your orderbook storage)
                 const depth = await this.getOrderbookDepth(pair._id);
-
                 if (depth && (depth.bidDepth > 0n || depth.askDepth > 0n)) {
-                    logger.info(
-                        `[LiquidityAggregator] Adding orderbook source for ${pair._id}: bidDepth=${depth.bidDepth}, askDepth=${depth.askDepth}`
-                    );
                     sources.push({
                         type: 'ORDERBOOK',
                         id: pair._id,
@@ -113,56 +85,29 @@ export class LiquidityAggregator {
                     );
                 }
             }
-
             logger.info(`[LiquidityAggregator] Found ${sources.length} orderbook sources`);
-            sources.forEach((source, index) => {
-                logger.info(
-                    `[LiquidityAggregator] Orderbook source ${index + 1}: ${source.id}, bestBid: ${source.bestBid}, bestAsk: ${source.bestAsk}, bidDepth: ${source.bidDepth}, askDepth: ${source.askDepth}`
-                );
-            });
         } catch (error) {
             logger.error(`[LiquidityAggregator] Error getting orderbook sources: ${error}`);
         }
-
         return sources;
     }
 
-    /**
-     * Get best quote across all liquidity sources
-     */
     async getBestQuote(tradeData: HybridTradeData): Promise<HybridQuote | null> {
         try {
+            if (LiquidityAggregator.TEST_HOOKS.getBestQuote) {
+                return LiquidityAggregator.TEST_HOOKS.getBestQuote(tradeData);
+            }
             const sources = await this.getLiquiditySources(tradeData.tokenIn, tradeData.tokenOut);
-
             if (sources.length === 0) {
                 logger.warn(`[LiquidityAggregator] No liquidity sources found for ${tradeData.tokenIn}/${tradeData.tokenOut}`);
                 return null;
             }
-
-            // Calculate quotes for each source
             const quotes = await Promise.all(sources.map(source => this.getQuoteFromSource(source, tradeData)));
-
-            // Filter valid quotes
             const validQuotes = quotes.filter(q => q !== null);
-
-            logger.info(`[LiquidityAggregator] Found ${validQuotes.length} valid quotes out of ${quotes.length} total sources`);
-            validQuotes.forEach((quote, index) => {
-                logger.info(
-                    `[LiquidityAggregator] Quote ${index + 1}: ${quote.type} - Output: ${quote.amountOut}, Price Impact: ${quote.priceImpact}`
-                );
-                if (quote.type === 'ORDERBOOK') {
-                    logger.info(
-                        `[LiquidityAggregator] Orderbook quote details: pairId=${quote.source.id}, side=${quote.route.details.side}, bestBid=${quote.source.bestBid}, bestAsk=${quote.source.bestAsk}`
-                    );
-                }
-            });
-
             if (validQuotes.length === 0) {
                 logger.warn(`[LiquidityAggregator] No valid quotes found`);
                 return null;
             }
-
-            // Find optimal route combination
             return this.findOptimalRoute(validQuotes, tradeData);
         } catch (error) {
             logger.error(`[LiquidityAggregator] Error getting best quote: ${error}`);
@@ -170,9 +115,6 @@ export class LiquidityAggregator {
         }
     }
 
-    /**
-     * Get quote from a specific liquidity source
-     */
     private async getQuoteFromSource(source: LiquiditySource, tradeData: HybridTradeData): Promise<any | null> {
         try {
             if (source.type === 'AMM') {
@@ -186,43 +128,23 @@ export class LiquidityAggregator {
         }
     }
 
-    /**
-     * Get quote from AMM pool
-     */
     private async getAMMQuote(source: LiquiditySource, tradeData: HybridTradeData): Promise<any | null> {
         logger.debug(`[LiquidityAggregator] Processing AMM quote for pool ${source.id}: ${source.tokenA}/${source.tokenB}`);
-
-        // Check if pool has liquidity
         if (!source.hasLiquidity) {
             logger.debug(`[LiquidityAggregator] Pool ${source.id} has no liquidity yet`);
             return null;
         }
-
-        // Implement AMM quote calculation (similar to existing pool swap logic)
         const amountIn = toBigInt(tradeData.amountIn);
-
-        // Determine token direction
         const tokenInIsA = source.tokenA === tradeData.tokenIn;
         const reserveIn = tokenInIsA ? toBigInt(source.reserveA!) : toBigInt(source.reserveB!);
         const reserveOut = tokenInIsA ? toBigInt(source.reserveB!) : toBigInt(source.reserveA!);
-
         logger.info(
             `[LiquidityAggregator] Pool ${source.id} reserves: ${reserveIn} ${source.tokenA}, ${reserveOut} ${source.tokenB}`
         );
-        logger.info(
-            `[LiquidityAggregator] Trade direction: ${tradeData.tokenIn} -> ${tradeData.tokenOut}, amountIn: ${amountIn}`
-        );
-        logger.info(
-            `[LiquidityAggregator] Token direction: tokenInIsA=${tokenInIsA}, reserveIn=${reserveIn}, reserveOut=${reserveOut}`
-        );
-
-        // Additional safety check for reserves
         if (reserveIn <= 0n || reserveOut <= 0n) {
             logger.debug(`[LiquidityAggregator] Pool ${source.id} has insufficient reserves: ${reserveIn}/${reserveOut}`);
             return null;
         }
-
-        // Check if the input amount is reasonable compared to reserves
         const inputRatio = Number(amountIn) / Number(reserveIn);
         if (inputRatio > 0.1) {
             // More than 10% of the pool
@@ -298,15 +220,11 @@ export class LiquidityAggregator {
         );
 
         if (toBigInt(availableDepth) < amountIn) {
-            // Not enough liquidity
-            logger.info(
+            logger.warn(
                 `[LiquidityAggregator] Not enough orderbook liquidity: availableDepth=${availableDepth}, amountIn=${amountIn}`
             );
             return null;
         }
-
-        // Calculate output based on the orderbook price
-        // Price is in quote per base (e.g., TESTS per MRY)
         const quoteDecimals = source.tokenB ? getTokenDecimals(source.tokenB) : 8;
         const baseDecimals = source.tokenA ? getTokenDecimals(source.tokenA) : 8;
 
@@ -344,29 +262,20 @@ export class LiquidityAggregator {
                 amountOut: amountOut.toString(),
                 details: {
                     pairId: source.id,
-                    side: isBuyingBase ? 'buy' : 'sell',
+                    side: isBuyingBase ? 'BUY' : 'SELL',
                     price: price.toString(),
                 },
             },
         };
     }
 
-    /**
-     * Find optimal route combination
-     */
     private findOptimalRoute(quotes: any[], tradeData: HybridTradeData): HybridQuote {
-        // Compare all available quotes (AMM and orderbook) and pick the best one
-        // This ensures users get the best price regardless of source
         const ammQuotes = quotes.filter(q => q.type === 'AMM');
         const orderbookQuotes = quotes.filter(q => q.type === 'ORDERBOOK');
-
         logger.debug(`[LiquidityAggregator] Available quotes: ${ammQuotes.length} AMM, ${orderbookQuotes.length} orderbook`);
-
-        // Find the best quote across all sources (highest output = best price)
         const bestQuote = quotes.reduce((best, current) => {
             const currentOutput = toBigInt(current.amountOut);
             const bestOutput = toBigInt(best.amountOut);
-
             if (currentOutput > bestOutput) {
                 logger.debug(
                     `[LiquidityAggregator] Better quote found: ${current.type} with output ${currentOutput} vs ${bestOutput}`
@@ -375,16 +284,6 @@ export class LiquidityAggregator {
             }
             return best;
         });
-
-        logger.debug(`[LiquidityAggregator] Selected ${bestQuote.type} route with output: ${bestQuote.amountOut}`);
-        if (bestQuote.type === 'ORDERBOOK') {
-            logger.info(
-                `[LiquidityAggregator] ORDERBOOK ROUTE SELECTED: pairId=${bestQuote.source.id}, side=${bestQuote.route.details.side}, bestBid=${bestQuote.source.bestBid}, bestAsk=${bestQuote.source.bestAsk}`
-            );
-        } else {
-            logger.info(`[LiquidityAggregator] AMM ROUTE SELECTED: poolId=${bestQuote.source.id}`);
-        }
-
         return {
             amountIn: tradeData.amountIn.toString(),
             amountOut: bestQuote.amountOut.toString(),
@@ -395,9 +294,6 @@ export class LiquidityAggregator {
         };
     }
 
-    /**
-     * Get orderbook depth for a trading pair
-     */
     private async getOrderbookDepth(pairId: string): Promise<{
         bestBid: bigint;
         bestAsk: bigint;
@@ -405,30 +301,24 @@ export class LiquidityAggregator {
         askDepth: bigint;
     } | null> {
         try {
-            // This would query your orderbook storage
-            // For now, return mock data - implement based on your orderbook storage structure
             const orders = await cache.findPromise('orders', {
                 pairId,
-                status: { $in: ['open', 'partially_filled'] },
+                status: { $in: ['OPEN', 'PARTIALLY_FILLED'] },
             });
-
             logger.info(`[LiquidityAggregator] Found ${orders?.length || 0} open orders for pair ${pairId}`);
-
             if (!orders || orders.length === 0) {
-                logger.info(`[LiquidityAggregator] No open orders found for pair ${pairId}`);
+                logger.warn(`[LiquidityAggregator] No open orders found for pair ${pairId}`);
                 return null;
             }
-
-            // Calculate depth (simplified)
             const bids = orders
-                .filter((o: any) => o.side === 'buy')
+                .filter((o: any) => o.side === 'BUY')
                 .sort((a: any, b: any) => {
                     const priceA = toBigInt(b.price || '0');
                     const priceB = toBigInt(a.price || '0');
                     return priceA > priceB ? 1 : priceA < priceB ? -1 : 0;
                 });
             const asks = orders
-                .filter((o: any) => o.side === 'sell')
+                .filter((o: any) => o.side === 'SELL')
                 .sort((a: any, b: any) => {
                     const priceA = toBigInt(a.price || '0');
                     const priceB = toBigInt(b.price || '0');

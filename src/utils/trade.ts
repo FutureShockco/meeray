@@ -110,22 +110,22 @@ export async function recordAMMTrade(params: {
             logger.error(`[recordAMMTrade] CRITICAL: Final price is negative! Setting to 0. Price: ${priceValue}`);
             priceValue = 0n;
         }
-        let tradeSide: 'buy' | 'sell';
+        let tradeSide: 'BUY' | 'SELL';
         let buyerUserId: string;
         let sellerUserId: string;
         if (params.tokenOut === baseSymbol) {
-            tradeSide = 'buy';
+            tradeSide = 'BUY';
             buyerUserId = params.sender;
             sellerUserId = 'AMM';
         } else if (params.tokenIn === baseSymbol) {
-            tradeSide = 'sell';
+            tradeSide = 'SELL';
             buyerUserId = 'AMM';
             sellerUserId = params.sender;
         } else {
             logger.warn(
                 `[recordAMMTrade] Could not determine trade side for ${params.tokenIn} -> ${params.tokenOut}, defaulting to buy`
             );
-            tradeSide = 'buy';
+            tradeSide = 'BUY';
             buyerUserId = params.sender;
             sellerUserId = 'AMM';
         }

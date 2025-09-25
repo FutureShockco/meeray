@@ -97,8 +97,8 @@ export const newToken = async (data: any): Promise<boolean> => {
         );
         return false;
     }
-    if (!validate.string(data.name, 25, 1)) {
-        logger.warn('[token-config:validation] Invalid name length (must be 1-25 characters).');
+    if (!validate.string(data.name, config.tokenNameMaxLength, 3, config.tokenNameAllowedChars)) {
+        logger.warn(`[token-config:validation] Invalid token name format: ${data.name}.`);
         return false;
     }
     if (!validate.integer(data.precision, true, false, 18, 0)) {
@@ -157,7 +157,14 @@ export const newToken = async (data: any): Promise<boolean> => {
  */
 export const tokenExists = async (symbol: string): Promise<boolean> => {
     if (!validate.tokenSymbols(symbol)) return false;
-
+    if (symbol.startsWith('LP_')) {
+        logger.warn(`[token-exists:validation] Token symbol cannot start with "LP_". This prefix is reserved for liquidity pool tokens.`);
+        return false;
+    }
+    if (!validate.string(symbol, 10, 3, config.tokenSymbolAllowedChars)) {
+        logger.warn(`[token-exists:validation] Invalid token symbol format: ${symbol}.`);
+        return false;
+    }
     const existingToken = await cache.findOnePromise('tokens', { _id: symbol });
     if (existingToken) {
         logger.warn(`[token-exists:validation] Token with symbol ${symbol} already exists.`);
