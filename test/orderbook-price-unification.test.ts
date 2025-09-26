@@ -14,9 +14,9 @@ async function testUnifiedPriceCalculation() {
     // Patch cache.findOnePromise to return a fake trading pair
     const restoreFindOne = (cache as any).findOnePromise;
     (cache as any).findOnePromise = async (collection: string, query: any) => {
-        if (collection === 'tradingPairs' && (query._id === 'MRY-TESTS' || query.pairId === 'MRY-TESTS')) {
+    if (collection === 'tradingPairs' && (query._id === 'MRY_TESTS' || query.pairId === 'MRY_TESTS')) {
             return {
-                _id: 'MRY-TESTS',
+                _id: 'MRY_TESTS',
                 baseAssetSymbol: 'MRY',
                 quoteAssetSymbol: 'TESTS',
                 priceDecimals: 8,
@@ -31,7 +31,7 @@ async function testUnifiedPriceCalculation() {
     // BUY trade: buying 100 MRY with 123.456 TESTS (price should be 1.23456 TESTS per MRY, 3 decimals)
     const buyTrade = {
         _id: 'T1',
-        pairId: 'MRY-TESTS',
+    pairId: 'MRY_TESTS',
         baseAssetSymbol: 'MRY',
         quoteAssetSymbol: 'TESTS',
         side: 'BUY',
@@ -41,7 +41,7 @@ async function testUnifiedPriceCalculation() {
     // SELL trade: selling 100 MRY for 123.456 TESTS (price should be 1.23456 TESTS per MRY, 3 decimals)
     const sellTrade = {
         _id: 'T2',
-        pairId: 'MRY-TESTS',
+    pairId: 'MRY_TESTS',
         baseAssetSymbol: 'MRY',
         quoteAssetSymbol: 'TESTS',
         side: 'SELL',
@@ -74,7 +74,7 @@ async function testUnifiedPriceCalculation() {
     const now = new Date().toISOString();
     const takerOrder = {
         _id: 'ORDER1',
-        pairId: 'MRY-TESTS',
+    pairId: 'MRY_TESTS',
         baseAssetSymbol: 'MRY',
         quoteAssetSymbol: 'TESTS',
         side: OrderSide.BUY,

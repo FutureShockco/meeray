@@ -359,6 +359,40 @@ async function sendCustomJson(client, sscId, contractAction, payload, username, 
     }
 }
 
+async function sendMultiCustomJson(client, sscId, contractActionAnPayload, username, privateKey) {
+    const operations = []
+    for (let i = 0; i < contractActionAnPayload.length; i++) {
+        const tx = contractActionAnPayload[i];  
+        console.log(`Preparing ${tx.contractAction} with payload:`, JSON.stringify(tx.payload, null, 2));
+        const operation = ['custom_json', {
+            required_auths: [username],
+            required_posting_auths: [],
+            id: sscId,
+            json: JSON.stringify({
+                contract: tx.contractAction,
+                payload: tx.payload
+            })
+        }];
+        operations.push(operation);
+    }
+
+
+    try {
+        console.log(`Broadcasting ${contractActionAnPayload.length} txs with`, JSON.stringify(operations, null, 2));
+        const result = await client.broadcast.sendOperations(operations, privateKey);
+        console.log(`${contractActionAnPayload.length} successful: TX ID ${result.id}`);
+        console.log(result.block_num);
+        return result;
+    } catch (error) {
+        console.error(`Error `, error.message);
+        if (error.data && error.data.stack) {
+            console.error('dsteem error data:', error.data.stack);
+        }
+        throw error;
+    }
+}
+
+
 // Helper for broadcasting custom_json operations
 async function transfer(client, from, to, amount, username, privateKey) {
     const operation = ['transfer', {
@@ -389,7 +423,7 @@ function generatePoolId(tokenA_symbol, tokenB_symbol) {
     // Ensure canonical order to prevent duplicate pools (e.g., A-B vs B-A)
     const [token1, token2] = [tokenA_symbol, tokenB_symbol].sort();
     return `${token1}_${token2}`;
-  }
+}
 
 module.exports = {
     getClient,
@@ -408,6 +442,7 @@ module.exports = {
     generateRandomLaunchpadData,
     generateRandomLaunchpadOperation,
     sendCustomJson,
+    sendMultiCustomJson,
     transfer,
     generatePoolId
 }; 
