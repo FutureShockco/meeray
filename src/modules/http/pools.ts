@@ -171,23 +171,16 @@ const transformUserLiquidityPositionData = (positionData: any, poolData?: any): 
     if (positionData.feeGrowthEntryB !== undefined) {
         transformed.feeGrowthEntryB = positionData.feeGrowthEntryB.toString();
     }
-    if (positionData.unclaimedFeesA !== undefined) {
-        transformed.unclaimedFeesA = positionData.unclaimedFeesA.toString();
-    }
-    if (positionData.unclaimedFeesB !== undefined) {
-        transformed.unclaimedFeesB = positionData.unclaimedFeesB.toString();
-    }
+    // (Removed unclaimedFeesA and unclaimedFeesB; fees are now calculated on demand)
     // Optionally, compute claimable fees if poolData is provided
     if (poolData) {
         const lpTokenBalance = toBigInt(positionData.lpTokenBalance || '0');
         const feeGrowthEntryA = toBigInt(positionData.feeGrowthEntryA || '0');
         const feeGrowthEntryB = toBigInt(positionData.feeGrowthEntryB || '0');
-        const unclaimedFeesA = toBigInt(positionData.unclaimedFeesA || '0');
-        const unclaimedFeesB = toBigInt(positionData.unclaimedFeesB || '0');
         const feeGrowthGlobalA = toBigInt(poolData.feeGrowthGlobalA || '0');
         const feeGrowthGlobalB = toBigInt(poolData.feeGrowthGlobalB || '0');
-        transformed.claimableFeesA = (((feeGrowthGlobalA - feeGrowthEntryA) * lpTokenBalance) / toBigInt(1e18) + unclaimedFeesA).toString();
-        transformed.claimableFeesB = (((feeGrowthGlobalB - feeGrowthEntryB) * lpTokenBalance) / toBigInt(1e18) + unclaimedFeesB).toString();
+        transformed.claimableFeesA = ((feeGrowthGlobalA - feeGrowthEntryA) * lpTokenBalance / toBigInt(1e18)).toString();
+        transformed.claimableFeesB = ((feeGrowthGlobalB - feeGrowthEntryB) * lpTokenBalance / toBigInt(1e18)).toString();
     }
     return transformed;
 };
@@ -251,7 +244,7 @@ router.get('/', (async (req: Request, res: Response) => {
                 const events = eventsByPool[poolIdStr] || [];
                 for (const event of events) {
                     const e = event.data;
-                    const feeDivisor = toBigInt(10000);
+                    const feeDivisor = toBigInt(1000);
                     const amountIn = toBigInt(e.amountIn);
                     const tokenIn = e.tokenIn_symbol;
                     const feeAmount = (amountIn * toBigInt(300)) / feeDivisor; // Fixed 0.3% fee
@@ -267,7 +260,7 @@ router.get('/', (async (req: Request, res: Response) => {
                 const events24h = events24hByPool[poolIdStr] || [];
                 for (const event of events24h) {
                     const e = event.data;
-                    const feeDivisor = toBigInt(10000);
+                    const feeDivisor = toBigInt(1000);
                     const amountIn = toBigInt(e.amountIn);
                     const tokenIn = e.tokenIn_symbol;
                     const feeAmount = (amountIn * toBigInt(300)) / feeDivisor; // Fixed 0.3% fee

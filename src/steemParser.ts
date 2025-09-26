@@ -84,123 +84,172 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                     }
                     let txType: number;
                     switch (json.contract.toLowerCase()) {
+                        case 'pool_claim_fees':
+                            txType = TransactionType.POOL_CLAIM_FEES;
+                            break;
+                        case 'nft_update':
+                            txType = TransactionType.NFT_UPDATE;
+                            break;
+                        case 'nft_update_collection':
+                            txType = TransactionType.NFT_UPDATE_COLLECTION;
+                            break;
+                        case 'farm_update_weight':
+                            txType = TransactionType.FARM_UPDATE_WEIGHT;
+                            break;
+                        case 'launchpad_configure_presale':
+                            txType = TransactionType.LAUNCHPAD_CONFIGURE_PRESALE;
+                            break;
+                        case 'launchpad_configure_tokenomics':
+                            txType = TransactionType.LAUNCHPAD_CONFIGURE_TOKENOMICS;
+                            break;
+                        case 'launchpad_configure_airdrop':
+                            txType = TransactionType.LAUNCHPAD_CONFIGURE_AIRDROP;
+                            break;
+                        case 'launchpad_update_metadata':
+                            txType = TransactionType.LAUNCHPAD_UPDATE_METADATA;
+                            break;
+                        // NFT Transactions
                         case 'nft_create_collection':
-                            txType = TransactionType.NFT_CREATE_COLLECTION;
-                            break;
                         case 'nft_mint':
-                            txType = TransactionType.NFT_MINT;
-                            break;
                         case 'nft_transfer':
-                            txType = TransactionType.NFT_TRANSFER;
-                            break;
                         case 'nft_list_item':
-                            txType = TransactionType.NFT_LIST_ITEM;
-                            break;
                         case 'nft_delist_item':
-                            txType = TransactionType.NFT_DELIST_ITEM;
-                            break;
                         case 'nft_buy_item':
-                            txType = TransactionType.NFT_BUY_ITEM;
-                            break;
+                        case 'nft_update':
+                        case 'nft_update_collection':
                         case 'nft_accept_bid':
-                            txType = TransactionType.NFT_ACCEPT_BID;
-                            break;
                         case 'nft_close_auction':
-                            txType = TransactionType.NFT_CLOSE_AUCTION;
-                            break;
                         case 'nft_batch_operations':
-                            txType = TransactionType.NFT_BATCH_OPERATIONS;
-                            break;
                         case 'nft_cancel_bid':
-                            txType = TransactionType.NFT_CANCEL_BID;
-                            break;
                         case 'nft_make_offer':
-                            txType = TransactionType.NFT_MAKE_OFFER;
-                            break;
                         case 'nft_accept_offer':
-                            txType = TransactionType.NFT_ACCEPT_OFFER;
+                        case 'nft_cancel_offer': {
+                            const nftMap = {
+                                'nft_create_collection': TransactionType.NFT_CREATE_COLLECTION,
+                                'nft_mint': TransactionType.NFT_MINT,
+                                'nft_transfer': TransactionType.NFT_TRANSFER,
+                                'nft_list_item': TransactionType.NFT_LIST_ITEM,
+                                'nft_delist_item': TransactionType.NFT_DELIST_ITEM,
+                                'nft_buy_item': TransactionType.NFT_BUY_ITEM,
+                                'nft_update': TransactionType.NFT_UPDATE,
+                                'nft_update_collection': TransactionType.NFT_UPDATE_COLLECTION,
+                                'nft_accept_bid': TransactionType.NFT_ACCEPT_BID,
+                                'nft_close_auction': TransactionType.NFT_CLOSE_AUCTION,
+                                'nft_batch_operations': TransactionType.NFT_BATCH_OPERATIONS,
+                                'nft_cancel_bid': TransactionType.NFT_CANCEL_BID,
+                                'nft_make_offer': TransactionType.NFT_MAKE_OFFER,
+                                'nft_accept_offer': TransactionType.NFT_ACCEPT_OFFER,
+                                'nft_cancel_offer': TransactionType.NFT_CANCEL_OFFER,
+                            };
+                            txType = nftMap[json.contract.toLowerCase() as keyof typeof nftMap];
                             break;
-                        case 'nft_cancel_offer':
-                            txType = TransactionType.NFT_CANCEL_OFFER;
-                            break;
+                        }
+
+                        // Farm Transactions
                         case 'farm_create':
-                            txType = TransactionType.FARM_CREATE;
-                            break;
                         case 'farm_stake':
-                            txType = TransactionType.FARM_STAKE;
-                            break;
                         case 'farm_unstake':
-                            txType = TransactionType.FARM_UNSTAKE;
-                            break;
                         case 'farm_claim_rewards':
-                            txType = TransactionType.FARM_CLAIM_REWARDS;
+                        case 'farm_update_weight': {
+                            const farmMap = {
+                                'farm_create': TransactionType.FARM_CREATE,
+                                'farm_stake': TransactionType.FARM_STAKE,
+                                'farm_unstake': TransactionType.FARM_UNSTAKE,
+                                'farm_claim_rewards': TransactionType.FARM_CLAIM_REWARDS,
+                                'farm_update_weight': TransactionType.FARM_UPDATE_WEIGHT,
+                            };
+                            txType = farmMap[json.contract.toLowerCase() as keyof typeof farmMap];
                             break;
+                        }
+
+                        // Pool Transactions
                         case 'pool_create':
-                            txType = TransactionType.POOL_CREATE;
-                            break;
                         case 'pool_add_liquidity':
-                            txType = TransactionType.POOL_ADD_LIQUIDITY;
-                            break;
                         case 'pool_remove_liquidity':
-                            txType = TransactionType.POOL_REMOVE_LIQUIDITY;
-                            break;
                         case 'pool_swap':
-                            txType = TransactionType.POOL_SWAP;
+                        case 'pool_claim_fees': {
+                            const poolMap = {
+                                'pool_create': TransactionType.POOL_CREATE,
+                                'pool_add_liquidity': TransactionType.POOL_ADD_LIQUIDITY,
+                                'pool_remove_liquidity': TransactionType.POOL_REMOVE_LIQUIDITY,
+                                'pool_swap': TransactionType.POOL_SWAP,
+                                'pool_claim_fees': TransactionType.POOL_CLAIM_FEES,
+                            };
+                            txType = poolMap[json.contract.toLowerCase() as keyof typeof poolMap];
                             break;
+                        }
+
+                        // Token Transactions
                         case 'token_create':
-                            txType = TransactionType.TOKEN_CREATE;
-                            break;
                         case 'token_mint':
-                            txType = TransactionType.TOKEN_MINT;
-                            break;
                         case 'token_transfer':
-                            txType = TransactionType.TOKEN_TRANSFER;
-                            break;
                         case 'token_update':
-                            txType = TransactionType.TOKEN_UPDATE;
+                        case 'token_withdraw': {
+                            const tokenMap = {
+                                'token_create': TransactionType.TOKEN_CREATE,
+                                'token_mint': TransactionType.TOKEN_MINT,
+                                'token_transfer': TransactionType.TOKEN_TRANSFER,
+                                'token_update': TransactionType.TOKEN_UPDATE,
+                                'token_withdraw': TransactionType.TOKEN_WITHDRAW,
+                            };
+                            txType = tokenMap[json.contract.toLowerCase() as keyof typeof tokenMap];
                             break;
-                        case 'token_withdraw':
-                            txType = TransactionType.TOKEN_WITHDRAW;
-                            break;
+                        }
+
+                        // Witness Transactions
                         case 'witness_register':
-                            txType = TransactionType.WITNESS_REGISTER;
-                            break;
                         case 'witness_vote':
-                            txType = TransactionType.WITNESS_VOTE;
+                        case 'witness_unvote': {
+                            const witnessMap = {
+                                'witness_register': TransactionType.WITNESS_REGISTER,
+                                'witness_vote': TransactionType.WITNESS_VOTE,
+                                'witness_unvote': TransactionType.WITNESS_UNVOTE,
+                            };
+                            txType = witnessMap[json.contract.toLowerCase() as keyof typeof witnessMap];
                             break;
-                        case 'witness_unvote':
-                            txType = TransactionType.WITNESS_UNVOTE;
-                            break;
+                        }
+
+                        // Launchpad Transactions
                         case 'launchpad_launch_token':
-                            txType = TransactionType.LAUNCHPAD_LAUNCH_TOKEN;
-                            break;
                         case 'launchpad_participate_presale':
-                            txType = TransactionType.LAUNCHPAD_PARTICIPATE_PRESALE;
-                            break;
                         case 'launchpad_claim_tokens':
-                            txType = TransactionType.LAUNCHPAD_CLAIM_TOKENS;
-                            break;
                         case 'launchpad_update_status':
-                            txType = TransactionType.LAUNCHPAD_UPDATE_STATUS;
-                            break;
                         case 'launchpad_finalize_presale':
-                            txType = TransactionType.LAUNCHPAD_FINALIZE_PRESALE;
-                            break;
                         case 'launchpad_set_main_token':
-                            txType = TransactionType.LAUNCHPAD_SET_MAIN_TOKEN;
-                            break;
                         case 'launchpad_refund_presale':
-                            txType = TransactionType.LAUNCHPAD_REFUND_PRESALE;
-                            break;
                         case 'launchpad_update_whitelist':
-                            txType = TransactionType.LAUNCHPAD_UPDATE_WHITELIST;
+                        case 'launchpad_configure_presale':
+                        case 'launchpad_configure_tokenomics':
+                        case 'launchpad_configure_airdrop':
+                        case 'launchpad_update_metadata': {
+                            const launchpadMap = {
+                                'launchpad_launch_token': TransactionType.LAUNCHPAD_LAUNCH_TOKEN,
+                                'launchpad_participate_presale': TransactionType.LAUNCHPAD_PARTICIPATE_PRESALE,
+                                'launchpad_claim_tokens': TransactionType.LAUNCHPAD_CLAIM_TOKENS,
+                                'launchpad_update_status': TransactionType.LAUNCHPAD_UPDATE_STATUS,
+                                'launchpad_finalize_presale': TransactionType.LAUNCHPAD_FINALIZE_PRESALE,
+                                'launchpad_set_main_token': TransactionType.LAUNCHPAD_SET_MAIN_TOKEN,
+                                'launchpad_refund_presale': TransactionType.LAUNCHPAD_REFUND_PRESALE,
+                                'launchpad_update_whitelist': TransactionType.LAUNCHPAD_UPDATE_WHITELIST,
+                                'launchpad_configure_presale': TransactionType.LAUNCHPAD_CONFIGURE_PRESALE,
+                                'launchpad_configure_tokenomics': TransactionType.LAUNCHPAD_CONFIGURE_TOKENOMICS,
+                                'launchpad_configure_airdrop': TransactionType.LAUNCHPAD_CONFIGURE_AIRDROP,
+                                'launchpad_update_metadata': TransactionType.LAUNCHPAD_UPDATE_METADATA,
+                            };
+                            txType = launchpadMap[json.contract.toLowerCase() as keyof typeof launchpadMap];
                             break;
+                        }
+
+                        // Market Transactions
                         case 'market_cancel_order':
-                            txType = TransactionType.MARKET_CANCEL_ORDER;
+                        case 'market_trade': {
+                            const marketMap = {
+                                'market_cancel_order': TransactionType.MARKET_CANCEL_ORDER,
+                                'market_trade': TransactionType.MARKET_TRADE,
+                            };
+                            txType = marketMap[json.contract.toLowerCase() as keyof typeof marketMap];
                             break;
-                        case 'market_trade':
-                            txType = TransactionType.MARKET_TRADE;
-                            break;
+                        }
                         default: {
                             const typeNum = parseInt(json.contract);
                             if (!isNaN(typeNum) && TransactionType[typeNum]) {

@@ -3,6 +3,8 @@ import { getAccount } from '../../utils/account.js';
 import { toBigInt } from '../../utils/bigint.js';
 import validate from '../../validation/index.js';
 import { PoolSwapData } from './pool-interfaces.js';
+import chain from '../../chain.js';
+
 import {
     processAutoRouteSwap,
     processRoutedSwap,
@@ -54,16 +56,17 @@ export async function validateTx(data: PoolSwapData, sender: string): Promise<bo
 }
 
 export async function processTx(data: PoolSwapData, sender: string, transactionId: string): Promise<boolean> {
-    // Determine the type of swap and process accordingly
+    // Get current block number for fee config
+    const blockNum = chain.getLatestBlock()._id;
     if (data.hops && data.hops.length > 0) {
         // Multi-hop routed swap
-        return await processRoutedSwap(data, sender, transactionId);
+        return await processRoutedSwap(data, sender, transactionId, blockNum);
     } else if (data.poolId) {
         // Single-hop swap
-        return await processSingleHopSwap(data, sender, transactionId);
+        return await processSingleHopSwap(data, sender, transactionId, blockNum);
     } else if (data.fromTokenSymbol && data.toTokenSymbol) {
         // Auto-route swap
-        return await processAutoRouteSwap(data, sender, transactionId);
+        return await processAutoRouteSwap(data, sender, transactionId, blockNum);
     } else {
         logger.error('[pool-swap] Invalid swap data: must specify either poolId, hops, or fromTokenSymbol/toTokenSymbol.');
         return false;

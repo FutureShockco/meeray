@@ -70,8 +70,7 @@ export interface UserLiquidityPositionData {
     // Fee accounting fields
     feeGrowthEntryA?: string | bigint; // User's last fee growth checkpoint for token A
     feeGrowthEntryB?: string | bigint; // User's last fee growth checkpoint for token B
-    unclaimedFeesA?: string | bigint; // Unclaimed fees in token A
-    unclaimedFeesB?: string | bigint; // Unclaimed fees in token B
+    // (Removed unclaimedFeesA and unclaimedFeesB; fees are now calculated on demand)
 }
 
 export interface TradeHop {

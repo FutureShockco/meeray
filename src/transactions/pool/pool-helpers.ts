@@ -176,16 +176,10 @@ export async function updateUserLiquidityPosition(user: string, poolId: string, 
               lpTokenBalance: toBigInt(existingUserPosDB.lpTokenBalance),
               feeGrowthEntryA: toBigInt(existingUserPosDB.feeGrowthEntryA || '0'),
               feeGrowthEntryB: toBigInt(existingUserPosDB.feeGrowthEntryB || '0'),
-              unclaimedFeesA: toBigInt(existingUserPosDB.unclaimedFeesA || '0'),
-              unclaimedFeesB: toBigInt(existingUserPosDB.unclaimedFeesB || '0'),
           }
         : null;
     let userPosUpdateSuccess = false;
     if (existingUserPos) {
-        const deltaA = toBigInt(pool.feeGrowthGlobalA || '0') - toBigInt(existingUserPos.feeGrowthEntryA || '0');
-        const deltaB = toBigInt(pool.feeGrowthGlobalB || '0') - toBigInt(existingUserPos.feeGrowthEntryB || '0');
-        const newUnclaimedFeesA = (existingUserPos.unclaimedFeesA || toBigInt(0)) + (deltaA * existingUserPos.lpTokenBalance) / toBigInt(1e18);
-        const newUnclaimedFeesB = (existingUserPos.unclaimedFeesB || toBigInt(0)) + (deltaB * existingUserPos.lpTokenBalance) / toBigInt(1e18);
         userPosUpdateSuccess = await cache.updateOnePromise(
             'userLiquidityPositions',
             { _id: userPositionId },
@@ -194,8 +188,6 @@ export async function updateUserLiquidityPosition(user: string, poolId: string, 
                     lpTokenBalance: toDbString(existingUserPos.lpTokenBalance + lpTokensToMint),
                     feeGrowthEntryA: toDbString(pool.feeGrowthGlobalA || 0),
                     feeGrowthEntryB: toDbString(pool.feeGrowthGlobalB || 0),
-                    unclaimedFeesA: toDbString(newUnclaimedFeesA),
-                    unclaimedFeesB: toDbString(newUnclaimedFeesB),
                     lastUpdatedAt: new Date().toISOString(),
                 },
             }
@@ -208,8 +200,6 @@ export async function updateUserLiquidityPosition(user: string, poolId: string, 
             lpTokenBalance: toDbString(lpTokensToMint),
             feeGrowthEntryA: toDbString(pool.feeGrowthGlobalA || 0),
             feeGrowthEntryB: toDbString(pool.feeGrowthGlobalB || 0),
-            unclaimedFeesA: toDbString(0),
-            unclaimedFeesB: toDbString(0),
             createdAt: new Date().toISOString(),
             lastUpdatedAt: new Date().toISOString(),
         };
@@ -265,6 +255,7 @@ export async function recordPoolSwapTrade(params: {
     amountOut: bigint;
     sender: string;
     transactionId: string;
+    feeAmount?: bigint | string;
 }): Promise<void> {
     try {
         const pairId = await findTradingPairId(params.tokenIn, params.tokenOut);
@@ -347,7 +338,7 @@ export async function recordPoolSwapTrade(params: {
             type: 'market',
             source: 'pool',
             isMakerBuyer: false,
-            feeAmount: '0',
+            feeAmount: params.feeAmount !== undefined ? toDbString(params.feeAmount) : '0',
             feeCurrency: quoteSymbol,
             makerFee: '0',
             takerFee: '0',
@@ -422,44 +413,38 @@ export async function claimFeesFromPool(
         const currentFeeGrowthB = toBigInt(pool.feeGrowthGlobalB || '0');
         const userFeeGrowthEntryA = toBigInt(userPosition.feeGrowthEntryA || '0');
         const userFeeGrowthEntryB = toBigInt(userPosition.feeGrowthEntryB || '0');
-        const userUnclaimedFeesA = toBigInt(userPosition.unclaimedFeesA || '0');
-        const userUnclaimedFeesB = toBigInt(userPosition.unclaimedFeesB || '0');
-
         const deltaA = currentFeeGrowthA - userFeeGrowthEntryA;
         const deltaB = currentFeeGrowthB - userFeeGrowthEntryB;
 
         const lpTokensToCalculate = lpTokenAmount || toBigInt(userPosition.lpTokenBalance);
 
-        const newFeesA = (deltaA * lpTokensToCalculate) / toBigInt(1e18);
-        const newFeesB = (deltaB * lpTokensToCalculate) / toBigInt(1e18);
+        const claimableFeesA = (deltaA * lpTokensToCalculate) / toBigInt(1e18);
+        const claimableFeesB = (deltaB * lpTokensToCalculate) / toBigInt(1e18);
 
-        const totalClaimableFeesA = userUnclaimedFeesA + newFeesA;
-        const totalClaimableFeesB = userUnclaimedFeesB + newFeesB;
-
-        if (totalClaimableFeesA <= toBigInt(0) && totalClaimableFeesB <= toBigInt(0)) {
+        if (claimableFeesA <= toBigInt(0) && claimableFeesB <= toBigInt(0)) {
             return { success: true, feesClaimedA: toBigInt(0), feesClaimedB: toBigInt(0) };
         }
 
-        if (totalClaimableFeesA > toBigInt(0)) {
-            const creditASuccess = await adjustUserBalance(user, pool.tokenA_symbol, totalClaimableFeesA);
+        if (claimableFeesA > toBigInt(0)) {
+            const creditASuccess = await adjustUserBalance(user, pool.tokenA_symbol, claimableFeesA);
             if (!creditASuccess) {
                 return {
                     success: false,
                     feesClaimedA: toBigInt(0),
                     feesClaimedB: toBigInt(0),
-                    error: `Failed to credit ${totalClaimableFeesA} ${pool.tokenA_symbol} to ${user}`,
+                    error: `Failed to credit ${claimableFeesA} ${pool.tokenA_symbol} to ${user}`,
                 };
             }
         }
 
-        if (totalClaimableFeesB > toBigInt(0)) {
-            const creditBSuccess = await adjustUserBalance(user, pool.tokenB_symbol, totalClaimableFeesB);
+        if (claimableFeesB > toBigInt(0)) {
+            const creditBSuccess = await adjustUserBalance(user, pool.tokenB_symbol, claimableFeesB);
             if (!creditBSuccess) {
                 return {
                     success: false,
                     feesClaimedA: toBigInt(0),
                     feesClaimedB: toBigInt(0),
-                    error: `Failed to credit ${totalClaimableFeesB} ${pool.tokenB_symbol} to ${user}`,
+                    error: `Failed to credit ${claimableFeesB} ${pool.tokenB_symbol} to ${user}`,
                 };
             }
         }
@@ -471,8 +456,6 @@ export async function claimFeesFromPool(
                 $set: {
                     feeGrowthEntryA: toDbString(currentFeeGrowthA),
                     feeGrowthEntryB: toDbString(currentFeeGrowthB),
-                    unclaimedFeesA: toDbString(0),
-                    unclaimedFeesB: toDbString(0),
                     lastUpdatedAt: new Date().toISOString(),
                 },
             }
@@ -489,13 +472,13 @@ export async function claimFeesFromPool(
         }
 
         logger.debug(
-            `[claimFeesFromPool] User ${user} claimed ${totalClaimableFeesA} ${pool.tokenA_symbol} and ${totalClaimableFeesB} ${pool.tokenB_symbol} from pool ${poolId}`
+            `[claimFeesFromPool] User ${user} claimed ${claimableFeesA} ${pool.tokenA_symbol} and ${claimableFeesB} ${pool.tokenB_symbol} from pool ${poolId}`
         );
 
         return {
             success: true,
-            feesClaimedA: totalClaimableFeesA,
-            feesClaimedB: totalClaimableFeesB,
+            feesClaimedA: claimableFeesA,
+            feesClaimedB: claimableFeesB,
         };
     } catch (error) {
         logger.error(`[claimFeesFromPool] Error claiming fees for ${user} from pool ${poolId}: ${error}`);

@@ -7,6 +7,7 @@ import { toBigInt, toDbString, calculateTradeValue, calculateDecimalAwarePrice }
 import { logTransactionEvent } from '../../utils/event-logger.js';
 import { generatePoolId } from '../../utils/pool.js';
 import { chain } from '../../chain.js';
+import { calculateFeeGrowthDelta } from '../../utils/fee-growth.js';
 
 async function distributeOrderbookFeesToLiquidityProviders(
   baseAssetSymbol: string,
@@ -38,7 +39,7 @@ async function distributeOrderbookFeesToLiquidityProviders(
     let newFeeGrowthGlobalA = toBigInt(pool.feeGrowthGlobalA || '0');
     let newFeeGrowthGlobalB = toBigInt(pool.feeGrowthGlobalB || '0');
     if (baseTokenFee > 0n) {
-      const feeGrowthDelta = (baseTokenFee * toBigInt(1e18)) / totalLpTokens;
+      const feeGrowthDelta = calculateFeeGrowthDelta(baseTokenFee, baseAssetSymbol, totalLpTokens);
       if (pool.tokenA_symbol === baseAssetSymbol) {
         newFeeGrowthGlobalA = newFeeGrowthGlobalA + feeGrowthDelta;
       } else if (pool.tokenB_symbol === baseAssetSymbol) {
@@ -49,7 +50,7 @@ async function distributeOrderbookFeesToLiquidityProviders(
       }
     }
     if (quoteTokenFee > 0n) {
-      const feeGrowthDelta = (quoteTokenFee * toBigInt(1e18)) / totalLpTokens;
+      const feeGrowthDelta = calculateFeeGrowthDelta(quoteTokenFee, quoteAssetSymbol, totalLpTokens);
       if (pool.tokenA_symbol === quoteAssetSymbol) {
         newFeeGrowthGlobalA = newFeeGrowthGlobalA + feeGrowthDelta;
       } else if (pool.tokenB_symbol === quoteAssetSymbol) {

@@ -1,8 +1,10 @@
 import cache from '../../cache.js';
+import config from '../../config.js';
 import logger from '../../logger.js';
 import { Account } from '../../mongo.js';
 import { adjustUserBalance } from '../../utils/account.js';
-import { toBigInt, toDbString } from '../../utils/bigint.js';
+import { calculateFeeGrowthDelta } from '../../utils/fee-growth.js';
+import { getTokenDecimals, toBigInt, toDbString } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
 import { findBestTradeRoute, getOutputAmountBigInt } from '../../utils/pool.js';
 import { recordPoolSwapTrade } from './pool-helpers.js';
@@ -248,11 +250,11 @@ export async function validateAutoRouteSwap(data: PoolSwapData, traderAccount: A
  * Process swap and return detailed result including output amount
  * This is used by the hybrid trading system
  */
-export async function processWithResult(data: PoolSwapData, sender: string, transactionId: string): Promise<PoolSwapResult> {
+export async function processWithResult(data: PoolSwapData, sender: string, transactionId: string, blockNum: number): Promise<PoolSwapResult> {
     try {
         // For now, only support single-hop swaps in hybrid trading
         if (data.poolId) {
-            return await processSingleHopSwapWithResult(data, sender, transactionId);
+            return await processSingleHopSwapWithResult(data, sender, transactionId, blockNum);
         } else {
             return { success: false, amountOut: toBigInt(0), error: 'Only single-hop swaps supported in hybrid trading' };
         }
@@ -261,7 +263,7 @@ export async function processWithResult(data: PoolSwapData, sender: string, tran
     }
 }
 
-export async function processSingleHopSwap(data: PoolSwapData, sender: string, transactionId: string): Promise<boolean> {
+export async function processSingleHopSwap(data: PoolSwapData, sender: string, transactionId: string, blockNum: number): Promise<boolean> {
     // Get pool data
     const poolFromDb = (await cache.findOnePromise('liquidityPools', { _id: data.poolId })) as any; // validateTx ensures existence
 
@@ -277,13 +279,16 @@ export async function processSingleHopSwap(data: PoolSwapData, sender: string, t
 
     // Calculate fee amount and update feeGrowthGlobal
     const feeDivisor = toBigInt(10000);
-    const feeAmount = (toBigInt(data.amountIn) * toBigInt(300)) / feeDivisor; // Fixed 0.3% fee
+    const feeBps = config.read(blockNum).swapAndTradeFee;
+    const feeAmount = (toBigInt(data.amountIn) * toBigInt(feeBps)) / feeDivisor;
     const totalLpTokens = toBigInt(poolFromDb.totalLpTokens);
     let newFeeGrowthGlobalA = toBigInt(poolFromDb.feeGrowthGlobalA || '0');
     let newFeeGrowthGlobalB = toBigInt(poolFromDb.feeGrowthGlobalB || '0');
 
+    logger.info(`[pool-swap] totalLpTokens: ${totalLpTokens.toString()}, feeAmount: ${feeAmount.toString()}`);
     if (totalLpTokens > 0n && feeAmount > 0n) {
-        const feeGrowthDelta = (feeAmount * toBigInt(1e18)) / totalLpTokens;
+        const feeGrowthDelta = calculateFeeGrowthDelta(feeAmount, tokenIn_symbol, totalLpTokens);
+        logger.info(`[pool-swap] feeAmount: ${feeAmount.toString()}, totalLpTokens: ${totalLpTokens.toString()}, feeGrowthDelta: ${feeGrowthDelta.toString()}, tokenInIsA: ${tokenInIsA}`);
         if (tokenInIsA) {
             newFeeGrowthGlobalA = newFeeGrowthGlobalA + feeGrowthDelta;
         } else {
@@ -327,16 +332,22 @@ export async function processSingleHopSwap(data: PoolSwapData, sender: string, t
         poolUpdateSet.tokenA_reserve = toDbString(newReserveOut);
     }
 
-    const updateSuccess = await cache.updateOnePromise(
-        'liquidityPools',
-        { _id: data.poolId },
-        {
-            $set: poolUpdateSet,
-        }
-    );
 
+    let updateSuccess = false;
+    try {
+        updateSuccess = await cache.updateOnePromise(
+            'liquidityPools',
+            { _id: data.poolId },
+            {
+                $set: poolUpdateSet,
+            }
+        );
+    } catch (err) {
+        logger.error(`[pool-swap] Exception during updateOnePromise for pool ${data.poolId}: ${err instanceof Error ? err.message : JSON.stringify(err)}`);
+        return false;
+    }
     if (!updateSuccess) {
-        logger.error(`[pool-swap] Failed to update pool ${data.poolId} reserves. Critical: Balances changed but pool reserves not.`);
+        logger.error(`[pool-swap] updateOnePromise returned falsy for pool ${data.poolId}. Query: ${JSON.stringify({ _id: data.poolId })}, Update: ${JSON.stringify({ $set: poolUpdateSet })}`);
         return false;
     }
 
@@ -380,7 +391,7 @@ export async function processSingleHopSwap(data: PoolSwapData, sender: string, t
  * Single-hop swap that returns detailed result including output amount
  * This is a copy of processSingleHopSwap but returns PoolSwapResult instead of boolean
  */
-export async function processSingleHopSwapWithResult(data: PoolSwapData, sender: string, transactionId: string): Promise<PoolSwapResult> {
+export async function processSingleHopSwapWithResult(data: PoolSwapData, sender: string, transactionId: string, blockNum: number): Promise<PoolSwapResult> {
     try {
         // Get pool data
         const poolFromDb = await cache.findOnePromise('liquidityPools', { _id: data.poolId });
@@ -399,8 +410,9 @@ export async function processSingleHopSwapWithResult(data: PoolSwapData, sender:
         const amountOut = getOutputAmountBigInt(toBigInt(data.amountIn), reserveIn, reserveOut);
 
         // Calculate fee amount and update feeGrowthGlobal
-        const feeDivisor = toBigInt(10000);
-        const feeAmount = (toBigInt(data.amountIn) * toBigInt(300)) / feeDivisor; // Fixed 0.3% fee
+    const feeDivisor = toBigInt(10000);
+    const feeBps = config.read(blockNum).swapAndTradeFee;
+    const feeAmount = (toBigInt(data.amountIn) * toBigInt(feeBps)) / feeDivisor;
         const totalLpTokens = toBigInt(poolFromDb.totalLpTokens);
         let newFeeGrowthGlobalA = toBigInt(poolFromDb.feeGrowthGlobalA || '0');
         let newFeeGrowthGlobalB = toBigInt(poolFromDb.feeGrowthGlobalB || '0');
@@ -510,7 +522,7 @@ export async function processSingleHopSwapWithResult(data: PoolSwapData, sender:
     }
 }
 
-export async function processRoutedSwap(data: PoolSwapData, sender: string, transactionId: string): Promise<boolean> {
+export async function processRoutedSwap(data: PoolSwapData, sender: string, transactionId: string, blockNum: number): Promise<boolean> {
     // Debit the initial input token from the user once up-front
     let currentAmountIn = toBigInt(data.amountIn);
     let totalAmountOut = toBigInt(0);
@@ -545,15 +557,18 @@ export async function processRoutedSwap(data: PoolSwapData, sender: string, tran
         const amountOut = getOutputAmountBigInt(currentAmountIn, reserveIn, reserveOut);
 
         // Calculate fee amount and update feeGrowthGlobal
-        const feeDivisor = toBigInt(10000);
-        const feeAmount = (currentAmountIn * toBigInt(300)) / feeDivisor; // Fixed 0.3% fee
+    const feeDivisor = toBigInt(10000);
+    const feeBps = config.read(blockNum).swapAndTradeFee;
+    const feeAmount = (currentAmountIn * toBigInt(feeBps)) / feeDivisor;
+        logger.info(`[pool-swap] (routed) hop ${i+1}: totalLpTokens=${poolFromDb.totalLpTokens} (${typeof poolFromDb.totalLpTokens}), feeAmount=${feeAmount} (${typeof feeAmount})`);
         accumulatedFee = accumulatedFee + feeAmount;
         const totalLpTokens = toBigInt(poolFromDb.totalLpTokens);
         let newFeeGrowthGlobalA = toBigInt(poolFromDb.feeGrowthGlobalA || '0');
         let newFeeGrowthGlobalB = toBigInt(poolFromDb.feeGrowthGlobalB || '0');
 
         if (totalLpTokens > 0n && feeAmount > 0n) {
-            const feeGrowthDelta = (feeAmount * toBigInt(1e18)) / totalLpTokens;
+            const feeGrowthDelta = calculateFeeGrowthDelta(feeAmount, tokenIn_symbol, totalLpTokens);
+            logger.info(`[pool-swap] (routed) hop ${i+1}: feeAmount=${feeAmount}, totalLpTokens=${totalLpTokens}, feeGrowthDelta=${feeGrowthDelta}, tokenInIsA=${tokenInIsA}`);
             if (tokenInIsA) {
                 newFeeGrowthGlobalA = newFeeGrowthGlobalA + feeGrowthDelta;
             } else {
@@ -641,6 +656,7 @@ export async function processRoutedSwap(data: PoolSwapData, sender: string, tran
         amountOut: totalAmountOut,
         sender: sender,
         transactionId: transactionId,
+        feeAmount: accumulatedFee,
     });
 
     // Log event - get pool data for the first hop to access token symbols
@@ -665,7 +681,7 @@ export async function processRoutedSwap(data: PoolSwapData, sender: string, tran
     return true;
 }
 
-export async function processAutoRouteSwap(data: PoolSwapData, sender: string, transactionId: string): Promise<boolean> {
+export async function processAutoRouteSwap(data: PoolSwapData, sender: string, transactionId: string, blockNum: number): Promise<boolean> {
     // Find the best route
     const bestRoute = await findBestTradeRoute(data.fromTokenSymbol!, data.toTokenSymbol!, toBigInt(data.amountIn));
     if (!bestRoute) {
@@ -714,5 +730,5 @@ export async function processAutoRouteSwap(data: PoolSwapData, sender: string, t
         `[pool-swap] Auto-route swap: ${data.amountIn} ${data.fromTokenSymbol} -> ${expectedFinalOutput} ${data.toTokenSymbol} (min: ${finalMinAmountOut})`
     );
 
-    return await processRoutedSwap(routedData, sender, transactionId);
+    return await processRoutedSwap(routedData, sender, transactionId, blockNum);
 }

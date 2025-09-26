@@ -12,8 +12,8 @@ const config = {
     masterPublicKey: 'e27B66QHwRLjnjxi5KAa9G7fLSDajtoB6CxuZ87oTdfS',
     blockTime: 3000,
     syncBlockTime: 1000,
-    witnessReward: 100000000, // 1 MRY
-    farmReward: 100000000, // 1 MRY
+    witnessReward: '100000000', // 1 MRY
+    farmReward: '100000000', // 1 MRY
     steemChainId: '0000000000000000000000000000000000000000000000000000000000000000',
     steemStartBlock: process.env.NODE_ENV === 'development' ? 3889720 : 95762370,
     steemBlockDelay: 1,
@@ -22,9 +22,9 @@ const config = {
     tokenSymbolAllowedChars: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890',
     tokenNameAllowedChars: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
     tokenNameMaxLength: 50,
-    tokenCreationFee: 10000000000, // 100 MRY
-    nftCollectionCreationFee: 10000000000, // 100 MRY
-    launchPadCreationFee: 10000000000, // 100 MRY
+    tokenCreationFee: '10000000000', // 100 MRY
+    nftCollectionCreationFee: '10000000000', // 100 MRY
+    launchPadCreationFee: '10000000000', // 100 MRY
     swapAndTradeFee: 300, // 0.3% in basis points
     tokenSymbolMaxLength: 10,
     tokenSymbolMinLength: 3,
