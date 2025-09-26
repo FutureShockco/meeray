@@ -89,19 +89,12 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
             logger.warn('[nft-list-item] Invalid instanceId length (1-128 chars).');
             return false;
         }
-        // Validate payment token details
-        if (data.paymentTokenSymbol !== config.nativeTokenSymbol && !data.paymentTokenIssuer) {
-            logger.warn(`[nft-list-item] paymentTokenIssuer is required for non-native token ${data.paymentTokenSymbol}.`);
+        if (!validate.tokenSymbols(data.paymentTokenSymbol)) {
+            logger.warn(`[nft-list-item] Invalid payment token symbol format: ${data.paymentTokenSymbol}.`);
             return false;
         }
-        if (data.paymentTokenSymbol !== config.nativeTokenSymbol && data.paymentTokenIssuer && !validate.string(data.paymentTokenIssuer, 64, 3)) {
-            logger.warn(`[nft-list-item] Invalid paymentTokenIssuer format for ${data.paymentTokenSymbol}.`);
-            return false;
-        }
-
-        const paymentToken = await getToken(data.paymentTokenSymbol);
-        if (!paymentToken) {
-            logger.warn(`[nft-list-item] Payment token ${data.paymentTokenSymbol}${data.paymentTokenIssuer ? '@' + data.paymentTokenIssuer : ''} not found.`);
+        if(!await validate.tokenExists(data.paymentTokenSymbol)) {
+            logger.warn(`[nft-list-item] Payment token ${data.paymentTokenSymbol} does not exist.`);
             return false;
         }
 
@@ -159,13 +152,9 @@ export async function processTx(data: NftListPayload, sender: string, _id: strin
             tokenId: data.instanceId, // Store instanceId as tokenId for consistency
             seller: sender,
             price: toDbString(priceAsBigInt),
-            paymentToken: {
-                symbol: data.paymentTokenSymbol,
-                issuer: data.paymentTokenIssuer,
-            },
+            paymentToken: data.paymentTokenSymbol,
             status: 'ACTIVE',
             createdAt: new Date().toISOString(),
-
             // NEW AUCTION FIELDS:
             listingType: data.listingType || 'FIXED_PRICE',
             reservePrice: data.reservePrice ? toDbString(data.reservePrice) : undefined,
@@ -205,8 +194,7 @@ export async function processTx(data: NftListPayload, sender: string, _id: strin
             fullInstanceId: `${data.collectionSymbol}_${data.instanceId}`,
             seller: sender,
             price: toDbString(priceAsBigInt),
-            paymentTokenSymbol: data.paymentTokenSymbol,
-            paymentTokenIssuer: data.paymentTokenIssuer,
+            paymentToken: data.paymentTokenSymbol,
             listingType: listingTypeStr,
             reservePrice: data.reservePrice ? toDbString(data.reservePrice) : undefined,
             auctionEndTime: data.auctionEndTime,

@@ -24,10 +24,7 @@ export interface NFTListingData {
     tokenId: string;
     seller: string;
     price: string | bigint;
-    paymentToken: {
-        symbol: string;
-        issuer?: string;
-    };
+    paymentToken: string;
     status: 'ACTIVE' | 'SOLD' | 'CANCELLED' | 'ENDED';
     expiration?: string;
     createdAt: string;
