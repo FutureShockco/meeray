@@ -8,6 +8,7 @@ import { logTransactionEvent } from '../../utils/event-logger.js';
 import { generatePoolId } from '../../utils/pool.js';
 import { chain } from '../../chain.js';
 import { calculateFeeGrowthDelta } from '../../utils/fee-growth.js';
+import config from '../../config.js';
 
 async function distributeOrderbookFeesToLiquidityProviders(
   baseAssetSymbol: string,
@@ -720,41 +721,61 @@ class MatchingEngine {
         // Calculate trade value considering decimal differences between base and quote tokens
         const tradeValue = calculateTradeValue(tradePriceBigInt, tradeQuantityBigInt, baseTokenIdentifier, quoteTokenIdentifier);
 
-        // Apply 0.3% fee split between buyer and seller (0.15% each)
-        const feeRate = toBigInt(150); // 0.15% in basis points for each party
+
+        // Apply 0.3% fee to taker only (industry standard)
+        const feeRate = toBigInt(config.read(chain.getLatestBlock().id).swapAndTradeFee); // 0.3% in basis points
         const feeDivisor = toBigInt(10000);
 
-        // Calculate fees for both parties
-        const baseTokenFee = (tradeQuantityBigInt * feeRate) / feeDivisor; // Fee on base token (taken from buyer)
-        const quoteTokenFee = (tradeValue * feeRate) / feeDivisor; // Fee on quote token (taken from seller)
-
-        // Apply trades with fees
-        // Seller: loses base tokens, gains quote tokens minus fee
-        // Buyer: gains base tokens minus fee, loses quote tokens
-        const adjSellerBase = await adjustUserBalance(trade.sellerUserId, baseTokenIdentifier, -tradeQuantityBigInt);
-        const adjBuyerBase = await adjustUserBalance(trade.buyerUserId, baseTokenIdentifier, tradeQuantityBigInt - baseTokenFee);
-        const adjSellerQuote = await adjustUserBalance(trade.sellerUserId, quoteTokenIdentifier, tradeValue - quoteTokenFee);
-        const adjBuyerQuote = await adjustUserBalance(trade.buyerUserId, quoteTokenIdentifier, -tradeValue);
-
-        // Distribute orderbook fees to corresponding AMM pool liquidity providers
-        // This creates a unified economic model where all trading activity benefits liquidity providers
-        await distributeOrderbookFeesToLiquidityProviders(
-          pairDetails.baseAssetSymbol,
-          pairDetails.quoteAssetSymbol,
-          baseTokenFee,
-          quoteTokenFee
-        );
-
-        // Log fee collection for analytics
-        await logTransactionEvent('orderbook_fee_collected', 'system', {
-          marketId: takerOrder.pairId,
-          tradeId: trade._id,
-          baseFee: toDbString(baseTokenFee),
-          quoteFee: toDbString(quoteTokenFee),
-          baseAsset: pairDetails.baseAssetSymbol,
-          quoteAsset: pairDetails.quoteAssetSymbol,
-          totalFeePercent: "0.3" // 0.15% + 0.15% = 0.3% total
-        });
+        // Taker pays fee on the amount received (base for BUY, quote for SELL)
+        let takerFee = toBigInt(0);
+        let adjSellerBase, adjBuyerBase, adjSellerQuote, adjBuyerQuote;
+        if (takerOrder.side === 'BUY') {
+          // Buyer (taker) receives base token minus fee, pays quote token
+          takerFee = (tradeQuantityBigInt * feeRate) / feeDivisor;
+          adjSellerBase = await adjustUserBalance(trade.sellerUserId, baseTokenIdentifier, -tradeQuantityBigInt);
+          adjBuyerBase = await adjustUserBalance(trade.buyerUserId, baseTokenIdentifier, tradeQuantityBigInt - takerFee);
+          adjSellerQuote = await adjustUserBalance(trade.sellerUserId, quoteTokenIdentifier, tradeValue);
+          adjBuyerQuote = await adjustUserBalance(trade.buyerUserId, quoteTokenIdentifier, -tradeValue);
+          // Distribute only the taker fee to LPs (base token)
+          await distributeOrderbookFeesToLiquidityProviders(
+            pairDetails.baseAssetSymbol,
+            pairDetails.quoteAssetSymbol,
+            takerFee,
+            0n
+          );
+          await logTransactionEvent('orderbook_fee_collected', 'system', {
+            marketId: takerOrder.pairId,
+            tradeId: trade._id,
+            baseFee: toDbString(takerFee),
+            quoteFee: toDbString(0n),
+            baseAsset: pairDetails.baseAssetSymbol,
+            quoteAsset: pairDetails.quoteAssetSymbol,
+            totalFeePercent: "0.3" // 0.3% taker only
+          });
+        } else {
+          // Seller (taker) receives quote token minus fee, pays base token
+          takerFee = (tradeValue * feeRate) / feeDivisor;
+          adjSellerBase = await adjustUserBalance(trade.sellerUserId, baseTokenIdentifier, -tradeQuantityBigInt);
+          adjBuyerBase = await adjustUserBalance(trade.buyerUserId, baseTokenIdentifier, tradeQuantityBigInt);
+          adjSellerQuote = await adjustUserBalance(trade.sellerUserId, quoteTokenIdentifier, tradeValue - takerFee);
+          adjBuyerQuote = await adjustUserBalance(trade.buyerUserId, quoteTokenIdentifier, -tradeValue);
+          // Distribute only the taker fee to LPs (quote token)
+          await distributeOrderbookFeesToLiquidityProviders(
+            pairDetails.baseAssetSymbol,
+            pairDetails.quoteAssetSymbol,
+            0n,
+            takerFee
+          );
+          await logTransactionEvent('orderbook_fee_collected', 'system', {
+            marketId: takerOrder.pairId,
+            tradeId: trade._id,
+            baseFee: toDbString(0n),
+            quoteFee: toDbString(takerFee),
+            baseAsset: pairDetails.baseAssetSymbol,
+            quoteAsset: pairDetails.quoteAssetSymbol,
+            totalFeePercent: "0.3" // 0.3% taker only
+          });
+        }
 
         if (!adjSellerBase || !adjBuyerBase || !adjSellerQuote || !adjBuyerQuote) {
           logger.error(`[MatchingEngine] CRITICAL: Balance adjustment failed for trade ${trade._id}.`);

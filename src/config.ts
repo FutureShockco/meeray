@@ -43,7 +43,6 @@ const config = {
     witnessShufflePrecision: 8,
     memoryBlocks: 1000,
     randomBytesLength: 32,
-    // Fee tier is now fixed at 0.3% (300 basis points) for all pools
 };
 
 // Block-number-based config history (hardforks)
