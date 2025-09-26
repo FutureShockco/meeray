@@ -52,7 +52,7 @@ class BlockProcessor {
             this.resetConsecutiveErrors();
 
             if (steemBlockResult.transactions.length > 0) {
-                transaction.addToPool(
+                await transaction.addToPool(
                     steemBlockResult.transactions.map((tx, idx) => ({
                         ...tx,
                         id: `${blockNum}-${idx}`,
