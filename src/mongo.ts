@@ -389,7 +389,7 @@ export const mongo = {
             await nftListingsCollection.createIndex({ collectionSymbol: 1, instanceId: 1 });
             await nftListingsCollection.createIndex({ seller: 1 });
             await nftListingsCollection.createIndex({ status: 1 });
-            await nftListingsCollection.createIndex({ paymentTokenSymbol: 1 });
+            await nftListingsCollection.createIndex({ paymentToken: 1 });
             await nftListingsCollection.createIndex({ collectionSymbol: 1, status: 1 }); // For finding active listings in a collection
             await nftListingsCollection.createIndex({ seller: 1, status: 1 }); // For finding active listings by a seller
             logger.debug('[DB Indexes] Finished creating indexes for nftListings collection.');

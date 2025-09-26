@@ -15,8 +15,8 @@ function generateListingId(collectionSymbol: string, instanceId: string, seller:
 
 export async function validateTx(data: NftListPayload, sender: string): Promise<boolean> {
     try {
-        if (!data.collectionSymbol || !data.instanceId || !data.price || !data.paymentTokenSymbol) {
-            logger.warn('[nft-list-item] Invalid data: Missing required fields (collectionSymbol, instanceId, price, paymentTokenSymbol).');
+        if (!data.collectionSymbol || !data.instanceId || !data.price || !data.paymentToken) {
+            logger.warn('[nft-list-item] Invalid data: Missing required fields (collectionSymbol, instanceId, price, paymentToken).');
             return false;
         }
 
@@ -89,12 +89,12 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
             logger.warn('[nft-list-item] Invalid instanceId length (1-128 chars).');
             return false;
         }
-        if (!validate.tokenSymbols(data.paymentTokenSymbol)) {
-            logger.warn(`[nft-list-item] Invalid payment token symbol format: ${data.paymentTokenSymbol}.`);
+        if (!validate.tokenSymbols(data.paymentToken)) {
+            logger.warn(`[nft-list-item] Invalid payment token format: ${data.paymentToken}.`);
             return false;
         }
-        if(!await validate.tokenExists(data.paymentTokenSymbol)) {
-            logger.warn(`[nft-list-item] Payment token ${data.paymentTokenSymbol} does not exist.`);
+        if(!await validate.tokenExists(data.paymentToken)) {
+            logger.warn(`[nft-list-item] Payment token ${data.paymentToken} does not exist.`);
             return false;
         }
 
@@ -152,7 +152,7 @@ export async function processTx(data: NftListPayload, sender: string, _id: strin
             tokenId: data.instanceId, // Store instanceId as tokenId for consistency
             seller: sender,
             price: toDbString(priceAsBigInt),
-            paymentToken: data.paymentTokenSymbol,
+            paymentToken: data.paymentToken,
             status: 'ACTIVE',
             createdAt: new Date().toISOString(),
             // NEW AUCTION FIELDS:
@@ -183,7 +183,7 @@ export async function processTx(data: NftListPayload, sender: string, _id: strin
 
         const listingTypeStr = (data.listingType || 'fixed_price').toLowerCase();
         logger.debug(
-            `[nft-list-item] NFT ${data.collectionSymbol}_${data.instanceId} listed by ${sender} as ${listingTypeStr} for ${data.price} ${data.paymentTokenSymbol}. Listing ID: ${listingId}`
+            `[nft-list-item] NFT ${data.collectionSymbol}_${data.instanceId} listed by ${sender} as ${listingTypeStr} for ${data.price} ${data.paymentToken}. Listing ID: ${listingId}`
         );
 
         // Log event
@@ -194,7 +194,7 @@ export async function processTx(data: NftListPayload, sender: string, _id: strin
             fullInstanceId: `${data.collectionSymbol}_${data.instanceId}`,
             seller: sender,
             price: toDbString(priceAsBigInt),
-            paymentToken: data.paymentTokenSymbol,
+            paymentToken: data.paymentToken,
             listingType: listingTypeStr,
             reservePrice: data.reservePrice ? toDbString(data.reservePrice) : undefined,
             auctionEndTime: data.auctionEndTime,

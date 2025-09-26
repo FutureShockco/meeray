@@ -74,17 +74,15 @@ export async function processTx(data: NftAcceptBidData, sender: string, _id: str
         const collection = (await cache.findOnePromise('nftCollections', {
             _id: listing.collectionId,
         })) as CachedNftCollectionForTransfer & { royaltyBps?: number };
-        const paymentToken = (await getToken(listing.paymentToken.symbol))!;
 
-        const paymentTokenIdentifier = `${paymentToken.symbol}${paymentToken.issuer ? '@' + paymentToken.issuer : ''}`;
         const bidAmount = toBigInt(bid.bidAmount);
         const royaltyAmount = (bidAmount * toBigInt(collection.royaltyBps || 0)) / toBigInt(10000); // basis points to percentage
         const sellerProceeds = bidAmount - royaltyAmount;
 
         // Execute payments
-        if (!(await adjustUserBalance(listing.seller, paymentTokenIdentifier, sellerProceeds))) return false;
+        if (!(await adjustUserBalance(listing.seller, listing.paymentToken, sellerProceeds))) return false;
         if (royaltyAmount > 0n && collection.creator && collection.creator !== listing.seller) {
-            if (!(await adjustUserBalance(collection.creator, paymentTokenIdentifier, royaltyAmount))) return false;
+            if (!(await adjustUserBalance(collection.creator, listing.paymentToken, royaltyAmount))) return false;
         }
 
         // Transfer NFT
@@ -131,7 +129,7 @@ export async function processTx(data: NftAcceptBidData, sender: string, _id: str
 
         if (otherBids?.length) {
             for (const otherBid of otherBids) {
-                await releaseEscrowedFunds(otherBid.bidder, toBigInt(otherBid.escrowedAmount), paymentTokenIdentifier);
+                await releaseEscrowedFunds(otherBid.bidder, toBigInt(otherBid.escrowedAmount), listing.paymentToken);
                 await cache.updateOnePromise('nftBids', { _id: otherBid._id }, { $set: { status: 'lost' } });
             }
         }
@@ -148,8 +146,7 @@ export async function processTx(data: NftAcceptBidData, sender: string, _id: str
             bidAmount: toDbString(bidAmount),
             sellerProceeds: toDbString(sellerProceeds),
             royaltyAmount: toDbString(royaltyAmount),
-            paymentTokenSymbol: listing.paymentToken.symbol,
-            paymentTokenIssuer: listing.paymentToken.issuer,
+            paymentToken: listing.paymentToken,
             acceptedAt: new Date().toISOString(),
         });
 

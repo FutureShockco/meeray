@@ -89,22 +89,21 @@ export async function processTx(data: NftAcceptOfferData, sender: string, _id: s
             _id: collectionSymbol,
         })) as CachedNftCollectionForTransfer & { royaltyBps?: number };
 
-        const paymentToken = await getToken(offer.paymentToken.symbol);
+        const paymentToken = await getToken(offer.paymentToken);
         if (!paymentToken) {
-            logger.error(`[nft-accept-offer] Payment token not found: ${offer.paymentToken.symbol}`);
+            logger.error(`[nft-accept-offer] Payment token not found: ${offer.paymentToken}`);
             return false;
         }
-        const paymentTokenIdentifier = `${paymentToken.symbol}${paymentToken.issuer ? '@' + paymentToken.issuer : ''}`;
         const offerAmount = toBigInt(offer.offerAmount);
         const royaltyBps = toBigInt(collection.royaltyBps || 0);
         const royaltyAmount = (offerAmount * royaltyBps) / toBigInt(10000);
         const sellerProceeds = offerAmount - royaltyAmount;
-        if (!(await adjustUserBalance(sender, paymentTokenIdentifier, sellerProceeds))) {
+        if (!(await adjustUserBalance(sender, paymentToken.symbol, sellerProceeds))) {
             logger.error(`[nft-accept-offer] Failed to pay seller ${sender} proceeds of ${sellerProceeds}.`);
             return false;
         }
         if (royaltyAmount > 0n && collection.creator && collection.creator !== sender) {
-            if (!(await adjustUserBalance(collection.creator, paymentTokenIdentifier, royaltyAmount))) {
+            if (!(await adjustUserBalance(collection.creator, paymentToken.symbol, royaltyAmount))) {
                 logger.error(`[nft-accept-offer] Failed to pay royalty ${royaltyAmount} to creator ${collection.creator}.`);
                 return false;
             }
@@ -157,8 +156,7 @@ export async function processTx(data: NftAcceptOfferData, sender: string, _id: s
             offerAmount: toDbString(offerAmount),
             sellerProceeds: toDbString(sellerProceeds),
             royaltyAmount: toDbString(royaltyAmount),
-            paymentTokenSymbol: offer.paymentToken.symbol,
-            paymentTokenIssuer: offer.paymentToken.issuer,
+            paymentToken: offer.paymentToken,
             acceptedAt: new Date().toISOString(),
         });
         return true;

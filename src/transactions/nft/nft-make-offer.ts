@@ -38,15 +38,15 @@ export async function validateTx(data: NftMakeOfferData, sender: string): Promis
             return false;
         }
 
-        if (!data.paymentTokenSymbol || !validate.string(data.paymentTokenSymbol, 64, 1)) {
-            logger.warn('[nft-make-offer] Invalid paymentTokenSymbol.');
+        if (!data.paymentToken || !validate.string(data.paymentToken, 64, 1)) {
+            logger.warn('[nft-make-offer] Invalid paymentToken.');
             return false;
         }
 
         // Validate payment token
-        const paymentToken = await getToken(data.paymentTokenSymbol);
+        const paymentToken = await getToken(data.paymentToken);
         if (!paymentToken) {
-            logger.warn(`[nft-make-offer] Payment token ${data.paymentTokenSymbol}${data.paymentTokenIssuer ? '@' + data.paymentTokenIssuer : ''} not found.`);
+            logger.warn(`[nft-make-offer] Payment token ${data.paymentToken} not found.`);
             return false;
         }
 
@@ -64,8 +64,7 @@ export async function validateTx(data: NftMakeOfferData, sender: string): Promis
             return false;
         }
 
-        const paymentTokenIdentifier = `${data.paymentTokenSymbol}${data.paymentTokenIssuer ? '@' + data.paymentTokenIssuer : ''}`;
-        const senderBalance = toBigInt(senderAccount.balances?.[paymentTokenIdentifier] || 0);
+        const senderBalance = toBigInt(senderAccount.balances?.[paymentToken.symbol] || 0);
 
         if (senderBalance < offerAmount) {
             logger.warn('[nft-make-offer] Insufficient balance for offer.');
@@ -142,7 +141,6 @@ export async function validateTx(data: NftMakeOfferData, sender: string): Promis
 export async function processTx(data: NftMakeOfferData, sender: string, _id: string, timestamp: number): Promise<boolean> {
     try {
         const offerAmount = toBigInt(data.offerAmount);
-        const paymentTokenIdentifier = `${data.paymentTokenSymbol}${data.paymentTokenIssuer ? '@' + data.paymentTokenIssuer : ''}`;
 
         // Cancel any existing active offer from this sender for the same target
         const existingOffer = (await cache.findOnePromise('nftOffers', {
@@ -155,15 +153,15 @@ export async function processTx(data: NftMakeOfferData, sender: string, _id: str
         if (existingOffer) {
             // Release escrowed funds from previous offer
             const previousEscrowAmount = toBigInt(existingOffer.escrowedAmount);
-            await adjustUserBalance(sender, paymentTokenIdentifier, previousEscrowAmount);
+            await adjustUserBalance(sender, existingOffer.paymentToken, previousEscrowAmount);
 
             // Cancel the previous offer
             await cache.updateOnePromise('nftOffers', { _id: existingOffer._id }, { $set: { status: 'CANCELLED', cancelledAt: new Date().toISOString() } });
         }
 
         // Escrow funds for new offer
-        if (!(await adjustUserBalance(sender, paymentTokenIdentifier, -offerAmount))) {
-            logger.error(`[nft-make-offer] Failed to escrow ${offerAmount} ${paymentTokenIdentifier} from ${sender}.`);
+        if (!(await adjustUserBalance(sender, data.paymentToken, -offerAmount))) {
+            logger.error(`[nft-make-offer] Failed to escrow ${offerAmount} ${data.paymentToken} from ${sender}.`);
             return false;
         }
 
@@ -177,10 +175,7 @@ export async function processTx(data: NftMakeOfferData, sender: string, _id: str
             targetId: data.targetId,
             offerBy: sender,
             offerAmount: toDbString(offerAmount),
-            paymentToken: {
-                symbol: data.paymentTokenSymbol,
-                issuer: data.paymentTokenIssuer,
-            },
+            paymentToken: data.paymentToken,
             status: 'ACTIVE',
             createdAt: new Date().toISOString(),
             escrowedAmount: toDbString(offerAmount),
@@ -206,7 +201,7 @@ export async function processTx(data: NftMakeOfferData, sender: string, _id: str
 
         if (!insertSuccess) {
             // Rollback escrow
-            await adjustUserBalance(sender, paymentTokenIdentifier, offerAmount);
+            await adjustUserBalance(sender, data.paymentToken, offerAmount);
             logger.error(`[nft-make-offer] Failed to insert offer document.`);
             return false;
         }
@@ -218,8 +213,7 @@ export async function processTx(data: NftMakeOfferData, sender: string, _id: str
             targetId: data.targetId,
             offerBy: sender,
             offerAmount: toDbString(offerAmount),
-            paymentTokenSymbol: data.paymentTokenSymbol,
-            paymentTokenIssuer: data.paymentTokenIssuer,
+            paymentToken: data.paymentToken,
             expiresAt: data.expiresAt,
             traits: data.traits,
             createdAt: new Date().toISOString(),

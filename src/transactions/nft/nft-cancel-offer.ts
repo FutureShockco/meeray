@@ -37,16 +37,15 @@ export async function processTx(data: NftCancelOfferData, sender: string, _id: s
         const offer = (await cache.findOnePromise('nftOffers', { _id: data.offerId })) as NftOffer;
 
         // Release escrowed funds
-        const paymentToken = await getToken(offer.paymentToken.symbol);
+        const paymentToken = await getToken(offer.paymentToken);
         if (!paymentToken) {
-            logger.error(`[nft-cancel-offer] Payment token not found: ${offer.paymentToken.symbol}`);
+            logger.error(`[nft-cancel-offer] Payment token not found: ${offer.paymentToken}`);
             return false;
         }
 
-        const paymentTokenIdentifier = `${paymentToken.symbol}${paymentToken.issuer ? '@' + paymentToken.issuer : ''}`;
         const escrowAmount = toBigInt(offer.escrowedAmount);
 
-        if (!(await adjustUserBalance(sender, paymentTokenIdentifier, escrowAmount))) {
+        if (!(await adjustUserBalance(sender, paymentToken.symbol, escrowAmount))) {
             logger.error(`[nft-cancel-offer] Failed to release escrowed funds for offer ${data.offerId}.`);
             return false;
         }
@@ -77,8 +76,7 @@ export async function processTx(data: NftCancelOfferData, sender: string, _id: s
             offerBy: sender,
             offerAmount: offer.offerAmount,
             escrowReleased: escrowAmount.toString(),
-            paymentTokenSymbol: offer.paymentToken.symbol,
-            paymentTokenIssuer: offer.paymentToken.issuer,
+            paymentToken: offer.paymentToken,
             cancelledAt: new Date().toISOString(),
         });
 

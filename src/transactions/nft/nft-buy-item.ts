@@ -22,7 +22,7 @@ export async function validateTx(data: NftBuyPayload, sender: string): Promise<b
             return false;
         }
 
-        const paymentToken = await getToken(listing.paymentToken.symbol);
+        const paymentToken = await getToken(listing.paymentToken);
         if (!paymentToken) {
             logger.warn(`[nft-buy-item] Payment token not found.`);
             return false;
@@ -34,8 +34,7 @@ export async function validateTx(data: NftBuyPayload, sender: string): Promise<b
             return false;
         }
 
-        const paymentTokenIdentifier = `${listing.paymentToken.symbol}${listing.paymentToken.issuer ? '@' + listing.paymentToken.issuer : ''}`;
-        const buyerBalance = toBigInt(buyerAccount.balances?.[paymentTokenIdentifier] || 0);
+        const buyerBalance = toBigInt(buyerAccount.balances?.[listing.paymentToken] || 0);
         const listingPrice = toBigInt(listing.price);
         const bidAmount = data.bidAmount ? toBigInt(data.bidAmount) : listingPrice;
 
@@ -106,18 +105,16 @@ async function executeImmediatePurchase(listing: NFTListingData, buyer: string, 
         const collection = (await cache.findOnePromise('nftCollections', {
             _id: listing.collectionId,
         })) as CachedNftCollectionForTransfer & { royaltyBps?: number };
-        const paymentToken = (await getToken(listing.paymentToken.symbol))!;
-        const paymentTokenIdentifier = `${paymentToken.symbol}${paymentToken.issuer ? '@' + paymentToken.issuer : ''}`;
 
         const royaltyBps = toBigInt(collection.royaltyBps || 0);
         const royaltyAmount = (amount * royaltyBps) / toBigInt(10000); // basis points to percentage
         const sellerProceeds = amount - royaltyAmount;
 
         // Execute transfers
-        if (!(await adjustUserBalance(buyer, paymentTokenIdentifier, -amount))) return false;
-        if (!(await adjustUserBalance(listing.seller, paymentTokenIdentifier, sellerProceeds))) return false;
+        if (!(await adjustUserBalance(buyer, listing.paymentToken, -amount))) return false;
+        if (!(await adjustUserBalance(listing.seller, listing.paymentToken, sellerProceeds))) return false;
         if (royaltyAmount > 0n && collection.creator) {
-            if (!(await adjustUserBalance(collection.creator, paymentTokenIdentifier, royaltyAmount))) return false;
+            if (!(await adjustUserBalance(collection.creator, listing.paymentToken, royaltyAmount))) return false;
         }
 
         // Transfer NFT
@@ -157,8 +154,7 @@ async function executeImmediatePurchase(listing: NFTListingData, buyer: string, 
             buyer,
             price: toDbString(amount),
             finalPrice: toDbString(amount),
-            paymentTokenSymbol: listing.paymentToken.symbol,
-            paymentTokenIssuer: listing.paymentToken.issuer,
+            paymentToken: listing.paymentToken,
             royaltyAmount: toDbString(royaltyAmount),
             soldAt: new Date().toISOString(),
         });
@@ -172,10 +168,7 @@ async function executeImmediatePurchase(listing: NFTListingData, buyer: string, 
 
 async function submitBid(listing: NFTListingData, bidder: string, bidAmount: bigint, id: string, timestamp: number): Promise<boolean> {
     try {
-        const paymentToken = await getToken(listing.paymentToken.symbol);
-        if (!paymentToken) return false;
 
-        const paymentTokenIdentifier = `${paymentToken.symbol}${paymentToken.issuer ? '@' + paymentToken.issuer : ''}`;
         const bidId = generateBidId(listing._id, bidder, timestamp);
 
         // Handle existing bid
@@ -185,12 +178,12 @@ async function submitBid(listing: NFTListingData, bidder: string, bidAmount: big
             status: 'active',
         })) as NftBid | null;
         if (existingBid) {
-            await releaseEscrowedFunds(bidder, toBigInt(existingBid.escrowedAmount), paymentTokenIdentifier);
+            await releaseEscrowedFunds(bidder, toBigInt(existingBid.escrowedAmount), listing.paymentToken);
             await cache.updateOnePromise('nftBids', { _id: existingBid._id }, { $set: { status: 'CANCELLED' } });
         }
 
         // Escrow new bid
-        if (!(await escrowBidFunds(bidder, bidAmount, paymentTokenIdentifier))) return false;
+        if (!(await escrowBidFunds(bidder, bidAmount, listing.paymentToken))) return false;
 
         // Create bid
         const currentHighestBid = await getHighestBid(listing._id);
@@ -202,7 +195,7 @@ async function submitBid(listing: NFTListingData, bidder: string, bidAmount: big
             bidder,
             bidAmount: toDbString(bidAmount),
             status: isHighestBid ? 'WINNING' : 'ACTIVE',
-            paymentToken: { symbol: listing.paymentToken.symbol, issuer: listing.paymentToken.issuer },
+            paymentToken: listing.paymentToken,
             escrowedAmount: toDbString(bidAmount),
             createdAt: new Date().toISOString(),
             isHighestBid,
@@ -214,7 +207,7 @@ async function submitBid(listing: NFTListingData, bidder: string, bidAmount: big
         });
 
         if (!insertSuccess) {
-            await releaseEscrowedFunds(bidder, bidAmount, paymentTokenIdentifier);
+            await releaseEscrowedFunds(bidder, bidAmount, listing.paymentToken);
             return false;
         }
 
@@ -228,8 +221,7 @@ async function submitBid(listing: NFTListingData, bidder: string, bidAmount: big
             bidId,
             bidder,
             bidAmount: toDbString(bidAmount),
-            paymentTokenSymbol: paymentToken.symbol,
-            paymentTokenIssuer: paymentToken.issuer,
+            paymentToken: listing.paymentToken,
             isHighestBid,
             previousHighBidId: currentHighestBid?._id,
         });

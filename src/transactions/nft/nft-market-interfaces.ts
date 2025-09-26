@@ -59,8 +59,7 @@ export interface NftListPayload {
     collectionSymbol: string;
     instanceId: string;
     price: string;
-    paymentTokenSymbol: string;
-    paymentTokenIssuer?: string;
+    paymentToken: string;
     listingType?: 'FIXED_PRICE' | 'AUCTION' | 'RESERVE_AUCTION';
     reservePrice?: string;
     auctionEndTime?: string;
@@ -84,10 +83,7 @@ export interface NftBid {
     bidder: string;
     bidAmount: string | bigint;
     status: 'ACTIVE' | 'OUTBID' | 'WINNING' | 'WON' | 'LOST' | 'CANCELLED' | 'EXPIRED';
-    paymentToken: {
-        symbol: string;
-        issuer?: string;
-    };
+    paymentToken: string;
     escrowedAmount: string | bigint;
     createdAt: string;
     expiresAt?: string;
@@ -128,10 +124,7 @@ export interface NftOffer {
     targetId: string;
     offerBy: string;
     offerAmount: string | bigint;
-    paymentToken: {
-        symbol: string;
-        issuer?: string;
-    };
+    paymentToken:  string;
     status: 'ACTIVE' | 'ACCEPTED' | 'EXPIRED' | 'CANCELLED';
     expiresAt?: string;
     createdAt: string;
@@ -146,8 +139,7 @@ export interface NftMakeOfferData {
     targetType: 'NFT' | 'COLLECTION' | 'TRAIT';
     targetId: string;
     offerAmount: string;
-    paymentTokenSymbol: string;
-    paymentTokenIssuer?: string;
+    paymentToken: string;
     expiresAt?: string;
     traits?: {
         [key: string]: string;

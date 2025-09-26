@@ -37,16 +37,15 @@ export async function processTx(data: NftCancelBidData, sender: string, _id: str
         const bid = (await cache.findOnePromise('nftBids', { _id: data.bidId })) as NftBid;
 
         // Release escrowed funds
-        const paymentToken = await getToken(bid.paymentToken.symbol);
+        const paymentToken = await getToken(bid.paymentToken);
         if (!paymentToken) {
-            logger.error(`[nft-cancel-bid] Payment token not found: ${bid.paymentToken.symbol}`);
+            logger.error(`[nft-cancel-bid] Payment token not found: ${bid.paymentToken}`);
             return false;
         }
 
-        const paymentTokenIdentifier = `${paymentToken.symbol}${paymentToken.issuer ? '@' + paymentToken.issuer : ''}`;
         const escrowAmount = toBigInt(bid.escrowedAmount);
 
-        if (!(await releaseEscrowedFunds(sender, escrowAmount, paymentTokenIdentifier))) {
+        if (!(await releaseEscrowedFunds(sender, escrowAmount, bid.paymentToken))) {
             logger.error(`[nft-cancel-bid] Failed to release escrowed funds for bid ${data.bidId}.`);
             return false;
         }
@@ -125,8 +124,7 @@ export async function processTx(data: NftCancelBidData, sender: string, _id: str
             bidder: sender,
             bidAmount: bid.bidAmount,
             escrowReleased: escrowAmount.toString(),
-            paymentTokenSymbol: bid.paymentToken.symbol,
-            paymentTokenIssuer: bid.paymentToken.issuer,
+            paymentToken: bid.paymentToken,
             cancelledAt: new Date().toISOString(),
         });
 

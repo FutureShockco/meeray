@@ -120,9 +120,8 @@ export async function processTx(data: CloseAuctionData, sender: string): Promise
             return false;
         }
 
-        const paymentToken = (await getToken(listing.paymentToken.symbol))!;
+        const paymentToken = (await getToken(listing.paymentToken))!;
 
-        const paymentTokenIdentifier = `${paymentToken.symbol}${paymentToken.issuer ? '@' + paymentToken.issuer : ''}`;
         const royaltyBps = toBigInt(collection.royaltyBps || 0);
 
         // Calculate payments
@@ -133,14 +132,14 @@ export async function processTx(data: CloseAuctionData, sender: string): Promise
         logger.debug(`[nft-close-auction] Processing auction close: Bid=${bidAmount}, Royalty=${royaltyAmount}, SellerGets=${sellerProceeds}`);
 
         // 1. Pay seller their proceeds
-        if (!(await adjustUserBalance(listing.seller, paymentTokenIdentifier, sellerProceeds))) {
+        if (!(await adjustUserBalance(listing.seller, paymentToken.symbol, sellerProceeds))) {
             logger.error(`[nft-close-auction] Failed to pay seller ${listing.seller} proceeds of ${sellerProceeds}.`);
             return false;
         }
 
         // 2. Pay royalty to creator (if applicable)
         if (royaltyAmount > 0n && collection.creator && collection.creator !== listing.seller) {
-            if (!(await adjustUserBalance(collection.creator, paymentTokenIdentifier, royaltyAmount))) {
+            if (!(await adjustUserBalance(collection.creator, paymentToken.symbol, royaltyAmount))) {
                 logger.error(`[nft-close-auction] Failed to pay royalty ${royaltyAmount} to creator ${collection.creator}.`);
                 return false;
             }
@@ -205,7 +204,7 @@ export async function processTx(data: CloseAuctionData, sender: string): Promise
             for (const losingBid of losingBids) {
                 // Release escrow for losing bids
                 const escrowAmount = toBigInt(losingBid.escrowedAmount);
-                await releaseEscrowedFunds(losingBid.bidder, escrowAmount, paymentTokenIdentifier);
+                await releaseEscrowedFunds(losingBid.bidder, escrowAmount, paymentToken.symbol);
 
                 // Update bid status
                 await cache.updateOnePromise('nftBids', { _id: losingBid._id }, { $set: { status: 'lost' } });
@@ -227,8 +226,7 @@ export async function processTx(data: CloseAuctionData, sender: string): Promise
             bidAmount: toDbString(bidAmount),
             sellerProceeds: toDbString(sellerProceeds),
             royaltyAmount: toDbString(royaltyAmount),
-            paymentTokenSymbol: listing.paymentToken.symbol,
-            paymentTokenIssuer: listing.paymentToken.issuer,
+            paymentToken: listing.paymentToken,
             auctionEndTime: listing.auctionEndTime,
             closedBy: sender,
             closedAt: new Date().toISOString(),

@@ -64,8 +64,7 @@ export async function processTx(data: NftDelistPayload, sender: string, _id: str
             tokenId: listing.tokenId,
             fullInstanceId: `${listing.collectionId}_${listing.tokenId}`,
             price: toDbString(listing.price),
-            paymentTokenSymbol: listing.paymentToken.symbol,
-            paymentTokenIssuer: listing.paymentToken.issuer,
+            paymentToken: listing.paymentToken,
             listingType: listing.listingType,
             cancelledAt: new Date().toISOString(),
         });

@@ -435,9 +435,8 @@ router.get('/listings', (async (req: Request, res: Response) => {
     if (req.query.seller) {
         query.seller = req.query.seller as string;
     }
-    if (req.query.paymentTokenSymbol) {
-        
-        query['paymentToken.symbol'] = req.query.paymentTokenSymbol as string;
+    if (req.query.paymentToken) {
+        query.paymentToken = req.query.paymentToken as string;
     }
 
     
@@ -1162,7 +1161,7 @@ router.get('/collections/:symbol/analytics', (async (req: Request, res: Response
                 },
                 { $sort: { price: 1 } },
                 { $limit: 1 },
-                { $project: { price: 1, paymentTokenSymbol: 1 } },
+                { $project: { price: 1, paymentToken: 1 } },
             ])
             .toArray();
         const floorPrice = floorPriceData[0] || null;
@@ -1258,7 +1257,7 @@ router.get('/collections/:symbol/analytics', (async (req: Request, res: Response
                 floorPrice: floorPrice
                     ? {
                           price: floorPrice.price,
-                          token: floorPrice.paymentTokenSymbol,
+                          token: floorPrice.paymentToken,
                       }
                     : null,
             },
@@ -1504,7 +1503,7 @@ router.get('/user/:username/activity', (async (req: Request, res: Response) => {
                     nftId: `${tx.data.collectionSymbol}_${tx.data.instanceId}`,
                     collectionSymbol: tx.data.collectionSymbol,
                     price: tx.data.price,
-                    paymentToken: tx.data.paymentTokenSymbol,
+                    paymentToken: tx.data.paymentToken,
                     from: tx.data.seller,
                     to: tx.data.buyer,
                 });
@@ -1532,7 +1531,7 @@ router.get('/user/:username/activity', (async (req: Request, res: Response) => {
                     nftId: `${tx.data.collectionSymbol}_${tx.data.instanceId}`,
                     collectionSymbol: tx.data.collectionSymbol,
                     price: tx.data.price,
-                    paymentToken: tx.data.paymentTokenSymbol,
+                    paymentToken: tx.data.paymentToken,
                     from: tx.data.seller,
                     to: tx.data.buyer,
                 });
@@ -1560,7 +1559,7 @@ router.get('/user/:username/activity', (async (req: Request, res: Response) => {
                     nftId: `${tx.data.collectionSymbol}_${tx.data.instanceId}`,
                     collectionSymbol: tx.data.collectionSymbol,
                     price: tx.data.price,
-                    paymentToken: tx.data.paymentTokenSymbol,
+                    paymentToken: tx.data.paymentToken,
                     listingType: tx.data.listingType,
                     seller: tx.data.seller,
                 });
