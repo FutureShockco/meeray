@@ -468,15 +468,6 @@ export const mongo = {
             await tradesCollection.createIndex({ takerOrderId: 1 });
             logger.debug('[DB Indexes] Finished creating indexes for trades collection.');
 
-            // Pools (Liquidity Pools)
-            logger.debug('[DB Indexes] Creating indexes for pools collection...');
-            const poolsCollection = currentDb.collection('pools');
-            await poolsCollection.createIndex({ _id: 1 }); // poolId
-            await poolsCollection.createIndex({ tokenA_symbol: 1 });
-            await poolsCollection.createIndex({ tokenB_symbol: 1 });
-            await poolsCollection.createIndex({ creator: 1 });
-            logger.debug('[DB Indexes] Finished creating indexes for pools collection.');
-
             logger.debug('MongoDB indexes ensured for all relevant collections.');
         } catch (indexError) {
             logger.error('Error creating MongoDB indexes:', indexError);

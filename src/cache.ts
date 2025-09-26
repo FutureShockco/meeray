@@ -42,7 +42,6 @@ interface CacheCopyCollections {
     trades: CacheCollectionStore;
     launchpads: CacheCollectionStore;
     liquidityPools: CacheCollectionStore;
-    // Add other collections from original TS if they were in `copy`
 }
 
 interface CacheMainDataCollections {
@@ -63,7 +62,6 @@ interface CacheMainDataCollections {
     trades: CacheCollectionStore;
     launchpads: CacheCollectionStore;
     liquidityPools: CacheCollectionStore;
-    // Add other collections from original TS if they were direct properties
 }
 
 interface CacheType extends CacheMainDataCollections {
