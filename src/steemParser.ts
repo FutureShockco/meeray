@@ -7,9 +7,9 @@ import { parseTokenAmount } from './utils/bigint.js';
 import { isTokenIssuedByNode } from './utils/token.js';
 
 interface SteemOperationData {
-    id: string; // Custom JSON id
-    json: string; // JSON string payload
-    required_auths: string[]; // Required authorizations
+    id: string;
+    json: string;
+    required_auths: string[];
     from?: string;
     to?: string;
     amount?: string;
@@ -41,12 +41,6 @@ export interface ParsedTransaction {
     hash?: string;
 }
 
-/**
- * Parses transactions from a Steem block
- * @param steemBlock The Steem block to parse
- * @param blockNum The block number
- * @returns Array of parsed transactions
- */
 // eslint-disable-next-line max-lines-per-function, complexity
 const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number): Promise<SteemBlockResult> => {
     logger.info(`Starting to parse Steem block ${blockNum} with ${steemBlock.transactions.length} transactions`);
