@@ -49,7 +49,7 @@ export interface ParsedTransaction {
  */
 // eslint-disable-next-line max-lines-per-function, complexity
 const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number): Promise<SteemBlockResult> => {
-    logger.debug(`Starting to parse Steem block ${blockNum} with ${steemBlock.transactions.length} transactions`);
+    logger.info(`Starting to parse Steem block ${blockNum} with ${steemBlock.transactions.length} transactions`);
     const txs: ParsedTransaction[] = [];
     let opIndex = 0;
     for (const tx of steemBlock.transactions) {

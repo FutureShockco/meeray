@@ -19,7 +19,7 @@ class BlockProcessor {
     async processBlock(blockNum: number): Promise<SteemBlockResult | null> {
         const lastProcessedSteemBlockBySidechain = chain.getLatestBlock()?.steemBlockNum || 0;
 
-        logger.debug(`Processing block ${blockNum}, last processed: ${lastProcessedSteemBlockBySidechain}`);
+        logger.info(`Processing block ${blockNum}, last processed: ${lastProcessedSteemBlockBySidechain}`);
 
         if (blockNum !== lastProcessedSteemBlockBySidechain + 1) {
             logger.debug(`Block ${blockNum} is not sequential. Expected ${lastProcessedSteemBlockBySidechain + 1}, returning null`);
@@ -48,13 +48,15 @@ class BlockProcessor {
             }
 
             const steemBlockResult = await parseSteemTransactions(steemBlock, blockNum);
+            logger.info(`Finished parsing Steem block ${blockNum}, found ${steemBlockResult.transactions.length} transactions`);
             this.resetConsecutiveErrors();
 
             if (steemBlockResult.transactions.length > 0) {
                 transaction.addToPool(
                     steemBlockResult.transactions.map((tx, idx) => ({
                         ...tx,
-                        id: tx.hash ?? `${blockNum}-${idx}`,
+                        id: `${blockNum}-${idx}`,
+                        hash: `${blockNum}-${idx}`,
                     }))
                 );
             }

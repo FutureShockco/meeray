@@ -54,7 +54,7 @@ const transaction: TransactionModule = {
             for (let i = 0; i < transaction.pool.length; i++) {
                 if (transaction.pool[i].hash === txs[y].hash) {
                     exists = true;
-                    logr.debug(`Transaction ${txs[y].hash} already exists in pool, skipping`);
+                    logr.info(`Transaction ${txs[y].hash} already exists in pool, skipping`);
                     break;
                 }
             }
@@ -62,7 +62,7 @@ const transaction: TransactionModule = {
             if (!exists) {
                 transaction.pool.push(txs[y]);
                 added++;
-                logr.debug(`Added transaction to pool: type=${txs[y].type}, sender=${txs[y].sender}, hash=${txs[y].hash}`);
+                logr.info(`Added transaction to pool: type=${txs[y].type}, sender=${txs[y].sender}, hash=${txs[y].hash}`);
             }
         }
         logr.info(`Added ${added} new transactions to pool (new size: ${transaction.pool.length})`);

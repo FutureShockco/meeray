@@ -634,7 +634,8 @@ class MatchingEngine {
       const removed = Array.isArray(matchOutput.removedMakerOrders) ? matchOutput.removedMakerOrders : [];
       const updated = matchOutput.updatedMakerOrder ? { _id: matchOutput.updatedMakerOrder._id, filledQuantity: matchOutput.updatedMakerOrder.filledQuantity, status: matchOutput.updatedMakerOrder.status } : null;
       const tradeSummaries = (matchOutput.trades || []).map(t => ({ id: t._id, buyer: t.buyerUserId, seller: t.sellerUserId, quantity: t.quantity }));
-      logger.info(`[MatchingEngine] Match summary for taker ${takerOrder._id}: removedMakerOrders=${JSON.stringify(removed)}, updatedMaker=${JSON.stringify(updated)}, trades=${JSON.stringify(tradeSummaries)}`);
+      const safeStringify = (obj: any) => JSON.stringify(obj, (_k, v) => (typeof v === 'bigint' ? v.toString() : v));
+      logger.info(`[MatchingEngine] Match summary for taker ${takerOrder._id}: removedMakerOrders=${safeStringify(removed)}, updatedMaker=${safeStringify(updated)}, trades=${safeStringify(tradeSummaries)}`);
     } catch (logErr) {
       logger.warn('[MatchingEngine] Failed to log match summary:', logErr);
     }
