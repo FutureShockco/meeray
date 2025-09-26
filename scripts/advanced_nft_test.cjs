@@ -130,11 +130,9 @@ async function transferNft(collectionSymbol, instanceId, to, memo, actingUser, p
   return sendCustomJson('nft_transfer', payload, actingUser, pk);
 }
 
-async function listNft(collectionSymbol, instanceId, price, paymentToken, paymentTokenIssuer, actingUser, pk) {
-  const payload = { collectionSymbol, instanceId, price: price.toString(), paymentTokenSymbol: paymentToken };
-  // if (paymentTokenIssuer && paymentToken.toUpperCase() !== 'STEEM' && paymentToken.toUpperCase() !== 'SBD') {
-  //   payload.paymentTokenIssuer = paymentTokenIssuer; 
-  // }
+async function listNft(collectionSymbol, instanceId, price, paymentToken,  actingUser, pk) {
+  const payload = { collectionSymbol, instanceId, price: price.toString(), paymentToken: paymentToken };
+
   return sendCustomJson('nft_list_item', payload, actingUser, pk);
 }
 

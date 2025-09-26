@@ -6,7 +6,7 @@ const { getClient, sendCustomJson } = require('../helpers.cjs');
 
 function loadKeys() {
   try {
-    const keysFile = fs.readFileSync(path.join(__dirname, 'keys.json'));
+    const keysFile = fs.readFileSync(path.join(__dirname, '../keys.json'));
     return JSON.parse(keysFile);
   } catch (err) {
     console.error('Error loading keys.json file:', err.message || err);
