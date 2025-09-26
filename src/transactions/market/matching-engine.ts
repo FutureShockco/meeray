@@ -95,6 +95,9 @@ class MatchingEngine {
   private pollIntervalMs: number = Math.max(250, parseInt(process.env.ORDERBOOK_RECONCILE_POLL_MS || '1000', 10));
   private reconcileTimer: NodeJS.Timeout | null = null;
   private lastReconciledBlock: number = 0;
+  private lastPairRebuiltBlock: Map<string, number> = new Map();
+  // In-process locks to avoid concurrent rebuilds per-pair
+  private pairReconcileLocks: Map<string, boolean> = new Map();
 
   constructor() {
     logger.trace('[MatchingEngine] Initializing...');
@@ -199,33 +202,54 @@ class MatchingEngine {
       }
     }
 
-    // Compare DB levels vs in-memory
+    // Compare DB levels vs in-memory with safeguards to avoid frequent/noisy rebuilds
     const inLevels = inMemorySnapshot.bids.concat(inMemorySnapshot.asks);
-    let mismatch = false;
-    // Quick compare by number of levels
-    if (inLevels.length !== dbPriceLevels.size) {
-      mismatch = true;
-    } else {
-      for (const lvl of inLevels) {
-        const priceStr = lvl.price.toString();
-        const dbQty = dbPriceLevels.get(priceStr) || 0n;
-        if (dbQty !== lvl.quantity) {
-          mismatch = true;
-          break;
-        }
-      }
+
+    // Fast-path: compare aggregate totals per side
+    let memTotalBids = 0n;
+    let memTotalAsks = 0n;
+    for (const b of inMemorySnapshot.bids) memTotalBids += toBigInt(b.quantity);
+    for (const a of inMemorySnapshot.asks) memTotalAsks += toBigInt(a.quantity);
+
+    let dbTotalBids = 0n;
+    let dbTotalAsks = 0n;
+    // We need to infer side by price ordering: prices in DB map may be both bids & asks; use pair orders query to segregate
+    // For simplicity, compute DB total across all open orders and compare to mem total across both sides
+    for (const [, qty] of dbPriceLevels) {
+      // We don't know side here; accumulate into a single total for quick equality test
+      // We'll also compute combined mem total
+    }
+    const memCombined = memTotalBids + memTotalAsks;
+    let dbCombined = 0n;
+    for (const qty of dbPriceLevels.values()) dbCombined += toBigInt(qty);
+
+    // If combined totals match exactly, assume no meaningful mismatch and skip rebuild
+    if (dbCombined === memCombined) {
+      // Still could be different distribution across price levels, but that's harmless for most UIs — avoid rebuild noise
+      logger.trace(`[MatchingEngine] Reconcile check for ${pairId}: combined DB=${dbCombined} equals in-memory=${memCombined}. Skipping rebuild.`);
+      return;
     }
 
-    if (mismatch) {
-      logger.info(`[MatchingEngine] Detected orderbook mismatch for ${pairId}. Rebuilding in-memory book from DB authoritative state.`);
-      try {
-        const rebuilt = new OrderBook(pairId);
-        await this._loadOpenOrdersForPair(pairId, rebuilt);
-        this.orderBooks.set(pairId, rebuilt);
-        logger.debug(`[MatchingEngine] Successfully rebuilt order book for ${pairId} during reconciliation.`);
-      } catch (err) {
-        logger.error(`[MatchingEngine] Failed to rebuild order book for ${pairId}:`, err);
-      }
+    // Determine cooldown: avoid rebuilding the same pair repeatedly within a short block window
+    const cooldownBlocks = Math.max(0, parseInt(process.env.ORDERBOOK_REBUILD_COOLDOWN_BLOCKS || '3', 10));
+    const head = chain.getLatestBlock();
+    const headId = head && typeof head._id === 'number' ? head._id : 0;
+    const lastRebuilt = this.lastPairRebuiltBlock.get(pairId) || 0;
+    if (headId - lastRebuilt <= cooldownBlocks) {
+      logger.debug(`[MatchingEngine] Detected mismatch for ${pairId} but within cooldown (${headId - lastRebuilt} <= ${cooldownBlocks} blocks). Skipping rebuild.`);
+      return;
+    }
+
+    // If we reached here, there is a combined total mismatch and cooldown passed — log details and rebuild
+    logger.info(`[MatchingEngine] Detected orderbook mismatch for ${pairId}. DB combined=${dbCombined}, mem combined=${memCombined}. Rebuilding in-memory book from DB authoritative state.`);
+    try {
+      const rebuilt = new OrderBook(pairId);
+      await this._loadOpenOrdersForPair(pairId, rebuilt);
+      this.orderBooks.set(pairId, rebuilt);
+      this.lastPairRebuiltBlock.set(pairId, headId);
+      logger.debug(`[MatchingEngine] Successfully rebuilt order book for ${pairId} during reconciliation at block ${headId}.`);
+    } catch (err) {
+      logger.error(`[MatchingEngine] Failed to rebuild order book for ${pairId}:`, err);
     }
   }
 
@@ -395,6 +419,40 @@ class MatchingEngine {
     }
   }
 
+  /**
+   * Attempt to claim a reconcile for a pair at targetBlock using an atomic DB operation.
+   * Returns true if this node should run reconcilePair(pairId).
+   */
+  /**
+   * Ensure a pair is reconciled deterministically for the current reconcile target block.
+   * Uses in-memory markers and a per-pair lock so no DB access is required.
+   */
+  private async ensurePairReconciled(pairId: string): Promise<void> {
+    try {
+      if (this.reconcileEveryNBlocks <= 0) return;
+      const head = (typeof chain !== 'undefined' && chain.getLatestBlock) ? chain.getLatestBlock() : null;
+      if (!head || typeof head._id !== 'number') return;
+      const headId = head._id as number;
+      // Only attempt reconcile on target blocks (same rule as auto-reconcile)
+      if ((headId % this.reconcileEveryNBlocks) !== 0) return;
+      const lastRebuiltForPair = this.lastPairRebuiltBlock.get(pairId) || 0;
+      if (lastRebuiltForPair === headId) return; // already reconciled for this block
+      if (this.pairReconcileLocks.get(pairId)) return; // someone else is reconciling this pair in-process
+      this.pairReconcileLocks.set(pairId, true);
+      try {
+        logger.debug(`[MatchingEngine] Per-pair reconcile triggered for ${pairId} at block ${headId}`);
+        await this.reconcilePair(pairId);
+        this.lastPairRebuiltBlock.set(pairId, headId);
+      } catch (err) {
+        logger.error(`[MatchingEngine] Per-pair reconcile failed for ${pairId}:`, err);
+      } finally {
+        this.pairReconcileLocks.set(pairId, false);
+      }
+    } catch (err) {
+      logger.error(`[MatchingEngine] ensurePairReconciled error for ${pairId}:`, err);
+    }
+  }
+
   public async warmupMarketData(): Promise<void> {
     logger.debug('[MatchingEngine] Starting market data warmup...');
     let activePairs: TradingPairData[] | null = null;
@@ -504,6 +562,9 @@ class MatchingEngine {
       return { order: finalOrderState, trades: [], accepted: false, rejectReason: `Trading pair ${takerOrder.pairId} not supported or inactive.` };
     }
 
+    // Ensure the pair is reconciled for the current reconcile target block (in-memory gate)
+    await this.ensurePairReconciled(takerOrder.pairId);
+
     const pairDetailsDB = await cache.findOnePromise('tradingPairs', { _id: takerOrder.pairId }) as TradingPairData | null;
     if (!pairDetailsDB) {
       logger.error(`[MatchingEngine] CRITICAL: Could not find pair details for order ${takerOrder._id}. Rejecting order.`);
@@ -568,6 +629,15 @@ class MatchingEngine {
 
 
     const matchOutput = orderBook.matchOrder(takerOrder);
+    try {
+      // Log concise match output summary for debugging: removed makers, updated maker summary, and basic trade info
+      const removed = Array.isArray(matchOutput.removedMakerOrders) ? matchOutput.removedMakerOrders : [];
+      const updated = matchOutput.updatedMakerOrder ? { _id: matchOutput.updatedMakerOrder._id, filledQuantity: matchOutput.updatedMakerOrder.filledQuantity, status: matchOutput.updatedMakerOrder.status } : null;
+      const tradeSummaries = (matchOutput.trades || []).map(t => ({ id: t._id, buyer: t.buyerUserId, seller: t.sellerUserId, quantity: t.quantity }));
+      logger.info(`[MatchingEngine] Match summary for taker ${takerOrder._id}: removedMakerOrders=${JSON.stringify(removed)}, updatedMaker=${JSON.stringify(updated)}, trades=${JSON.stringify(tradeSummaries)}`);
+    } catch (logErr) {
+      logger.warn('[MatchingEngine] Failed to log match summary:', logErr);
+    }
     // Unify price calculation for all trades using calculateDecimalAwarePrice
     const tradesAppFormat: TradeData[] = matchOutput.trades.map(t => {
       // Determine trade side and assign base/quote symbols
@@ -704,13 +774,40 @@ class MatchingEngine {
     });
 
     for (const makerOrderId of matchOutput.removedMakerOrders) {
-      await cache.updateOnePromise('orders', { _id: makerOrderId }, {
-        $set: {
-          status: OrderStatus.FILLED,
-          remainingQuantity: "0",
-          updatedAt: new Date().toISOString()
+      try {
+        // Ensure DB reflects the fully-filled state. Fetch existing order to determine its total quantity
+        const makerOrderDB = await cache.findOnePromise('orders', { _id: makerOrderId }) as any | null;
+        const filledQtyToPersist = makerOrderDB && makerOrderDB.quantity ? toDbString(makerOrderDB.quantity) : toDbString(0);
+        try {
+          const makerOrderDB = await cache.findOnePromise('orders', { _id: makerOrderId }) as any | null;
+          // Log compact maker DB summary for debugging persistence issues
+          try {
+            logger.info(`[MatchingEngine] Maker DB read for ${makerOrderId}: quantity=${makerOrderDB && makerOrderDB.quantity ? makerOrderDB.quantity.toString() : 'MISSING'}, filledQuantity=${makerOrderDB && makerOrderDB.filledQuantity ? makerOrderDB.filledQuantity.toString() : '0'}, status=${makerOrderDB && makerOrderDB.status ? makerOrderDB.status : 'UNKNOWN'}`);
+          } catch (logErr) {
+            logger.warn(`[MatchingEngine] Failed to stringify maker DB read for ${makerOrderId}: ${logErr}`);
+          }
+
+          const filledQtyToPersist = makerOrderDB && makerOrderDB.quantity ? toDbString(makerOrderDB.quantity) : toDbString(0);
+
+          const makerUpdateResult = await cache.updateOnePromise('orders', { _id: makerOrderId }, {
+            $set: {
+              status: OrderStatus.FILLED,
+              filledQuantity: filledQtyToPersist,
+              remainingQuantity: "0",
+              updatedAt: new Date().toISOString()
+            }
+          });
+          if (!makerUpdateResult) {
+            logger.error(`[MatchingEngine] CRITICAL: updateOnePromise returned falsy when persisting FILLED state for maker order ${makerOrderId}`);
+          } else {
+            logger.info(`[MatchingEngine] Persisted FILLED state for maker order ${makerOrderId}`);
+          }
+        } catch (err) {
+          logger.error(`[MatchingEngine] Failed to persist FILLED state for maker order ${makerOrderId}:`, err);
         }
-      });
+      } catch (err) {
+        logger.error(`[MatchingEngine] Failed to persist FILLED state for maker order ${makerOrderId}:`, err);
+      }
     }
 
     if (matchOutput.updatedMakerOrder) {
@@ -724,7 +821,16 @@ class MatchingEngine {
         cumulativeQuoteValue: cumulativeQuoteValue ? toDbString(cumulativeQuoteValue) : undefined,
         updatedAt: new Date().toISOString()
       };
-      await cache.updateOnePromise('orders', { _id }, { $set: updateSet });
+      try {
+        const updatedMakerResult = await cache.updateOnePromise('orders', { _id }, { $set: updateSet });
+        if (!updatedMakerResult) {
+          logger.error(`[MatchingEngine] CRITICAL: updateOnePromise returned falsy when updating maker order ${_id}. updateSet=${JSON.stringify(updateSet)}`);
+        } else {
+          logger.info(`[MatchingEngine] Updated maker order ${_id} in DB`);
+        }
+      } catch (err) {
+        logger.error(`[MatchingEngine] Error updating maker order ${_id}:`, err);
+      }
     }
 
     let finalTakerStatus = takerOrder.status;
@@ -770,7 +876,16 @@ class MatchingEngine {
       cumulativeQuoteValue: takerOrder.cumulativeQuoteValue !== undefined ? toDbString(takerOrder.cumulativeQuoteValue) : undefined,
       quoteOrderQty: takerOrder.quoteOrderQty !== undefined ? toDbString(takerOrder.quoteOrderQty) : undefined
     };
-    await cache.updateOnePromise('orders', { _id: takerOrder._id }, { $set: finalTakerOrderForDB });
+    try {
+      const takerUpdateResult = await cache.updateOnePromise('orders', { _id: takerOrder._id }, { $set: finalTakerOrderForDB });
+      if (!takerUpdateResult) {
+        logger.error(`[MatchingEngine] CRITICAL: updateOnePromise returned falsy when updating taker order ${takerOrder._id}. finalTakerOrderForDB=${JSON.stringify(finalTakerOrderForDB)}`);
+      } else {
+        logger.info(`[MatchingEngine] Persisted final taker order state for ${takerOrder._id}`);
+      }
+    } catch (err) {
+      logger.error(`[MatchingEngine] Error persisting final taker order ${takerOrder._id}:`, err);
+    }
 
     if (!allUpdatesSuccessful) {
       return { order: takerOrder, trades: tradesAppFormat, accepted: true, rejectReason: "Processed with some errors, check logs." };

@@ -37,7 +37,23 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
         }
 
         // Validate slippage protection vs price specification
-        const hasPrice = data.price !== undefined;
+        // Consider a price present if the top-level trade provides one OR any ORDERBOOK route has a price specified
+        let hasPrice = data.price !== undefined;
+        if (!hasPrice && data.routes && data.routes.length > 0) {
+            for (const route of data.routes) {
+                try {
+                    if (route.type === 'ORDERBOOK') {
+                        const obDetails: any = route.details || {};
+                        if (obDetails.price !== undefined) {
+                            hasPrice = true;
+                            break;
+                        }
+                    }
+                } catch (err) {
+                    // ignore and continue
+                }
+            }
+        }
         const hasMinAmountOut = data.minAmountOut !== undefined;
         const hasMaxSlippage = data.maxSlippagePercent !== undefined;
 

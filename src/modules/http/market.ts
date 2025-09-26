@@ -289,16 +289,16 @@ router.get('/stats/:pairId', (async (req: Request, res: Response) => {
         const highestBidBig =
             buyOrders.length > 0
                 ? buyOrders.reduce((m, order) => {
-                      const p = toBigInt(order.price || 0);
-                      return p > m ? p : m;
-                  }, 0n)
+                    const p = toBigInt(order.price || 0);
+                    return p > m ? p : m;
+                }, 0n)
                 : 0n;
         const lowestAskBig =
             sellOrders.length > 0
                 ? sellOrders.reduce((m, order) => {
-                      const p = toBigInt(order.price || 0);
-                      return m === 0n || p < m ? p : m;
-                  }, 0n)
+                    const p = toBigInt(order.price || 0);
+                    return m === 0n || p < m ? p : m;
+                }, 0n)
                 : 0n;
         const spreadBig = lowestAskBig > 0n && highestBidBig > 0n ? lowestAskBig - highestBidBig : 0n;
         const spreadPercent = highestBidBig > 0n ? (Number(spreadBig) / Number(highestBidBig)) * 100 : 0;
@@ -498,8 +498,8 @@ router.get('/trades/:pairId', (async (req: Request, res: Response) => {
             const volumeBigInt = trade.volume
                 ? toBigInt(trade.volume)
                 : trade.total
-                  ? toBigInt(trade.total)
-                  : (priceBigInt * quantityBigInt) / toBigInt(10) ** toBigInt(quoteDecimals);
+                    ? toBigInt(trade.total)
+                    : (priceBigInt * quantityBigInt) / toBigInt(10) ** toBigInt(quoteDecimals);
 
             // Price is always represented as quote-per-base (quote token units per 1 base token)
             // so format price and volume using the quote asset symbol
@@ -543,21 +543,21 @@ router.get('/trades/:pairId', (async (req: Request, res: Response) => {
         const priceRange =
             formattedTrades.length > 0
                 ? {
-                      high: Math.max(...formattedTrades.map(t => Number(t.rawPrice))),
-                      low: Math.min(...formattedTrades.map(t => Number(t.rawPrice))),
-                      latest: formattedTrades[0] ? Number(formattedTrades[0].rawPrice) : 0,
-                      highFormatted: formatAmount(toBigInt(Math.max(...formattedTrades.map(t => Number(t.rawPrice))))),
-                      lowFormatted: formatAmount(toBigInt(Math.min(...formattedTrades.map(t => Number(t.rawPrice))))),
-                      latestFormatted: formattedTrades[0] ? formattedTrades[0].price : '0.00000000',
-                  }
+                    high: Math.max(...formattedTrades.map(t => Number(t.rawPrice))),
+                    low: Math.min(...formattedTrades.map(t => Number(t.rawPrice))),
+                    latest: formattedTrades[0] ? Number(formattedTrades[0].rawPrice) : 0,
+                    highFormatted: formatAmount(toBigInt(Math.max(...formattedTrades.map(t => Number(t.rawPrice))))),
+                    lowFormatted: formatAmount(toBigInt(Math.min(...formattedTrades.map(t => Number(t.rawPrice))))),
+                    latestFormatted: formattedTrades[0] ? formattedTrades[0].price : '0.00000000',
+                }
                 : {
-                      high: 0,
-                      low: 0,
-                      latest: 0,
-                      highFormatted: '0.00000000',
-                      lowFormatted: '0.00000000',
-                      latestFormatted: '0.00000000',
-                  };
+                    high: 0,
+                    low: 0,
+                    latest: 0,
+                    highFormatted: '0.00000000',
+                    lowFormatted: '0.00000000',
+                    latestFormatted: '0.00000000',
+                };
 
         res.json({
             pairId,
@@ -746,7 +746,7 @@ router.get('/orders/user/:userId', (async (req: Request, res: Response) => {
         // Get orders with optional filtering
         const orders =
             (await cache.findPromise('orders', filter, {
-                sort: { timestamp: -1 }, // Most recent first
+                sort: { createdAt: -1 }, // Most recent first
                 limit: Math.min(Number(limit), 500), // Cap at 500 orders
             })) || [];
 
@@ -779,7 +779,7 @@ router.get('/orders/user/:userId', (async (req: Request, res: Response) => {
                 filledQuantity: formatAmount(toBigInt(order.filledQuantity || 0), baseSymbol),
                 rawFilledQuantity: toBigInt(order.filledQuantity || 0).toString(),
                 status: order.status,
-                timestamp: order.timestamp,
+                timestamp: order.createdAt || order.timestamp,
                 lastUpdateTime: order.lastUpdateTime,
             };
         });

@@ -1,6 +1,6 @@
 import cache from '../../cache.js';
 import logger from '../../logger.js';
-import { getAccount } from '../../utils/account.js';
+import { getAccount, adjustUserBalance } from '../../utils/account.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 import validate from '../../validation/index.js';
@@ -35,27 +35,42 @@ export async function validateTx(data: FarmStakeData, sender: string): Promise<b
             return false;
         }
 
-        // The farm.stakingToken.issuer is assumed to be the poolId where these LP tokens originate
-        const poolIdForLp = farm.stakingToken.issuer;
-        const userLpPositionId = `${sender}_${poolIdForLp}`;
-        const userLiquidityPosDB = (await cache.findOnePromise('userLiquidityPositions', {
-            _id: userLpPositionId,
-        })) as UserLiquidityPositionData | null;
-
-        // Convert string amounts to BigInt for comparison
-        const userLiquidityPos = userLiquidityPosDB;
-
-        if (!userLiquidityPos || toBigInt(userLiquidityPos.lpTokenBalance) < toBigInt(data.lpTokenAmount)) {
-            logger.warn(
-                `[farm-stake] Staker ${sender} has insufficient LP token balance for pool ${poolIdForLp} (LP tokens for farm ${data.farmId}). Has ${userLiquidityPos?.lpTokenBalance || 0n}, needs ${data.lpTokenAmount}`
-            );
+        const stakingSymbol = farm.stakingToken?.symbol;
+        if (!stakingSymbol) {
+            logger.warn(`[farm-stake] Farm ${data.farmId} missing staking token symbol.`);
             return false;
         }
 
-        const stakerAccount = await getAccount(sender);
-        if (!stakerAccount) {
-            logger.warn(`[farm-stake] Staker account ${sender} not found.`);
-            return false;
+        // If staking token is an LP token (prefix LP_), validate against userLiquidityPositions
+        if (stakingSymbol.startsWith('LP_')) {
+            // Derive poolId from LP token symbol (LP_tokenA_tokenB -> tokenA_tokenB sorted)
+            const parts = stakingSymbol.replace(/^LP_/, '').split('_');
+            const poolIdForLp = [parts[0], parts[1]].sort().join('_');
+            const userLpPositionId = `${sender}_${poolIdForLp}`;
+            const userLiquidityPosDB = (await cache.findOnePromise('userLiquidityPositions', {
+                _id: userLpPositionId,
+            })) as UserLiquidityPositionData | null;
+
+            if (!userLiquidityPosDB || toBigInt(userLiquidityPosDB.lpTokenBalance) < toBigInt(data.lpTokenAmount)) {
+                logger.warn(
+                    `[farm-stake] Staker ${sender} has insufficient LP token balance for pool ${poolIdForLp} (LP tokens for farm ${data.farmId}). Has ${userLiquidityPosDB?.lpTokenBalance || 0n}, needs ${data.lpTokenAmount}`
+                );
+                return false;
+            }
+        } else {
+            // Non-LP staking token: check user's account balance for the staking token symbol
+            const stakerAccount = await getAccount(sender);
+            if (!stakerAccount) {
+                logger.warn(`[farm-stake] Staker account ${sender} not found.`);
+                return false;
+            }
+            const userBalance = toBigInt(stakerAccount.balances?.[stakingSymbol] || '0');
+            if (userBalance < toBigInt(data.lpTokenAmount)) {
+                logger.warn(
+                    `[farm-stake] Staker ${sender} has insufficient ${stakingSymbol} balance (has ${stakerAccount.balances?.[stakingSymbol] || '0'}, needs ${data.lpTokenAmount}) for farm ${data.farmId}`
+                );
+                return false;
+            }
         }
 
         return true;
@@ -85,28 +100,44 @@ export async function processTx(data: FarmStakeData, sender: string, id: string,
             logger.warn(`[farm-stake] Amount below minStakeAmount for farm ${data.farmId}.`);
             return false;
         }
-        const poolIdForLp = farm!.stakingToken.issuer;
-        const userLpSourcePositionId = `${sender}_${poolIdForLp}`;
-        const userLiquidityPosDB = (await cache.findOnePromise('userLiquidityPositions', {
-            _id: userLpSourcePositionId,
-        })) as UserLiquidityPositionData;
-        const userLiquidityPos = userLiquidityPosDB;
-
-        if (!userLiquidityPos || userLiquidityPos.lpTokenBalance < data.lpTokenAmount) {
-            logger.error(`[farm-stake] CRITICAL: Staker ${sender} has insufficient LP balance for ${poolIdForLp} during processing.`);
+        const stakingSymbol = farm.stakingToken?.symbol;
+        if (!stakingSymbol) {
+            logger.error(`[farm-stake] Critical: Farm ${data.farmId} missing staking token symbol during processing.`);
             return false;
         }
 
-        // 1. Decrease LP token balance from UserLiquidityPosition
-        const newLpBalanceInPool = toBigInt(userLiquidityPos.lpTokenBalance) - toBigInt(data.lpTokenAmount);
-        await cache.updateOnePromise(
-            'userLiquidityPositions',
-            { _id: userLpSourcePositionId },
-            {
-                $set: { lpTokenBalance: toDbString(newLpBalanceInPool) },
-                lastUpdatedAt: new Date().toISOString(),
+        if (stakingSymbol.startsWith('LP_')) {
+            // LP staking: derive poolId from LP token symbol
+            const parts = stakingSymbol.replace(/^LP_/, '').split('_');
+            const poolIdForLp = [parts[0], parts[1]].sort().join('_');
+            const userLpSourcePositionId = `${sender}_${poolIdForLp}`;
+            const userLiquidityPosDB = (await cache.findOnePromise('userLiquidityPositions', {
+                _id: userLpSourcePositionId,
+            })) as UserLiquidityPositionData | null;
+
+            if (!userLiquidityPosDB || toBigInt(userLiquidityPosDB.lpTokenBalance) < toBigInt(data.lpTokenAmount)) {
+                logger.error(`[farm-stake] CRITICAL: Staker ${sender} has insufficient LP balance for ${poolIdForLp} during processing.`);
+                return false;
             }
-        );
+
+            // 1. Decrease LP token balance from UserLiquidityPosition
+            const newLpBalanceInPool = toBigInt(userLiquidityPosDB.lpTokenBalance) - toBigInt(data.lpTokenAmount);
+            await cache.updateOnePromise(
+                'userLiquidityPositions',
+                { _id: userLpSourcePositionId },
+                {
+                    $set: { lpTokenBalance: toDbString(newLpBalanceInPool) },
+                    lastUpdatedAt: new Date().toISOString(),
+                }
+            );
+        } else {
+            // Non-LP staking: debit user's account balance for the staking token symbol
+            const debitSuccess = await adjustUserBalance(sender, stakingSymbol, -toBigInt(data.lpTokenAmount));
+            if (!debitSuccess) {
+                logger.error(`[farm-stake] CRITICAL: Failed to debit ${stakingSymbol} from ${sender} during staking.`);
+                return false;
+            }
+        }
 
         // 2. Increase totalLpStaked in the Farm document
         const currentFarm = await cache.findOnePromise('farms', { _id: data.farmId });
@@ -169,14 +200,19 @@ export async function processTx(data: FarmStakeData, sender: string, id: string,
             });
         }
 
-        logger.debug(`[farm-stake] Staker ${sender} staked ${data.lpTokenAmount} LP tokens (from pool ${poolIdForLp}) into farm ${data.farmId}.`);
+        const poolIdOrSymbol = stakingSymbol.startsWith('LP_') ? (() => {
+            const parts = stakingSymbol.replace(/^LP_/, '').split('_');
+            return [parts[0], parts[1]].sort().join('_');
+        })() : stakingSymbol;
+
+        logger.debug(`[farm-stake] Staker ${sender} staked ${data.lpTokenAmount} of ${stakingSymbol} into farm ${data.farmId}.`);
 
         // Log event
         await logTransactionEvent('farm_stake', sender, {
             farmId: data.farmId,
             staker: sender,
             lpTokenAmount: toDbString(data.lpTokenAmount),
-            poolId: poolIdForLp,
+            poolId: poolIdOrSymbol,
             totalStaked: toDbString(newTotalStaked),
         });
 
