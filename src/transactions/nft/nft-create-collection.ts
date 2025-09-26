@@ -7,56 +7,35 @@ import { logEvent } from '../../utils/event-logger.js';
 import validate from '../../validation/index.js';
 import { NFTCollectionCreateData } from './nft-interfaces.js';
 
+const MAX_COLLECTION_SUPPLY = 1000000;
+
 export async function validateTx(data: NFTCollectionCreateData, sender: string): Promise<boolean> {
     try {
-        if (!data.symbol || !data.name || !data.creator) {
+        if (!data.symbol || !data.name) {
             logger.warn('[nft-create-collection] Invalid data: Missing required fields (symbol, name, creator).');
             return false;
         }
 
-        // Validate symbol: e.g., 3-10 uppercase letters
         if (!validate.string(data.symbol, 10, 3, config.tokenSymbolAllowedChars)) {
             logger.warn(`[nft-create-collection] Invalid symbol: ${data.symbol}. Must be 3-10 uppercase letters.`);
             return false;
         }
-        // Validate name: e.g., 1-50 characters
+
         if (!validate.string(data.name, 50, 1)) {
             logger.warn('[nft-create-collection] Invalid name length (must be 1-50 characters).');
             return false;
         }
 
-        // Validate creator matches sender
-        if (data.creator !== sender) {
-            logger.warn('[nft-create-collection] Creator field must match transaction sender.');
+        if(!validate.integer(data.maxSupply, false, false, MAX_COLLECTION_SUPPLY, 1)) {
+            logger.warn('[nft-create-collection] Invalid maxSupply. Must be a non-negative integer or undefined for unlimited.');
             return false;
         }
 
-        if (data.maxSupply !== undefined) {
-            if (typeof data.maxSupply === 'string') {
-                // Validate string is a valid number
-                const maxSupplyNum = toBigInt(data.maxSupply);
-                if (maxSupplyNum < 0) {
-                    logger.warn('[nft-create-collection] Invalid maxSupply. Must be non-negative.');
-                    return false;
-                }
-            } else if (typeof data.maxSupply === 'bigint') {
-                if (data.maxSupply < 0) {
-                    logger.warn('[nft-create-collection] Invalid maxSupply. Must be non-negative.');
-                    return false;
-                }
-            } else {
-                logger.warn('[nft-create-collection] Invalid maxSupply type. Must be string or bigint.');
-                return false;
-            }
-        }
-
-        // Validate royalty (basis points only)
         if (data.royaltyBps !== undefined && !validate.integer(data.royaltyBps, true, false, 2500, 0)) {
             logger.warn(`[nft-create-collection] Invalid royaltyBps: ${data.royaltyBps}. Must be 0-2500 basis points (0-25%).`);
             return false;
         }
 
-        // Validate boolean fields
         if (data.mintable !== undefined && !validate.boolean(data.mintable)) {
             logger.warn('[nft-create-collection] Invalid mintable flag.');
             return false;
@@ -70,7 +49,6 @@ export async function validateTx(data: NFTCollectionCreateData, sender: string):
             return false;
         }
 
-        // Validate string fields
         if (data.schema !== undefined && typeof data.schema !== 'string') {
             logger.warn('[nft-create-collection] Schema must be a string.');
             return false;
@@ -80,7 +58,6 @@ export async function validateTx(data: NFTCollectionCreateData, sender: string):
             return false;
         }
 
-        // Validate URLs
         const urlFields = ['logoUrl', 'websiteUrl', 'baseCoverUrl'];
         for (const field of urlFields) {
             const url = data[field as keyof typeof data] as string;
@@ -109,13 +86,13 @@ export async function validateTx(data: NFTCollectionCreateData, sender: string):
         }
 
         // Validate sender account exists (creator)
-        const creatorAccount = await cache.findOnePromise('accounts', { name: sender });
-        if (!creatorAccount) {
-            logger.warn(`[nft-create-collection] Creator account ${sender} not found.`);
+        const senderAccount = await cache.findOnePromise('accounts', { name: sender });
+        if (!senderAccount) {
+            logger.warn(`[nft-create-collection] Sender account ${sender} not found.`);
             return false;
         }
 
-        if (toBigInt(creatorAccount.balances[config.nativeTokenSymbol]) < toBigInt(config.nftCollectionCreationFee)) {
+        if (toBigInt(senderAccount.balances[config.nativeTokenSymbol]) < toBigInt(config.nftCollectionCreationFee)) {
             logger.warn(`[nft-create-collection] Sender account ${sender} does not have enough balance to create an NFT collection.`);
             return false;
         }
@@ -135,31 +112,19 @@ export async function processTx(data: NFTCollectionCreateData, sender: string, _
             return false;
         }
 
-        // Convert maxSupply to number for storage, handling string | bigint
-        let maxSupplyForStorage: number;
-        if (data.maxSupply === undefined) {
-            maxSupplyForStorage = Number.MAX_SAFE_INTEGER;
-        } else if (typeof data.maxSupply === 'string') {
-            maxSupplyForStorage = Number(data.maxSupply);
-        } else if (typeof data.maxSupply === 'bigint') {
-            maxSupplyForStorage = Number(data.maxSupply);
-        } else {
-            maxSupplyForStorage = Number.MAX_SAFE_INTEGER;
-        }
-
         const collectionToStore = {
             _id: data.symbol,
             symbol: data.symbol,
             name: data.name,
             description: data.description || '',
-            creator: data.creator,
+            creator: sender,
             currentSupply: 0,
-            nextIndex: 1, // Start indexing from 1
-            maxSupply: maxSupplyForStorage,
+            nextIndex: 1,
+            maxSupply: data.maxSupply,
             mintable: data.mintable === undefined ? true : data.mintable,
             burnable: data.burnable === undefined ? true : data.burnable,
             transferable: data.transferable === undefined ? true : data.transferable,
-            royaltyBps: data.royaltyBps || 0, // Store only royaltyBps (basis points)
+            royaltyBps: data.royaltyBps || 0,
             logoUrl: data.logoUrl || '',
             websiteUrl: data.websiteUrl || '',
             baseCoverUrl: data.baseCoverUrl || '',
@@ -191,13 +156,12 @@ export async function processTx(data: NFTCollectionCreateData, sender: string, _
 
         logger.debug(`[nft-create-collection] Collection ${data.symbol} created successfully by ${sender}.`);
 
-        // Log event
         await logEvent('nft', 'collection_created', sender, {
             symbol: data.symbol,
             name: data.name,
-            creator: data.creator,
+            creator: sender,
             description: data.description || '',
-            maxSupply: maxSupplyForStorage,
+            maxSupply: data.maxSupply,
             mintable: data.mintable === undefined ? true : data.mintable,
             burnable: data.burnable === undefined ? true : data.burnable,
             transferable: data.transferable === undefined ? true : data.transferable,
