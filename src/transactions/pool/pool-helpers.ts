@@ -5,6 +5,7 @@ import config from '../../config.js';
 import logger from '../../logger.js';
 import { adjustUserBalance } from '../../utils/account.js';
 import { calculateDecimalAwarePrice, formatTokenAmount, toBigInt, toDbString } from '../../utils/bigint.js';
+import { getTokenDecimals } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
 import { getLpTokenSymbol } from '../../utils/token.js';
 import { LiquidityPoolData, UserLiquidityPositionData } from './pool-interfaces.js';
@@ -418,6 +419,8 @@ export async function claimFeesFromPool(
 
         const lpTokensToCalculate = lpTokenAmount || toBigInt(userPosition.lpTokenBalance);
 
+
+        // Fee growth is already normalized to 1e18 units; just divide by 1e18 to get token units
         const claimableFeesA = (deltaA * lpTokensToCalculate) / toBigInt(1e18);
         const claimableFeesB = (deltaB * lpTokensToCalculate) / toBigInt(1e18);
 
