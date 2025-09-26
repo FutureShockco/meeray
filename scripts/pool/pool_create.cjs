@@ -21,14 +21,9 @@ async function main() {
         console.error(`Error reading lastTokenSymbol.txt: ${error.message}`);
         console.log(`Using default symbol: ${lastSymbol}`);
     }
-    // Generate random pool data
-    const poolCreateData = {
-        tokenA_symbol: "TESTS",
-        tokenB_symbol: lastSymbol
-    }
+ 
 
     console.log(`Creating pool with account ${username}:`);
-    console.log(JSON.stringify(poolCreateData, null, 2));
 
     try {
         await sendCustomJson(
@@ -67,14 +62,6 @@ async function main() {
             privateKey
         );
 
-        await sendCustomJson(
-            client,
-            sscId,
-            'pool_create',
-            poolCreateData,
-            username,
-            privateKey
-        );
     } catch (error) {
         console.error('Pool creation failed.');
     }

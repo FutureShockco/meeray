@@ -7,7 +7,7 @@ async function main() {
     const { client, sscId } = await getClient();
     const { username, privateKey } = await getMasterAccount();
 
-    const symbolFilePath = path.join(__dirname, 'lastTokenSymbol.txt');
+    const symbolFilePath = path.join(__dirname, '../lastTokenSymbol.txt');
     let lastSymbol = "TESTS"; // Default fallback
 
     try {
@@ -22,36 +22,9 @@ async function main() {
         console.log(`Using default symbol: ${lastSymbol}`);
     }
 
-    // Generate random amounts for both tokens
-    const tokenAOp = {
-        amount: "10000",
-        issuer: "echelon-node1"
-    }
-    const tokenBOp = {
-        amount: "287000",
-        issuer: "echelon-node1"
-    }
-
-    const addLiquidityData = {
-        poolId: generatePoolId(lastSymbol, "TESTS"),
-        tokenA_amount: tokenAOp.amount,
-        tokenB_amount: tokenBOp.amount
-    };
-
     console.log(`Adding liquidity to pool with account ${username}:`);
-    console.log(JSON.stringify(addLiquidityData, null, 2));
 
     try {
-        await sendCustomJson(
-            client,
-            sscId,
-            'pool_add_liquidity',
-            addLiquidityData,
-            username,
-            privateKey
-        );
-
-
         await sendCustomJson(
             client,
             sscId,

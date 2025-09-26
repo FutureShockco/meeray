@@ -420,9 +420,18 @@ export async function claimFeesFromPool(
         const lpTokensToCalculate = lpTokenAmount || toBigInt(userPosition.lpTokenBalance);
 
 
-        // Fee growth is already normalized to 1e18 units; just divide by 1e18 to get token units
-        const claimableFeesA = (deltaA * lpTokensToCalculate) / toBigInt(1e18);
-        const claimableFeesB = (deltaB * lpTokensToCalculate) / toBigInt(1e18);
+
+        // Fee growth is normalized to 1e18 units; convert to token units
+        const decimalsA = getTokenDecimals(pool.tokenA_symbol);
+        const decimalsB = getTokenDecimals(pool.tokenB_symbol);
+        let claimableFeesA = (deltaA * lpTokensToCalculate) / toBigInt(1e18);
+        let claimableFeesB = (deltaB * lpTokensToCalculate) / toBigInt(1e18);
+        if (decimalsA < 18) {
+            claimableFeesA = claimableFeesA / toBigInt(10 ** (18 - decimalsA));
+        }
+        if (decimalsB < 18) {
+            claimableFeesB = claimableFeesB / toBigInt(10 ** (18 - decimalsB));
+        }
 
         if (claimableFeesA <= toBigInt(0) && claimableFeesB <= toBigInt(0)) {
             return { success: true, feesClaimedA: toBigInt(0), feesClaimedB: toBigInt(0) };
