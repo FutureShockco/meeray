@@ -3,22 +3,12 @@ import config from '../../config.js';
 import logger from '../../logger.js';
 import { logEvent } from '../../utils/event-logger.js';
 import validate from '../../validation/index.js';
-import { NFTCollectionCreateData, NFTTransferData } from './nft-interfaces.js';
+import { NFTCollectionCreateData, NFTTokenData, NFTTransferData } from './nft-interfaces.js';
 
 const BURN_ACCOUNT_NAME = 'null';
 
 export interface CachedNftCollectionForTransfer extends NFTCollectionCreateData {
     _id: string;
-}
-
-export interface NftInstance {
-    _id: string; // Full NFT ID: "COLLECTION-TOKENID" (e.g., "PUNKS-1")
-    collectionSymbol: string; // Collection symbol: "PUNKS", "CATS"
-    tokenId: string; // Token ID within collection: "1", "2", "3"
-    owner: string; // Current owner
-    index?: number; // Numeric index for ordering (1, 2, 3, etc.)
-    coverUrl?: string; // Individual cover URL for this NFT
-    properties?: Record<string, any>; // Optional NFT-specific properties
 }
 
 export async function validateTx(data: NFTTransferData, sender: string): Promise<boolean> {
@@ -52,7 +42,7 @@ export async function validateTx(data: NFTTransferData, sender: string): Promise
         }
 
         const fullInstanceId = `${data.collectionSymbol}_${data.instanceId}`;
-        const nft = (await cache.findOnePromise('nfts', { _id: fullInstanceId })) as NftInstance | null;
+        const nft = (await cache.findOnePromise('nfts', { _id: fullInstanceId })) as NFTTokenData | null;
 
         if (!nft) {
             logger.warn(`[nft-transfer/burn] NFT ${fullInstanceId} not found.`);
@@ -113,7 +103,7 @@ export async function processTx(data: NFTTransferData, sender: string, _id: stri
     const fullInstanceId = `${data.collectionSymbol}_${data.instanceId}`;
     try {
         // Fetch NFT to confirm current owner again before proceeding (safeguard against race conditions)
-        const nftToProcess = (await cache.findOnePromise('nfts', { _id: fullInstanceId })) as NftInstance;
+        const nftToProcess = (await cache.findOnePromise('nfts', { _id: fullInstanceId })) as NFTTokenData;
         if (nftToProcess.owner !== sender) {
             logger.error(`[${isBurning ? 'nft-burn' : 'nft-transfer'}] CRITICAL: Sender ${sender} is not owner during processing. Validation might be stale.`);
             return false;
