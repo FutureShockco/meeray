@@ -415,14 +415,37 @@ router.get('/instances/owner/:ownerName', (async (req: Request, res: Response) =
 router.get('/instances/id/:nftId', (async (req: Request, res: Response) => {
     const { nftId } = req.params;
 
-    const normalizedNftId = (nftId || '').replace(/-/g, '_');
     try {
-        const instanceFromDB = await cache.findOnePromise('nfts', { _id: normalizedNftId });
+        const instanceFromDB = await cache.findOnePromise('nfts', { _id: nftId });
         if (!instanceFromDB) {
             return res.status(404).json({ message: `NFT instance with ID ${nftId} not found.` });
         }
         const instance = transformNftInstanceData(instanceFromDB);
-        res.json(instance);
+
+        // Try to find a listing for this NFT
+        let listing = null;
+        try {
+            const parts = nftId.split('_');
+            if (parts.length >= 2) {
+                const collectionId = parts[0];
+                const tokenId = parts[1];
+                const listingFromDB = await cache.findOnePromise('nftListings', {
+                    collectionId,
+                    tokenId: Number(tokenId),
+                    status: { $in: ['active', 'ACTIVE'] },
+                });
+                if (listingFromDB) {
+                    listing = transformNftListingData(listingFromDB);
+                }
+            }
+        } catch (e) {
+            logger.warn(`Error fetching listing for NFT instance ${nftId}:`, e);
+        }
+
+        res.json({
+            ...instance,
+            listing,
+        });
     } catch (error: any) {
         logger.error(`Error fetching NFT instance ${nftId}:`, error);
         res.status(500).json({ message: 'Error fetching NFT instance', error: error.message });
