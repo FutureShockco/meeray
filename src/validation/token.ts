@@ -140,10 +140,7 @@ export const newToken = async (data: any): Promise<boolean> => {
  */
 export const tokenExists = async (symbol: string): Promise<boolean> => {
     if (!validate.tokenSymbols(symbol)) return false;
-    if (symbol.startsWith('LP_')) {
-        logger.warn(`[token-exists:validation] Token symbol cannot start with "LP_". This prefix is reserved for liquidity pool tokens.`);
-        return false;
-    }
+
     if (!validate.string(symbol, 10, 3, config.tokenSymbolAllowedChars)) {
         logger.warn(`[token-exists:validation] Invalid token symbol format: ${symbol}.`);
         return false;
