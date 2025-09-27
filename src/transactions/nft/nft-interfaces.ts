@@ -67,6 +67,8 @@ export interface NFTTokenData {
         }>;
         [key: string]: any;
     };
+    uri?: string;
+    coverUrl?: string;
     createdAt: string;
     lastTransferAt?: string;
 }

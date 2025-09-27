@@ -1,4 +1,4 @@
-const { getClient, getMasterAccount, sendCustomJson } = require('../helpers.cjs');
+const { getClient, getMasterAccount, sendMultiCustomJson } = require('../helpers.cjs');
 const fs = require('fs');
 const path = require('path');
 
@@ -28,32 +28,36 @@ async function main() {
         console.log(`Using default symbol: ${collectionSymbol}`);
     }
 
-    const mintData = {
-        collectionSymbol: collectionSymbol,
-        // Don't provide instanceId - let it auto-generate
-        owner: username, // Mint to the master account so we can transfer it later
-        properties: {
-            edition: Math.floor(Math.random() * 1000) + 1,
-            artist: username,
-            attributes: {
-                rarity: "Rare",
-                strength: Math.floor(Math.random() * 100),
-                intelligence: Math.floor(Math.random() * 100),
-                luck: Math.floor(Math.random() * 100)
-            }
-        },
-        uri: `https://example.com/nft/${collectionSymbol.toLowerCase()}/${Date.now()}.json`
-    };
+    const ops = []
+    let l = 15
 
+    for (let i = 0; i < 5; i++) {
+        const payload = {
+            collectionSymbol: collectionSymbol,
+            // Don't provide instanceId - let it auto-generate
+            owner: username,
+            properties: {
+                attributes: {
+                    rarity: "Rare",
+                    strength: Math.floor(Math.random() * 100),
+                    intelligence: Math.floor(Math.random() * 100),
+                    luck: Math.floor(Math.random() * 100)
+                }
+            },
+            coverUrl: `https://img.drugwars.io/news/${l + 1}.png`,
+            uri: `https://img.drugwars.io/news/index.json`
+        };
+        l++
+        ops.push({ contractAction: 'nft_mint', payload });
+
+    }
     console.log(`Minting NFT with account ${username}:`);
-    console.log(JSON.stringify(mintData, null, 2));
 
     try {
-        await sendCustomJson(
+        await sendMultiCustomJson(
             client,
             sscId,
-            'nft_mint',
-            mintData,
+            ops,
             username,
             privateKey
         );
@@ -63,54 +67,6 @@ async function main() {
 
     } catch (error) {
         console.error(`❌ NFT minting failed: ${error.message}`);
-
-        // If collection doesn't exist, try to create it first
-        if (error.message.includes('Collection') && error.message.includes('not found')) {
-            console.log(`🔄 Collection "${collectionSymbol}" not found. Creating it first...`);
-
-            const collectionData = {
-                name: `${collectionSymbol} Collection`,
-                symbol: collectionSymbol,
-                description: `${collectionSymbol} - A test NFT collection`,
-                logoUrl: `https://example.com/nft/${collectionSymbol.toLowerCase()}.png`,
-                websiteUrl: `https://example.com/nft/${collectionSymbol.toLowerCase()}`,
-                maxSupply: "10000",
-                creator: username,
-                mintable: true,
-                burnable: true,
-                transferable: true,
-                royaltyBps: 5
-            };
-
-            try {
-                await sendCustomJson(
-                    client,
-                    sscId,
-                    'nft_create_collection',
-                    collectionData,
-                    username,
-                    privateKey
-                );
-
-                console.log(`✅ Collection "${collectionSymbol}" created successfully!`);
-
-                // Now try minting again
-                await sendCustomJson(
-                    client,
-                    sscId,
-                    'nft_mint',
-                    mintData,
-                    username,
-                    privateKey
-                );
-
-                console.log(`✅ NFT minted successfully after creating collection!`);
-                console.log(`NFT will be available for listing with auto-generated instanceId`);
-
-            } catch (createError) {
-                console.error(`❌ Failed to create collection or mint NFT: ${createError.message}`);
-            }
-        }
     }
 }
 
