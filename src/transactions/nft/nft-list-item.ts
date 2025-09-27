@@ -62,7 +62,7 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
                 return false;
             }
         }
-
+        
         if (data.minimumBidIncrement) {
             const incrementBigInt = toBigInt(data.minimumBidIncrement);
             if (incrementBigInt <= toBigInt(0)) {
@@ -70,8 +70,8 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
                 return false;
             }
         }
-        logger.info(data.price);
-        if (!validate.bigint(data.price, false, false, toBigInt(config.maxValue), toBigInt(1))) {
+
+        if (!validate.bigint(toBigInt(data.price), false, false, toBigInt(config.maxValue), toBigInt(1))) {
             logger.warn(`[nft-list-item] Invalid price format. Must be a string representing a big integer. Received: ${data.price}`);
             return false;
         }
