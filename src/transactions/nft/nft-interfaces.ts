@@ -2,7 +2,7 @@ export interface NFTCollectionCreateData {
     symbol: string;
     name: string;
     description?: string;
-    maxSupply?: string | bigint;
+    maxSupply?: number;
     royaltyBps?: number;
     creator: string;
     mintable?: boolean;
@@ -20,7 +20,6 @@ export interface NFTMintData {
     instanceId?: string;
     recipient?: string;
     owner?: string;
-    properties?: Record<string, any>;
     uri?: string;
     coverUrl?: string;
     metadata?: {
@@ -47,8 +46,8 @@ export interface NFTCollectionData {
     symbol: string;
     name: string;
     description?: string;
-    maxSupply?: string | bigint;
-    totalSupply: string | bigint;
+    maxSupply?: number;
+    totalSupply: number;
     royaltyBps: number;
     creator: string;
     status: 'ACTIVE' | 'PAUSED' | 'ENDED';

@@ -1,15 +1,12 @@
 import cache from '../../cache.js';
-// We need NFTCollectionCreateData to type the fetched collection document for checks
 import config from '../../config.js';
 import logger from '../../logger.js';
 import { logEvent } from '../../utils/event-logger.js';
 import validate from '../../validation/index.js';
-// Shared validation module
+import { MAX_COLLECTION_SUPPLY } from '../../utils/nft.js';
 import { NFTCollectionCreateData, NFTMintData } from './nft-interfaces.js';
 
-// event logger removed
 
-// Define a more specific type for what we expect from the nftCollections table
 interface CachedNftCollection extends NFTCollectionCreateData {
     _id: string;
     currentSupply: number;
@@ -44,10 +41,6 @@ export async function validateTx(data: NFTMintData, sender: string): Promise<boo
             logger.warn('[nft-mint] Invalid coverUrl: incorrect format, or length (10-2048 chars), must start with http.');
             return false;
         }
-        if (data.properties !== undefined && typeof data.properties !== 'object') {
-            logger.warn('[nft-mint] Properties, if provided, must be an object.');
-            return false;
-        }
 
         const collectionFromCache = await cache.findOnePromise('nftCollections', { _id: data.collectionSymbol });
 
@@ -66,7 +59,7 @@ export async function validateTx(data: NFTMintData, sender: string): Promise<boo
         // Handle maxSupply: convert to number for comparison
         let effectiveMaxSupply: number;
         if (collection.maxSupply === undefined) {
-            effectiveMaxSupply = Number.MAX_SAFE_INTEGER;
+            effectiveMaxSupply = MAX_COLLECTION_SUPPLY;
         } else if (typeof collection.maxSupply === 'string') {
             effectiveMaxSupply = Number(collection.maxSupply);
         } else if (typeof collection.maxSupply === 'bigint') {
@@ -107,11 +100,9 @@ export async function processTx(data: NFTMintData, sender: string, _id: string):
             _id: data.collectionSymbol,
         })) as CachedNftCollection;
 
-        // Use sequential token ID (1, 2, 3...) within collection
-        const tokenId = collection.nextIndex.toString(); // Sequential: "1", "2", "3"...
+        const tokenId = collection.nextIndex.toString();
         const nftIndex = collection.nextIndex;
 
-        // Create globally unique NFT ID: COLLECTION-TOKENID
         const fullInstanceId = `${data.collectionSymbol}_${tokenId}`; // e.g., "PUNKS-1", "CATS-1"
 
         // Check if NFT with this ID already exists (shouldn't happen with sequential indexing, but safety check)
@@ -130,7 +121,7 @@ export async function processTx(data: NFTMintData, sender: string, _id: string):
             index: nftIndex, // Numeric index for ordering
         };
         if (data.coverUrl) nftInstance.coverUrl = data.coverUrl as string;
-        if (data.properties) nftInstance.properties = data.properties;
+        if (data.metadata) nftInstance.metadata = data.metadata;
 
         const insertSuccess = await new Promise<boolean>(resolve => {
             cache.insertOne('nfts', nftInstance, (err, result) => {
@@ -147,7 +138,6 @@ export async function processTx(data: NFTMintData, sender: string, _id: string):
             return false;
         }
 
-        // Update collection's currentSupply and nextIndex
         const updateCollectionSuccess = await cache.updateOnePromise(
             'nftCollections',
             { _id: data.collectionSymbol },
@@ -156,14 +146,11 @@ export async function processTx(data: NFTMintData, sender: string, _id: string):
 
         if (!updateCollectionSuccess) {
             logger.error(`[nft-mint] Failed to update total supply for collection ${data.collectionSymbol}.`);
-            // Consider removing the NFT we just inserted as a rollback
-            await cache.deleteOnePromise('nfts', { _id: fullInstanceId });
             return false;
         }
 
         logger.debug(`[nft-mint] NFT ${fullInstanceId} minted successfully by ${sender} for owner ${data.owner}.`);
 
-        // Log event
         await logEvent('nft', 'mint', sender, {
             collectionSymbol: data.collectionSymbol,
             tokenId: tokenId,
@@ -171,7 +158,7 @@ export async function processTx(data: NFTMintData, sender: string, _id: string):
             owner: data.owner,
             index: nftIndex,
             coverUrl: data.coverUrl,
-            properties: data.properties,
+            metadata: data.metadata,
         });
 
         return true;

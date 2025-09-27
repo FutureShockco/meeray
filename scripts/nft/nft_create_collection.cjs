@@ -7,29 +7,21 @@ async function main() {
     const { client, sscId } = await getClient();
     const { username, privateKey } = await getMasterAccount();
 
-    // Generate random NFT collection data
-    const collectionData = generateRandomNFTCollectionData();
-    
-    // Add additional NFT-specific fields
-    collectionData.creator = username;
-    collectionData.mintable = true;
-    collectionData.burnable = true;
-    collectionData.transferable = true;
-    collectionData.royaltyBps = Math.floor(Math.random() * 10); // 0-10%
-
-    // Ensure maxSupply is a string, not a number
-    collectionData.maxSupply = collectionData.maxSupply.toString();
-
-    // Add optional fields that were generated but not explicitly set
-    collectionData.description = collectionData.description || `${collectionData.name} - A unique digital collectibles series`;
-    collectionData.logoUrl = collectionData.logoUrl || `https://example.com/nft/${collectionData.symbol.toLowerCase()}.png`;
-    collectionData.websiteUrl = collectionData.websiteUrl || `https://example.com/nft/${collectionData.symbol.toLowerCase()}`;
-
-    delete collectionData.properties;
-    delete collectionData.metadata;
+    const collectionData = {
+        symbol: "DWD",
+        name: "NFT Collection For Drugwars",
+        mintable: true,
+        burnable: true,
+        transferable: true,
+        royaltyBps: 1000, // 0-10%
+        maxSupply: 8888,
+        description: 'A unique digital collectibles series',
+        logoUrl: `https://img.drugwars.io/news/6.png`,
+        websiteUrl: `https://drugwars.io`,
+        baseCoverUrl: `https://img.drugwars.io/news/2.png`,
+    };
 
     console.log(`Creating NFT collection with account ${username}:`);
-    console.log(JSON.stringify(collectionData, null, 2));
 
     try {
         await sendCustomJson(
@@ -42,8 +34,6 @@ async function main() {
         );
 
         console.log(`✅ NFT collection "${collectionData.symbol}" created successfully!`);
-
-        // Write the collection symbol to lastNFTCollectionSymbol.txt after successful creation
         const symbolFilePath = path.join(__dirname, 'lastNFTCollectionSymbol.txt');
         fs.writeFileSync(symbolFilePath, collectionData.symbol);
         console.log(`NFT collection symbol "${collectionData.symbol}" written to lastNFTCollectionSymbol.txt`);
@@ -51,7 +41,6 @@ async function main() {
     } catch (error) {
         console.error(`❌ NFT collection creation failed: ${error.message}`);
         console.error('Collection data:', JSON.stringify(collectionData, null, 2));
-        // Don't write to file if creation failed
         process.exit(1);
     }
 }
