@@ -33,6 +33,11 @@ export async function validateTx(data: NFTMintData, sender: string): Promise<boo
             return false;
         }
 
+        if (data.metadata !== undefined && typeof data.metadata !== 'object' || (!validate.json(data.metadata, 2048))) {
+            logger.warn('[nft-mint] Invalid uri: incorrect format, or length (10-2048 chars), must start with http or ipfs://.');
+            return false;
+        }
+
         if (data.uri !== undefined && (!validate.string(data.uri, 2048, 10) || !(data.uri.startsWith('http') || data.uri.startsWith('ipfs://')))) {
             logger.warn('[nft-mint] Invalid uri: incorrect format, or length (10-2048 chars), must start with http or ipfs://.');
             return false;
@@ -41,6 +46,7 @@ export async function validateTx(data: NFTMintData, sender: string): Promise<boo
             logger.warn('[nft-mint] Invalid coverUrl: incorrect format, or length (10-2048 chars), must start with http.');
             return false;
         }
+
 
         const collectionFromCache = await cache.findOnePromise('nftCollections', { _id: data.collectionSymbol });
 

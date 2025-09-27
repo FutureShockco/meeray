@@ -29,14 +29,14 @@ async function main() {
     }
 
     const ops = []
-    let l = 15
+    let l = 20
 
     for (let i = 0; i < 5; i++) {
         const payload = {
             collectionSymbol: collectionSymbol,
             // Don't provide instanceId - let it auto-generate
             owner: username,
-            properties: {
+            metadata: {
                 attributes: {
                     rarity: "Rare",
                     strength: Math.floor(Math.random() * 100),
