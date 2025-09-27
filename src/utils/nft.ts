@@ -1,5 +1,7 @@
 import { NftInstance } from '../transactions/nft/nft-transfer.js';
 
+export const MAX_COLLECTION_SUPPLY = 1000000;
+
 /**
  * Get the cover URL for an NFT
  * @param nft The NFT instance

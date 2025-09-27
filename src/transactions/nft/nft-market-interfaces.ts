@@ -58,13 +58,13 @@ export interface NFTSaleData {
 export interface NftListPayload {
     collectionSymbol: string;
     instanceId: string;
-    price: string;
+    price: string | bigint;
     paymentToken: string;
     listingType?: 'FIXED_PRICE' | 'AUCTION' | 'RESERVE_AUCTION';
     reservePrice?: string;
     auctionEndTime?: string;
     allowBuyNow?: boolean;
-    minimumBidIncrement?: string;
+    minimumBidIncrement?: string | bigint;
 }
 
 export interface NftDelistPayload {

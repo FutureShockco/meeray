@@ -3,7 +3,7 @@ import config from '../../config.js';
 import logger from '../../logger.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
-import { getToken } from '../../utils/token.js';
+import { MAX_COLLECTION_SUPPLY } from '../../utils/nft.js';
 import validate from '../../validation/index.js';
 import { NFTListingData, NftListPayload } from './nft-market-interfaces.js';
 import { CachedNftCollectionForTransfer, NftInstance } from './nft-transfer.js';
@@ -20,7 +20,6 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
             return false;
         }
 
-        // Validate auction-specific fields
         const listingType = data.listingType || 'FIXED_PRICE';
 
         if (listingType === 'AUCTION' || listingType === 'RESERVE_AUCTION') {
@@ -71,10 +70,11 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
             }
         }
 
-        if (!validate.string(data.price, 64, 1) || !/^[1-9]\d*$/.test(data.price)) {
+        if (!validate.bigint(data.price, false, false, toBigInt(config.maxValue), toBigInt(1))) {
             logger.warn(`[nft-list-item] Invalid price format. Must be a string representing a positive integer. Received: ${data.price}`);
             return false;
         }
+
         const priceBigInt = toBigInt(data.price);
         if (priceBigInt <= toBigInt(0)) {
             logger.warn(`[nft-list-item] Price must be positive. Received: ${data.price}`);
@@ -85,15 +85,12 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
             logger.warn(`[nft-list-item] Invalid collection symbol format: ${data.collectionSymbol}.`);
             return false;
         }
-        if (!validate.string(data.instanceId, 128, 1)) {
+        if (!validate.integer(data.instanceId, false, false, MAX_COLLECTION_SUPPLY, 1)) {
             logger.warn('[nft-list-item] Invalid instanceId length (1-128 chars).');
             return false;
         }
-        if (!validate.tokenSymbols(data.paymentToken)) {
-            logger.warn(`[nft-list-item] Invalid payment token format: ${data.paymentToken}.`);
-            return false;
-        }
-        if(!await validate.tokenExists(data.paymentToken)) {
+
+        if (!await validate.tokenExists(data.paymentToken)) {
             logger.warn(`[nft-list-item] Payment token ${data.paymentToken} does not exist.`);
             return false;
         }
@@ -118,12 +115,10 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
             return false;
         }
         if (collection.transferable === false) {
-            // Explicitly check for false
             logger.warn(`[nft-list-item] NFT Collection ${data.collectionSymbol} does not allow transfer of its NFTs, cannot be listed.`);
             return false;
         }
 
-        // Check if this NFT is already actively listed by this sender
         const listingId = generateListingId(data.collectionSymbol, data.instanceId, sender);
         const existingListing = (await cache.findOnePromise('nftListings', {
             _id: listingId,
@@ -144,14 +139,13 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
 export async function processTx(data: NftListPayload, sender: string, _id: string): Promise<string | null> {
     try {
         const listingId = generateListingId(data.collectionSymbol, data.instanceId, sender);
-        const priceAsBigInt = toBigInt(data.price);
 
         const listingDocument: NFTListingData = {
             _id: listingId,
             collectionId: data.collectionSymbol, // Store collectionSymbol as collectionId for consistency
             tokenId: data.instanceId, // Store instanceId as tokenId for consistency
             seller: sender,
-            price: toDbString(priceAsBigInt),
+            price: toDbString(data.price),
             paymentToken: data.paymentToken,
             status: 'ACTIVE',
             createdAt: new Date().toISOString(),
@@ -193,7 +187,7 @@ export async function processTx(data: NftListPayload, sender: string, _id: strin
             instanceId: data.instanceId,
             fullInstanceId: `${data.collectionSymbol}_${data.instanceId}`,
             seller: sender,
-            price: toDbString(priceAsBigInt),
+            price: toDbString(data.price),
             paymentToken: data.paymentToken,
             listingType: listingTypeStr,
             reservePrice: data.reservePrice ? toDbString(data.reservePrice) : undefined,

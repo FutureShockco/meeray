@@ -4,10 +4,10 @@ import logger from '../../logger.js';
 import { adjustUserBalance } from '../../utils/account.js';
 import { toBigInt } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
+import { MAX_COLLECTION_SUPPLY } from '../../utils/nft.js';
 import validate from '../../validation/index.js';
 import { NFTCollectionCreateData } from './nft-interfaces.js';
 
-const MAX_COLLECTION_SUPPLY = 1000000;
 
 export async function validateTx(data: NFTCollectionCreateData, sender: string): Promise<boolean> {
     try {
