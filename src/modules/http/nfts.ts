@@ -161,7 +161,44 @@ router.get('/collections', (async (req: Request, res: Response) => {
         if (!collectionsFromDB || collectionsFromDB.length === 0) {
             return res.status(200).json({ data: [], total: 0, limit, skip });
         }
-        const collections = collectionsFromDB.map(transformNftCollectionData);
+        // For each collection, fetch floorPrice and totalVolume using the same formulas as /collections/:collectionSymbol
+        const collections = await Promise.all(collectionsFromDB.map(async (col) => {
+            const collection = transformNftCollectionData(col);
+            const collectionSymbol = collection.symbol || collection._id || col._id;
+
+            // Floor price: lowest active listing price
+            let rawFloorPrice = null;
+            let floorPrice = null;
+            try {
+                const listings = await mongo.getDb().collection('nftListings').find({ collectionId: collectionSymbol, status: 'ACTIVE' }).sort({ price: 1 }).limit(1).toArray();
+                if (listings && listings.length > 0 && listings[0].price) {
+                    rawFloorPrice = listings[0].price;
+                    floorPrice = formatTokenAmountForResponse(rawFloorPrice, collectionSymbol).amount;
+                }
+            } catch {}
+
+            // Total volume: sum of all sold prices
+            let rawTotalVolume = '0';
+            let totalVolume = null;
+            try {
+                const sales = await mongo.getDb().collection('nftListings').aggregate([
+                    { $match: { collectionId: collectionSymbol, status: 'sold' } },
+                    { $group: { _id: null, total: { $sum: { $toDecimal: { $ltrim: { input: '$price', chars: '0' } } } } } }
+                ]).toArray();
+                if (sales && sales.length > 0 && sales[0].total) {
+                    rawTotalVolume = sales[0].total.toString();
+                    totalVolume = formatTokenAmountForResponse(rawTotalVolume, collectionSymbol).amount;
+                }
+            } catch {}
+
+            return {
+                ...collection,
+                floorPrice,
+                rawFloorPrice,
+                totalVolume,
+                rawTotalVolume
+            };
+        }));
         res.json({
             data: collections,
             total,
