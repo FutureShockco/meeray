@@ -1,38 +1,29 @@
-const { getClient, sendCustomJson } = require('../helpers.cjs');
+const { getClient, sendCustomJson, getSecondAccount } = require('../helpers.cjs');
 const fs = require('fs');
 const path = require('path');
 
 async function main() {
     // Get client - we'll use a different account to buy the NFT
     const { client, sscId } = await getClient();
+    const {username, privateKey} = await getSecondAccount();
 
-    // Use echelon-node2 account to buy the NFT (different from the lister)
-    const username = 'echelon-node2';
-    const keys = require('../keys.json');
-    const privateKey = keys[1]; // Use second key for echelon-node2
-
-    // Read the last created NFT collection symbol from file
-    const symbolFilePath = path.join(__dirname, 'lastNFTCollectionSymbol.txt');
-    let collectionSymbol = "TESTNFT"; // Default fallback
-
+    const lastNFTListing = path.join(__dirname, 'lastNFTListingId.txt');
+    let lastNFTListingId = "NFTLISTING_1"; // Default fallback
     try {
-        if (fs.existsSync(symbolFilePath)) {
-            collectionSymbol = fs.readFileSync(symbolFilePath, 'utf8').trim();
-            console.log(`Using last created NFT collection symbol: ${collectionSymbol}`);
+        if (fs.existsSync(lastNFTListing)) {
+            lastNFTListingId = fs.readFileSync(lastNFTListing, 'utf8').trim();
+            console.log(`Using last created NFT collection symbol: ${lastNFTListingId}`);
         } else {
-            console.log(`No lastNFTCollectionSymbol.txt found, using default symbol: ${collectionSymbol}`);
+            console.log(`No lastNFTListingId.txt found, using default symbol: ${lastNFTListingId}`);
         }
     } catch (error) {
-        console.error(`Error reading lastNFTCollectionSymbol.txt: ${error.message}`);
-        console.log(`Using default symbol: ${collectionSymbol}`);
+        console.error(`Error reading lastNFTListingId.txt: ${error.lastNFTListing}`);
     }
 
-    // Generate listing ID based on collection symbol and instance ID
-    let listingId = `${collectionSymbol}-1-echelon-node1`; // Format: collection-instanceId-seller (seller is echelon-node1)
-    console.log(`Using NFT listing ID: ${listingId}`);
+    console.log(`Using NFT listing ID: ${lastNFTListingId}`);
 
     const buyItemData = {
-        listingId: listingId
+        listingId: lastNFTListingId
     };
 
     console.log(`Buying NFT with account ${username}:`);

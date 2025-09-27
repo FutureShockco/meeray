@@ -26,7 +26,7 @@ async function main() {
 
     // For now, use instanceId "1" as the first NFT in the collection
     // In a real scenario, you'd query the database to find the most recent NFT
-    let instanceId = 2;
+    let instanceId = 3;
     console.log(`Using NFT instance ID: "${instanceId}" (first NFT in collection)`);
     console.log(`Looking for NFT: "${collectionSymbol}_${instanceId}"`);
 

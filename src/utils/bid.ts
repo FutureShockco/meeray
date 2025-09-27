@@ -13,7 +13,7 @@ export function generateBidId(listingId: string, bidder: string, timestamp: numb
 export async function getHighestBid(listingId: string): Promise<NftBid | null> {
     try {
         const bids = (await cache.findPromise('nftBids', {
-            listingId,
+            _id: listingId,
             status: 'ACTIVE',
             isHighestBid: true,
         })) as NftBid[] | null;

@@ -93,9 +93,6 @@ function generateRandomNFTCollectionData() {
         name,
         symbol: symbol.toUpperCase(),
         description: `${name} - A unique digital collectibles series`,
-        logoUrl: `https://example.com/nft/${symbol.toLowerCase()}.png`,
-        websiteUrl: `https://example.com/nft/${symbol.toLowerCase()}`,
-        maxSupply: Math.floor(Math.random() * 9000) + 1000, // 1000-10000
         metadata: {
             properties: {
                 rarity: ['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary'],

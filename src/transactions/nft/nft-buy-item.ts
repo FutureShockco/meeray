@@ -12,7 +12,7 @@ import { CachedNftCollectionForTransfer } from './nft-transfer.js';
 
 export async function validateTx(data: NftBuyPayload, sender: string): Promise<boolean> {
     try {
-        if (!data.listingId || !validate.string(data.listingId, 256, 3)) {
+        if (!validate.string(data.listingId, 256, 3)) {
             logger.warn('[nft-buy-item] Invalid listingId.');
             return false;
         }
@@ -23,12 +23,11 @@ export async function validateTx(data: NftBuyPayload, sender: string): Promise<b
             return false;
         }
 
-        const paymentToken = await getToken(listing.paymentToken);
-        if (!paymentToken) {
-            logger.warn(`[nft-buy-item] Payment token not found.`);
+        if (!(await validate.tokenExists(listing.paymentToken))) {
+            logger.warn(`[nft-buy-item] Payment token ${listing.paymentToken} does not exist.`);
             return false;
         }
-
+        
         const buyerAccount = await getAccount(sender);
         if (!buyerAccount) {
             logger.warn(`[nft-buy-item] Buyer account ${sender} not found.`);
