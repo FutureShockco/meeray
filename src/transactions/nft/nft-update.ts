@@ -26,8 +26,8 @@ export async function validateTx(data: NFTUpdateMetadataData, sender: string): P
             logger.warn('[nft-update] Invalid coverUrl: incorrect format, or length (10-2048 chars), must start with http.');
             return false;
         }
-        if (data.properties !== undefined && typeof data.properties !== 'object') {
-            logger.warn('[nft-update] Properties, if provided, must be an object.');
+        if (data.metadata !== undefined && typeof data.metadata !== 'object' || (!validate.json(data.metadata, 2048))) {
+            logger.warn('[nft-update] Metadata, if provided, must be a valid JSON object.');
             return false;
         }
         const fullInstanceId = `${data.collectionSymbol}_${data.instanceId}`;
@@ -63,8 +63,8 @@ export async function processTx(data: NFTUpdateMetadataData, sender: string, _id
         const updateFields: any = {
             lastUpdatedAt: new Date().toISOString(),
         };
-        if (data.properties !== undefined) {
-            updateFields.properties = data.properties;
+        if (data.metadata !== undefined) {
+            updateFields.metadata = data.metadata;
         }
         if (data.uri !== undefined) {
             updateFields.uri = data.uri;
