@@ -102,7 +102,7 @@ async function sendCustomJson(contractAction, payload, actingUser, pk) {
 }
 
 // --- NFT Operation Helpers --- //
-async function createCollection(symbol, name, schema, actingUser = primaryUsername, pk = primaryPrivateKey) {
+async function createCollection(symbol, name, actingUser = primaryUsername, pk = primaryPrivateKey) {
   const payload = {
     symbol,
     name,
@@ -111,7 +111,6 @@ async function createCollection(symbol, name, schema, actingUser = primaryUserna
     burnable: true,
     transferable: true,
     royaltyBps: 5, // 5%
-    schema: JSON.stringify(schema),
     description: `A test collection for ${symbol}`,
     logoUrl: "https://example.com/logo.png",
     websiteUrl: "https://example.com/nft"
@@ -149,7 +148,6 @@ async function buyNft(listingId, actingUser, pk) {
 async function runAdvancedNftTest() {
   const collectionSymbol = 'NFTADV';
   const collectionName = 'Advanced NFT Test Collection';
-  const nftSchema = { type: "object", properties: { id: { type: "integer" }, color: { type: "string" } } };
   const nftInstanceId = `${collectionSymbol}-001`;
   const nftUri = `https://example.com/nft/${collectionSymbol}/001.json`;
   const nftProperties = { id: 1, color: "Blue" };
@@ -162,7 +160,7 @@ async function runAdvancedNftTest() {
   try {
     // 1. Create Collection (Primary User)
     console.log(`1. ${primaryUsername} creating collection ${collectionSymbol}...`);
-    await createCollection(collectionSymbol, collectionName, nftSchema, primaryUsername, primaryPrivateKey);
+    await createCollection(collectionSymbol, collectionName, primaryUsername, primaryPrivateKey);
 
     // 2. Mint NFT (Primary User owns it)
     console.log(`2. ${primaryUsername} minting NFT ${nftInstanceId} to self...`);

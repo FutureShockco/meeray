@@ -8,15 +8,9 @@ export interface NFTCollectionCreateData {
     mintable?: boolean;
     burnable?: boolean;
     transferable?: boolean;
-    schema?: string;
     logoUrl?: string;
     websiteUrl?: string;
     baseCoverUrl?: string;
-    metadata?: {
-        imageUrl?: string;
-        externalUrl?: string;
-        [key: string]: any;
-    };
 }
 
 export interface NFTMintData {
@@ -30,9 +24,6 @@ export interface NFTMintData {
     uri?: string;
     coverUrl?: string;
     metadata?: {
-        name?: string;
-        description?: string;
-        imageUrl?: string;
         attributes?: Array<{
             trait_type: string;
             value: string | number;
@@ -60,11 +51,6 @@ export interface NFTCollectionData {
     totalSupply: string | bigint;
     royaltyBps: number;
     creator: string;
-    metadata?: {
-        imageUrl?: string;
-        externalUrl?: string;
-        [key: string]: any;
-    };
     status: 'ACTIVE' | 'PAUSED' | 'ENDED';
     createdAt: string;
     lastUpdatedAt?: string;
@@ -76,9 +62,6 @@ export interface NFTTokenData {
     tokenId: string;
     owner: string;
     metadata?: {
-        name?: string;
-        description?: string;
-        imageUrl?: string;
         attributes?: Array<{
             trait_type: string;
             value: string | number;
@@ -108,9 +91,6 @@ export interface NFTUpdateMetadataData {
     uri?: string;
     coverUrl?: string;
     metadata?: {
-        name?: string;
-        description?: string;
-        imageUrl?: string;
         attributes?: Array<{
             trait_type: string;
             value: string | number;

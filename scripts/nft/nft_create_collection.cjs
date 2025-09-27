@@ -25,7 +25,6 @@ async function main() {
     collectionData.logoUrl = collectionData.logoUrl || `https://example.com/nft/${collectionData.symbol.toLowerCase()}.png`;
     collectionData.websiteUrl = collectionData.websiteUrl || `https://example.com/nft/${collectionData.symbol.toLowerCase()}`;
 
-    // Remove properties field - it should go in schema if needed
     delete collectionData.properties;
     delete collectionData.metadata;
 
