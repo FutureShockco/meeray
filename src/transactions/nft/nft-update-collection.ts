@@ -152,7 +152,7 @@ export async function processTx(data: NFTUpdateCollectionData, sender: string, _
                 mintable: collection.mintable,
                 burnable: collection.burnable,
                 transferable: collection.transferable,
-                creatorFee: collection.creatorFee,
+                royaltyBps: collection.royaltyBps,
             },
         });
 

@@ -106,12 +106,11 @@ async function createCollection(symbol, name, schema, actingUser = primaryUserna
   const payload = {
     symbol,
     name,
-    creator: actingUser,
     maxSupply: "1000",
     mintable: true,
     burnable: true,
     transferable: true,
-    creatorFee: 5, // 5%
+    royaltyBps: 5, // 5%
     schema: JSON.stringify(schema),
     description: `A test collection for ${symbol}`,
     logoUrl: "https://example.com/logo.png",

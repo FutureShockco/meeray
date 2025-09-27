@@ -30,7 +30,7 @@ const { getClient, getMasterAccount, sendCustomJson } = require('../helpers.cjs'
 const MEERAY_API_BASE = 'https://api.meeray.com';
 const TOKEN_A = 'MRY';
 const TOKEN_B = 'TESTS';
-const INITIAL_AMOUNT = '10.0'; // 1.0 TOKEN_A (user-friendly format for API)
+const INITIAL_AMOUNT = '100.0'; // 1.0 TOKEN_A (user-friendly format for API)
 const SLIPPAGE_PERCENT = 1;
 const TOTAL_SWAPS = 20;
 

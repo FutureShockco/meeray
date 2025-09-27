@@ -15,7 +15,7 @@ async function main() {
     collectionData.mintable = true;
     collectionData.burnable = true;
     collectionData.transferable = true;
-    collectionData.creatorFee = Math.floor(Math.random() * 10); // 0-10%
+    collectionData.royaltyBps = Math.floor(Math.random() * 10); // 0-10%
 
     // Ensure maxSupply is a string, not a number
     collectionData.maxSupply = collectionData.maxSupply.toString();

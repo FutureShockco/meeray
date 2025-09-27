@@ -79,7 +79,7 @@ async function main() {
                 mintable: true,
                 burnable: true,
                 transferable: true,
-                creatorFee: 5
+                royaltyBps: 5
             };
 
             try {
