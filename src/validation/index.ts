@@ -43,7 +43,7 @@ export interface ValidationModule {
     json: (value: any, max: number) => boolean;
     publicKey: (value: any, max?: number) => boolean;
     string: (value: any, maxLength?: number, minLength?: number, allowedChars?: string, allowedCharsMiddle?: string) => boolean;
-    bigint: (value: string | bigint, allowZero?: boolean, allowNegative?: boolean, maxValue?: bigint, minValue?: bigint) => boolean;
+    bigint: (value: string | bigint, allowZero?: boolean, allowNegative?: boolean, minValue?: bigint) => boolean;
     boolean: (value: any) => boolean;
     validateUrl: (value: string, maxLength?: number) => boolean;
     validateLogoUrl: (value: string, maxLength?: number) => boolean;

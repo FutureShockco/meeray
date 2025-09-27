@@ -71,7 +71,7 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
             }
         }
 
-        if (!validate.bigint(toBigInt(data.price), false, false, toBigInt(config.maxValue), toBigInt(1))) {
+        if (!validate.bigint(data.price, false, false, toBigInt(1))) {
             logger.warn(`[nft-list-item] Invalid price format. Must be a string representing a big integer. Received: ${data.price}`);
             return false;
         }
