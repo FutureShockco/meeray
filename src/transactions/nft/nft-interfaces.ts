@@ -86,7 +86,6 @@ export interface NFTUpdateMetadataData {
     collectionId?: string;
     instanceId?: string;
     tokenId?: string;
-    properties?: Record<string, any>;
     uri?: string;
     coverUrl?: string;
     metadata?: {
@@ -109,9 +108,4 @@ export interface NFTUpdateCollectionData {
     burnable?: boolean;
     transferable?: boolean;
     royaltyBps?: number;
-    metadata?: {
-        imageUrl?: string;
-        externalUrl?: string;
-        [key: string]: any;
-    };
 }

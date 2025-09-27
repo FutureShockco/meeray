@@ -6,8 +6,9 @@ import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
 import { getToken } from '../../utils/token.js';
 import validate from '../../validation/index.js';
+import { NFTTokenData } from './nft-interfaces.js';
 import { NFTListingData, NftBid, NftBuyPayload } from './nft-market-interfaces.js';
-import { CachedNftCollectionForTransfer, NftInstance } from './nft-transfer.js';
+import { CachedNftCollectionForTransfer } from './nft-transfer.js';
 
 export async function validateTx(data: NftBuyPayload, sender: string): Promise<boolean> {
     try {
@@ -58,7 +59,7 @@ export async function validateTx(data: NftBuyPayload, sender: string): Promise<b
         }
 
         const fullInstanceId = `${listing.collectionId}_${listing.tokenId}`;
-        const nft = (await cache.findOnePromise('nfts', { _id: fullInstanceId })) as NftInstance | null;
+        const nft = (await cache.findOnePromise('nfts', { _id: fullInstanceId })) as NFTTokenData | null;
         if (!nft || nft.owner !== listing.seller) {
             logger.warn(`[nft-buy-item] NFT not found or owner mismatch.`);
             return false;

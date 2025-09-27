@@ -8,7 +8,8 @@ import { logEvent } from '../../utils/event-logger.js';
 import { getToken } from '../../utils/token.js';
 import validate from '../../validation/index.js';
 import { NftMakeOfferData, NftOffer } from './nft-market-interfaces.js';
-import { CachedNftCollectionForTransfer, NftInstance } from './nft-transfer.js';
+import { CachedNftCollectionForTransfer } from './nft-transfer.js';
+import { NFTTokenData } from './nft-interfaces.js';
 
 // Helper to generate offer ID
 function generateOfferId(targetType: string, targetId: string, offerBy: string, timestamp?: number): string {
@@ -74,7 +75,7 @@ export async function validateTx(data: NftMakeOfferData, sender: string): Promis
         // Validate target based on type (use normalized targetType)
         if (targetType === 'nft') {
             // For NFT offers, validate the NFT exists
-            const nft = (await cache.findOnePromise('nfts', { _id: data.targetId })) as NftInstance | null;
+            const nft = (await cache.findOnePromise('nfts', { _id: data.targetId })) as NFTTokenData | null;
             if (!nft) {
                 logger.warn(`[nft-make-offer] NFT ${data.targetId} not found.`);
                 return false;

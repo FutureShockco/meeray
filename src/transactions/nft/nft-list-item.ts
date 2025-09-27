@@ -5,8 +5,9 @@ import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
 import { MAX_COLLECTION_SUPPLY } from '../../utils/nft.js';
 import validate from '../../validation/index.js';
+import { NFTTokenData } from './nft-interfaces.js';
 import { NFTListingData, NftListPayload } from './nft-market-interfaces.js';
-import { CachedNftCollectionForTransfer, NftInstance } from './nft-transfer.js';
+import { CachedNftCollectionForTransfer } from './nft-transfer.js';
 
 // Helper to generate a unique listing ID
 function generateListingId(collectionSymbol: string, instanceId: string, seller: string): string {
@@ -96,7 +97,7 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
         }
 
         const fullInstanceId = `${data.collectionSymbol}_${data.instanceId}`;
-        const nft = (await cache.findOnePromise('nfts', { _id: fullInstanceId })) as NftInstance | null;
+        const nft = (await cache.findOnePromise('nfts', { _id: fullInstanceId })) as NFTTokenData | null;
 
         if (!nft) {
             logger.warn(`[nft-list-item] NFT ${fullInstanceId} not found.`);

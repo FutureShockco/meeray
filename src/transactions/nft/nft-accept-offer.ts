@@ -5,8 +5,9 @@ import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
 import { getToken } from '../../utils/token.js';
 import validate from '../../validation/index.js';
+import { NFTTokenData } from './nft-interfaces.js';
 import { NftAcceptOfferData, NftOffer } from './nft-market-interfaces.js';
-import { CachedNftCollectionForTransfer, NftInstance } from './nft-transfer.js';
+import { CachedNftCollectionForTransfer } from './nft-transfer.js';
 
 export async function validateTx(data: NftAcceptOfferData, sender: string): Promise<boolean> {
     try {
@@ -28,7 +29,7 @@ export async function validateTx(data: NftAcceptOfferData, sender: string): Prom
             return false;
         }
         if (offer.targetType === 'NFT') {
-            const nft = (await cache.findOnePromise('nfts', { _id: offer.targetId })) as NftInstance | null;
+            const nft = (await cache.findOnePromise('nfts', { _id: offer.targetId })) as NFTTokenData | null;
             if (!nft || nft.owner !== sender) {
                 logger.warn(`[nft-accept-offer] NFT ${offer.targetId} not found or not owned by sender.`);
                 return false;
@@ -48,7 +49,7 @@ export async function validateTx(data: NftAcceptOfferData, sender: string): Prom
                 logger.warn('[nft-accept-offer] nftInstanceId required for collection/trait offers.');
                 return false;
             }
-            const nft = (await cache.findOnePromise('nfts', { _id: data.nftInstanceId })) as NftInstance | null;
+            const nft = (await cache.findOnePromise('nfts', { _id: data.nftInstanceId })) as NFTTokenData | null;
             if (!nft || nft.owner !== sender) {
                 logger.warn(`[nft-accept-offer] NFT ${data.nftInstanceId} not found or not owned by sender.`);
                 return false;
