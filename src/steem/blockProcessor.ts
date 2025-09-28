@@ -207,10 +207,10 @@ class BlockProcessor {
 
             const hasSidechainTx = steemBlockData.transactions.some(steemTx =>
                 steemTx.operations.some(op =>
-                    Array.isArray(op) &&
-                    op[0] === 'custom_json' &&
-                    op[1]?.id === 'sidechain' ||
-                    (op[0] === 'transfer' && config.read(chain.getLatestBlock().id).bridgeAccounts.includes(op[1]?.to as string))
+                    Array.isArray(op) && (
+                        (op[0] === 'custom_json' && op[1]?.id === 'sidechain') ||
+                        (op[0] === 'transfer' && config.read(chain.getLatestBlock().id).bridgeAccounts.includes(op[1]?.to as string))
+                    )
                 )
             );
 
