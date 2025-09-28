@@ -163,11 +163,11 @@ export const isBlockValid = (newBlock: any, verifyHashAndSignature: boolean): bo
 export async function isValidNewBlock(newBlock: any, verifyHashAndSignature: boolean, verifyTxValidity: boolean): Promise<boolean> {
     if (!newBlock) return false;
 
-    const isSteemBlockValid = await steem.isOnSteemBlock(newBlock);
-    if (!isSteemBlockValid) {
-        logger.error('Block does not match Steem block contents');
-        return false;
-    }
+    // const isSteemBlockValid = await steem.isOnSteemBlock(newBlock);
+    // if (!isSteemBlockValid) {
+    //     logger.error('Block does not match Steem block contents');
+    //     return false;
+    // }
 
     if (!isBlockValid(newBlock, verifyHashAndSignature)) {
         return false;
