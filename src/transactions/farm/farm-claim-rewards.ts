@@ -9,14 +9,11 @@ import { FarmClaimRewardsData, FarmData, UserFarmPositionData } from './farm-int
 
 export async function validateTx(data: FarmClaimRewardsData, sender: string): Promise<boolean> {
     try {
-        if (!data.farmId || !data.staker) {
+        if (!data.farmId) {
             logger.warn('[farm-claim-rewards] Invalid data: Missing required fields (farmId, staker).');
             return false;
         }
-        if (sender !== data.staker) {
-            logger.warn('[farm-claim-rewards] Sender must be the staker.');
-            return false;
-        }
+
         if (!validate.string(data.farmId, 64, 1)) {
             logger.warn('[farm-claim-rewards] Invalid farmId format.');
             return false;
@@ -28,20 +25,13 @@ export async function validateTx(data: FarmClaimRewardsData, sender: string): Pr
             return false;
         }
 
-        const userFarmPositionId = `${data.staker}_${data.farmId}`;
+        const userFarmPositionId = `${sender}_${data.farmId}`;
         const userFarmPos = (await cache.findOnePromise('userFarmPositions', {
             _id: userFarmPositionId,
         })) as UserFarmPositionData | null;
         if (!userFarmPos) {
             // User must have a position to claim rewards
-            logger.warn(`[farm-claim-rewards] Staker ${data.staker} has no staking position in farm ${data.farmId}.`);
-            return false;
-        }
-        // Optionally, check if userFarmPos.stakedLpAmount > 0 if rewards only accrue to current stakers
-
-        const stakerAccount = await getAccount(data.staker);
-        if (!stakerAccount) {
-            logger.warn(`[farm-claim-rewards] Staker account ${data.staker} not found.`);
+            logger.warn(`[farm-claim-rewards] Staker ${sender} has no staking position in farm ${data.farmId}.`);
             return false;
         }
 
@@ -55,7 +45,7 @@ export async function validateTx(data: FarmClaimRewardsData, sender: string): Pr
 export async function processTx(data: FarmClaimRewardsData, sender: string, id: string, ts?: number): Promise<boolean> {
     try {
         const farm = (await cache.findOnePromise('farms', { _id: data.farmId })) as FarmData;
-        const userFarmPositionId = `${data.staker}_${data.farmId}`;
+        const userFarmPositionId = `${sender}_${data.farmId}`;
         const userFarmPos = (await cache.findOnePromise('userFarmPositions', {
             _id: userFarmPositionId,
         })) as UserFarmPositionData;
@@ -98,11 +88,11 @@ export async function processTx(data: FarmClaimRewardsData, sender: string, id: 
         }
 
         if (pendingRewards <= toBigInt(0)) {
-            logger.warn(`[farm-claim-rewards] No rewards available for ${data.staker} in farm ${data.farmId}. Elapsed: ${elapsedMs}ms`);
+            logger.warn(`[farm-claim-rewards] No rewards available for ${sender} in farm ${data.farmId}. Elapsed: ${elapsedMs}ms`);
             return true; // Not an error, just no rewards
         }
 
-        logger.debug(`[farm-claim-rewards] Calculated rewards for ${data.staker}: ${pendingRewards} (elapsedMs=${elapsedMs}, blocks=${blocksElapsed}).`);
+        logger.debug(`[farm-claim-rewards] Calculated rewards for ${sender}: ${pendingRewards} (elapsedMs=${elapsedMs}, blocks=${blocksElapsed}).`);
 
         // Debit vault and credit user reward symbol (native farms should reward native token as well)
         const rewardSymbol = farm.rewardToken.symbol;
@@ -114,9 +104,9 @@ export async function processTx(data: FarmClaimRewardsData, sender: string, id: 
                 return false;
             }
         }
-        const creditOk = await adjustUserBalance(data.staker, rewardSymbol, pendingRewards);
+        const creditOk = await adjustUserBalance(sender, rewardSymbol, pendingRewards);
         if (!creditOk) {
-            logger.error(`[farm-claim-rewards] Failed to credit rewards for ${data.staker} in ${rewardSymbol}.`);
+            logger.error(`[farm-claim-rewards] Failed to credit rewards for ${sender} in ${rewardSymbol}.`);
             return false;
         }
 
@@ -147,12 +137,12 @@ export async function processTx(data: FarmClaimRewardsData, sender: string, id: 
             }
         );
 
-        logger.debug(`[farm-claim-rewards] ${data.staker} claimed ${pendingRewards} rewards from farm ${data.farmId}.`);
+        logger.debug(`[farm-claim-rewards] ${sender} claimed ${pendingRewards} rewards from farm ${data.farmId}.`);
 
         // Log event
-        await logTransactionEvent('farm_rewards_claimed', data.staker, {
+        await logTransactionEvent('farm_rewards_claimed', sender, {
             farmId: data.farmId,
-            staker: data.staker,
+            staker: sender,
             rewardAmount: toDbString(pendingRewards),
             rewardToken: rewardSymbol,
             elapsedMs: elapsedMs,

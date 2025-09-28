@@ -146,7 +146,24 @@ router.get('/positions/user/:userId', (async (req: Request, res: Response) => {
     try {
         const positionsFromDB = await cache.findPromise('userFarmPositions', { userId: userId }, { limit, skip, sort: { _id: 1 } });
         const total = await mongo.getDb().collection('userFarmPositions').countDocuments({ userId: userId });
-        const positions = (positionsFromDB || []).map(transformUserFarmPositionData);
+        // Format stakedAmount and rawStakedAmount for each position using the correct staking token symbol
+        const positions = await Promise.all((positionsFromDB || []).map(async (position) => {
+            const transformed = transformUserFarmPositionData(position);
+            // Try to get the farm to determine the correct staking token symbol
+            let stakingTokenSymbol = 'LP_TOKEN';
+            if (position.farmId) {
+                const farm = await cache.findOnePromise('farms', { _id: position.farmId });
+                if (farm && farm.stakingToken && farm.stakingToken.symbol) {
+                    stakingTokenSymbol = farm.stakingToken.symbol;
+                }
+            }
+            if (position.stakedAmount) {
+                const formatted = formatTokenAmountForResponse(position.stakedAmount, stakingTokenSymbol);
+                transformed.stakedAmount = formatted.amount;
+                transformed.rawStakedAmount = formatted.rawAmount;
+            }
+            return transformed;
+        }));
         res.json({ data: positions, total, limit, skip });
     } catch (error: any) {
         logger.error(`Error fetching farm positions for user ${userId}:`, error);

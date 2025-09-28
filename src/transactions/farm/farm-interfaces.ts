@@ -34,7 +34,6 @@ export interface FarmUnstakeData {
 
 export interface FarmClaimRewardsData {
     farmId: string;
-    staker: string;
 }
 
 export interface FarmData extends FarmCreateData {
