@@ -50,11 +50,8 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
             try {
                 const [opType, opData] = op;
                 const isCustomJsonForChain = opType === 'custom_json' && opData.id === config.chainId;
-                const isTransferAndBridgeEnabled = opType === 'transfer' && config.read(chain.getLatestBlock().id).bridgeAccounts.includes(opData.to as string);
-                if (!isCustomJsonForChain && !isTransferAndBridgeEnabled) {
-                    opIndex++;
-                    continue;
-                }
+                const isTransferWithBridge = opType === 'transfer' && config.read(chain.getLatestBlock().id).bridgeAccounts.includes(opData.to as string);
+
                 if (isCustomJsonForChain) {
                     let json: { contract: string; payload: any };
                     try {
@@ -275,13 +272,9 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                         logger.error(`Error processing transaction in block ${blockNum}, operation ${opIndex}:`, error);
                     }
                 }
-                if (isTransferAndBridgeEnabled && settings.skipBridgeOperationsUntilBlock > 0 && blockNum <= settings.skipBridgeOperationsUntilBlock) {
+                if (isTransferWithBridge) {
                     const [opType, opData] = op;
                     const { from, to, amount } = opData;
-                    if (to !== settings.steemBridgeAccount && opType !== 'transfer') {
-                        opIndex++;
-                        continue;
-                    }
                     const tokenSymbol = amount?.split(' ')[1] || '';
                     const amountValue = amount?.split(' ')[0] || '0';
 

@@ -204,6 +204,7 @@ class BlockProcessor {
                 steemBlockData = fetchedBlockData;
                 this.blockCache.set(block.steemBlockNum, steemBlockData);
             }
+            logger.debug(`hasSidechainTx for Steem block ${block.steemBlockNum}: ${JSON.stringify(steemBlockData.transactions)}`);
 
             const hasSidechainTx = steemBlockData.transactions.some(steemTx =>
                 steemTx.operations.some(op =>
@@ -213,7 +214,7 @@ class BlockProcessor {
                     )
                 )
             );
-
+            logger.debug(`hasSidechainTx for Steem block ${block.steemBlockNum}: ${hasSidechainTx}`);
             if ((!block.txs || block.txs.length === 0) && hasSidechainTx) {
                 logger.error(`Block ${block._id}: Claimed no transactions, but Steem block ${block.steemBlockNum} contains sidechain transactions`);
                 return false;
