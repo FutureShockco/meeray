@@ -87,7 +87,7 @@ export const mining = {
             };
 
             // Set distribution amount based on witness rewards
-            if (config.witnessReward > 0) {
+            if (toBigInt(config.witnessReward) > toBigInt(0)) {
                 newBlock.dist = toBigInt(config.witnessReward).toString();
             }
             logger.trace(`prepareBlock: Prepared block candidate for _id ${newBlock._id}: ${JSON.stringify(newBlock)}`);
