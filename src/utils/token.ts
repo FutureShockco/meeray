@@ -37,16 +37,3 @@ export async function adjustTokenSupply(tokenSymbol: string, amount: bigint): Pr
     }
     return newSupply;
 }
-
-export async function isTokenIssuedByNode(symbol: string): Promise<boolean> {
-    const token = await cache.findOnePromise('tokens', { _id: symbol });
-    if (!token) {
-        logger.warn(`[token-utils] Token ${symbol} not found while checking issuer.`);
-        return false;
-    }
-    const isIssuer = token.issuer === settings.steemBridgeAccount;
-    if (!isIssuer) {
-        logger.warn(`[token-utils] Token ${symbol} issuer (${token.issuer}) does not match node bridge account (${settings.steemBridgeAccount}).`);
-    }
-    return isIssuer;
-}

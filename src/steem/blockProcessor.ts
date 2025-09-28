@@ -1,6 +1,8 @@
 import { Block } from '../block.js';
 import { chain } from '../chain.js';
+import config from '../config.js';
 import logger from '../logger.js';
+import settings from '../settings.js';
 import parseSteemTransactions, { SteemBlock, SteemBlockResult } from '../steemParser.js';
 import transaction from '../transaction.js';
 import SteemApiClient from './apiClient.js';
@@ -14,7 +16,7 @@ class BlockProcessor {
     private circuitBreakerOpen = false;
     private prefetchInProgress = false;
 
-    constructor(private apiClient: SteemApiClient) {}
+    constructor(private apiClient: SteemApiClient) { }
 
     async processBlock(blockNum: number): Promise<SteemBlockResult | null> {
         const lastProcessedSteemBlockBySidechain = chain.getLatestBlock()?.steemBlockNum || 0;
@@ -203,8 +205,22 @@ class BlockProcessor {
                 this.blockCache.set(block.steemBlockNum, steemBlockData);
             }
 
+            const hasSidechainTx = steemBlockData.transactions.some(steemTx =>
+                steemTx.operations.some(op =>
+                    Array.isArray(op) &&
+                    op[0] === 'custom_json' &&
+                    op[1]?.id === 'sidechain' ||
+                    (op[0] === 'transfer' && config.read(chain.getLatestBlock().id).bridgeAccounts.includes(op[1]?.to as string))
+                )
+            );
+
+            if ((!block.txs || block.txs.length === 0) && hasSidechainTx) {
+                logger.error(`Block ${block._id}: Claimed no transactions, but Steem block ${block.steemBlockNum} contains sidechain transactions`);
+                return false;
+            }
+
             if (!block.txs || block.txs.length === 0) {
-                logger.debug(`Block ${block._id} has no transactions, skipping Steem validation`);
+                logger.debug(`Block ${block._id} has no transactions, and Steem block also has none. Validation OK.`);
                 return true;
             }
 
@@ -220,7 +236,7 @@ class BlockProcessor {
             const tx = block.txs[i];
 
             if (tx.type !== 'custom_json' || tx.data?.id !== 'sidechain') {
-                continue; // Only validate sidechain transactions
+                continue;
             }
 
             let foundOnSteem = false;

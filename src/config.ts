@@ -43,6 +43,10 @@ const config = {
     witnessShufflePrecision: 8,
     memoryBlocks: 1000,
     randomBytesLength: 32,
+    bridgeAccounts: [
+        'futureshock',
+        'meeray-deposit',
+    ]
 };
 
 // Block-number-based config history (hardforks)

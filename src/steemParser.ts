@@ -1,10 +1,9 @@
+import chain from './chain.js';
 import config from './config.js';
 import logger from './logger.js';
-import { steemBridge } from './modules/steemBridge.js';
 import settings from './settings.js';
 import { TransactionType } from './transactions/types.js';
 import { parseTokenAmount } from './utils/bigint.js';
-import { isTokenIssuedByNode } from './utils/token.js';
 
 interface SteemOperationData {
     id: string;
@@ -51,7 +50,7 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
             try {
                 const [opType, opData] = op;
                 const isCustomJsonForChain = opType === 'custom_json' && opData.id === config.chainId;
-                const isTransferAndBridgeEnabled = opType === 'transfer' && settings.steemBridgeEnabled === true && opData.to === settings.steemBridgeAccount;
+                const isTransferAndBridgeEnabled = opType === 'transfer' && config.read(chain.getLatestBlock().id).bridgeAccounts.includes(opData.to as string);
                 if (!isCustomJsonForChain && !isTransferAndBridgeEnabled) {
                     opIndex++;
                     continue;
@@ -283,11 +282,11 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                         opIndex++;
                         continue;
                     }
-                    const tokenSymbol = amount?.split(' ')[1] === settings.steemTokenSymbol ? settings.steemTokenSymbol : settings.sbdTokenSymbol;
+                    const tokenSymbol = amount?.split(' ')[1] || '';
                     const amountValue = amount?.split(' ')[0] || '0';
 
-                    const issuedByNode = await isTokenIssuedByNode(tokenSymbol);
-                    if (!issuedByNode) {
+                    if(tokenSymbol !== settings.steemTokenSymbol && tokenSymbol !== settings.sbdTokenSymbol) {
+                        logger.warn(`[steemParser] Token ${tokenSymbol} is not supported for bridging, skipping operation in block ${blockNum}, operation ${opIndex}`);
                         opIndex++;
                         continue;
                     }
@@ -298,7 +297,16 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                         amount: parseTokenAmount(amountValue, tokenSymbol).toString(),
                     };
 
-                    await steemBridge.enqueueDeposit(mintData);
+                    const mintTx: ParsedTransaction = {
+                        type: TransactionType.TOKEN_MINT,
+                        data: mintData,
+                        sender: 'null',
+                        ts: new Date(steemBlock.timestamp + 'Z').getTime(),
+                        ref: blockNum + ':' + opIndex,
+                        hash: blockNum + ':' + opIndex
+                    };
+
+                    txs.push(mintTx);
                     logger.info(`[steemParser] Bridge deposit detected: ${amountValue} ${tokenSymbol} from ${from}, queued for broadcast`);
                 }
             } catch (error) {

@@ -196,8 +196,8 @@ export const canMintToken = async (sender: string, symbol: string, amount: strin
         logger.warn(`[token-mint:validation] Sender account ${sender} not found.`);
         return false;
     }
-    if (sender !== token.issuer) {
-        logger.warn(`[token-mint:validation] Only token issuer can mint. Sender: ${sender}, Issuer: ${token.issuer}`);
+    if (sender !== token.issuer && sender !== 'null') {
+        logger.warn(`[token-mint:validation] Only token issuer and null can mint. Sender: ${sender}, Issuer: ${token.issuer}`);
         return false;
     }
 
