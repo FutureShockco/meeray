@@ -2,6 +2,7 @@ import cache from '../../cache.js';
 import config from '../../config.js';
 import logger from '../../logger.js';
 import { logEvent } from '../../utils/event-logger.js';
+import { MAX_COLLECTION_SUPPLY } from '../../utils/nft.js';
 import validate from '../../validation/index.js';
 import { NFTCollectionCreateData, NFTTokenData, NFTTransferData } from './nft-interfaces.js';
 
@@ -23,7 +24,7 @@ export async function validateTx(data: NFTTransferData, sender: string): Promise
             logger.warn(`[nft-transfer/burn] Invalid collection symbol format: ${data.collectionSymbol}.`);
             return false;
         }
-        if (!validate.string(data.instanceId, 128, 1)) {
+        if (!validate.integer(data.instanceId, false, false, MAX_COLLECTION_SUPPLY, 1)) {
             // Max 128 for instanceId
             logger.warn('[nft-transfer/burn] Invalid instanceId length (1-128 chars).');
             return false;
@@ -34,10 +35,6 @@ export async function validateTx(data: NFTTransferData, sender: string): Promise
         }
         if (data.memo && typeof data.memo === 'string' && !validate.string(data.memo, 256, 1)) {
             logger.warn('[nft-transfer/burn] Invalid memo: Exceeds maximum length of 256 chars.');
-            return false;
-        }
-        if (data.memo && typeof data.memo !== 'string') {
-            logger.warn('[nft-transfer/burn] Invalid memo: Must be a string if provided.');
             return false;
         }
 

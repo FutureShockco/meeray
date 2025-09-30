@@ -37,6 +37,30 @@ async function main() {
             username,
             privateKey
         );
+        await sendCustomJson(
+            client,
+            sscId,
+            'pool_add_liquidity',
+            {
+                poolId: generatePoolId("MRY", "TBD"),
+                tokenA_amount: "1000000000000", // 10000 MRY
+                tokenB_amount: "100000"       // 100 TBD
+            },
+            username,
+            privateKey
+        );
+        await sendCustomJson(
+            client,
+            sscId,
+            'pool_add_liquidity',
+            {
+                poolId: generatePoolId("TBD", "TESTS"),
+                tokenA_amount: "100000", // 1000 TBD
+                tokenB_amount: "700000"       // 700 TESTS
+            },
+            username,
+            privateKey
+        );
     } catch (error) {
         console.error('Pool liquidity addition failed.');
     }
