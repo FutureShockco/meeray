@@ -21,8 +21,6 @@ class BlockProcessor {
     async processBlock(blockNum: number): Promise<SteemBlockResult | null> {
         const lastProcessedSteemBlockBySidechain = chain.getLatestBlock()?.steemBlockNum || 0;
 
-        logger.info(`Processing block ${blockNum}, last processed: ${lastProcessedSteemBlockBySidechain}`);
-
         if (blockNum !== lastProcessedSteemBlockBySidechain + 1) {
             logger.debug(`Block ${blockNum} is not sequential. Expected ${lastProcessedSteemBlockBySidechain + 1}, returning null`);
             return null;
@@ -50,7 +48,6 @@ class BlockProcessor {
             }
 
             const steemBlockResult = await parseSteemTransactions(steemBlock, blockNum);
-            logger.info(`Finished parsing Steem block ${blockNum}, found ${steemBlockResult.transactions.length} transactions`);
             this.resetConsecutiveErrors();
 
             if (steemBlockResult.transactions.length > 0) {
@@ -225,25 +222,16 @@ class BlockProcessor {
             });
             if (isValid) validSteemTxs.push(tx);
         }
-        // Extract Steem-derived txs from the sidechain block
         const blockSteemTxs = block.txs.filter(tx => tx.hash && tx.ref && tx.ref.startsWith(`${block.steemBlockNum}:`));
-        // Use Steem's transaction_id for comparison
-        logger.warn(`Block ${block._id}: Comparing ${validSteemTxs.length} parsed Steem txs with ${blockSteemTxs.length} block Steem-derived txs`);
-        logger.warn(`Parsed Steem txs: ${validSteemTxs.map(tx => tx.hash).join(', ')}`);
-        logger.warn(`Block Steem-derived txs: ${JSON.stringify(blockSteemTxs)}`);
-        const parsedIds = new Set(validSteemTxs.map(tx => tx.hash)); // should be transaction_id
-        const blockIds = new Set(blockSteemTxs.map(tx => tx.hash));  // should be transaction_id
-
-        logger.warn(`Parsed ids: ${[...parsedIds].join(', ')}`);
-        logger.warn(`Block ids: ${[...blockIds].join(', ')}`);
+        const parsedIds = new Set(validSteemTxs.map(tx => tx.hash));
+        const blockIds = new Set(blockSteemTxs.map(tx => tx.hash)); 
 
         if (parsedIds.size !== blockIds.size ||
             ![...parsedIds].every(id => blockIds.has(id))) {
             logger.error(`Block ${block._id}: Steem-derived transactions do not match parsed valid transactions`);
             return false;
         }
-
-        logger.info(`Block ${block._id}: All Steem-derived transactions validated`);
+        logger.debug(`Block ${block._id}: All Steem-derived transactions validated`);
         return true;
     }
 
