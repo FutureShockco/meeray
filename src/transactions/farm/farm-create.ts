@@ -5,7 +5,7 @@ import logger from '../../logger.js';
 import mongo from '../../mongo.js';
 import { adjustUserBalance, getAccount } from '../../utils/account.js';
 import { BigIntMath, toBigInt, toDbString } from '../../utils/bigint.js';
-import { generateFarmId } from '../../utils/farm.js';
+import { generateFarmId, recalculateNativeFarmRewards } from '../../utils/farm.js';
 import validate from '../../validation/index.js';
 import { TokenData } from '../token/token-interfaces.js';
 import { FarmCreateData, FarmData } from './farm-interfaces.js';
@@ -13,8 +13,9 @@ import { FarmCreateData, FarmData } from './farm-interfaces.js';
 
 export async function validateTx(data: FarmCreateData, sender: string): Promise<boolean> {
     try {
-        if (!data.stakingToken || !data.rewardToken || !data.startBlock || !data.totalRewards || !data.rewardsPerBlock) {
-            logger.warn('[farm-create] Invalid data: Missing required fields.');
+        // totalRewards may be omitted for auto farms (mintable reward tokens); rewardsPerBlock is required
+        if (!data.stakingToken || !data.rewardToken || !data.startBlock || !data.rewardsPerBlock) {
+            logger.warn('[farm-create] Invalid data: Missing required fields (stakingToken, rewardToken, startBlock, rewardsPerBlock).');
             return false;
         }
 
@@ -43,20 +44,32 @@ export async function validateTx(data: FarmCreateData, sender: string): Promise<
             logger.warn(`[farm-create] Reward Token (${data.rewardToken}) not found.`);
             return false;
         }
-        // If sender is not the token issuer and provided totalRewards, check balance
-        if (rewardToken.issuer !== sender && data.totalRewards !== undefined && validate.bigint(data.totalRewards, false, false, toBigInt(1))) {
-            if(!await validate.userBalances(sender, [{ symbol: data.rewardToken, amount: toBigInt(data.totalRewards) }])) {
-                logger.warn(`[farm-create] Staker ${sender} has insufficient balance of ${data.rewardToken}.`);
-                return false;
-            }
-        }
-        else {
+        // If totalRewards is provided, ensure the sender can supply those tokens (either has balance or is issuer and token isn't mint-only)
+        if (data.totalRewards !== undefined) {
+            // If sender is not the issuer, they must have the balance
             if (rewardToken.issuer !== sender) {
-                logger.warn(`[farm-create] Sender ${sender} is not the issuer of reward token ${data.rewardToken}. Token issuer: ${rewardToken.issuer}`);
+                if (!await validate.userBalances(sender, [{ symbol: data.rewardToken, amount: toBigInt(data.totalRewards) }])) {
+                    logger.warn(`[farm-create] Staker ${sender} has insufficient balance of ${data.rewardToken}.`);
+                    return false;
+                }
+            } else {
+                // Sender is issuer: if token is not mintable, they still must have enough balance to cover totalRewards
+                if (!rewardToken.mintable) {
+                    if (!await validate.userBalances(sender, [{ symbol: data.rewardToken, amount: toBigInt(data.totalRewards) }])) {
+                        logger.warn(`[farm-create] Issuer ${sender} does not have sufficient balance of non-mintable token ${data.rewardToken}.`);
+                        return false;
+                    }
+                }
+                // If issuer and mintable, OK (they can mint when needed)
+            }
+        } else {
+            // Auto farms (no totalRewards provided) require the reward token to be mintable and sender must be issuer
+            if (rewardToken.issuer !== sender) {
+                logger.warn(`[farm-create] Sender ${sender} is not the issuer of reward token ${data.rewardToken}. Cannot create auto farm.`);
                 return false;
             }
             if (!rewardToken.mintable) {
-                logger.warn(`[farm-create] Reward token ${data.rewardToken} is not mintable. Cannot create farm with non-mintable reward token.`);
+                logger.warn(`[farm-create] Reward token ${data.rewardToken} is not mintable. Cannot create auto farm.`);
                 return false;
             }
         }
@@ -104,13 +117,13 @@ export async function processTx(data: FarmCreateData, sender: string, _id: strin
             return false;
         }
 
-        const feeDeducted = await adjustUserBalance(sender, config.nativeTokenSymbol, toBigInt(-config.farmCreationFee));
+        const feeDeducted = await adjustUserBalance(sender, config.nativeTokenSymbol, -toBigInt(config.farmCreationFee));
         if (!feeDeducted) {
-            logger.error(`[token-create:process] Failed to deduct token creation fee from ${sender}.`);
+            logger.error(`[farm-create] Failed to deduct farm creation fee from ${sender}.`);
             return false;
         }
         if (data.totalRewards !== undefined) {
-            const rewardDeducted = await adjustUserBalance(sender, data.rewardToken, toBigInt(-data.totalRewards));
+            const rewardDeducted = await adjustUserBalance(sender, data.rewardToken, -toBigInt(data.totalRewards));
             if (!rewardDeducted) {
                 logger.error(`[farm-create] Failed to deduct ${data.totalRewards} ${data.rewardToken} from ${sender} for farm creation.`);
                 return false;
@@ -126,10 +139,10 @@ export async function processTx(data: FarmCreateData, sender: string, _id: strin
             stakingToken: data.stakingToken,
             rewardToken: data.rewardToken,
             startBlock: data.startBlock,
-            totalRewards: toDbString(data.totalRewards),
-            rewardsPerBlock: toDbString(data.rewardsPerBlock),
-            minStakeAmount: data.minStakeAmount === undefined ? toBigInt(0) : toDbString(data.minStakeAmount),
-            maxStakeAmount: data.maxStakeAmount === undefined ? toBigInt(0) : toDbString(data.maxStakeAmount),
+            totalRewards: data.totalRewards === undefined ? toDbString(0) : toDbString(data.totalRewards),
+            rewardsPerBlock: data.rewardsPerBlock === undefined ? toDbString(0) : toDbString(data.rewardsPerBlock),
+            minStakeAmount: data.minStakeAmount === undefined ? toDbString(toBigInt(0)) : toDbString(data.minStakeAmount),
+            maxStakeAmount: data.maxStakeAmount === undefined ? toDbString(toBigInt(0)) : toDbString(data.maxStakeAmount),
             totalStaked: toDbString(0),
             status: 'active',
             weight: farmWeight,
@@ -157,6 +170,21 @@ export async function processTx(data: FarmCreateData, sender: string, _id: strin
         }
 
         logger.debug(`[farm-create] Farm ${farmId} for staking token ${data.stakingToken} rewarding ${data.rewardToken} created by ${sender}.`);
+
+        // If this is a native farm created by the master account, recalculate rewards per block for all master native farms
+        if (isNativeFarm && sender === config.masterName) {
+            try {
+                const recalcOk = await recalculateNativeFarmRewards();
+                if (!recalcOk) {
+                    logger.error('[farm-create] Recalculation of native farm rewards failed after creation; aborting transaction to trigger rollback.');
+                    return false;
+                }
+                logger.debug('[farm-create] Recalculated native farm rewards after creation.');
+            } catch (err) {
+                logger.error(`[farm-create] Error recalculating native farm rewards: ${err}; aborting transaction to trigger rollback.`);
+                return false;
+            }
+        }
 
         return true;
     } catch (error) {

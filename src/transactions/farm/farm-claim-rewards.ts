@@ -7,6 +7,7 @@ import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
 import validate from '../../validation/index.js';
 import { FarmClaimRewardsData, FarmData, UserFarmPositionData } from './farm-interfaces.js';
+import { recalculateNativeFarmRewards } from '../../utils/farm.js';
 
 export async function validateTx(data: FarmClaimRewardsData, sender: string): Promise<boolean> {
     try {
@@ -25,8 +26,9 @@ export async function validateTx(data: FarmClaimRewardsData, sender: string): Pr
         }
         const currentBlockNum = chain.getLatestBlock().id;
         const farmStartBlock = Number(farm.startBlock);
-        if (currentBlockNum < farmStartBlock || farm.status !== 'active') {
-            logger.warn(`[farm-claim-rewards] Farm ${data.farmId} not active or not started at block=${currentBlockNum}.`);
+        // Allow claiming when farm is 'active' or 'ended' (ended means rewards exhausted but users can still claim pending rewards)
+        if (currentBlockNum < farmStartBlock || (farm.status !== 'active' && farm.status !== 'ended')) {
+            logger.warn(`[farm-claim-rewards] Farm ${data.farmId} not active/ended or not started at block=${currentBlockNum}.`);
             return false;
         }
         const userFarmPositionId = `${sender}_${data.farmId}`;
@@ -128,9 +130,48 @@ export async function processTx(data: FarmClaimRewardsData, sender: string, id: 
                 { _id: data.farmId },
                 { $set: { rewardBalance: toDbString(rewardBalance - pendingRewards), lastUpdatedBlock: chain.getLatestBlock().id } }
             );
-        }
-        else {
+        } else {
             await cache.updateOnePromise('tokens', { symbol: farm.rewardToken }, { $set: { currentSupply: toDbString(toBigInt(rewardToken.currentSupply) + toBigInt(pendingRewards)) } });
+        }
+
+        // After deducting/minting rewards, check if the farm has exhausted its reward supply and should be ended
+        try {
+            const updatedFarm = await cache.findOnePromise('farms', { _id: data.farmId }) as FarmData;
+            let remaining = 0n;
+            if (updatedFarm) {
+                if (updatedFarm.isAuto) {
+                    // For auto farms, remaining is determined by token maxSupply - currentSupply
+                    const updatedRewardToken = await cache.findOnePromise('tokens', { symbol: updatedFarm.rewardToken }) as any;
+                    if (updatedRewardToken && updatedRewardToken.maxSupply) {
+                        const currentSupply = toBigInt(updatedRewardToken.currentSupply || '0');
+                        const maxSupply = toBigInt(updatedRewardToken.maxSupply);
+                        remaining = maxSupply - currentSupply;
+                    } else {
+                        remaining = Number.MAX_SAFE_INTEGER as unknown as bigint; // no max supply => effectively infinite
+                    }
+                } else {
+                    remaining = toBigInt(updatedFarm.rewardBalance || '0');
+                }
+
+                if (remaining <= 0n) {
+                    // Mark farm as ended and zero-out rewardsPerBlock
+                    await cache.updateOnePromise('farms', { _id: data.farmId }, { $set: { status: 'ended', rewardsPerBlock: toDbString(0), lastUpdatedBlock: chain.getLatestBlock().id } });
+                    logger.info(`[farm-claim-rewards] Farm ${data.farmId} has exhausted rewards and was marked as ended.`);
+
+                    // If native/machine-managed farms changed, recalc global distribution (best-effort)
+                    try {
+                        if (updatedFarm.isNativeFarm && updatedFarm.creator === config.masterName) {
+                            const recalcOk = await recalculateNativeFarmRewards();
+                            if (!recalcOk) logger.warn('[farm-claim-rewards] Recalculation of native farm rewards failed after farm end.');
+                            else logger.debug('[farm-claim-rewards] Recalculated native farm rewards after farm end.');
+                        }
+                    } catch (err) {
+                        logger.error(`[farm-claim-rewards] Error recalculating native farm rewards after farm end: ${err}`);
+                    }
+                }
+            }
+        } catch (err) {
+            logger.error(`[farm-claim-rewards] Error checking/ending farm ${data.farmId} after claim: ${err}`);
         }
         const newPendingRewards = toBigInt(userFarmPos.pendingRewards || '0') + pendingRewards;
         // Credit user

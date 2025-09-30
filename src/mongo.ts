@@ -10,6 +10,7 @@ import logger from './logger.js';
 import { FarmData } from './transactions/farm/farm-interfaces.js';
 import { TokenData } from './transactions/token/token-interfaces.js';
 import { setTokenDecimals, toBigInt, toDbString } from './utils/bigint.js';
+import { generateFarmId } from './utils/farm.js';
 
 const DB_NAME = process.env.MONGO_DB || 'meeray';
 const DB_URL = process.env.MONGO_URL || 'mongodb://localhost:27017';
@@ -317,35 +318,35 @@ export const mongo = {
     },
     insertNativeFarms: async (): Promise<void> => {
         const currentDb = mongo.getDb();
-        const nativeFarms: FarmData[] = [
-            {
-                _id: 'FARM_MRY_MRY',
-                farmId: 'FARM_MRY_MRY',
-                name: 'MeeRay Farm',
-                stakingToken: {
-                    symbol: 'MRY',
-                    issuer: 'echelon-node1',
-                },
-                rewardToken: {
-                    symbol: 'MRY',
-                    issuer: 'echelon-node1',
-                },
-                startTime: new Date().toISOString(),
-                endTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-                totalRewards: toDbString('1000000000000000000000000000000'),
-                rewardsPerBlock: toDbString(config.farmReward),
+        // Create native farms programmatically so rewardsPerBlock is calculated from config.nativeFarmsReward and weights
+        const nativeRewardPerBlock = toBigInt(config.nativeFarmsReward);
+        const weights = [200, 100, 100];
+        const farms = [{ stakingToken: 'MRY', rewardToken: 'MRY' }, { stakingToken: 'TESTS', rewardToken: 'MRY' }, { stakingToken: 'TBD', rewardToken: 'MRY' }];
+        const totalWeight = weights.reduce((a, b) => a + b, 0);
+        const nativeFarms: FarmData[] = weights.map((w, idx) => {
+            const farmId = generateFarmId(farms[idx].stakingToken, farms[idx].rewardToken);
+            const farmReward = (nativeRewardPerBlock * toBigInt(w)) / toBigInt(totalWeight);
+            return {
+                _id: farmId,
+                farmId,
+                stakingToken: farms[idx].stakingToken,
+                rewardToken: farms[idx].rewardToken,
+                startBlock: 0,
+                totalRewards: toDbString(config.maxValue),
+                rewardsPerBlock: toDbString(farmReward),
                 minStakeAmount: toDbString('0'),
                 maxStakeAmount: toDbString('0'),
                 totalStaked: toDbString('0'),
-                weight: 100,
+                weight: w,
                 isNativeFarm: true,
-                isActive: true,
                 status: 'active' as const,
                 createdAt: new Date().toISOString(),
-                lastUpdatedAt: new Date().toISOString(),
-                rewardsRemaining: toDbString('1000000000000000000000000000000'),
-            },
-        ];
+                lastUpdatedBlock: 0,
+                creator: config.masterName,
+                isAuto: true,
+                rewardBalance: toDbString('0'),
+            } as FarmData;
+        });
         await currentDb.collection<FarmData>('farms').insertMany(nativeFarms);
         logger.info('Native farms inserted.');
     },

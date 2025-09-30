@@ -1,5 +1,6 @@
 import cache from '../../cache.js';
 import logger from '../../logger.js';
+import chain from '../../chain.js';
 import { getAccount } from '../../utils/account.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { logTransactionEvent } from '../../utils/event-logger.js';
@@ -33,8 +34,9 @@ export async function validateTx(data: FarmUnstakeData, sender: string): Promise
             logger.warn(`[farm-unstake] Farm ${data.farmId} not found.`);
             return false;
         }
-        if (farm.status !== 'active') {
-            logger.warn(`[farm-unstake] Farm ${data.farmId} is not active.`);
+        // Allow unstaking from active, paused or ended farms; only reject cancelled farms
+        if (farm.status === 'cancelled') {
+            logger.warn(`[farm-unstake] Farm ${data.farmId} is cancelled and cannot be unstaked from.`);
             return false;
         }
 
@@ -64,6 +66,29 @@ export async function processTx(data: FarmUnstakeData, sender: string, id: strin
         const userFarmPos = (await cache.findOnePromise('userFarmPositions', {
             _id: userFarmPositionId,
         })) as UserFarmPositionData;
+
+        // Calculate and snapshot pending rewards for this user up to current block before reducing stake
+        const currentBlockNum = chain.getLatestBlock().id;
+        const lastHarvestBlock = Number(userFarmPos.lastHarvestBlock || farm.startBlock || currentBlockNum);
+        const blocksElapsed = BigInt(Math.max(0, currentBlockNum - lastHarvestBlock));
+        const rewardsPerBlock = toBigInt(farm.rewardsPerBlock || '0');
+        const totalStaked = toBigInt(farm.totalStaked || '0');
+        const stakedAmountBefore = toBigInt(userFarmPos.stakedAmount || '0');
+        let pendingRewards = (rewardsPerBlock * blocksElapsed * stakedAmountBefore) / (totalStaked === 0n ? 1n : totalStaked);
+
+        if (pendingRewards > 0n) {
+            await cache.updateOnePromise(
+                'userFarmPositions',
+                { _id: userFarmPositionId },
+                {
+                    $set: {
+                        pendingRewards: toDbString(toBigInt(userFarmPos.pendingRewards || '0') + pendingRewards),
+                        lastHarvestBlock: currentBlockNum,
+                        lastUpdatedAt: new Date().toISOString(),
+                    },
+                }
+            );
+        }
 
         const newStakedAmount = toBigInt(userFarmPos.stakedAmount) - tokenAmount;
         await cache.updateOnePromise(

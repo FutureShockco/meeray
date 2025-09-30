@@ -6,6 +6,7 @@ import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
 import validate from '../../validation/index.js';
 import { FarmData, FarmUpdateData, UserFarmPositionData } from './farm-interfaces.js';
+import { recalculateNativeFarmRewards } from '../../utils/farm.js';
 
 
 export async function validateTx(data: FarmUpdateData, sender: string): Promise<boolean> {
@@ -82,8 +83,8 @@ export async function processTx(data: FarmUpdateData, sender: string, _transacti
             updateFields.lastUpdateReason = data.reason;
         }
 
-        // If status is changing, snapshot all users' rewards
-        if (data.newStatus !== undefined) {
+        // If status or weight is changing, snapshot all users' rewards (to avoid losing pending rewards when rewardsPerBlock changes)
+        if (data.newStatus !== undefined || data.newWeight !== undefined) {
             const farm = await cache.findOnePromise('farms', { _id: data.farmId }) as FarmData;
             const currentBlockNum = await chain.getLatestBlock().id;
             const rewardsPerBlock = toBigInt(farm.rewardsPerBlock || '0');
@@ -149,6 +150,23 @@ export async function processTx(data: FarmUpdateData, sender: string, _transacti
         });
 
         logger.debug(`[farm-update] Successfully updated farm ${data.farmId}.`);
+
+        // If this farm is a master-created native farm and weight/status changed, recalculate rewardsPerBlock for all master native farms
+        const updatedFarm = await cache.findOnePromise('farms', { _id: data.farmId }) as FarmData;
+        if (updatedFarm && updatedFarm.isNativeFarm && updatedFarm.creator === config.masterName && (data.newWeight !== undefined || data.newStatus !== undefined)) {
+            try {
+                const recalcOk = await recalculateNativeFarmRewards();
+                if (!recalcOk) {
+                    logger.error('[farm-update] Recalculation of native farm rewards failed after update; aborting transaction to trigger rollback.');
+                    return false;
+                }
+                logger.debug('[farm-update] Recalculated native farm rewards after update.');
+            } catch (err) {
+                logger.error(`[farm-update] Error recalculating native farm rewards: ${err}; aborting transaction to trigger rollback.`);
+                return false;
+            }
+        }
+
         return true;
     } catch (error) {
         logger.error(`[farm-update] Error processing: ${error}`);

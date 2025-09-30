@@ -13,7 +13,7 @@ const config = {
     blockTime: 3000,
     syncBlockTime: 1000,
     witnessReward: '100000000', // 1 MRY
-    farmReward: '100000000', // 1 MRY
+    nativeFarmsReward: '100000000', // 1 MRY
     steemChainId: '0000000000000000000000000000000000000000000000000000000000000000',
     steemStartBlock: process.env.NODE_ENV === 'development' ? 4035700 : 95762370,
     steemBlockDelay: 1,
