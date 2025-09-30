@@ -12,7 +12,7 @@ import { FarmData, FarmStakeData, UserFarmPositionData } from './farm-interfaces
 export async function validateTx(data: FarmStakeData, sender: string): Promise<boolean> {
     try {
         if (!data.farmId || !data.tokenAmount) {
-            logger.warn('[farm-stake] Invalid data: Missing required fields (farmId, staker, tokenAmount).');
+            logger.warn('[farm-stake] Invalid data: Missing required fields (farmId, tokenAmount).');
             return false;
         }
 
