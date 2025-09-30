@@ -42,11 +42,7 @@ const config = {
     txExpirationTime: 3600000,
     witnessShufflePrecision: 8,
     memoryBlocks: 1000,
-    randomBytesLength: 32,
-    bridgeAccounts: [
-        'futureshock',
-        'meeray-deposit',
-    ]
+    randomBytesLength: 32
 };
 
 // Block-number-based config history (hardforks)
