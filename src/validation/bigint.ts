@@ -7,11 +7,11 @@ const maxValue: bigint = toBigInt(config.maxValue);
  * @param value - The value to validate (string or bigint)
  * @param allowZero - Whether to allow zero value
  * @param allowNegative - Whether to allow negative values
- * @param maxValue - Optional maximum value
  * @param minValue - Optional minimum value
+ * @param maxValue - Optional maximum value
  * @returns boolean indicating if value meets all constraints
  */
-export default function validateBigInt(value: string | bigint, allowZero = false, allowNegative = false, minValue: bigint = toBigInt(0)): boolean {
+export default function validateBigInt(value: string | bigint, allowZero = false, allowNegative = false, minValue: bigint = toBigInt(0), maxValue: bigint = toBigInt(config.maxValue)): boolean {
     let numValue: bigint;
     try {
         numValue = typeof value === 'bigint' ? value : toBigInt(value);

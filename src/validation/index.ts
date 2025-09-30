@@ -17,7 +17,8 @@ import publicKey from './publicKey.js';
 import string from './string.js';
 import { canMintToken, isIssuer, newToken, tokenExists, tokenSymbols, tokenTransfer } from './token.js';
 import { validateLogoUrl, validateUrl } from './url.js';
-
+import { time, times } from './time.js';
+import { blockNumber } from './block.js';
 /**
  * Chain configuration validation
  */
@@ -43,11 +44,14 @@ export interface ValidationModule {
     json: (value: any, max: number) => boolean;
     publicKey: (value: any, max?: number) => boolean;
     string: (value: any, maxLength?: number, minLength?: number, allowedChars?: string, allowedCharsMiddle?: string) => boolean;
-    bigint: (value: string | bigint, allowZero?: boolean, allowNegative?: boolean, minValue?: bigint) => boolean;
+    bigint: (value: string | bigint, allowZero?: boolean, allowNegative?: boolean, minValue?: bigint, maxValue?: bigint) => boolean;
     boolean: (value: any) => boolean;
+    time: (value: any) => boolean;
+    times: (time1: string, time2?: string) => boolean;
+    blockNumber: (blockNum: number | string) => boolean;
     validateUrl: (value: string, maxLength?: number) => boolean;
     validateLogoUrl: (value: string, maxLength?: number) => boolean;
-    tokenSymbols: (symbols: any[] | any) => boolean;
+    tokenSymbols: (symbols: string[] | any) => boolean;
     newToken: (data: any) => Promise<boolean>;
     tokenTransfer: (sender: string, symbol: string, to: string, amount: string | bigint, memo?: string, isTransfer?: boolean) => boolean;
     tokenExists: (symbol: string) => Promise<boolean>;
@@ -80,6 +84,9 @@ const validation: ValidationModule = {
     string,
     bigint,
     boolean,
+    time,
+    times,
+    blockNumber,
     validateUrl,
     validateLogoUrl,
     tokenSymbols,

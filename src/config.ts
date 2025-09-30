@@ -22,6 +22,7 @@ const config = {
     tokenSymbolAllowedChars: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890',
     tokenNameAllowedChars: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
     tokenNameMaxLength: 50,
+    farmCreationFee: '10000000000', // 100 MRY
     tokenCreationFee: '10000000000', // 100 MRY
     nftCollectionCreationFee: '10000000000', // 100 MRY
     launchPadCreationFee: '10000000000', // 100 MRY

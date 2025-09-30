@@ -90,8 +90,8 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                         case 'nft_update_collection':
                             txType = TransactionType.NFT_UPDATE_COLLECTION;
                             break;
-                        case 'farm_update_weight':
-                            txType = TransactionType.FARM_UPDATE_WEIGHT;
+                        case 'farm_update':
+                            txType = TransactionType.FARM_UPDATE;
                             break;
                         case 'launchpad_configure_presale':
                             txType = TransactionType.LAUNCHPAD_CONFIGURE_PRESALE;
@@ -147,13 +147,13 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                         case 'farm_stake':
                         case 'farm_unstake':
                         case 'farm_claim_rewards':
-                        case 'farm_update_weight': {
+                        case 'farm_update': {
                             const farmMap = {
                                 'farm_create': TransactionType.FARM_CREATE,
                                 'farm_stake': TransactionType.FARM_STAKE,
                                 'farm_unstake': TransactionType.FARM_UNSTAKE,
                                 'farm_claim_rewards': TransactionType.FARM_CLAIM_REWARDS,
-                                'farm_update_weight': TransactionType.FARM_UPDATE_WEIGHT,
+                                'farm_update': TransactionType.FARM_UPDATE,
                             };
                             txType = farmMap[json.contract.toLowerCase() as keyof typeof farmMap];
                             break;

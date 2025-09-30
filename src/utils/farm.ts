@@ -17,6 +17,19 @@ export interface GlobalRewardInfo {
 }
 
 /**
+ * Generates a farm ID from token symbols
+ * This is used across farms for consistency
+ *
+ * @param tokenA_symbol - Symbol of token A
+ * @param tokenB_symbol - Symbol of token B
+ * @returns Farm ID
+ */
+export function generateFarmId(tokenA_symbol: string, tokenB_symbol: string): string {
+    const [token1, token2] = [tokenA_symbol, tokenB_symbol].sort();
+    return `farm_${token1}_${token2}`;
+}
+
+/**
  * Calculate how much reward each native farm should get based on weights
  */
 export async function calculateWeightedRewards(currentBlock: number): Promise<WeightedRewardDistribution[]> {

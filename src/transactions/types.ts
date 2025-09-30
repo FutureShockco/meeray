@@ -20,7 +20,7 @@ export enum TransactionType {
     FARM_STAKE = 13,
     FARM_UNSTAKE = 14,
     FARM_CLAIM_REWARDS = 15,
-    FARM_UPDATE_WEIGHT = 16,
+    FARM_UPDATE = 16,
 
     // Pool Transactions
     POOL_CREATE = 17,
@@ -93,7 +93,7 @@ export const transactions: { [key: number]: string } = {
     [TransactionType.FARM_STAKE]: 'farm_stake',
     [TransactionType.FARM_UNSTAKE]: 'farm_unstake',
     [TransactionType.FARM_CLAIM_REWARDS]: 'farm_claim_rewards',
-    [TransactionType.FARM_UPDATE_WEIGHT]: 'farm_update_weight',
+    [TransactionType.FARM_UPDATE]: 'farm_update',
 
     // Pool Transactions
     [TransactionType.POOL_CREATE]: 'pool_create',

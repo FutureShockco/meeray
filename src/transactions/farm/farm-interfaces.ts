@@ -2,34 +2,24 @@
 
 export interface FarmCreateData {
     farmId: string;
-    name: string;
-    stakingToken: {
-        symbol: string;
-        issuer: string;
-    };
-    rewardToken: {
-        symbol: string;
-        issuer: string;
-    };
-    startTime: string; // ISO date string
-    endTime: string; // ISO date string
-    totalRewards: string | bigint; // Total rewards to be distributed
-    rewardsPerBlock: string | bigint; // Rewards distributed per block
-    minStakeAmount?: string | bigint; // Minimum amount that can be staked
-    maxStakeAmount?: string | bigint; // Maximum amount that can be staked per user
-    weight?: number; // Farm weight for native reward distribution (default: 1)
+    stakingToken: string;
+    rewardToken: string;
+    startBlock: number;
+    totalRewards: string | bigint;
+    rewardsPerBlock: string | bigint;
+    minStakeAmount?: string | bigint;
+    maxStakeAmount?: string | bigint;
+    weight?: number;
 }
 
 export interface FarmStakeData {
     farmId: string;
-    staker: string;
-    lpTokenAmount: string | bigint; // Amount of LP tokens to stake
+    tokenAmount: string | bigint;
 }
 
 export interface FarmUnstakeData {
     farmId: string;
-    staker: string;
-    lpTokenAmount: string | bigint; // Amount of LP tokens to unstake
+    tokenAmount: string | bigint;
 }
 
 export interface FarmClaimRewardsData {
@@ -37,29 +27,35 @@ export interface FarmClaimRewardsData {
 }
 
 export interface FarmData extends FarmCreateData {
-    _id: string; // Unique farm ID
+    _id: string;
     totalStaked: string | bigint; // Total amount of staking tokens deposited
     minStakeAmount: string | bigint; // Minimum amount that can be staked
     maxStakeAmount: string | bigint; // Maximum amount that can be staked per user
     weight: number; // Farm weight for native reward distribution
-    isNativeFarm: boolean; // True if this farm gets native MRY rewards from the global pool
-    isActive?: boolean; // Farm active status (default: true)
-    status: 'active' | 'ended' | 'cancelled';
+    isNativeFarm: boolean; // True if this farm distributes native MRY rewards from the global pool
+    status: 'active' | 'ended' | 'cancelled' | 'paused';
     createdAt: string;
-    lastUpdatedAt?: string;
-    lastRewardUpdate?: string; // Last time rewards were updated
-    // Optional fields for runtime accounting
-    rewardsRemaining?: string | bigint;
-    vaultAccount?: string;
+    lastUpdatedBlock?: number;
+    isAuto: boolean; // True if the reward token is mintable and totalRewards is undefined
+    rewardBalance?: string | bigint;
+    creator: string; // Account that created the farm
 }
 
 export interface UserFarmPositionData {
-    _id: string; // userId-farmId
+    _id: string;
     userId: string;
     farmId: string;
-    stakedAmount: string | bigint; // Current staked amount
-    pendingRewards: string | bigint; // Unclaimed rewards
-    lastHarvestTime: string; // ISO date string of last reward claim
+    stakedAmount: string | bigint;
+    pendingRewards: string | bigint;
+    lastHarvestBlock: number;
+    lastUpdatedAt: string;
     createdAt: string;
-    lastUpdatedAt?: string;
+}
+
+export interface FarmUpdateData {
+    farmId: string;
+    newWeight?: number;
+    newStatus?: 'active' | 'paused' | 'cancelled';
+    updatedAt?: string; // ISO timestamp, optional
+    reason?: string; // Optional reason for update
 }
