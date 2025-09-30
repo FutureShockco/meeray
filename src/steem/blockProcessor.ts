@@ -54,11 +54,14 @@ class BlockProcessor {
             this.resetConsecutiveErrors();
 
             if (steemBlockResult.transactions.length > 0) {
-                transaction.addToPool(
-                    steemBlockResult.transactions.map((tx, idx) => ({
-                        ...tx
-                    }))
-                );
+                const validTxs = [];
+                for (const tx of steemBlockResult.transactions) {
+                    const isValid = await new Promise<boolean>(resolve => {
+                        transaction.isValid(tx, steemBlockResult.timestamp, (result: boolean) => resolve(result));
+                    });
+                    if (isValid) validTxs.push(tx);
+                }
+                transaction.addToPool(validTxs);
             }
 
             this.processingBlocks = this.processingBlocks.filter(b => b !== blockNum);
