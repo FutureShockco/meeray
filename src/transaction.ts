@@ -40,6 +40,7 @@ const transaction: TransactionModule = {
                 sender: tx.sender,
                 ts: tx.ts,
                 ref: (tx as any).ref,
+                hash: (tx as any).hash,
             })
         ).toString();
     },
@@ -153,7 +154,7 @@ const transaction: TransactionModule = {
         const handler = transactionHandlers[tx.type as TransactionType];
         if (handler && typeof handler.validate === 'function') {
             handler
-                .validate(tx.data, tx.sender, tx.id, tx.ts)
+                .validate(tx.data, tx.sender, tx.hash, tx.ts)
                 .then((isValidSpecific: boolean) => {
                     if (!isValidSpecific) {
                         cb(false, `Specific validation failed for type ${TransactionType[tx.type as TransactionType]}`); // Error = true

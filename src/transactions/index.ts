@@ -12,15 +12,15 @@ export interface Transaction {
     sender: string;
     data: any;
     signature?: string;
-    id: string; // Unique transaction ID
+    ref: string; // Unique transaction ID
     ts?: number;
 }
 
 // Define transaction handler interface
 interface TransactionHandler<T> {
-    validate: (data: T, sender: string, id: string, ts?: number) => Promise<boolean>;
+    validate: (data: T, sender: string, hash: string, ts?: number) => Promise<boolean>;
     // ts is optional to preserve backward compatibility; when provided, it is the tx timestamp from Steem
-    process: (data: T, sender: string, id: string, ts?: number) => Promise<boolean>;
+    process: (data: T, sender: string, hash: string, ts?: number) => Promise<boolean>;
 }
 
 // Create a map of transaction handlers
@@ -182,7 +182,7 @@ export async function processTransaction(tx: Transaction): Promise<{ success: bo
         }
 
         // Validate the transaction
-        const isValid = await handler.validate(tx.data, tx.sender, tx.id, tx.ts);
+        const isValid = await handler.validate(tx.data, tx.sender, tx.hash, tx.ts);
         if (!isValid) {
             logger.warn(`Transaction validation failed for ${tx.type}`);
             // Provide a more specific error if the handler.validate itself throws or returns a string error

@@ -37,7 +37,7 @@ export interface ParsedTransaction {
     sender: string;
     ts: number;
     ref: string;
-    hash?: string;
+    hash: string;
 }
 
 // eslint-disable-next-line max-lines-per-function, complexity
@@ -257,16 +257,17 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                             }
                         }
                     }
-                    const newTx: ParsedTransaction = {
-                        type: txType,
-                        data: json.payload,
-                        sender: sender.trim(),
-                        ts: new Date(steemBlock.timestamp + 'Z').getTime(),
-                        ref: blockNum + ':' + opIndex,
-                    };
+
 
                     try {
-                        newTx.hash = tx.transaction_id;
+                        const newTx: ParsedTransaction = {
+                            type: txType,
+                            data: json.payload,
+                            sender: sender.trim(),
+                            ts: new Date(steemBlock.timestamp + 'Z').getTime(),
+                            ref: blockNum + ':' + opIndex,
+                            hash: tx.transaction_id,
+                        };
                         txs.push(newTx);
                     } catch (error) {
                         logger.error(`Error processing transaction in block ${blockNum}, operation ${opIndex}:`, error);
@@ -278,7 +279,7 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                     const tokenSymbol = amount?.split(' ')[1] || '';
                     const amountValue = amount?.split(' ')[0] || '0';
 
-                    if(tokenSymbol !== settings.steemTokenSymbol && tokenSymbol !== settings.sbdTokenSymbol) {
+                    if (tokenSymbol !== settings.steemTokenSymbol && tokenSymbol !== settings.sbdTokenSymbol) {
                         logger.warn(`[steemParser] Token ${tokenSymbol} is not supported for bridging, skipping operation in block ${blockNum}, operation ${opIndex}`);
                         opIndex++;
                         continue;
@@ -296,7 +297,7 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                         sender: 'null',
                         ts: new Date(steemBlock.timestamp + 'Z').getTime(),
                         ref: blockNum + ':' + opIndex,
-                        hash: blockNum + ':' + opIndex
+                        hash: tx.transaction_id,
                     };
 
                     txs.push(mintTx);

@@ -54,11 +54,9 @@ class BlockProcessor {
             this.resetConsecutiveErrors();
 
             if (steemBlockResult.transactions.length > 0) {
-                await transaction.addToPool(
+                transaction.addToPool(
                     steemBlockResult.transactions.map((tx, idx) => ({
-                        ...tx,
-                        id: `${blockNum}-${idx}`,
-                        hash: `${blockNum}-${idx}`,
+                        ...tx
                     }))
                 );
             }
@@ -204,26 +202,6 @@ class BlockProcessor {
                 steemBlockData = fetchedBlockData;
                 this.blockCache.set(block.steemBlockNum, steemBlockData);
             }
-            logger.debug(`hasSidechainTx for Steem block ${block.steemBlockNum}: ${JSON.stringify(steemBlockData.transactions)}`);
-
-            const hasSidechainTx = steemBlockData.transactions.some(steemTx =>
-                steemTx.operations.some(op =>
-                    Array.isArray(op) && (
-                        (op[0] === 'custom_json' && op[1]?.id === 'sidechain') ||
-                        (op[0] === 'transfer' && config.read(chain.getLatestBlock().id).bridgeAccounts.includes(op[1]?.to as string))
-                    )
-                )
-            );
-            logger.debug(`hasSidechainTx for Steem block ${block.steemBlockNum}: ${hasSidechainTx}`);
-            if ((!block.txs || block.txs.length === 0) && hasSidechainTx) {
-                logger.error(`Block ${block._id}: Claimed no transactions, but Steem block ${block.steemBlockNum} contains sidechain transactions`);
-                return false;
-            }
-
-            if (!block.txs || block.txs.length === 0) {
-                logger.debug(`Block ${block._id} has no transactions, and Steem block also has none. Validation OK.`);
-                return true;
-            }
 
             return this.validateTransactions(block, steemBlockData);
         } catch (error) {
@@ -232,42 +210,28 @@ class BlockProcessor {
         }
     }
 
-    private validateTransactions(block: Block, steemBlockData: SteemBlock): boolean {
-        for (let i = 0; i < block.txs.length; i++) {
-            const tx = block.txs[i];
+    private async validateTransactions(block: Block, steemBlockData: SteemBlock): Promise<boolean> {
+        const { transactions: validSteemTxs } = await parseSteemTransactions(steemBlockData, block.steemBlockNum) as SteemBlockResult;
 
-            if (tx.type !== 'custom_json' || tx.data?.id !== 'sidechain') {
-                continue;
-            }
+        // Extract Steem-derived txs from the sidechain block
+        const blockSteemTxs = block.txs.filter(tx => tx.hash && tx.ref && tx.ref.startsWith(`${block.steemBlockNum}:`));
+        // Use Steem's transaction_id for comparison
+        logger.warn(`Block ${block._id}: Comparing ${validSteemTxs.length} parsed Steem txs with ${blockSteemTxs.length} block Steem-derived txs`);
+        logger.warn(`Parsed Steem txs: ${validSteemTxs.map(tx => tx.hash).join(', ')}`);
+        logger.warn(`Block Steem-derived txs: ${JSON.stringify(blockSteemTxs)}`);
+        const parsedIds = new Set(validSteemTxs.map(tx => tx.hash)); // should be transaction_id
+        const blockIds = new Set(blockSteemTxs.map(tx => tx.hash));  // should be transaction_id
 
-            let foundOnSteem = false;
-            for (const steemTx of steemBlockData.transactions) {
-                for (const op of steemTx.operations) {
-                    if (!Array.isArray(op) || op[0] !== 'custom_json') continue;
+        logger.warn(`Parsed ids: ${[...parsedIds].join(', ')}`);
+        logger.warn(`Block ids: ${[...blockIds].join(', ')}`);
 
-                    const opData = op[1] as any;
-                    if (opData?.id === 'sidechain') {
-                        try {
-                            const jsonData = JSON.parse(opData.json);
-                            if (jsonData?.contract === tx.data?.contract && JSON.stringify(jsonData.payload) === JSON.stringify(tx.data?.payload)) {
-                                foundOnSteem = true;
-                                break;
-                            }
-                        } catch (parseErr) {
-                            logger.error(`Error parsing JSON in Steem operation:`, parseErr);
-                        }
-                    }
-                }
-                if (foundOnSteem) break;
-            }
-
-            if (!foundOnSteem) {
-                logger.error(`Block ${block._id}, tx #${i}: Transaction NOT FOUND in Steem block ${block.steemBlockNum}`);
-                return false;
-            }
+        if (parsedIds.size !== blockIds.size ||
+            ![...parsedIds].every(id => blockIds.has(id))) {
+            logger.error(`Block ${block._id}: Steem-derived transactions do not match parsed valid transactions`);
+            return false;
         }
 
-        logger.info(`Block ${block._id}: All transactions validated against Steem block ${block.steemBlockNum}`);
+        logger.info(`Block ${block._id}: All Steem-derived transactions validated`);
         return true;
     }
 
