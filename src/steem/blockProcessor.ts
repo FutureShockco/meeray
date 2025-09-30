@@ -211,8 +211,17 @@ class BlockProcessor {
     }
 
     private async validateTransactions(block: Block, steemBlockData: SteemBlock): Promise<boolean> {
-        const { transactions: validSteemTxs } = await parseSteemTransactions(steemBlockData, block.steemBlockNum) as SteemBlockResult;
+        const { transactions: parsedSteemTxs } = await parseSteemTransactions(steemBlockData, block.steemBlockNum) as SteemBlockResult;
 
+        // Filter for Steem-derived txs that are valid according to sidechain rules
+        const validSteemTxs: typeof parsedSteemTxs = [];
+        for (const tx of parsedSteemTxs) {
+            // Use your transaction validation logic (async or sync)
+            const isValid = await new Promise<boolean>(resolve => {
+                transaction.isValid(tx, block.timestamp, (result: boolean) => resolve(result));
+            });
+            if (isValid) validSteemTxs.push(tx);
+        }
         // Extract Steem-derived txs from the sidechain block
         const blockSteemTxs = block.txs.filter(tx => tx.hash && tx.ref && tx.ref.startsWith(`${block.steemBlockNum}:`));
         // Use Steem's transaction_id for comparison
