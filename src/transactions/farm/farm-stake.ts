@@ -33,7 +33,7 @@ export async function validateTx(data: FarmStakeData, sender: string): Promise<b
         }
 
         if (!validate.bigint(data.tokenAmount, false, false, toBigInt(farm.minStakeAmount || '1'), toBigInt(farm.maxStakeAmount || config.maxValue))) {
-            logger.warn('[farm-stake] lpTokenAmount must be a positive number.');
+            logger.warn('[farm-stake] tokenAmount must be a positive number.');
             return false;
         }
 
