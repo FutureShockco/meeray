@@ -66,7 +66,7 @@ export async function processTx(data: FarmStakeData, sender: string, id: string,
             logger.error(`[token-transfer:process] Failed to debit sender ${sender} for ${toBigInt(data.tokenAmount).toString()} ${stakingSymbol}`);
             return false;
         }
-            const userPositions = await cache.findPromise('userFarmPositions', { farmId: data.farmId }) as UserFarmPositionData[];
+            const userPositions = (await cache.findPromise('userFarmPositions', { farmId: data.farmId }) as UserFarmPositionData[]) || [];
             for (const userPos of userPositions) {
                 // Calculate pending rewards for user up to currentBlockNum
                 const blocksElapsed = BigInt(Math.max(0, currentBlockNum - Number(userPos.lastHarvestBlock)));

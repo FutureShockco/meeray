@@ -101,7 +101,7 @@ interface CacheType extends CacheMainDataCollections {
         query: Filter<BasicCacheDoc>,
         options?: FindOptions<BasicCacheDoc>,
         skipClone?: boolean
-    ) => Promise<BasicCacheDoc[] | null>;
+    ) => Promise<BasicCacheDoc[]>;
     findOne: (collection: string, query: Filter<BasicCacheDoc>, cb: StandardCallback<BasicCacheDoc | null>, skipClone?: boolean) => void;
     updateOnePromise: (collection: string, query: Filter<BasicCacheDoc>, changes: UpdateFilter<BasicCacheDoc> | Partial<BasicCacheDoc>) => Promise<boolean>;
     deleteOnePromise: (collection: string, query: Filter<BasicCacheDoc>) => Promise<boolean>;
@@ -267,7 +267,7 @@ const cache: CacheType = {
         try {
             const documents = await db.collection<BasicCacheDoc>(collection).find(query, options).toArray();
             if (!documents || documents.length === 0) {
-                return null;
+                return [];
             }
             // skipClone functionality is less critical for findPromise as it's a direct DB hit for multiple docs
             // and the primary caching layer is for single keyed access.
@@ -276,9 +276,8 @@ const cache: CacheType = {
             return skipClone ? documents : documents.map(doc => cloneDeep(doc));
         } catch (err: any) {
             logger.error(`[CACHE findPromise] DB error querying ${collection}:`, err);
-            // Depending on desired error handling, could throw err or return null
-            // throw err;
-            return null;
+            // On error, return an empty array to avoid callers receiving null/undefined and throwing when iterating
+            return [];
         }
     },
 

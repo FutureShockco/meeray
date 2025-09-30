@@ -140,7 +140,7 @@ export async function processTx(data: NftAcceptOfferData, sender: string, _id: s
             targetId: nftInstanceId,
             status: 'active',
             _id: { $ne: data.offerId },
-        });
+        }) as NftOffer[] | [];
         if (otherOffers && otherOffers.length > 0) {
             for (const otherOffer of otherOffers) {
                 await cache.updateOnePromise('nftOffers', { _id: otherOffer._id }, { $set: { status: 'CANCELLED', cancelledAt: new Date().toISOString() } });
