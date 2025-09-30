@@ -149,7 +149,7 @@ export async function processTx(data: FarmCreateData, sender: string, _id: strin
             isNativeFarm: isNativeFarm,
             isAuto: isAuto,
             rewardBalance: toDbString(0),
-            lastUpdatedBlock: chain.getLatestBlock().id,
+            lastUpdatedBlock: chain.getLatestBlock()._id,
             createdAt: new Date().toISOString(),
             creator: sender,
         };

@@ -59,7 +59,7 @@ export async function processTx(data: FarmStakeData, sender: string, id: string,
     try {
         const farm = (await cache.findOnePromise('farms', { _id: data.farmId })) as FarmData;
         const stakingSymbol = farm.stakingToken;
-        const currentBlockNum = chain.getLatestBlock().id;
+        const currentBlockNum = chain.getLatestBlock()._id;
 
         const debitSender = await adjustUserBalance(sender, stakingSymbol, -toBigInt(data.tokenAmount));
         if (!debitSender) {

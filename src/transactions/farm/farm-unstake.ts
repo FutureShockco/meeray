@@ -68,7 +68,7 @@ export async function processTx(data: FarmUnstakeData, sender: string, id: strin
         })) as UserFarmPositionData;
 
         // Calculate and snapshot pending rewards for this user up to current block before reducing stake
-        const currentBlockNum = chain.getLatestBlock().id;
+        const currentBlockNum = chain.getLatestBlock()._id;
         const lastHarvestBlock = Number(userFarmPos.lastHarvestBlock || farm.startBlock || currentBlockNum);
         const blocksElapsed = BigInt(Math.max(0, currentBlockNum - lastHarvestBlock));
         const rewardsPerBlock = toBigInt(farm.rewardsPerBlock || '0');

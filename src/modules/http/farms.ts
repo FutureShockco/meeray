@@ -94,7 +94,7 @@ const transformFarmData = async (farmData: any): Promise<any> => {
 
     // Include current block so UI can compute accrued rewards without an extra request
     try {
-        transformed.currentBlock = chain.getLatestBlock().id;
+        transformed.currentBlock = chain.getLatestBlock()._id;
     } catch (err) {
         transformed.currentBlock = undefined;
     }

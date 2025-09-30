@@ -723,7 +723,7 @@ class MatchingEngine {
 
 
         // Apply 0.3% fee to taker only (industry standard)
-        const feeRate = toBigInt(config.read(chain.getLatestBlock().id).swapAndTradeFee); // 0.3% in basis points
+        const feeRate = toBigInt(config.read(chain.getLatestBlock()._id).swapAndTradeFee); // 0.3% in basis points
         const feeDivisor = toBigInt(10000);
 
         // Taker pays fee on the amount received (base for BUY, quote for SELL)

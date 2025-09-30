@@ -24,7 +24,7 @@ export async function validateTx(data: FarmClaimRewardsData, sender: string): Pr
             logger.warn(`[farm-claim-rewards] Farm ${data.farmId} not found.`);
             return false;
         }
-        const currentBlockNum = chain.getLatestBlock().id;
+        const currentBlockNum = chain.getLatestBlock()._id;
         const farmStartBlock = Number(farm.startBlock);
         // Allow claiming when farm is 'active' or 'ended' (ended means rewards exhausted but users can still claim pending rewards)
         if (currentBlockNum < farmStartBlock || (farm.status !== 'active' && farm.status !== 'ended')) {
@@ -96,7 +96,7 @@ export async function processTx(data: FarmClaimRewardsData, sender: string, id: 
             _id: userFarmPositionId,
         })) as UserFarmPositionData;
 
-        const currentBlockNum = chain.getLatestBlock().id;
+        const currentBlockNum = chain.getLatestBlock()._id;
         const farmStartBlock = Number(farm.startBlock);
 
         // Recompute the same values validated earlier so we can apply them safely here
@@ -131,7 +131,7 @@ export async function processTx(data: FarmClaimRewardsData, sender: string, id: 
 
         if (!farm.isAuto) {
             const rewardBalance = toBigInt(farm.rewardBalance || '0');
-            await cache.updateOnePromise('farms', { _id: data.farmId }, { $set: { rewardBalance: toDbString(rewardBalance - totalToClaim), lastUpdatedBlock: chain.getLatestBlock().id } });
+            await cache.updateOnePromise('farms', { _id: data.farmId }, { $set: { rewardBalance: toDbString(rewardBalance - totalToClaim), lastUpdatedBlock: chain.getLatestBlock()._id } });
         } else {
             await cache.updateOnePromise('tokens', { symbol: farm.rewardToken }, { $set: { currentSupply: toDbString(toBigInt(rewardToken.currentSupply) + totalToClaim) } });
         }
@@ -157,7 +157,7 @@ export async function processTx(data: FarmClaimRewardsData, sender: string, id: 
 
                 if (remaining <= 0n) {
                     // Mark farm as ended and zero-out rewardsPerBlock
-                    await cache.updateOnePromise('farms', { _id: data.farmId }, { $set: { status: 'ended', rewardsPerBlock: toDbString(0), lastUpdatedBlock: chain.getLatestBlock().id } });
+                    await cache.updateOnePromise('farms', { _id: data.farmId }, { $set: { status: 'ended', rewardsPerBlock: toDbString(0), lastUpdatedBlock: chain.getLatestBlock()._id } });
                     logger.info(`[farm-claim-rewards] Farm ${data.farmId} has exhausted rewards and was marked as ended.`);
 
                     // If native/machine-managed farms changed, recalc global distribution (best-effort)

@@ -56,7 +56,7 @@ export async function validateTx(data: FarmUpdateData, sender: string): Promise<
             return false;
         }
         if (data.newStatus === 'active') {
-            const currentBlockNum = await chain.getLatestBlock().id;
+            const currentBlockNum = await chain.getLatestBlock()._id;
             if (currentBlockNum < (farm.startBlock || 0)) {
                 logger.warn(`[farm-update] Cannot activate farm ${data.farmId} before its start block ${farm.startBlock}. Current block: ${currentBlockNum}`);
                 return false;
@@ -86,7 +86,7 @@ export async function processTx(data: FarmUpdateData, sender: string, _transacti
         // If status or weight is changing, snapshot all users' rewards (to avoid losing pending rewards when rewardsPerBlock changes)
         if (data.newStatus !== undefined || data.newWeight !== undefined) {
             const farm = await cache.findOnePromise('farms', { _id: data.farmId }) as FarmData;
-            const currentBlockNum = await chain.getLatestBlock().id;
+            const currentBlockNum = await chain.getLatestBlock()._id;
             const rewardsPerBlock = toBigInt(farm.rewardsPerBlock || '0');
             const totalStaked = toBigInt(farm.totalStaked || '0');
 
