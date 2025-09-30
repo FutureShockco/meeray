@@ -7,6 +7,7 @@ import { TokenData } from '../../transactions/token/token-interfaces.js';
 import { formatTokenAmountForResponse } from '../../utils/http.js';
 import { getPagination } from './utils.js';
 import { toBigInt, formatTokenAmount } from '../../utils/bigint.js';
+import tokenCache from '../../utils/tokenCache.js';
 
 const router: Router = express.Router();
 
@@ -43,6 +44,8 @@ router.get('/', (async (req: Request, res: Response) => {
 
         let tokens: any[] = [];
         if (tokensFromDB && tokensFromDB.length > 0) {
+            // Preload tokens into cache for other endpoints
+            tokenCache.preloadAll(tokensFromDB as any[]);
             tokens = tokensFromDB.map((tokenDoc: TokenData) => {
                 const { maxSupply, currentSupply, ...rest } = tokenDoc;
                 const transformedToken: any = { ...rest };
@@ -336,7 +339,12 @@ router.get('/top-volume', (async (req: Request, res: Response) => {
 router.get('/:symbol', (async (req: Request, res: Response) => {
     const { symbol } = req.params;
     try {
-        const tokenFromDB = (await cache.findOnePromise('tokens', { _id: symbol })) as TokenData | null;
+        // Try token cache first
+        let tokenFromDB: TokenData | null = await tokenCache.getToken(symbol) as TokenData | null;
+        if (!tokenFromDB) {
+            tokenFromDB = (await cache.findOnePromise('tokens', { _id: symbol })) as TokenData | null;
+            if (tokenFromDB) tokenCache.setToken(symbol, tokenFromDB as any);
+        }
         if (!tokenFromDB) {
             return res.status(404).json({ message: `Token ${symbol} not found.` });
         }

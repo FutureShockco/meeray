@@ -5,6 +5,8 @@ import logger from '../../logger.js';
 import { mongo } from '../../mongo.js';
 import { toBigInt } from '../../utils/bigint.js';
 import { formatTokenAmountForResponse } from '../../utils/http.js';
+import tokenCache from '../../utils/tokenCache.js';
+import chain from '../../chain.js';
 
 const router: Router = express.Router();
 
@@ -15,7 +17,7 @@ const getPagination = (req: Request) => {
     return { limit, skip: offset, page: Math.floor(offset / limit) + 1 };
 };
 
-const transformFarmData = (farmData: any): any => {
+const transformFarmData = async (farmData: any): Promise<any> => {
     if (!farmData) return farmData;
     const transformed = { ...farmData };
     if (transformed._id && typeof transformed._id !== 'string') {
@@ -28,9 +30,29 @@ const transformFarmData = (farmData: any): any => {
         // delete transformed._id;
     }
 
-    // Format farm amounts using appropriate token symbols
-    const stakingTokenSymbol = transformed.stakingToken?.symbol || 'LP_TOKEN';
-    const rewardTokenSymbol = transformed.rewardToken?.symbol || 'REWARD_TOKEN';
+    // Resolve token symbols (stakingToken/rewardToken may be stored as simple strings)
+    let stakingTokenSymbol = 'LP_TOKEN';
+    let rewardTokenSymbol = 'REWARD_TOKEN';
+    try {
+        if (transformed.stakingToken) {
+            if (typeof transformed.stakingToken === 'string') {
+                const tk = await tokenCache.getToken(transformed.stakingToken);
+                stakingTokenSymbol = tk?.symbol || transformed.stakingToken;
+            } else if (transformed.stakingToken.symbol) {
+                stakingTokenSymbol = transformed.stakingToken.symbol;
+            }
+        }
+        if (transformed.rewardToken) {
+            if (typeof transformed.rewardToken === 'string') {
+                const rt = await tokenCache.getToken(transformed.rewardToken);
+                rewardTokenSymbol = rt?.symbol || transformed.rewardToken;
+            } else if (transformed.rewardToken.symbol) {
+                rewardTokenSymbol = transformed.rewardToken.symbol;
+            }
+        }
+    } catch (err) {
+        logger.debug('[farms] Could not resolve token symbols for farm transform', err);
+    }
 
     // Format staking-related amounts using staking token decimals
     const stakingFields = ['totalStaked', 'minStakeAmount', 'maxStakeAmount'];
@@ -42,14 +64,51 @@ const transformFarmData = (farmData: any): any => {
         }
     }
 
+    // Determine rewardsRemaining: for non-auto farms use rewardBalance, for auto farms compute supplyLeft if possible
+    try {
+        if (transformed.isAuto) {
+            const rt = await tokenCache.getToken(typeof transformed.rewardToken === 'string' ? transformed.rewardToken : transformed.rewardToken?.symbol);
+            if (rt && rt.maxSupply) {
+                const currentSupply = toBigInt(rt.currentSupply || '0');
+                const maxSupply = toBigInt(rt.maxSupply);
+                transformed.rewardsRemaining = (maxSupply - currentSupply).toString();
+            } else {
+                transformed.rewardsRemaining = null;
+            }
+        } else {
+            transformed.rewardsRemaining = transformed.rewardBalance || '0';
+        }
+    } catch (err) {
+        transformed.rewardsRemaining = transformed.rewardBalance || '0';
+    }
+
     // Format reward-related amounts using reward token decimals
-    const rewardFields = ['rewardsPerBlock', 'totalRewards', 'rewardsRemaining'];
+    const rewardFields = ['rewardsPerBlock', 'totalRewards', 'rewardsRemaining', 'rewardBalance'];
     for (const field of rewardFields) {
-        if (transformed[field]) {
+        if (transformed[field] !== undefined && transformed[field] !== null) {
             const formatted = formatTokenAmountForResponse(transformed[field], rewardTokenSymbol);
             transformed[field] = formatted.amount;
             transformed[`raw${field.charAt(0).toUpperCase() + field.slice(1)}`] = formatted.rawAmount;
         }
+    }
+
+    // Include current block so UI can compute accrued rewards without an extra request
+    try {
+        transformed.currentBlock = chain.getLatestBlock().id;
+    } catch (err) {
+        transformed.currentBlock = undefined;
+    }
+
+    // Exposed flag to tell UI whether the farm is exhausted (no remaining rewards)
+    try {
+        const rawRem = transformed.rawRewardsRemaining;
+        if (rawRem === null || rawRem === undefined) {
+            transformed.isExhausted = false;
+        } else {
+            transformed.isExhausted = toBigInt(rawRem) <= 0n;
+        }
+    } catch (err) {
+        transformed.isExhausted = false;
     }
 
     // APR is typically a percentage, so keep as raw value
@@ -60,7 +119,7 @@ const transformFarmData = (farmData: any): any => {
     return transformed;
 };
 
-const transformUserFarmPositionData = (positionData: any): any => {
+const transformUserFarmPositionData = async (positionData: any): Promise<any> => {
     if (!positionData) return positionData;
     const transformed = { ...positionData };
     // _id for userFarmPositions is typically a string like `userId-farmId`, so no ObjectId conversion needed.
@@ -70,17 +129,25 @@ const transformUserFarmPositionData = (positionData: any): any => {
     //     delete transformed._id;
     // }
 
-    // Get token symbols for formatting (this would need to be optimized in production)
+    // Get token symbols and farm info for formatting and raw fields
     const farmId = transformed.farmId;
-    let stakingTokenSymbol = 'UNKNOWN';
-    let rewardTokenSymbol = 'UNKNOWN';
+    let stakingTokenSymbol = 'LP_TOKEN';
+    let rewardTokenSymbol = 'REWARD_TOKEN';
+    let farmStatus: string | undefined = undefined;
+    let farmRawRewardBalance: string | undefined = undefined;
 
-    // In a real implementation, you might want to cache this or join with farms collection
-    // For now, we'll use placeholder symbols
     if (farmId) {
-        // This is a simplified approach - in production you'd want to get the actual token symbols
-        stakingTokenSymbol = 'LP_TOKEN'; // or actual staking token symbol
-        rewardTokenSymbol = 'REWARD_TOKEN'; // or actual reward token symbol
+        try {
+            const farm = await cache.findOnePromise('farms', { _id: farmId });
+            if (farm) {
+                stakingTokenSymbol = typeof farm.stakingToken === 'string' ? farm.stakingToken : farm.stakingToken?.symbol || stakingTokenSymbol;
+                rewardTokenSymbol = typeof farm.rewardToken === 'string' ? farm.rewardToken : farm.rewardToken?.symbol || rewardTokenSymbol;
+                farmStatus = farm.status;
+                farmRawRewardBalance = farm.rewardBalance || undefined;
+            }
+        } catch (err) {
+            logger.debug('[farms] Could not fetch farm while transforming user position', err);
+        }
     }
 
     // Format staked amount using staking token decimals
@@ -93,12 +160,21 @@ const transformUserFarmPositionData = (positionData: any): any => {
     // Format reward amounts using reward token decimals
     const rewardFields = ['rewardsEarned', 'claimedRewards', 'pendingRewards'];
     for (const field of rewardFields) {
-        if (transformed[field]) {
+        if (transformed[field] !== undefined && transformed[field] !== null) {
             const formatted = formatTokenAmountForResponse(transformed[field], rewardTokenSymbol);
             transformed[field] = formatted.amount;
             transformed[`raw${field.charAt(0).toUpperCase() + field.slice(1)}`] = formatted.rawAmount;
         }
     }
+
+    // Expose raw lastHarvestBlock so UI can compute elapsed blocks precisely
+    if (transformed.lastHarvestBlock !== undefined && transformed.lastHarvestBlock !== null) {
+        transformed.rawLastHarvestBlock = Number(transformed.lastHarvestBlock);
+    }
+
+    // Expose farm status and raw rewardBalance so UI can stop calculating when ended/exhausted
+    if (farmStatus !== undefined) transformed.farmStatus = farmStatus;
+    if (farmRawRewardBalance !== undefined) transformed.rawFarmRewardBalance = farmRawRewardBalance;
 
     return transformed;
 };
@@ -116,7 +192,7 @@ router.get('/', (async (req: Request, res: Response) => {
     try {
         const farmsFromDB = await cache.findPromise('farms', query, { limit, skip, sort: { _id: 1 } });
         const total = await mongo.getDb().collection('farms').countDocuments(query);
-        const farms = (farmsFromDB || []).map(transformFarmData);
+        const farms = await Promise.all((farmsFromDB || []).map(async (f: any) => await transformFarmData(f)));
         res.json({ data: farms, total, limit, skip });
     } catch (error: any) {
         logger.error('Error fetching farms:', error);
@@ -131,7 +207,7 @@ router.get('/:farmId', (async (req: Request, res: Response) => {
         if (!farmFromDB) {
             return res.status(404).json({ message: `Farm ${farmId} not found.` });
         }
-        const farm = transformFarmData(farmFromDB);
+        const farm = await transformFarmData(farmFromDB);
         res.json(farm);
     } catch (error: any) {
         logger.error(`Error fetching farm ${farmId}:`, error);
@@ -146,24 +222,8 @@ router.get('/positions/user/:userId', (async (req: Request, res: Response) => {
     try {
         const positionsFromDB = await cache.findPromise('userFarmPositions', { userId: userId }, { limit, skip, sort: { _id: 1 } });
         const total = await mongo.getDb().collection('userFarmPositions').countDocuments({ userId: userId });
-        // Format stakedAmount and rawStakedAmount for each position using the correct staking token symbol
-        const positions = await Promise.all((positionsFromDB || []).map(async (position) => {
-            const transformed = transformUserFarmPositionData(position);
-            // Try to get the farm to determine the correct staking token symbol
-            let stakingTokenSymbol = 'LP_TOKEN';
-            if (position.farmId) {
-                const farm = await cache.findOnePromise('farms', { _id: position.farmId });
-                if (farm && farm.stakingToken && farm.stakingToken.symbol) {
-                    stakingTokenSymbol = farm.stakingToken.symbol;
-                }
-            }
-            if (position.stakedAmount) {
-                const formatted = formatTokenAmountForResponse(position.stakedAmount, stakingTokenSymbol);
-                transformed.stakedAmount = formatted.amount;
-                transformed.rawStakedAmount = formatted.rawAmount;
-            }
-            return transformed;
-        }));
+        // Format stakedAmount and reward amounts for each position using the correct farm token symbols
+        const positions = await Promise.all((positionsFromDB || []).map(async (position) => await transformUserFarmPositionData(position)));
         res.json({ data: positions, total, limit, skip });
     } catch (error: any) {
         logger.error(`Error fetching farm positions for user ${userId}:`, error);
@@ -177,8 +237,8 @@ router.get('/positions/farm/:farmId', (async (req: Request, res: Response) => {
     try {
         const positionsFromDB = await cache.findPromise('userFarmPositions', { farmId: farmId }, { limit, skip, sort: { _id: 1 } });
         const total = await mongo.getDb().collection('userFarmPositions').countDocuments({ farmId: farmId });
-        const positions = (positionsFromDB || []).map(transformUserFarmPositionData);
-        res.json({ data: positions, total, limit, skip });
+    const positions = await Promise.all((positionsFromDB || []).map(async (p) => await transformUserFarmPositionData(p)));
+    res.json({ data: positions, total, limit, skip });
     } catch (error: any) {
         logger.error(`Error fetching Efarm positions for farm ${farmId}:`, error);
         res.status(500).json({ message: 'Error fetching farm positions for farm', error: error.message });
@@ -193,8 +253,8 @@ router.get('/positions/:positionId', (async (req: Request, res: Response) => {
         if (!positionFromDB) {
             return res.status(404).json({ message: `User farm position ${positionId} not found.` });
         }
-        const position = transformUserFarmPositionData(positionFromDB);
-        res.json(position);
+    const position = await transformUserFarmPositionData(positionFromDB);
+    res.json(position);
     } catch (error: any) {
         logger.error(`Error fetching user farm position ${positionId}:`, error);
         res.status(500).json({ message: 'Error fetching user farm position', error: error.message });
@@ -210,8 +270,8 @@ router.get('/positions/user/:userId/farm/:farmId', (async (req: Request, res: Re
         if (!positionFromDB) {
             return res.status(404).json({ message: `Farm position for user ${userId} in farm ${farmId} not found.` });
         }
-        const position = transformUserFarmPositionData(positionFromDB);
-        res.json(position);
+    const position = await transformUserFarmPositionData(positionFromDB);
+    res.json(position);
     } catch (error: any) {
         logger.error(`Error fetching position for user ${userId} in farm ${farmId}:`, error);
         res.status(500).json({ message: 'Error fetching user farm position in farm', error: error.message });

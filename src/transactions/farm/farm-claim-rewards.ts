@@ -38,10 +38,6 @@ export async function validateTx(data: FarmClaimRewardsData, sender: string): Pr
             return false;
         }
         const rewardsPerBlock = toBigInt(farm.rewardsPerBlock || '0');
-        if (rewardsPerBlock <= toBigInt(0)) {
-            logger.warn(`[farm-claim-rewards] rewardsPerBlock is zero for farm ${data.farmId}.`);
-            return false;
-        }
         const totalStaked = toBigInt(farm.totalStaked || '0');
         const stakedAmount = toBigInt(userFarmPos.stakedAmount || '0');
         if (totalStaked === toBigInt(0) || stakedAmount === toBigInt(0)) {
@@ -54,28 +50,33 @@ export async function validateTx(data: FarmClaimRewardsData, sender: string): Pr
             return false;
         }
 
+        // Compute newly-accrued rewards since lastHarvestBlock and include any already stored pending rewards
         const lastHarvestBlock = Number(userFarmPos.lastHarvestBlock ?? farmStartBlock);
         const blocksElapsed = BigInt(Math.max(0, currentBlockNum - lastHarvestBlock));
         const farmRewardsGenerated = rewardsPerBlock * blocksElapsed;
-        let pendingRewards = (farmRewardsGenerated * stakedAmount) / totalStaked;
+        const newlyComputed = (farmRewardsGenerated * stakedAmount) / totalStaked;
 
+        const existingPending = toBigInt(userFarmPos.pendingRewards || '0');
         const rewardToken = await cache.findOnePromise('tokens', { symbol: farm.rewardToken }) as any;
+
+        // Determine how much of newlyComputed can actually be claimed, given remaining supply/balance after accounting for existingPending
+        let computable = newlyComputed;
         if (farm.isAuto && rewardToken && rewardToken.maxSupply) {
             const currentSupply = toBigInt(rewardToken.currentSupply || '0');
             const maxSupply = toBigInt(rewardToken.maxSupply);
             const supplyLeft = maxSupply - currentSupply;
-            if (pendingRewards > supplyLeft) {
-                pendingRewards = supplyLeft;
+            if (existingPending + computable > supplyLeft) {
+                computable = supplyLeft > existingPending ? (supplyLeft - existingPending) : 0n;
             }
-        }
-        else {
+        } else {
             const rewardBalance = toBigInt(farm.rewardBalance || '0');
-            if (pendingRewards > rewardBalance) {
-                pendingRewards = rewardBalance;
+            if (existingPending + computable > rewardBalance) {
+                computable = rewardBalance > existingPending ? (rewardBalance - existingPending) : 0n;
             }
         }
 
-        if (pendingRewards <= toBigInt(0)) {
+        const totalToClaim = existingPending + computable;
+        if (totalToClaim <= 0n) {
             logger.warn(`[farm-claim-rewards] No rewards available for ${sender} in farm ${data.farmId}. Blocks elapsed: ${blocksElapsed}`);
             return false;
         }
@@ -97,41 +98,42 @@ export async function processTx(data: FarmClaimRewardsData, sender: string, id: 
 
         const currentBlockNum = chain.getLatestBlock().id;
         const farmStartBlock = Number(farm.startBlock);
-        const lastHarvestBlock = Number(userFarmPos.lastHarvestBlock ?? farmStartBlock);
-        const blocksElapsed = BigInt(Math.max(0, currentBlockNum - lastHarvestBlock));
-        const rewardsPerBlock = toBigInt(farm.rewardsPerBlock || '0');
 
+        // Recompute the same values validated earlier so we can apply them safely here
+        const rewardsPerBlock = toBigInt(farm.rewardsPerBlock || '0');
         const totalStaked = toBigInt(farm.totalStaked || '0');
         const stakedAmount = toBigInt(userFarmPos.stakedAmount || '0');
+        const lastHarvestBlock = Number(userFarmPos.lastHarvestBlock ?? farmStartBlock);
+        const blocksElapsed = BigInt(Math.max(0, currentBlockNum - lastHarvestBlock));
         const farmRewardsGenerated = rewardsPerBlock * blocksElapsed;
-        let pendingRewards = (farmRewardsGenerated * stakedAmount) / totalStaked;
+        const newlyComputed = (farmRewardsGenerated * stakedAmount) / (totalStaked === 0n ? 1n : totalStaked);
 
+        const existingPending = toBigInt(userFarmPos.pendingRewards || '0');
         const rewardToken = await cache.findOnePromise('tokens', { symbol: farm.rewardToken }) as any;
-        const rewardBalance = toBigInt(farm.rewardBalance || '0');
+
+        let computable = newlyComputed;
         if (farm.isAuto && rewardToken && rewardToken.maxSupply) {
             const currentSupply = toBigInt(rewardToken.currentSupply || '0');
             const maxSupply = toBigInt(rewardToken.maxSupply);
             const supplyLeft = maxSupply - currentSupply;
-            if (pendingRewards > supplyLeft) {
-                pendingRewards = supplyLeft;
+            if (existingPending + computable > supplyLeft) {
+                computable = supplyLeft > existingPending ? (supplyLeft - existingPending) : 0n;
             }
-        }
-        else {
-            if (pendingRewards > rewardBalance) {
-                pendingRewards = rewardBalance;
-            }
-        }
-
-
-        logger.debug(`[farm-claim-rewards] Calculated rewards for ${sender}: ${pendingRewards} (blocksElapsed=${blocksElapsed}).`);
-        if (!farm.isAuto) {
-            await cache.updateOnePromise(
-                'farms',
-                { _id: data.farmId },
-                { $set: { rewardBalance: toDbString(rewardBalance - pendingRewards), lastUpdatedBlock: chain.getLatestBlock().id } }
-            );
         } else {
-            await cache.updateOnePromise('tokens', { symbol: farm.rewardToken }, { $set: { currentSupply: toDbString(toBigInt(rewardToken.currentSupply) + toBigInt(pendingRewards)) } });
+            const rewardBalance = toBigInt(farm.rewardBalance || '0');
+            if (existingPending + computable > rewardBalance) {
+                computable = rewardBalance > existingPending ? (rewardBalance - existingPending) : 0n;
+            }
+        }
+
+        const totalToClaim = existingPending + computable;
+        logger.debug(`[farm-claim-rewards] Calculated rewards for ${sender}: totalToClaim=${totalToClaim} (existing=${existingPending}, newly=${computable}, blocksElapsed=${blocksElapsed}).`);
+
+        if (!farm.isAuto) {
+            const rewardBalance = toBigInt(farm.rewardBalance || '0');
+            await cache.updateOnePromise('farms', { _id: data.farmId }, { $set: { rewardBalance: toDbString(rewardBalance - totalToClaim), lastUpdatedBlock: chain.getLatestBlock().id } });
+        } else {
+            await cache.updateOnePromise('tokens', { symbol: farm.rewardToken }, { $set: { currentSupply: toDbString(toBigInt(rewardToken.currentSupply) + totalToClaim) } });
         }
 
         // After deducting/minting rewards, check if the farm has exhausted its reward supply and should be ended
@@ -173,32 +175,21 @@ export async function processTx(data: FarmClaimRewardsData, sender: string, id: 
         } catch (err) {
             logger.error(`[farm-claim-rewards] Error checking/ending farm ${data.farmId} after claim: ${err}`);
         }
-        const newPendingRewards = toBigInt(userFarmPos.pendingRewards || '0') + pendingRewards;
-        // Credit user
-        const creditOk = await adjustUserBalance(sender, farm.rewardToken, toBigInt(newPendingRewards));
+        // Credit user the totalToClaim and clear pending rewards
+        const creditOk = await adjustUserBalance(sender, farm.rewardToken, toBigInt(totalToClaim));
         if (!creditOk) {
             logger.error(`[farm-claim-rewards] Failed to credit rewards for ${sender} in ${farm.rewardToken}.`);
             return false;
         }
-        await cache.updateOnePromise(
-            'userFarmPositions',
-            { _id: userFarmPositionId },
-            {
-                $set: {
-                    lastHarvestBlock: currentBlockNum,
-                    lastUpdatedAt: new Date().toISOString(),
-                    pendingRewards: toDbString(0),
-                },
-            }
-        );
+        await cache.updateOnePromise('userFarmPositions', { _id: userFarmPositionId }, { $set: { lastHarvestBlock: currentBlockNum, lastUpdatedAt: new Date().toISOString(), pendingRewards: toDbString(0) } });
 
-        logger.debug(`[farm-claim-rewards] ${sender} claimed ${pendingRewards} rewards from farm ${data.farmId}.`);
+        logger.debug(`[farm-claim-rewards] ${sender} claimed ${totalToClaim} rewards from farm ${data.farmId}.`);
 
         // Log event
         await logTransactionEvent('farm_rewards_claimed', sender, {
             farmId: data.farmId,
             staker: sender,
-            rewardAmount: toDbString(newPendingRewards),
+            rewardAmount: toDbString(totalToClaim),
             rewardToken: rewardToken.symbol,
             blocksElapsed: blocksElapsed,
             stakedAmount: toDbString(stakedAmount),
