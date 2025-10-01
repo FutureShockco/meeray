@@ -17,11 +17,12 @@ fi
 if command -v docker-compose &> /dev/null; then
     DOCKER_COMPOSE="docker-compose"
     echo "✓ Found docker-compose (standalone)"
-elif docker compose version &> /dev/null; then
+elif docker compose version > /dev/null 2>&1; then
     DOCKER_COMPOSE="docker compose"
     echo "✓ Found docker compose (plugin)"
 else
     echo "❌ Docker Compose is not installed. Please install Docker Compose first."
+    echo "If you have Docker Desktop, try running: docker compose version"
     exit 1
 fi
 
