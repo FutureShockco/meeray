@@ -39,7 +39,6 @@ export async function processTx(data: { target: string }, sender: string): Promi
                         await cache.updateOnePromise('accounts', { name: witnessName }, { $set: { totalVoteWeight: toDbString(newVoteWeightBigInt) } });
                     } else {
                         logger.error(`[witness-unvote] Witness account ${witnessName} not found when trying to adjust totalVoteWeight during share increase.`);
-                        throw new Error(`Witness ${witnessName} not found for vote weight adjustment.`);
                     }
                 }
             }
