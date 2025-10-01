@@ -1,4 +1,3 @@
-version: '3.8'
 services:
   mongo:
     image: mongo:6.0
@@ -11,17 +10,45 @@ services:
 
   meeray:
     build: .
-    container_name: echelon-node
+    container_name: meeray-node
     depends_on:
       - mongo
+      - kafka
     env_file:
       - .env
     environment:
       - MONGO_URL=mongodb://mongo:27017
+      - USE_NOTIFICATION=true
+      - KAFKA_BROKERS=kafka:9092
     ports:
       - "3001:3001"
       - "6001:6001"
     command: npm start
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: meeray-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    restart: unless-stopped
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: meeray-kafka
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+    restart: unless-stopped
 
 volumes:
   mongo-data:
