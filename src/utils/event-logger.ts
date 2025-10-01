@@ -110,8 +110,15 @@ export async function logTransactionEvent(
             data: finalEventData,
         };
 
+        // Ensure transactionId is present on the event document when possible
         if (finalTransactionId) {
             eventDocument.transactionId = finalTransactionId;
+        } else if (finalEventData && typeof finalEventData === 'object') {
+            const inferred = finalEventData.transactionId || finalEventData.txId || finalEventData.tx || finalEventData.transaction || undefined;
+            if (inferred) {
+                eventDocument.transactionId = inferred;
+                logger.debug(`[event-logger] Inferred transactionId for event ${eventDocument._id}: ${inferred}`);
+            }
         }
 
         await new Promise<void>((resolve, reject) => {
@@ -147,7 +154,9 @@ export async function logTransactionEvent(
                         // Optionally, could send to a specific "problem_market_events" topic or handle differently
                     }
                 }
-                if (settings.useNotification)
+                if (settings.useNotification) {
+                    // Send to specific topic (notifications or market-updates)
+                    // The WebSocket server will broadcast to clients subscribed to 'all-events'
                     sendKafkaEvent(kafkaTopic, eventDocument, kafkaKey)
                         .then(() => {
                             logger.debug(`[event-logger] Event ${eventDocument._id} (Key: ${kafkaKey}) successfully queued to Kafka topic '${kafkaTopic}'.`);
@@ -161,7 +170,9 @@ export async function logTransactionEvent(
                         .finally(() => {
                             resolve(); // Resolve the promise whether Kafka send succeeded or failed, as cache log was successful.
                         });
-                else resolve();
+                } else {
+                    resolve();
+                }
             });
         });
     } catch (error) {

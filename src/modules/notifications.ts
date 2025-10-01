@@ -101,6 +101,7 @@ export function initNotificationsServer(): Promise<void> {
 export function broadcastNotification(payload: any): void {
     try {
         const data = typeof payload === 'string' ? payload : JSON.stringify(payload);
+        const forceAll = payload && payload._forceAll === true;
         // Extract txId or fallback to nested fields if present
         const txIdFromPayload =
             payload && payload.d && (payload.d.transactionId || payload.d._id || payload.d.txId) ? String(payload.d.transactionId || payload.d._id || payload.d.txId) : null;
@@ -113,10 +114,19 @@ export function broadcastNotification(payload: any): void {
                 // If socket has no subscriptions or has matching topic/txId, deliver
                 const hasSubs = subs && (subs.txIds.size > 0 || subs.topics.size > 0);
                 let shouldSend = false;
-                if (!hasSubs) shouldSend = true;
-                else {
-                    if (txIdFromPayload && subs.txIds.has(txIdFromPayload)) shouldSend = true;
-                    if (topicFromPayload && subs.topics.has(topicFromPayload)) shouldSend = true;
+                if (forceAll) {
+                    shouldSend = true; // explicit override to send to everyone
+                } else if (!hasSubs) {
+                    shouldSend = true; // no subscriptions = receive all
+                } else {
+                    // Check if subscribed to 'all-events' - if so, send everything
+                    if (subs.topics.has('all-events')) {
+                        shouldSend = true;
+                    } else {
+                        // Otherwise check for specific topic or txId match
+                        if (txIdFromPayload && subs.txIds.has(txIdFromPayload)) shouldSend = true;
+                        if (topicFromPayload && subs.topics.has(topicFromPayload)) shouldSend = true;
+                    }
                 }
 
                 if (shouldSend) ws.send(data);

@@ -25,6 +25,9 @@ const KAFKA_CLIENT_ID = process.env.KAFKA_CONSUMER_CLIENT_ID || `meeray-event-co
 
 let kafka: Kafka | null = null;
 let consumer: Consumer | null = null;
+// In-memory ring buffer of recently-received messages for debugging/inspection
+const LAST_MESSAGES_BUFFER_SIZE = Number(process.env.KAFKA_LAST_MESSAGES_BUFFER_SIZE) || 200;
+const lastMessages: any[] = [];
 
 export async function initializeKafkaConsumer(): Promise<void> {
     if (!settings.useNotification) {
@@ -87,7 +90,10 @@ export async function initializeKafkaConsumer(): Promise<void> {
             logger.warn('[kafka-consumer] Failed to attach consumer event listeners:', err);
         }
 
-        const topics = [process.env.KAFKA_TOPIC_NOTIFICATIONS || 'notifications', process.env.KAFKA_TOPIC_MARKET_EVENTS || 'dex-market-updates'];
+        const topics = [
+            process.env.KAFKA_TOPIC_NOTIFICATIONS || 'notifications',
+            process.env.KAFKA_TOPIC_MARKET_EVENTS || 'dex-market-updates',
+        ];
         for (const t of topics) {
             await consumer.subscribe({ topic: t, fromBeginning: false });
             logger.info(`[kafka-consumer] Subscribed to topic '${t}'`);
@@ -114,6 +120,14 @@ export async function initializeKafkaConsumer(): Promise<void> {
                             key: message.key ? message.key.toString() : undefined,
                         },
                     };
+
+                    // store a compact record in the ring buffer for diagnostics
+                    try {
+                        lastMessages.push({ receivedAt: Date.now(), topic, partition, offset: message.offset, key: message.key ? message.key.toString() : undefined, payload: parsed });
+                        if (lastMessages.length > LAST_MESSAGES_BUFFER_SIZE) lastMessages.shift();
+                    } catch (e) {
+                        // ignore
+                    }
 
                     // Make broadcasting non-blocking to avoid delaying Kafka heartbeats
                     try {
@@ -163,7 +177,10 @@ export async function initializeKafkaConsumer(): Promise<void> {
                     kafka = fallbackKafka;
                     consumer = fallbackConsumer;
 
-                    const topics = [process.env.KAFKA_TOPIC_NOTIFICATIONS || 'notifications', process.env.KAFKA_TOPIC_MARKET_EVENTS || 'dex-market-updates'];
+                    const topics = [
+                        process.env.KAFKA_TOPIC_NOTIFICATIONS || 'notifications',
+                        process.env.KAFKA_TOPIC_MARKET_EVENTS || 'dex-market-updates',
+                    ];
                     for (const t of topics) {
                         await consumer.subscribe({ topic: t, fromBeginning: false });
                         logger.info(`[kafka-consumer] (fallback) Subscribed to topic '${t}'`);
@@ -181,6 +198,11 @@ export async function initializeKafkaConsumer(): Promise<void> {
                                     d: parsed,
                                     kafka: { partition, offset: message.offset, key: message.key ? message.key.toString() : undefined },
                                 };
+                                // store in ring buffer
+                                try {
+                                    lastMessages.push({ receivedAt: Date.now(), topic, partition, offset: message.offset, key: message.key ? message.key.toString() : undefined, payload: parsed });
+                                    if (lastMessages.length > LAST_MESSAGES_BUFFER_SIZE) lastMessages.shift();
+                                } catch (e) {}
                                 notifications.broadcastNotification(payload);
                                 try {
                                     const connected = notifications.getConnectedCount();
@@ -219,7 +241,25 @@ export async function disconnectKafkaConsumer(): Promise<void> {
     }
 }
 
+export function getConsumerStatus() {
+    try {
+        return {
+            connected: !!consumer,
+            brokers: KAFKA_BROKERS,
+        };
+    } catch (e) {
+        return { connected: false, brokers: KAFKA_BROKERS };
+    }
+}
+
+export function getLastMessages(count?: number) {
+    if (!count) count = 50;
+    return lastMessages.slice(-Math.max(0, Math.min(count, lastMessages.length)));
+}
+
 export default {
     initializeKafkaConsumer,
     disconnectKafkaConsumer,
+    getConsumerStatus,
+    getLastMessages,
 };

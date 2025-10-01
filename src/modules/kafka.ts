@@ -44,16 +44,16 @@ let kafka: Kafka | null = null;
 let producer: Producer | null = null;
 let isInitializing = false;
 let isConnected = false;
+// in-memory ring buffer of recently produced messages for diagnostics
+const LAST_PRODUCED_BUFFER_SIZE = Number(process.env.KAFKA_LAST_PRODUCED_BUFFER_SIZE) || 200;
+const lastProduced: any[] = [];
 
 /**
  * Initializes the Kafka client and producer.
  * Handles singleton pattern to ensure only one instance is created.
  */
 export async function initializeKafkaProducer(): Promise<void> {
-    // If already connected, nothing to do
-    if (producer && isConnected) {
-        logger.info('[kafka-producer] Kafka producer already initialized and connected.');
-    }
+
 
     // If initialization is already in progress, return the same promise so callers wait
     if (isInitializing) {
@@ -61,8 +61,7 @@ export async function initializeKafkaProducer(): Promise<void> {
     }
 
     isInitializing = true;
-    logger.info(`[kafka-producer] Initializing Kafka producer with brokers: ${KAFKA_BROKERS.join(',')}`);
-
+    if(!isConnected)
     try {
         kafka = new Kafka({
             clientId: KAFKA_CLIENT_ID,
@@ -81,7 +80,6 @@ export async function initializeKafkaProducer(): Promise<void> {
         await newProducer.connect();
         producer = newProducer; // Assign to singleton after successful connection
         isConnected = true;
-        logger.info('[kafka-producer] Kafka producer connected successfully.');
 
         // Optional: Handle disconnects and other events
         producer.on('producer.disconnect', () => {
@@ -123,6 +121,11 @@ export async function sendKafkaEvent(topic: string, message: any, key?: string):
 
     try {
         const stringMessage = JSON.stringify(message);
+        // record what we're about to send for diagnostics
+        try {
+            lastProduced.push({ ts: Date.now(), topic, key, message });
+            if (lastProduced.length > LAST_PRODUCED_BUFFER_SIZE) lastProduced.shift();
+        } catch (e) {}
         logger.debug(`[kafka-producer] Sending event to Kafka topic '${topic}'. Key: '${key || 'none'}', Message: ${stringMessage}`);
         await producer.send({
             topic: topic,
@@ -155,4 +158,9 @@ export async function disconnectKafkaProducer(): Promise<void> {
     } else {
         logger.info('[kafka-producer] Kafka producer was not connected or already disconnected.');
     }
+}
+
+export function getLastProducedMessages(count?: number) {
+    if (!count) count = 50;
+    return lastProduced.slice(-Math.max(0, Math.min(count, lastProduced.length)));
 }

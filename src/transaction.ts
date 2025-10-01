@@ -5,6 +5,8 @@ import { EventEmitter } from 'events';
 import chain from './chain.js';
 import config from './config.js';
 import logr from './logger.js';
+import { sendKafkaEvent } from './modules/kafka.js';
+import settings from './settings.js';
 import { Transaction as TransactionInterface, transactionHandlers } from './transactions/index.js';
 import { TransactionType } from './transactions/types.js';
 import validation from './validation/index.js';
@@ -157,20 +159,89 @@ const transaction: TransactionModule = {
                 .validate(tx.data, tx.sender, tx.hash, tx.ts)
                 .then((isValidSpecific: boolean) => {
                     if (!isValidSpecific) {
-                        cb(false, `Specific validation failed for type ${TransactionType[tx.type as TransactionType]}`); // Error = true
+                        const errorMsg = `Specific validation failed for type ${TransactionType[tx.type as TransactionType]}`;
+                        logr.warn(`[transaction.isValidTxData] ${errorMsg}`);
+                        
+                        // Send validation failure notification via Kafka
+                        if (settings.useNotification) {
+                            sendKafkaEvent('notifications', {
+                                _id: tx.hash || tx.ref,
+                                category: 'transaction',
+                                action: 'validation_failed',
+                                type: 'TRANSACTION_VALIDATION_FAILED',
+                                timestamp: new Date().toISOString(),
+                                actor: tx.sender,
+                                data: {
+                                    transactionId: tx.hash || tx.ref,
+                                    txType: TransactionType[tx.type as TransactionType],
+                                    sender: tx.sender,
+                                    error: errorMsg,
+                                },
+                                transactionId: tx.hash || tx.ref,
+                            }, tx.hash || tx.ref).catch(err => {
+                                logr.error(`Failed to send validation failure notification: ${err}`);
+                            });
+                        }
+                        
+                        cb(false, errorMsg);
                     } else {
-                        cb(true, undefined); // Error = false (valid)
+                        cb(true, undefined); // Valid
                     }
                 })
                 .catch((error: Error) => {
                     logr.error(`Error during specific transaction validation (isValidTxData) for type ${tx.type}:`, error);
                     const errorMessage = error instanceof Error ? error.message : String(error);
-                    cb(false, `Validation error for ${TransactionType[tx.type as TransactionType]}: ${errorMessage}`); // Error = true
+                    const fullError = `Validation error for ${TransactionType[tx.type as TransactionType]}: ${errorMessage}`;
+                    
+                    // Send validation error notification via Kafka
+                    if (settings.useNotification) {
+                        sendKafkaEvent('notifications', {
+                            _id: tx.hash || tx.ref,
+                            category: 'transaction',
+                            action: 'validation_error',
+                            type: 'TRANSACTION_VALIDATION_ERROR',
+                            timestamp: new Date().toISOString(),
+                            actor: tx.sender,
+                            data: {
+                                transactionId: tx.hash || tx.ref,
+                                txType: TransactionType[tx.type as TransactionType],
+                                sender: tx.sender,
+                                error: errorMessage,
+                            },
+                            transactionId: tx.hash || tx.ref,
+                        }, tx.hash || tx.ref).catch(err => {
+                            logr.error(`Failed to send validation error notification: ${err}`);
+                        });
+                    }
+                    
+                    cb(false, fullError);
                 });
         } else {
             // If no handler or validate function is not found, consider it invalid and call the callback
             const reason = handler ? `Validate function missing for handler type ${tx.type}` : `Unknown transaction type handler for type ${tx.type}`;
             logr.warn(`[transaction.isValidTxData] ${reason}`);
+            
+            // Send handler missing notification via Kafka
+            if (settings.useNotification) {
+                sendKafkaEvent('notifications', {
+                    _id: tx.hash || tx.ref,
+                    category: 'transaction',
+                    action: 'invalid_handler',
+                    type: 'TRANSACTION_INVALID_HANDLER',
+                    timestamp: new Date().toISOString(),
+                    actor: tx.sender,
+                    data: {
+                        transactionId: tx.hash || tx.ref,
+                        txType: TransactionType[tx.type as TransactionType],
+                        sender: tx.sender,
+                        error: reason,
+                    },
+                    transactionId: tx.hash || tx.ref,
+                }, tx.hash || tx.ref).catch(err => {
+                    logr.error(`Failed to send invalid handler notification: ${err}`);
+                });
+            }
+            
             cb(false, reason);
         }
     },
@@ -183,13 +254,59 @@ const transaction: TransactionModule = {
                 .then((success: boolean) => {
                     if (!success) {
                         logr.warn(`Execution failed for type ${TransactionType[tx.type as TransactionType]} by sender ${tx.sender}`);
+                        
+                        // Send failure notification via Kafka (only for failures, since handlers already log success)
+                        if (settings.useNotification) {
+                            sendKafkaEvent('notifications', {
+                                _id: tx.hash || tx.ref,
+                                category: 'transaction',
+                                action: 'failed',
+                                type: 'TRANSACTION_FAILED',
+                                timestamp: new Date().toISOString(),
+                                actor: tx.sender,
+                                data: {
+                                    transactionId: tx.hash || tx.ref,
+                                    txType: TransactionType[tx.type as TransactionType],
+                                    sender: tx.sender,
+                                    error: 'Execution failed',
+                                },
+                                transactionId: tx.hash || tx.ref,
+                            }, tx.hash || tx.ref).catch(err => {
+                                logr.error(`Failed to send transaction failure notification: ${err}`);
+                            });
+                        }
+                        
                         cb(false, undefined);
                     } else {
+                        logr.debug(`Transaction executed successfully: ${TransactionType[tx.type as TransactionType]} by ${tx.sender}`);
+                        // Success events are already sent by specific transaction handlers via logEvent()
                         cb(true, undefined); // Executed
                     }
                 })
                 .catch((error: Error) => {
                     logr.error(`Error during transaction execution for type ${tx.type}:`, error);
+                    
+                    // Send error notification via Kafka
+                    if (settings.useNotification) {
+                        sendKafkaEvent('notifications', {
+                            _id: tx.hash || tx.ref,
+                            category: 'transaction',
+                            action: 'error',
+                            type: 'TRANSACTION_ERROR',
+                            timestamp: new Date().toISOString(),
+                            actor: tx.sender,
+                            data: {
+                                transactionId: tx.hash || tx.ref,
+                                txType: TransactionType[tx.type as TransactionType],
+                                sender: tx.sender,
+                                error: error.message || String(error),
+                            },
+                            transactionId: tx.hash || tx.ref,
+                        }, tx.hash || tx.ref).catch(err => {
+                            logr.error(`Failed to send transaction error notification: ${err}`);
+                        });
+                    }
+                    
                     cb(false, undefined);
                 });
     },
