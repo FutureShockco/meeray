@@ -142,12 +142,12 @@ export const tokenExists = async (symbol: string): Promise<boolean> => {
     if (!validate.tokenSymbols(symbol)) return false;
 
     if (!validate.string(symbol, 10, 3, config.tokenSymbolAllowedChars)) {
-        logger.warn(`[token-exists:validation] Invalid token symbol format: ${symbol}.`);
+        logger.debug(`[token-exists:validation] Invalid token symbol format: ${symbol}.`);
         return false;
     }
     const existingToken = await cache.findOnePromise('tokens', { _id: symbol });
     if (existingToken) {
-        logger.warn(`[token-exists:validation] Token with symbol ${symbol} already exists.`);
+        logger.debug(`[token-exists:validation] Token with symbol ${symbol} already exists.`);
         return true;
     }
     return false;

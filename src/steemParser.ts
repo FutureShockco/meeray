@@ -44,7 +44,6 @@ export interface ParsedTransaction {
 
 // eslint-disable-next-line max-lines-per-function, complexity
 const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number): Promise<SteemBlockResult> => {
-    logger.info(`Starting to parse Steem block ${blockNum} with ${steemBlock.transactions.length} transactions`);
     const txs: ParsedTransaction[] = [];
     let opIndex = 0;
     for (const tx of steemBlock.transactions) {
@@ -52,7 +51,7 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
             try {
                 const [opType, opData] = op;
                 const isCustomJsonForChain = opType === 'custom_json' && opData.id === config.chainId;
-                const isTransferWithBridge = settings.steemBridgeEnabled && opType === 'transfer' && opData.to === settings.steemBridgeAccount;
+                const isBridgeTransfer = settings.steemBridgeEnabled && opType === 'transfer' && opData.to === settings.steemBridgeAccount;
                 if (isCustomJsonForChain) {
                     let json: { contract: string; payload: any };
                     try {
@@ -81,30 +80,6 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                     }
                     let txType: number;
                     switch (json.contract.toLowerCase()) {
-                        case 'pool_claim_fees':
-                            txType = TransactionType.POOL_CLAIM_FEES;
-                            break;
-                        case 'nft_update':
-                            txType = TransactionType.NFT_UPDATE;
-                            break;
-                        case 'nft_update_collection':
-                            txType = TransactionType.NFT_UPDATE_COLLECTION;
-                            break;
-                        case 'farm_update':
-                            txType = TransactionType.FARM_UPDATE;
-                            break;
-                        case 'launchpad_configure_presale':
-                            txType = TransactionType.LAUNCHPAD_CONFIGURE_PRESALE;
-                            break;
-                        case 'launchpad_configure_tokenomics':
-                            txType = TransactionType.LAUNCHPAD_CONFIGURE_TOKENOMICS;
-                            break;
-                        case 'launchpad_configure_airdrop':
-                            txType = TransactionType.LAUNCHPAD_CONFIGURE_AIRDROP;
-                            break;
-                        case 'launchpad_update_metadata':
-                            txType = TransactionType.LAUNCHPAD_UPDATE_METADATA;
-                            break;
                         // NFT Transactions
                         case 'nft_create_collection':
                         case 'nft_mint':
@@ -141,7 +116,6 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                             txType = nftMap[json.contract.toLowerCase() as keyof typeof nftMap];
                             break;
                         }
-
                         // Farm Transactions
                         case 'farm_create':
                         case 'farm_stake':
@@ -205,7 +179,6 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                             txType = witnessMap[json.contract.toLowerCase() as keyof typeof witnessMap];
                             break;
                         }
-
                         // Launchpad Transactions
                         case 'launchpad_launch_token':
                         case 'launchpad_participate_presale':
@@ -236,7 +209,6 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                             txType = launchpadMap[json.contract.toLowerCase() as keyof typeof launchpadMap];
                             break;
                         }
-
                         // Market Transactions
                         case 'market_cancel_order':
                         case 'market_trade': {
@@ -258,8 +230,6 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                             }
                         }
                     }
-
-
                     try {
                         const newTx: ParsedTransaction = {
                             type: txType,
@@ -274,7 +244,7 @@ const parseSteemTransactions = async (steemBlock: SteemBlock, blockNum: number):
                         logger.error(`Error processing transaction in block ${blockNum}, operation ${opIndex}:`, error);
                     }
                 }
-                if (isTransferWithBridge) {
+                if (isBridgeTransfer) {
                     const [opType, opData] = op;
                     const { from, to, amount } = opData;
 
