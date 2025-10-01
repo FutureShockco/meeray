@@ -5,6 +5,8 @@ import { logEvent } from '../../utils/event-logger.js';
 import { MAX_COLLECTION_SUPPLY } from '../../utils/nft.js';
 import validate from '../../validation/index.js';
 import { NFTCollectionCreateData, NFTTokenData, NFTTransferData } from './nft-interfaces.js';
+import { generateListingId } from './nft-helpers.js';
+import { NFTListingData } from './nft-market-interfaces.js';
 
 const BURN_ACCOUNT_NAME = 'null';
 
@@ -47,6 +49,14 @@ export async function validateTx(data: NFTTransferData, sender: string): Promise
         }
         if (nft.owner !== sender) {
             logger.warn(`[nft-transfer/burn] Sender ${sender} is not the owner of NFT ${fullInstanceId}. Current owner: ${nft.owner}.`);
+            return false;
+        }
+
+        const listingId = generateListingId(data.collectionSymbol, data.instanceId, sender);
+        const listing = (await cache.findOnePromise('nftListings', { _id: listingId })) as NFTListingData | null;
+
+        if (listing && listing.status === 'ACTIVE') {
+            logger.warn(`[nft-transfer/burn] Listing ${listingId} is currently active.`);
             return false;
         }
 

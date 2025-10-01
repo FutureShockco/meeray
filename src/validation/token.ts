@@ -92,7 +92,7 @@ export const newToken = async (data: any): Promise<boolean> => {
         logger.warn('[token-config:validation] Invalid maxSupply. Must be a positive integer (min 1).');
         return false;
     }
-    if (!validate.bigint(data.initialSupply, false, false, toBigInt(0))) {
+    if (!validate.bigint(data.initialSupply, true, false, toBigInt(0))) {
         logger.warn('[token-config:validation] Invalid initialSupply. Must be non-negative.');
         return false;
     }

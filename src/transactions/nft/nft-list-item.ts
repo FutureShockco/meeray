@@ -8,11 +8,8 @@ import validate from '../../validation/index.js';
 import { NFTTokenData } from './nft-interfaces.js';
 import { NFTListingData, NftListPayload } from './nft-market-interfaces.js';
 import { CachedNftCollectionForTransfer } from './nft-transfer.js';
+import { generateListingId } from './nft-helpers.js';
 
-// Helper to generate a unique listing ID
-function generateListingId(collectionSymbol: string, instanceId: string, seller: string): string {
-    return `${collectionSymbol}_${instanceId}_${seller}`;
-}
 
 export async function validateTx(data: NftListPayload, sender: string): Promise<boolean> {
     try {
