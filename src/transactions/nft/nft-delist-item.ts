@@ -48,7 +48,7 @@ export async function processTx(data: NftDelistPayload, sender: string, _id: str
         const updateSuccess = await cache.updateOnePromise(
             'nftListings',
             { _id: data.listingId },
-            { $set: { status: 'cancelled', cancelledAt: new Date().toISOString() } }
+            { $set: { status: 'CANCELLED', cancelledAt: new Date().toISOString() } }
         );
 
         if (!updateSuccess) {

@@ -117,10 +117,8 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
         const listingId = generateListingId(data.collectionSymbol, data.instanceId, sender);
         // Check for an existing ACTIVE listing (accept both cases) to prevent duplicates
         const existingListing = (await cache.findOnePromise('nftListings', {
-            _id: listingId,
-            status: { $in: ['ACTIVE', 'active'] } as any,
-        })) as NFTListingData | null;
-        if (existingListing) {
+            _id: listingId })) as NFTListingData | null;
+        if (existingListing && existingListing.status === 'ACTIVE') {
             logger.warn(`[nft-list-item] NFT ${fullInstanceId} is already actively listed by ${sender} under listing ID ${listingId}.`);
             return false;
         }
