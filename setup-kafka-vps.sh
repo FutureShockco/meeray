@@ -13,8 +13,14 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
-# Check if Docker Compose is installed
-if ! command -v docker-compose &> /dev/null; then
+# Detect Docker Compose command (docker-compose or docker compose)
+if command -v docker-compose &> /dev/null; then
+    DOCKER_COMPOSE="docker-compose"
+    echo "✓ Found docker-compose (standalone)"
+elif docker compose version &> /dev/null; then
+    DOCKER_COMPOSE="docker compose"
+    echo "✓ Found docker compose (plugin)"
+else
     echo "❌ Docker Compose is not installed. Please install Docker Compose first."
     exit 1
 fi
@@ -34,12 +40,12 @@ echo "✓ Configuration updated"
 # Stop any existing Kafka containers
 echo ""
 echo "Stopping any existing Kafka containers..."
-docker-compose -f docker-compose.kafka.yml down
+$DOCKER_COMPOSE -f docker-compose.kafka.yml down
 
 # Start Kafka and Zookeeper
 echo ""
 echo "Starting Kafka and Zookeeper..."
-docker-compose -f docker-compose.kafka.yml up -d
+$DOCKER_COMPOSE -f docker-compose.kafka.yml up -d
 
 # Wait for services to start
 echo ""
@@ -49,7 +55,7 @@ sleep 10
 # Check status
 echo ""
 echo "Checking service status..."
-docker-compose -f docker-compose.kafka.yml ps
+$DOCKER_COMPOSE -f docker-compose.kafka.yml ps
 
 echo ""
 echo "==================================="
@@ -61,11 +67,11 @@ echo "  - Internal (Docker): kafka:9092"
 echo "  - External (VPS):    $VPS_IP:29092"
 echo ""
 echo "To view logs:"
-echo "  docker-compose -f docker-compose.kafka.yml logs -f"
+echo "  $DOCKER_COMPOSE -f docker-compose.kafka.yml logs -f"
 echo ""
 echo "To stop Kafka:"
-echo "  docker-compose -f docker-compose.kafka.yml down"
+echo "  $DOCKER_COMPOSE -f docker-compose.kafka.yml down"
 echo ""
 echo "To restart Kafka:"
-echo "  docker-compose -f docker-compose.kafka.yml restart"
+echo "  $DOCKER_COMPOSE -f docker-compose.kafka.yml restart"
 echo ""
