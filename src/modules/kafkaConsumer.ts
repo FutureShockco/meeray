@@ -2,6 +2,7 @@ import { Kafka, logLevel, Consumer } from 'kafkajs';
 import fs from 'fs';
 import logger from '../logger.js';
 import notifications from './notifications.js';
+import settings from '../settings.js';
 
 // Detect whether the process is running inside a container. Reuse same heuristic as producer module.
 function isRunningInContainer(): boolean {
@@ -26,7 +27,7 @@ let kafka: Kafka | null = null;
 let consumer: Consumer | null = null;
 
 export async function initializeKafkaConsumer(): Promise<void> {
-    if (!process.env.USE_NOTIFICATION && process.env.USE_NOTIFICATION !== '1' && process.env.USE_NOTIFICATION !== 'true') {
+    if (!settings.useNotification) {
         logger.info('[kafka-consumer] USE_NOTIFICATION disabled; skipping Kafka consumer initialization.');
         return;
     }
