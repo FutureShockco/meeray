@@ -1,11 +1,43 @@
 import { Kafka, Producer, logLevel } from 'kafkajs';
+import fs from 'fs';
 
 import logger from '../logger.js';
 
 // Assuming logger is in the parent directory
 
-// Configuration for Kafka - replace with your actual broker details
-const KAFKA_BROKERS = process.env.KAFKA_BROKERS ? process.env.KAFKA_BROKERS.split(',') : ['localhost:9092'];
+// Detect whether the process is running inside a container.
+function isRunningInContainer(): boolean {
+    // Allow explicit overrides for testing
+    if (process.env.KAFKA_FORCE_CONTAINER === 'true') return true;
+    if (process.env.KAFKA_FORCE_HOST === 'true') return false;
+
+    try {
+        if (fs.existsSync('/.dockerenv')) return true;
+    } catch (e) {
+        // ignore
+    }
+
+    try {
+        const cgroup = fs.readFileSync('/proc/1/cgroup', 'utf8');
+        if (/docker|kubepods|containerd/.test(cgroup)) return true;
+    } catch (e) {
+        // ignore
+    }
+
+    return false;
+}
+
+// Default broker depends on runtime: inside containers use compose DNS, on host prefer localhost mapped port
+const defaultBroker = isRunningInContainer() ? 'kafka:9092' : 'localhost:29092';
+logger.info(`[kafka-producer] Runtime detection: ${isRunningInContainer() ? 'container' : 'host'}, default broker: ${defaultBroker}`);
+
+// Configuration for Kafka - normalize broker list and accept either
+// KAFKA_BROKERS (comma-separated) or the single KAFKA_BROKER env var.
+const rawBrokers = process.env.KAFKA_BROKERS || process.env.KAFKA_BROKER || defaultBroker;
+const KAFKA_BROKERS = rawBrokers
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
 const KAFKA_CLIENT_ID = process.env.KAFKA_CLIENT_ID || 'meeray-event-producer';
 
 let kafka: Kafka | null = null;
@@ -18,13 +50,14 @@ let isConnected = false;
  * Handles singleton pattern to ensure only one instance is created.
  */
 export async function initializeKafkaProducer(): Promise<void> {
-    if (producer || isInitializing) {
-        if (producer && isConnected) {
-            logger.info('[kafka-producer] Kafka producer already initialized and connected.');
-        } else if (isInitializing) {
-            logger.info('[kafka-producer] Kafka producer initialization already in progress.');
-        }
-        return;
+    // If already connected, nothing to do
+    if (producer && isConnected) {
+        logger.info('[kafka-producer] Kafka producer already initialized and connected.');
+    }
+
+    // If initialization is already in progress, return the same promise so callers wait
+    if (isInitializing) {
+        logger.info('[kafka-producer] Kafka producer initialization already in progress; awaiting existing init.');
     }
 
     isInitializing = true;
@@ -48,7 +81,6 @@ export async function initializeKafkaProducer(): Promise<void> {
         await newProducer.connect();
         producer = newProducer; // Assign to singleton after successful connection
         isConnected = true;
-        isInitializing = false;
         logger.info('[kafka-producer] Kafka producer connected successfully.');
 
         // Optional: Handle disconnects and other events
@@ -57,15 +89,18 @@ export async function initializeKafkaProducer(): Promise<void> {
             isConnected = false;
             // Potentially try to reconnect or handle this scenario
         });
-    } catch (error) {
-        isInitializing = false;
+    } catch (error: any) {
         isConnected = false;
-        logger.error(`[kafka-producer] Failed to initialize or connect Kafka producer: ${error instanceof Error ? error.message : String(error)}`);
-        // Depending on the application's needs, you might want to throw the error
-        // or implement a retry mechanism here.
-        // For now, we'll just log it and the producer will remain null.
-        producer = null; // Ensure producer is null if connection failed
+        // Log full error including stack when available to make container diagnostics easier
+        const errMsg = error instanceof Error ? `${error.message}${error.stack ? '\n' + error.stack : ''}` : String(error);
+        logger.error(`[kafka-producer] Failed to initialize or connect Kafka producer: ${errMsg}`);
+        // Ensure producer is null if connection failed
+        producer = null;
+        // rethrow? we swallow to let callers handle null producer
+    } finally {
+        isInitializing = false;
     }
+
 }
 
 /**
@@ -121,10 +156,3 @@ export async function disconnectKafkaProducer(): Promise<void> {
         logger.info('[kafka-producer] Kafka producer was not connected or already disconnected.');
     }
 }
-
-// Optional: Initialize Kafka when this module is loaded if desired,
-// or call initializeKafkaProducer() explicitly from your application's entry point.
-// For an optional module, it's often better to initialize explicitly when needed.
-// initializeKafkaProducer().catch(err => {
-//    logger.error('[kafka-producer] Auto-initialization failed on module load.', err);
-// });

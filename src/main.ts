@@ -9,12 +9,14 @@ import { initializeModules } from './initialize.js';
 import logger from './logger.js';
 import http from './modules/http/index.js';
 import { startWorker as startSteemBridgeWorker } from './modules/steemBridge.js';
+import kafkaConsumer from './modules/kafkaConsumer.js';
 import { StateDoc, mongo } from './mongo.js';
 import { p2p } from './p2p/index.js';
 import settings from './settings.js';
 import transaction from './transaction.js';
 import { witnessesModule } from './witnesses.js';
 import { witnessesStats } from './witnessesStats.js';
+import notifications from './modules/notifications.js';
 
 process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
     logger.error('CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
@@ -231,6 +233,19 @@ async function startDaemon(cfg: any) {
     p2p.init();
     p2p.connect(settings.peers, true);
     setTimeout(() => p2p.keepAlive(), 6000);
+    // Initialize standalone notifications WebSocket server (used for UI clients)
+    try {
+        await notifications.initNotificationsServer();
+    } catch (err) {
+        logger.error('Failed to initialize notifications WebSocket server during startup:', err);
+    }
+
+    // Initialize Kafka consumer to forward notifications to WebSocket clients
+    try {
+        await kafkaConsumer.initializeKafkaConsumer();
+    } catch (err) {
+        logger.error('Failed to initialize Kafka consumer during startup:', err);
+    }
 
     if (settings.steemBridgeEnabled) {
         logger.info('Starting Steem bridge worker...');
@@ -263,6 +278,18 @@ process.on('SIGINT', async function () {
         blocks.close();
         if (isQueueEmpty && !isProcessing) {
             clearInterval(shutdownCheck);
+            (async () => {
+                try {
+                    await kafkaConsumer.disconnectKafkaConsumer();
+                } catch (e) {
+                    logger.error('Error during Kafka consumer disconnect on shutdown:', e);
+                }
+                try {
+                    await notifications.closeNotificationsServer();
+                } catch (e) {
+                    logger.error('Error closing notifications server on shutdown:', e);
+                }
+            })();
             logger.info('MeeRay exited safely');
             process.exit(0);
         }

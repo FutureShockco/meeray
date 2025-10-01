@@ -115,9 +115,10 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
         }
 
         const listingId = generateListingId(data.collectionSymbol, data.instanceId, sender);
+        // Check for an existing ACTIVE listing (accept both cases) to prevent duplicates
         const existingListing = (await cache.findOnePromise('nftListings', {
             _id: listingId,
-            status: 'active',
+            status: { $in: ['ACTIVE', 'active'] } as any,
         })) as NFTListingData | null;
         if (existingListing) {
             logger.warn(`[nft-list-item] NFT ${fullInstanceId} is already actively listed by ${sender} under listing ID ${listingId}.`);
@@ -133,6 +134,7 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
 
 export async function processTx(data: NftListPayload, sender: string, _id: string): Promise<string | null> {
     try {
+        const fullInstanceId = `${data.collectionSymbol}_${data.instanceId}`;
         const listingId = generateListingId(data.collectionSymbol, data.instanceId, sender);
 
         const listingDocument: NFTListingData = {
@@ -155,16 +157,30 @@ export async function processTx(data: NftListPayload, sender: string, _id: strin
             totalBids: 0,
         };
 
-        const listSuccess = await new Promise<boolean>(resolve => {
-            cache.insertOne('nftListings', listingDocument, (err, result) => {
-                if (err || !result) {
-                    logger.error(`[nft-list-item] Failed to insert listing ${listingId} into cache: ${err || 'no result'}`);
-                    resolve(false);
-                } else {
-                    resolve(true);
-                }
-            });
-        });
+        // Handle re-listing: if a listing doc exists but is not ACTIVE, update it; if not exists, insert.
+        const existingAny = (await cache.findOnePromise('nftListings', { _id: listingId })) as NFTListingData | null;
+        let listSuccess = false;
+        if (existingAny) {
+            if (existingAny.status === 'ACTIVE') {
+                // Shouldn't happen due to earlier check, but guard anyway
+                logger.warn(`[nft-list-item] NFT ${fullInstanceId} is already actively listed by ${sender} under listing ID ${listingId}.`);
+                return null;
+            }
+
+            // Update the existing listing to ACTIVE with new fields
+            const updatePayload = {
+                $set: {
+                    ...listingDocument,
+                    status: 'ACTIVE',
+                    lastUpdatedAt: new Date().toISOString(),
+                },
+                $unset: { cancelledAt: '' },
+            };
+
+            listSuccess = await cache.updateOnePromise('nftListings', { _id: listingId }, updatePayload as any);
+        } else {
+            listSuccess = await cache.insertOnePromise('nftListings', listingDocument);
+        }
 
         if (!listSuccess) {
             return null; // Indicate failure

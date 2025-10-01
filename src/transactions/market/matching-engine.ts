@@ -319,7 +319,6 @@ class MatchingEngine {
       }) as OrderData[] | null;
 
       if (!openOrdersDB || openOrdersDB.length === 0) {
-        logger.debug(`[MatchingEngine] No open orders found for pair ${pairId}.`);
         return;
       }
 
