@@ -19,7 +19,7 @@ export async function validateTx(data: TokenData, sender: string): Promise<boole
     }
 }
 
-export async function processTx(data: TokenData, sender: string): Promise<boolean> {
+export async function processTx(data: TokenData, sender: string, transactionId: string): Promise<boolean> {
     try {
         const initialSupply = toBigInt(data.initialSupply || 0);
         const tokenToStore: TokenData = {
@@ -60,7 +60,7 @@ export async function processTx(data: TokenData, sender: string): Promise<boolea
         delete logToken.logoUrl;
         delete logToken.websiteUrl;
         delete logToken.description;
-        await logEvent('token', 'create', sender, logToken);
+        await logEvent('token', 'create', sender, logToken, transactionId);
         return true;
     } catch (error) {
         logger.error(`[token-create:process] Error processing token creation for ${data.symbol} by ${sender}: ${error}`);
