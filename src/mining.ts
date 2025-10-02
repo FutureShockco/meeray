@@ -25,7 +25,6 @@ export const mining = {
         const currentSystemTime = new Date().getTime();
         const nextTimestamp = Math.max(currentSystemTime, minTimestampForNewBlock);
         const nextSteemBlockNum = previousBlock.steemBlockNum + 1;
-        const nextSteemBlockTimestamp = previousBlock.steemBlockTimestamp + targetBlockInterval; // Approximate, actual comes from Steem block
 
         logger.trace(`prepareBlock: Mode: ${steem.isInSyncMode() ? 'SYNC' : 'NORMAL'}, TargetInterval: ${targetBlockInterval}ms`);
 
@@ -78,7 +77,7 @@ export const mining = {
                 phash: previousBlock.hash,
                 timestamp: nextTimestamp,
                 steemBlockNum: nextSteemBlockNum,
-                steemBlockTimestamp: nextSteemBlockTimestamp,
+                steemBlockTimestamp: newSteemBlock.timestamp, // Use actual Steem block timestamp
                 txs: txs,
                 witness: process.env.STEEM_ACCOUNT || '',
                 missedBy: '',
