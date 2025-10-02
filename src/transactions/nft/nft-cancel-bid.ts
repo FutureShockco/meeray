@@ -7,32 +7,32 @@ import { getToken } from '../../utils/token.js';
 import validate from '../../validation/index.js';
 import { NftBid, NftCancelBidData } from './nft-market-interfaces.js';
 
-export async function validateTx(data: NftCancelBidData, sender: string): Promise<boolean> {
+export async function validateTx(data: NftCancelBidData, sender: string): Promise<{ valid: boolean; error?: string }> {
     try {
         if (!data.bidId || !data.listingId || !validate.string(data.bidId, 256, 3) || !validate.string(data.listingId, 256, 3)) {
             logger.warn('[nft-cancel-bid] Invalid bidId or listingId.');
-            return false;
+            return { valid: false, error: 'invalid bidId or listingId' };
         }
 
         const bid = (await cache.findOnePromise('nftBids', { _id: data.bidId })) as NftBid | null;
         if (!bid || bid.bidder !== sender || bid.listingId !== data.listingId) {
             logger.warn('[nft-cancel-bid] Bid not found or not owned by sender.');
-            return false;
+            return { valid: false, error: 'bid not found or not owned by sender' };
         }
 
         if (bid.status !== 'ACTIVE' && bid.status !== 'WINNING' && bid.status !== 'OUTBID') {
             logger.warn(`[nft-cancel-bid] Cannot cancel bid with status ${bid.status}.`);
-            return false;
+            return { valid: false, error: 'cannot cancel bid with this status' };
         }
 
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[nft-cancel-bid] Error validating: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }
 
-export async function processTx(data: NftCancelBidData, sender: string, _id: string): Promise<boolean> {
+export async function processTx(data: NftCancelBidData, sender: string, _id: string): Promise<{ valid: boolean; error?: string }> {
     try {
         const bid = (await cache.findOnePromise('nftBids', { _id: data.bidId })) as NftBid;
 
@@ -40,14 +40,14 @@ export async function processTx(data: NftCancelBidData, sender: string, _id: str
         const paymentToken = await getToken(bid.paymentToken);
         if (!paymentToken) {
             logger.error(`[nft-cancel-bid] Payment token not found: ${bid.paymentToken}`);
-            return false;
+            return { valid: false, error: 'payment token not found' };
         }
 
         const escrowAmount = toBigInt(bid.escrowedAmount);
 
         if (!(await releaseEscrowedFunds(sender, escrowAmount, bid.paymentToken))) {
             logger.error(`[nft-cancel-bid] Failed to release escrowed funds for bid ${data.bidId}.`);
-            return false;
+            return { valid: false, error: 'failed to release escrowed funds' };
         }
 
         // Update bid status to cancelled
@@ -65,7 +65,7 @@ export async function processTx(data: NftCancelBidData, sender: string, _id: str
 
         if (!updateSuccess) {
             logger.error(`[nft-cancel-bid] Failed to update bid ${data.bidId} status.`);
-            return false;
+            return { valid: false, error: 'failed to update bid status' };
         }
 
         // If this was the highest bid, update listing to reflect new highest bid
@@ -128,9 +128,9 @@ export async function processTx(data: NftCancelBidData, sender: string, _id: str
             cancelledAt: new Date().toISOString(),
         });
 
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[nft-cancel-bid] Error processing: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }

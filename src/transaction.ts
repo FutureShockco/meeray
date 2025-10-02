@@ -157,11 +157,11 @@ const transaction: TransactionModule = {
         if (handler && typeof handler.validate === 'function') {
             handler
                 .validate(tx.data, tx.sender, tx.hash, tx.ts)
-                .then((isValidSpecific: boolean) => {
-                    if (!isValidSpecific) {
-                        const errorMsg = `Specific validation failed for type ${TransactionType[tx.type as TransactionType]}`;
+                .then((result: { valid: boolean; error?: string }) => {
+                    if (!result || !result.valid) {
+                        const errorMsg = result?.error || `Specific validation failed for type ${TransactionType[tx.type as TransactionType]}`;
                         logr.warn(`[transaction.isValidTxData] ${errorMsg}`);
-                        
+
                         // Send validation failure notification via Kafka
                         if (settings.useNotification) {
                             sendKafkaEvent('notifications', {
@@ -182,7 +182,7 @@ const transaction: TransactionModule = {
                                 logr.error(`Failed to send validation failure notification: ${err}`);
                             });
                         }
-                        
+
                         cb(false, errorMsg);
                     } else {
                         cb(true, undefined); // Valid
@@ -251,10 +251,14 @@ const transaction: TransactionModule = {
         if (handler)
             handler
                 .process(tx.data, tx.sender, tx.hash, tx.ts || ts)
-                .then((success: boolean) => {
+                .then((result: { valid: boolean; error?: string }) => {
+                    const success = !!result && !!result.valid;
+                    const handlerError = result?.error;
+
                     if (!success) {
-                        logr.warn(`Execution failed for type ${TransactionType[tx.type as TransactionType]} by sender ${tx.sender}`);
-                        
+                        const errorMsg = handlerError || 'Execution failed';
+                        logr.warn(`Execution failed for type ${TransactionType[tx.type as TransactionType]} by sender ${tx.sender}: ${errorMsg}`);
+
                         // Send failure notification via Kafka (only for failures, since handlers already log success)
                         if (settings.useNotification) {
                             sendKafkaEvent('notifications', {
@@ -268,14 +272,14 @@ const transaction: TransactionModule = {
                                     transactionId: tx.hash || tx.ref,
                                     txType: TransactionType[tx.type as TransactionType],
                                     sender: tx.sender,
-                                    error: 'Execution failed',
+                                    error: errorMsg,
                                 },
                                 transactionId: tx.hash || tx.ref,
                             }, tx.hash || tx.ref).catch(err => {
                                 logr.error(`Failed to send transaction failure notification: ${err}`);
                             });
                         }
-                        
+
                         cb(false, undefined);
                     } else {
                         logr.debug(`Transaction executed successfully: ${TransactionType[tx.type as TransactionType]} by ${tx.sender}`);

@@ -7,32 +7,32 @@ import { getToken } from '../../utils/token.js';
 import validate from '../../validation/index.js';
 import { NftCancelOfferData, NftOffer } from './nft-market-interfaces.js';
 
-export async function validateTx(data: NftCancelOfferData, sender: string): Promise<boolean> {
+export async function validateTx(data: NftCancelOfferData, sender: string): Promise<{ valid: boolean; error?: string }> {
     try {
         if (!data.offerId || !validate.string(data.offerId, 256, 3)) {
             logger.warn('[nft-cancel-offer] Invalid offerId.');
-            return false;
+            return { valid: false, error: 'invalid offerId' };
         }
 
         const offer = (await cache.findOnePromise('nftOffers', { _id: data.offerId })) as NftOffer | null;
         if (!offer || offer.offerBy !== sender) {
             logger.warn('[nft-cancel-offer] Offer not found or not owned by sender.');
-            return false;
+            return { valid: false, error: 'offer not found or not owned' };
         }
 
         if (offer.status !== 'ACTIVE') {
             logger.warn(`[nft-cancel-offer] Cannot cancel offer with status ${offer.status}.`);
-            return false;
+            return { valid: false, error: 'offer not active' };
         }
 
-        return true;
+    return { valid: true };
     } catch (error) {
         logger.error(`[nft-cancel-offer] Error validating: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }
 
-export async function processTx(data: NftCancelOfferData, sender: string, _id: string): Promise<boolean> {
+export async function processTx(data: NftCancelOfferData, sender: string, _id: string): Promise<{ valid: boolean; error?: string }> {
     try {
         const offer = (await cache.findOnePromise('nftOffers', { _id: data.offerId })) as NftOffer;
 
@@ -40,14 +40,14 @@ export async function processTx(data: NftCancelOfferData, sender: string, _id: s
         const paymentToken = await getToken(offer.paymentToken);
         if (!paymentToken) {
             logger.error(`[nft-cancel-offer] Payment token not found: ${offer.paymentToken}`);
-            return false;
+            return { valid: false, error: 'payment token not found' };
         }
 
         const escrowAmount = toBigInt(offer.escrowedAmount);
 
         if (!(await adjustUserBalance(sender, paymentToken.symbol, escrowAmount))) {
             logger.error(`[nft-cancel-offer] Failed to release escrowed funds for offer ${data.offerId}.`);
-            return false;
+            return { valid: false, error: 'failed to release escrow' };
         }
 
         // Update offer status to cancelled
@@ -65,7 +65,7 @@ export async function processTx(data: NftCancelOfferData, sender: string, _id: s
 
         if (!updateSuccess) {
             logger.error(`[nft-cancel-offer] Failed to update offer ${data.offerId} status.`);
-            return false;
+            return { valid: false, error: 'failed to update offer' };
         }
 
         // Log event
@@ -80,9 +80,9 @@ export async function processTx(data: NftCancelOfferData, sender: string, _id: s
             cancelledAt: new Date().toISOString(),
         });
 
-        return true;
+    return { valid: true };
     } catch (error) {
         logger.error(`[nft-cancel-offer] Error processing: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }

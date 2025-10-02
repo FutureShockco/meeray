@@ -9,53 +9,53 @@ import validate from '../../validation/index.js';
 import { UserLiquidityPositionData } from '../pool/pool-interfaces.js';
 import { FarmData, FarmStakeData, UserFarmPositionData } from './farm-interfaces.js';
 
-export async function validateTx(data: FarmStakeData, sender: string): Promise<boolean> {
+export async function validateTx(data: FarmStakeData, sender: string): Promise<{ valid: boolean; error?: string }> {
     try {
         if (!data.farmId || !data.tokenAmount) {
             logger.warn('[farm-stake] Invalid data: Missing required fields (farmId, tokenAmount).');
-            return false;
+            return { valid: false, error: 'missing required fields' };
         }
 
         if (!validate.string(data.farmId, 96, 1)) {
             logger.warn('[farm-stake] Invalid farmId format.');
-            return false;
+            return { valid: false, error: 'invalid farmId format' };
         }
 
         const farm = (await cache.findOnePromise('farms', { _id: data.farmId })) as FarmData;
         if (!farm) {
             logger.warn(`[farm-stake] Farm ${data.farmId} not found.`);
-            return false;
+            return { valid: false, error: 'farm not found' };
         }
 
         if (farm.status !== 'active' ) {
             logger.warn(`[farm-stake] Farm ${data.farmId} is not active.`);
-            return false;
+            return { valid: false, error: 'farm not active' };
         }
 
         if (!validate.bigint(data.tokenAmount, false, false, toBigInt(farm.minStakeAmount || '1'), toBigInt(farm.maxStakeAmount || config.maxValue))) {
             logger.warn('[farm-stake] tokenAmount must be a positive number.');
-            return false;
+            return { valid: false, error: 'invalid tokenAmount' };
         }
 
         const stakingSymbol = farm.stakingToken;
         if (!stakingSymbol) {
             logger.warn(`[farm-stake] Farm ${data.farmId} missing staking token symbol.`);
-            return false;
+            return { valid: false, error: 'missing staking token symbol' };
         }
 
         if(!await validate.userBalances(sender, [{ symbol: stakingSymbol, amount: toBigInt(data.tokenAmount) }])) {
             logger.warn(`[farm-stake] Staker ${sender} has insufficient balance of ${stakingSymbol}.`);
-            return false;
+            return { valid: false, error: 'insufficient balance' };
         }
 
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[farm-stake] Error validating stake data for farm ${data.farmId} by ${sender}: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }
 
-export async function processTx(data: FarmStakeData, sender: string, id: string, ts?: number): Promise<boolean> {
+export async function processTx(data: FarmStakeData, sender: string, id: string, ts?: number): Promise<{ valid: boolean; error?: string }> {
     try {
         const farm = (await cache.findOnePromise('farms', { _id: data.farmId })) as FarmData;
         const stakingSymbol = farm.stakingToken;
@@ -64,7 +64,7 @@ export async function processTx(data: FarmStakeData, sender: string, id: string,
         const debitSender = await adjustUserBalance(sender, stakingSymbol, -toBigInt(data.tokenAmount));
         if (!debitSender) {
             logger.error(`[token-transfer:process] Failed to debit sender ${sender} for ${toBigInt(data.tokenAmount).toString()} ${stakingSymbol}`);
-            return false;
+            return { valid: false, error: 'failed to debit sender' };
         }
             const userPositions = (await cache.findPromise('userFarmPositions', { farmId: data.farmId }) as UserFarmPositionData[]) || [];
             for (const userPos of userPositions) {
@@ -148,9 +148,9 @@ export async function processTx(data: FarmStakeData, sender: string, id: string,
             totalStaked: toDbString(newTotalStaked),
         });
 
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[farm-stake] Error processing stake for farm ${data.farmId} by ${sender}: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }

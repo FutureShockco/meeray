@@ -5,47 +5,47 @@ import { getAccount, adjustUserBalance } from '../../utils/account.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 import { logEvent } from '../../utils/event-logger.js';
 
-export async function validateTx(dataDb: LaunchpadParticipatePresaleData, sender: string): Promise<boolean> {
+export async function validateTx(dataDb: LaunchpadParticipatePresaleData, sender: string): Promise<{ valid: boolean; error?: string }> {
   const data = dataDb; // No conversion needed with single interface
   logger.debug(`[launchpad-participate-presale] Validating participation from ${sender} for launchpad ${data.launchpadId}: amount ${data.contributionAmount}`);
   // Use sender as the participant identity; payload `userId` is optional/backwards compatible
 
   if (!data.launchpadId || toBigInt(data.contributionAmount) <= toBigInt(0)) {
     logger.warn('[launchpad-participate-presale] Missing or invalid fields: launchpadId, contributionAmount must be a positive value.');
-    return false;
+    return { valid: false, error: 'invalid fields' };
   }
 
   const launchpad = await cache.findOnePromise('launchpads', { _id: data.launchpadId });
   if (!launchpad) {
     logger.warn(`[launchpad-participate-presale] Launchpad project ${data.launchpadId} not found.`);
-    return false;
+    return { valid: false, error: 'launchpad not found' };
   }
 
   if (launchpad.status !== LaunchpadStatus.PRESALE_ACTIVE) {
     logger.warn(`[launchpad-participate-presale] Launchpad ${data.launchpadId} presale is not active. Current status: ${launchpad.status}`);
-    return false;
+    return { valid: false, error: 'presale not active' };
   }
 
   if (!launchpad.presaleDetailsSnapshot) {
     logger.warn(`[launchpad-participate-presale] Launchpad ${data.launchpadId} does not have presale details configured.`);
-    return false;
+    return { valid: false, error: 'presale details missing' };
   }
   // presaleDetailsSnapshot amounts are BigInt due to interface changes
   const presaleDetails = launchpad.presaleDetailsSnapshot;
 
   if (toBigInt(data.contributionAmount) < toBigInt(presaleDetails.minContributionPerUser)) {
     logger.warn(`[launchpad-participate-presale] Contribution ${data.contributionAmount} is below min limit ${presaleDetails.minContributionPerUser} for ${data.launchpadId}.`);
-    return false;
+    return { valid: false, error: 'below min contribution' };
   }
   if (toBigInt(data.contributionAmount) > toBigInt(presaleDetails.maxContributionPerUser)) {
     logger.warn(`[launchpad-participate-presale] Contribution ${data.contributionAmount} exceeds max limit ${presaleDetails.maxContributionPerUser} for ${data.launchpadId}.`);
-    return false;
+    return { valid: false, error: 'exceeds max contribution' };
   }
 
   const currentTotalRaised = toBigInt(launchpad.presale?.totalQuoteRaised || '0');
   if (currentTotalRaised + toBigInt(data.contributionAmount) > toBigInt(presaleDetails.hardCap)) {
     logger.warn(`[launchpad-participate-presale] Contribution ${data.contributionAmount} would exceed hard cap ${presaleDetails.hardCap} for ${data.launchpadId}. Current raised: ${currentTotalRaised}`);
-    return false;
+    return { valid: false, error: 'would exceed hard cap' };
   }
 
   // Whitelist check (if applicable) - remains placeholder
@@ -54,21 +54,21 @@ export async function validateTx(dataDb: LaunchpadParticipatePresaleData, sender
   const userAccount = await getAccount(participantUserId);
   if (!userAccount) {
     logger.warn(`[launchpad-participate-presale] User account ${participantUserId} not found.`);
-    return false;
+    return { valid: false, error: 'user account not found' };
   }
   const contributionTokenIdentifier = presaleDetails.quoteAssetForPresaleSymbol;
   const userBalanceString = userAccount.balances?.[contributionTokenIdentifier] || '0';
   const userBalance = toBigInt(userBalanceString);
   if (userBalance < toBigInt(data.contributionAmount)) {
     logger.warn(`[launchpad-participate-presale] Insufficient balance for ${participantUserId}. Needs ${data.contributionAmount} ${contributionTokenIdentifier}, has ${userBalance}.`);
-    return false;
+    return { valid: false, error: 'insufficient balance' };
   }
 
   logger.debug(`[launchpad-participate-presale] Validation successful for ${sender} on launchpad ${data.launchpadId}.`);
-  return true;
+  return { valid: true };
 }
 
-export async function processTx(dataDb: LaunchpadParticipatePresaleData, sender: string, _transactionId: string): Promise<boolean> {
+export async function processTx(dataDb: LaunchpadParticipatePresaleData, sender: string, _transactionId: string): Promise<{ valid: boolean; error?: string }> {
   const data = dataDb; // No conversion needed with single interface
   logger.debug(`[launchpad-participate-presale] Processing participation from ${sender} for ${data.launchpadId}: amount ${data.contributionAmount}`);
   try {
@@ -78,10 +78,10 @@ export async function processTx(dataDb: LaunchpadParticipatePresaleData, sender:
     const contributionTokenIdentifier = presaleDetails.quoteAssetForPresaleSymbol;
 
     const balanceAdjusted = await adjustUserBalance(sender, contributionTokenIdentifier, -toBigInt(data.contributionAmount));
-    if (!balanceAdjusted) {
-        logger.error(`[launchpad-participate-presale] Failed to deduct ${data.contributionAmount} ${contributionTokenIdentifier} from ${sender} for launchpad ${data.launchpadId}.`);
-        return false;
-    }
+  if (!balanceAdjusted) {
+    logger.error(`[launchpad-participate-presale] Failed to deduct ${data.contributionAmount} ${contributionTokenIdentifier} from ${sender} for launchpad ${data.launchpadId}.`);
+    return { valid: false, error: 'failed to deduct balance' };
+  }
 
   const participantUserId = data.userId || sender;
   const participantIndex = launchpad.presale!.participants.findIndex((p: any) => p.userId === participantUserId);
@@ -109,10 +109,10 @@ export async function processTx(dataDb: LaunchpadParticipatePresaleData, sender:
 
     const updateSuccessful = await cache.updateOnePromise('launchpads', { _id: data.launchpadId }, updatePayload);
 
-    if (!updateSuccessful) {
-        logger.error(`[launchpad-participate-presale] Failed to update launchpad ${data.launchpadId}.`);
-        return false;
-    }
+  if (!updateSuccessful) {
+    logger.error(`[launchpad-participate-presale] Failed to update launchpad ${data.launchpadId}.`);
+    return { valid: false, error: 'failed to update launchpad' };
+  }
 
     logger.debug(`[launchpad-participate-presale] Participation processed for ${data.contributionAmount}.`);
 
@@ -126,10 +126,10 @@ export async function processTx(dataDb: LaunchpadParticipatePresaleData, sender:
       isNewParticipant: participantIndex === -1
     });
 
-    return true;
+  return { valid: true };
 
   } catch (error) {
     logger.error(`[launchpad-participate-presale] Error processing participation: ${error}`);
-    return false;
+    return { valid: false, error: 'internal error' };
   }
 }

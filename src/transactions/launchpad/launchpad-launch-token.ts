@@ -13,63 +13,63 @@ function generateLaunchpadId(sender: string, tokenSymbol: string, transactionId?
     return `pad-${crypto.createHash('sha256').update(`${sender}_${tokenSymbol}_${txId}`).digest('hex').substring(0, 12)}`;
 }
 
-export async function validateTx(data: LaunchpadLaunchTokenData, _sender: string, _transactionId?: string, _timestamp?: number): Promise<boolean> {
+export async function validateTx(data: LaunchpadLaunchTokenData, _sender: string, _transactionId?: string, _timestamp?: number): Promise<{ valid: boolean; error?: string }> {
     if (!data.tokenName || !data.tokenSymbol || !data.totalSupply) {
         logger.warn('[launchpad-launch-token] Missing core token information: tokenName, tokenSymbol, totalSupply.');
-        return false;
+        return { valid: false, error: 'missing core token information' };
     }
 
     if (!validate.string(data.tokenSymbol, 10, 3, config.tokenSymbolAllowedChars)) {
         logger.warn('[launchpad-launch-token] Invalid token symbol format.');
-        return false;
+        return { valid: false, error: 'invalid token symbol' };
     }
 
     if (!validate.string(data.tokenName, 50, 1)) {
         logger.warn('[launchpad-launch-token] Invalid token name (1-50 chars).');
-        return false;
+        return { valid: false, error: 'invalid token name' };
     }
 
     // Check if token symbol already exists
     const existingTokenBySymbol = await cache.findOnePromise('tokens', { symbol: data.tokenSymbol });
     if (existingTokenBySymbol) {
         logger.warn(`[launchpad-launch-token] Token symbol ${data.tokenSymbol} already exists.`);
-        return false;
+        return { valid: false, error: 'token symbol exists' };
     }
 
     // Check if there's already a launchpad with this token symbol
     const existingLaunchpad = await cache.findOnePromise('launchpads', { 'tokenToLaunch.symbol': data.tokenSymbol });
     if (existingLaunchpad) {
         logger.warn(`[launchpad-launch-token] Launchpad for token symbol ${data.tokenSymbol} already exists.`);
-        return false;
+        return { valid: false, error: 'launchpad for symbol exists' };
     }
 
     const decimals = data.tokenDecimals ?? 18;
     if (!validate.integer(decimals, true, false, 18, 0)) {
         logger.warn('[launchpad-launch-token] Invalid tokenDecimals (must be 0-18).');
-        return false;
+        return { valid: false, error: 'invalid token decimals' };
     }
 
     if (!validate.bigint(data.totalSupply, false, false)) {
         logger.warn('[launchpad-launch-token] Invalid totalSupply. Must be positive.');
-        return false;
+        return { valid: false, error: 'invalid totalSupply' };
     }
 
     // Optional field validations
     if (data.tokenDescription && !validate.string(data.tokenDescription, 1000, 0)) {
         logger.warn('[launchpad-launch-token] tokenDescription too long (max 1000 chars).');
-        return false;
+        return { valid: false, error: 'tokenDescription too long' };
     }
 
     if (data.projectWebsite && (!validate.string(data.projectWebsite, 2048, 10) || !data.projectWebsite.startsWith('http'))) {
         logger.warn('[launchpad-launch-token] Invalid projectWebsite. Must start with http and be <= 2048 chars.');
-        return false;
+        return { valid: false, error: 'invalid projectWebsite' };
     }
 
     logger.debug('[launchpad-launch-token] Validation passed (simplified structure).');
-    return true;
+    return { valid: true };
 }
 
-export async function processTx(launchData: LaunchpadLaunchTokenData, sender: string, transactionId: string): Promise<boolean> {
+export async function processTx(launchData: LaunchpadLaunchTokenData, sender: string, transactionId: string): Promise<{ valid: boolean; error?: string }> {
     logger.debug(`[launchpad-launch-token] Processing launch request from ${sender}`);
 
     try {
@@ -123,9 +123,9 @@ export async function processTx(launchData: LaunchpadLaunchTokenData, sender: st
             tokenDecimals: tokenDecimalsNumber,
         });
 
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[launchpad-launch-token] Error processing launch request by ${sender}: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }

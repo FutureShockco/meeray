@@ -9,34 +9,34 @@ import validate from '../../validation/index.js';
 import { CloseAuctionData, NFTListingData, NftBid } from './nft-market-interfaces.js';
 import { CachedNftCollectionForTransfer } from './nft-transfer.js';
 
-export async function validateTx(data: CloseAuctionData, sender: string): Promise<boolean> {
+export async function validateTx(data: CloseAuctionData, sender: string): Promise<{ valid: boolean; error?: string }> {
     try {
         if (!data.listingId) {
             logger.warn('[nft-close-auction] Invalid data: Missing required field (listingId).');
-            return false;
+            return { valid: false, error: 'missing required field (listingId)' };
         }
 
         if (!validate.string(data.listingId, 256, 3)) {
             logger.warn(`[nft-close-auction] Invalid listingId format or length: ${data.listingId}.`);
-            return false;
+            return { valid: false, error: 'invalid listingId format or length' };
         }
 
         // Validate listing exists
         const listing = (await cache.findOnePromise('nftListings', { _id: data.listingId })) as NFTListingData | null;
         if (!listing) {
             logger.warn(`[nft-close-auction] Listing ${data.listingId} not found.`);
-            return false;
+            return { valid: false, error: 'listing not found' };
         }
 
         if (listing.status !== 'ACTIVE') {
             logger.warn(`[nft-close-auction] Listing ${data.listingId} is not active. Status: ${listing.status}.`);
-            return false;
+            return { valid: false, error: 'listing not active' };
         }
 
         // Only auction types can be closed this way
         if (listing.listingType !== 'AUCTION' && listing.listingType !== 'RESERVE_AUCTION') {
             logger.warn(`[nft-close-auction] Listing ${data.listingId} is not an auction. Type: ${listing.listingType}.`);
-            return false;
+            return { valid: false, error: 'listing not an auction' };
         }
 
         // Check permissions and timing
@@ -45,20 +45,20 @@ export async function validateTx(data: CloseAuctionData, sender: string): Promis
 
         if (!isOwner && !auctionHasEnded && !data.force) {
             logger.warn('[nft-close-auction] Only seller can close auction before end time.');
-            return false;
+            return { valid: false, error: 'unauthorized' };
         }
 
         // Validate winning bid if provided
         if (data.winningBidId) {
             if (!validate.string(data.winningBidId, 256, 3)) {
                 logger.warn('[nft-close-auction] Invalid winningBidId format.');
-                return false;
+                return { valid: false, error: 'invalid winningBidId format' };
             }
 
             const winningBid = (await cache.findOnePromise('nftBids', { _id: data.winningBidId })) as NftBid | null;
             if (!winningBid || winningBid.listingId !== data.listingId || (winningBid.status !== 'ACTIVE' && winningBid.status !== 'WINNING')) {
                 logger.warn('[nft-close-auction] Invalid winning bid.');
-                return false;
+                return { valid: false, error: 'invalid winning bid' };
             }
         }
 
@@ -70,18 +70,18 @@ export async function validateTx(data: CloseAuctionData, sender: string): Promis
 
             if (!highestBid || toBigInt(highestBid.bidAmount) < toBigInt(listing.reservePrice)) {
                 logger.warn('[nft-close-auction] No valid bids or reserve price not met.');
-                return false;
+                return { valid: false, error: 'no valid bids or reserve price not met' };
             }
         }
 
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[nft-close-auction] Error validating close auction for ${data.listingId}: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }
 
-export async function processTx(data: CloseAuctionData, sender: string): Promise<boolean> {
+export async function processTx(data: CloseAuctionData, sender: string): Promise<{ valid: boolean; error?: string }> {
     try {
         // Re-fetch listing for processing
         const listing = (await cache.findOnePromise('nftListings', { _id: data.listingId })) as NFTListingData;
@@ -106,7 +106,7 @@ export async function processTx(data: CloseAuctionData, sender: string): Promise
                 { $set: { status: 'ended', endedAt: new Date().toISOString(), endedBy: sender } }
             );
 
-            return true;
+            return { valid: true };
         }
 
         // Process winning bid (similar to accept bid logic)
@@ -117,7 +117,7 @@ export async function processTx(data: CloseAuctionData, sender: string): Promise
         };
         if (collection.transferable === false) {
             logger.error(`[nft-close-auction] CRITICAL: Collection ${listing.collectionId} not transferable.`);
-            return false;
+            return { valid: false, error: 'collection not transferable' };
         }
 
         const paymentToken = (await getToken(listing.paymentToken))!;
@@ -134,14 +134,14 @@ export async function processTx(data: CloseAuctionData, sender: string): Promise
         // 1. Pay seller their proceeds
         if (!(await adjustUserBalance(listing.seller, paymentToken.symbol, sellerProceeds))) {
             logger.error(`[nft-close-auction] Failed to pay seller ${listing.seller} proceeds of ${sellerProceeds}.`);
-            return false;
+            return { valid: false, error: 'failed to pay seller proceeds' };
         }
 
         // 2. Pay royalty to creator (if applicable)
         if (royaltyAmount > 0n && collection.creator && collection.creator !== listing.seller) {
             if (!(await adjustUserBalance(collection.creator, paymentToken.symbol, royaltyAmount))) {
                 logger.error(`[nft-close-auction] Failed to pay royalty ${royaltyAmount} to creator ${collection.creator}.`);
-                return false;
+                return { valid: false, error: 'failed to pay royalty' };
             }
             logger.debug(`[nft-close-auction] Royalty of ${royaltyAmount} paid to creator ${collection.creator}.`);
         }
@@ -156,7 +156,7 @@ export async function processTx(data: CloseAuctionData, sender: string): Promise
 
         if (!updateNftOwnerSuccess) {
             logger.error(`[nft-close-auction] CRITICAL: Failed to update NFT ${fullInstanceId} owner to ${winningBid.bidder}.`);
-            return false;
+            return { valid: false, error: 'failed to update NFT owner' };
         }
 
         logger.debug(`[nft-close-auction] NFT ${fullInstanceId} ownership transferred from ${listing.seller} to ${winningBid.bidder}.`);
@@ -232,9 +232,9 @@ export async function processTx(data: CloseAuctionData, sender: string): Promise
             closedAt: new Date().toISOString(),
         });
 
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[nft-close-auction] Error processing auction close for ${data.listingId}: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }

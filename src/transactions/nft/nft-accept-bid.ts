@@ -9,30 +9,30 @@ import { NFTTokenData } from './nft-interfaces.js';
 import { NFTListingData, NftAcceptBidData, NftBid } from './nft-market-interfaces.js';
 import { CachedNftCollectionForTransfer } from './nft-transfer.js';
 
-export async function validateTx(data: NftAcceptBidData, sender: string): Promise<boolean> {
+export async function validateTx(data: NftAcceptBidData, sender: string): Promise< { valid: boolean; error?: string } > {
     try {
         if (!data.bidId || !data.listingId || !validate.string(data.bidId, 256, 3) || !validate.string(data.listingId, 256, 3)) {
             logger.warn('[nft-accept-bid] Invalid bidId or listingId.');
-            return false;
+            return { valid: false, error: 'invalid bidId or listingId' };
         }
 
         const listing = (await cache.findOnePromise('nftListings', { _id: data.listingId })) as NFTListingData | null;
         if (!listing || listing.seller !== sender || listing.status !== 'ACTIVE') {
             logger.warn('[nft-accept-bid] Invalid listing or not seller.');
-            return false;
+            return { valid: false, error: 'invalid listing or not seller' };
         }
 
         const bid = (await cache.findOnePromise('nftBids', { _id: data.bidId })) as NftBid | null;
         if (!bid || bid.listingId !== data.listingId || (bid.status !== 'ACTIVE' && bid.status !== 'WINNING')) {
             logger.warn('[nft-accept-bid] Invalid bid.');
-            return false;
+            return { valid: false, error: 'invalid bid' };
         }
 
         // Check auction end time
         if ((listing.listingType === 'AUCTION' || listing.listingType === 'RESERVE_AUCTION') && listing.auctionEndTime) {
             if (new Date() < new Date(listing.auctionEndTime)) {
                 logger.warn('[nft-accept-bid] Cannot accept bid before auction ends.');
-                return false;
+                return { valid: false, error: 'cannot accept bid before auction ends' };
             }
         }
 
@@ -40,7 +40,7 @@ export async function validateTx(data: NftAcceptBidData, sender: string): Promis
         if (listing.listingType === 'RESERVE_AUCTION' && listing.reservePrice) {
             if (toBigInt(bid.bidAmount) < toBigInt(listing.reservePrice)) {
                 logger.warn('[nft-accept-bid] Bid does not meet reserve price.');
-                return false;
+                return { valid: false, error: 'bid does not meet reserve price' };
             }
         }
 
@@ -49,7 +49,7 @@ export async function validateTx(data: NftAcceptBidData, sender: string): Promis
         const nft = (await cache.findOnePromise('nfts', { _id: fullInstanceId })) as NFTTokenData | null;
         if (!nft || nft.owner !== listing.seller) {
             logger.warn('[nft-accept-bid] NFT not found or owner mismatch.');
-            return false;
+            return { valid: false, error: 'NFT not found or owner mismatch' };
         }
 
         const collection = (await cache.findOnePromise('nftCollections', {
@@ -57,17 +57,17 @@ export async function validateTx(data: NftAcceptBidData, sender: string): Promis
         })) as CachedNftCollectionForTransfer | null;
         if (!collection || collection.transferable === false) {
             logger.warn('[nft-accept-bid] Collection not transferable.');
-            return false;
+            return { valid: false, error: 'collection not transferable' };
         }
 
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[nft-accept-bid] Error validating: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }
 
-export async function processTx(data: NftAcceptBidData, sender: string, _id: string): Promise<boolean> {
+export async function processTx(data: NftAcceptBidData, sender: string, _id: string): Promise<{ valid: boolean; error?: string }> {
     try {
         const listing = (await cache.findOnePromise('nftListings', { _id: data.listingId })) as NFTListingData;
         const bid = (await cache.findOnePromise('nftBids', { _id: data.bidId })) as NftBid;
@@ -80,9 +80,9 @@ export async function processTx(data: NftAcceptBidData, sender: string, _id: str
         const sellerProceeds = bidAmount - royaltyAmount;
 
         // Execute payments
-        if (!(await adjustUserBalance(listing.seller, listing.paymentToken, sellerProceeds))) return false;
+        if (!(await adjustUserBalance(listing.seller, listing.paymentToken, sellerProceeds))) return { valid: false, error: 'failed to pay seller proceeds' };
         if (royaltyAmount > 0n && collection.creator && collection.creator !== listing.seller) {
-            if (!(await adjustUserBalance(collection.creator, listing.paymentToken, royaltyAmount))) return false;
+            if (!(await adjustUserBalance(collection.creator, listing.paymentToken, royaltyAmount))) return { valid: false, error: 'failed to pay royalty to creator' };
         }
 
         // Transfer NFT
@@ -94,7 +94,7 @@ export async function processTx(data: NftAcceptBidData, sender: string, _id: str
                 { $set: { owner: bid.bidder, lastTransferredAt: new Date().toISOString() } }
             ))
         ) {
-            return false;
+            return { valid: false, error: 'failed to transfer NFT' };
         }
 
         // Update listing and bid
@@ -150,9 +150,9 @@ export async function processTx(data: NftAcceptBidData, sender: string, _id: str
             acceptedAt: new Date().toISOString(),
         });
 
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[nft-accept-bid] Error processing: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }

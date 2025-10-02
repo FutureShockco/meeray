@@ -8,28 +8,28 @@ import validate from '../../validation/index.js';
 import { claimFeesFromPool } from './pool-helpers.js';
 import { LiquidityPoolData, PoolRemoveLiquidityData, UserLiquidityPositionData } from './pool-interfaces.js';
 
-export async function validateTx(data: PoolRemoveLiquidityData, sender: string): Promise<boolean> {
+export async function validateTx(data: PoolRemoveLiquidityData, sender: string): Promise<{ valid: boolean; error?: string }> {
     try {
         if (!data.poolId || data.lpTokenAmount === undefined) {
             logger.warn('[pool-remove-liquidity] Invalid data: Missing required fields (poolId, lpTokenAmount).');
-            return false;
+            return { valid: false, error: 'missing required fields (poolId, lpTokenAmount)' };
         }
         if (!validate.string(data.poolId, 64, 1)) {
             logger.warn('[pool-remove-liquidity] Invalid poolId format.');
-            return false;
+            return { valid: false, error: 'invalid poolId format' };
         }
         if (toBigInt(data.lpTokenAmount) <= toBigInt(0)) {
             logger.warn('[pool-remove-liquidity] lpTokenAmount must be a positive BigInt.');
-            return false;
+            return { valid: false, error: 'lpTokenAmount must be a positive BigInt' };
         }
         const pool = (await cache.findOnePromise('liquidityPools', { _id: data.poolId })) as LiquidityPoolData | null;
         if (!pool) {
             logger.warn(`[pool-remove-liquidity] Pool ${data.poolId} not found.`);
-            return false;
+            return { valid: false, error: 'pool not found' };
         }
         if (pool.totalLpTokens === toBigInt(0)) {
             logger.warn(`[pool-remove-liquidity] Pool ${data.poolId} has no liquidity to remove.`);
-            return false;
+            return { valid: false, error: 'no liquidity to remove' };
         }
         const userLpPositionId = `${sender}_${data.poolId}`;
         const userPosition = (await cache.findOnePromise('userLiquidityPositions', {
@@ -37,23 +37,22 @@ export async function validateTx(data: PoolRemoveLiquidityData, sender: string):
         })) as UserLiquidityPositionData | null;
         if (!userPosition) {
             logger.warn(`[pool-remove-liquidity] User ${sender} has no LP position for pool ${data.poolId}.`);
-            return false;
+            return { valid: false, error: 'user has no LP position' };
         }
         if (toBigInt(userPosition.lpTokenBalance) < toBigInt(data.lpTokenAmount)) {
             logger.warn(
                 `[pool-remove-liquidity] User ${sender} has insufficient LP token balance for pool ${data.poolId}. Has ${userPosition.lpTokenBalance}, needs ${data.lpTokenAmount}`
             );
-            return false;
+            return { valid: false, error: 'insufficient LP token balance' };
         }
-        // TODO: Optional server-side validation for minTokenA_amount and minTokenB_amount from dataDb if needed
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[pool-remove-liquidity] Error validating data for pool ${data.poolId} by ${sender}: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }
 
-export async function processTx(data: PoolRemoveLiquidityData, sender: string, transactionId: string): Promise<boolean> {
+export async function processTx(data: PoolRemoveLiquidityData, sender: string, transactionId: string): Promise<{ valid: boolean; error?: string }> {
     try {
         const pool = (await cache.findOnePromise('liquidityPools', { _id: data.poolId })) as LiquidityPoolData; // validateTx guarantees existence
         const userLpPositionId = `${sender}_${data.poolId}`;
@@ -65,7 +64,7 @@ export async function processTx(data: PoolRemoveLiquidityData, sender: string, t
         const feeClaimResult = await claimFeesFromPool(sender, data.poolId, toBigInt(data.lpTokenAmount));
         if (!feeClaimResult.success) {
             logger.error(`[pool-remove-liquidity] Failed to claim fees: ${feeClaimResult.error}`);
-            return false;
+            return { valid: false, error: 'failed to claim fees' };
         }
 
         const tokenAAmountToReturn = (toBigInt(data.lpTokenAmount) * toBigInt(pool.tokenA_reserve)) / toBigInt(pool.totalLpTokens);
@@ -73,7 +72,7 @@ export async function processTx(data: PoolRemoveLiquidityData, sender: string, t
 
         if (tokenAAmountToReturn <= toBigInt(0) || tokenBAmountToReturn <= toBigInt(0)) {
             logger.error(`[pool-remove-liquidity] Calculated zero or negative tokens to return for ${data.poolId}.`);
-            return false;
+            return { valid: false, error: 'calculated zero or negative tokens to return' };
         }
 
         // Update pool reserves
@@ -92,7 +91,7 @@ export async function processTx(data: PoolRemoveLiquidityData, sender: string, t
 
         if (!poolUpdateSuccess) {
             logger.error(`[pool-remove-liquidity] Failed to update pool reserves for ${data.poolId}.`);
-            return false;
+            return { valid: false, error: 'failed to update pool reserves' };
         }
 
         // Update user LP position
@@ -110,7 +109,7 @@ export async function processTx(data: PoolRemoveLiquidityData, sender: string, t
 
         if (!userPositionUpdateSuccess) {
             logger.error(`[pool-remove-liquidity] CRITICAL: Failed to update user LP position ${userLpPositionId}.`);
-            return false;
+            return { valid: false, error: 'failed to update user LP position' };
         }
 
         // After updating userLiquidityPositions, debit LP tokens from user account
@@ -118,20 +117,20 @@ export async function processTx(data: PoolRemoveLiquidityData, sender: string, t
         const debitLPSuccess = await adjustUserBalance(sender, lpTokenSymbol, -toBigInt(data.lpTokenAmount));
         if (!debitLPSuccess) {
             logger.error(`[pool-remove-liquidity] Failed to debit LP tokens (${lpTokenSymbol}) from ${sender}.`);
-            return false;
+            return { valid: false, error: 'failed to debit LP tokens' };
         }
 
         // Credit the user's account with the withdrawn tokens
         const creditASuccess = await adjustUserBalance(sender, pool.tokenA_symbol, tokenAAmountToReturn);
         if (!creditASuccess) {
             logger.error(`[pool-remove-liquidity] CRITICAL: Failed to credit ${tokenAAmountToReturn} ${pool.tokenA_symbol} to ${sender}.`);
-            return false;
+            return { valid: false, error: 'failed to credit token A' };
         }
 
         const creditBSuccess = await adjustUserBalance(sender, pool.tokenB_symbol, tokenBAmountToReturn);
         if (!creditBSuccess) {
             logger.error(`[pool-remove-liquidity] CRITICAL: Failed to credit ${tokenBAmountToReturn} ${pool.tokenB_symbol} to ${sender}.`);
-            return false;
+            return { valid: false, error: 'failed to credit token B' };
         }
 
         logger.debug(
@@ -154,9 +153,9 @@ export async function processTx(data: PoolRemoveLiquidityData, sender: string, t
             transactionId
         );
 
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[pool-remove-liquidity] Error processing remove liquidity for pool ${data.poolId} by ${sender}: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }

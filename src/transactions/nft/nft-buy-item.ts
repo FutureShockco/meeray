@@ -10,28 +10,28 @@ import { NFTTokenData } from './nft-interfaces.js';
 import { NFTListingData, NftBid, NftBuyPayload } from './nft-market-interfaces.js';
 import { CachedNftCollectionForTransfer } from './nft-transfer.js';
 
-export async function validateTx(data: NftBuyPayload, sender: string): Promise<boolean> {
+export async function validateTx(data: NftBuyPayload, sender: string): Promise<{ valid: boolean; error?: string }> {
     try {
         if (!validate.string(data.listingId, 256, 3)) {
             logger.warn('[nft-buy-item] Invalid listingId.');
-            return false;
+            return { valid: false, error: 'invalid listingId' };
         }
 
         const listing = (await cache.findOnePromise('nftListings', { _id: data.listingId })) as NFTListingData | null;
         if (!listing || listing.status !== 'ACTIVE' || listing.seller === sender) {
             logger.warn(`[nft-buy-item] Invalid listing or seller cannot buy own item.`);
-            return false;
+            return { valid: false, error: 'invalid listing or seller cannot buy own item' };
         }
 
         if (!(await validate.tokenExists(listing.paymentToken))) {
             logger.warn(`[nft-buy-item] Payment token ${listing.paymentToken} does not exist.`);
-            return false;
+            return { valid: false, error: 'payment token does not exist' };
         }
-        
+
         const buyerAccount = await getAccount(sender);
         if (!buyerAccount) {
             logger.warn(`[nft-buy-item] Buyer account ${sender} not found.`);
-            return false;
+            return { valid: false, error: 'buyer account not found' };
         }
 
         const buyerBalance = toBigInt(buyerAccount.balances?.[listing.paymentToken] || 0);
@@ -42,7 +42,7 @@ export async function validateTx(data: NftBuyPayload, sender: string): Promise<b
         if (listing.listingType === 'AUCTION' || listing.listingType === 'RESERVE_AUCTION') {
             if (!data.bidAmount) {
                 logger.warn(`[nft-buy-item] Auction listings require bidAmount.`);
-                return false;
+                return { valid: false, error: 'auction listings require bidAmount' };
             }
 
             const currentHighestBid = await getHighestBid(data.listingId);
@@ -50,18 +50,18 @@ export async function validateTx(data: NftBuyPayload, sender: string): Promise<b
 
             if (!bidValidation.valid || buyerBalance < bidAmount) {
                 logger.warn(`[nft-buy-item] Invalid bid or insufficient balance.`);
-                return false;
+                return { valid: false, error: 'invalid bid or insufficient balance' };
             }
         } else if (buyerBalance < bidAmount) {
             logger.warn(`[nft-buy-item] Insufficient balance.`);
-            return false;
+            return { valid: false, error: 'insufficient balance' };
         }
 
         const fullInstanceId = `${listing.collectionId}_${listing.tokenId}`;
         const nft = (await cache.findOnePromise('nfts', { _id: fullInstanceId })) as NFTTokenData | null;
         if (!nft || nft.owner !== listing.seller) {
             logger.warn(`[nft-buy-item] NFT not found or owner mismatch.`);
-            return false;
+            return { valid: false, error: 'NFT not found or owner mismatch' };
         }
 
         const collection = (await cache.findOnePromise('nftCollections', {
@@ -69,17 +69,17 @@ export async function validateTx(data: NftBuyPayload, sender: string): Promise<b
         })) as CachedNftCollectionForTransfer | null;
         if (!collection || collection.transferable === false) {
             logger.warn(`[nft-buy-item] Collection not found or not transferable.`);
-            return false;
+            return { valid: false, error: 'collection not found or not transferable' };
         }
 
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[nft-buy-item] Error validating: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }
 
-export async function processTx(data: NftBuyPayload, sender: string, id: string, timestamp: number): Promise<boolean> {
+export async function processTx(data: NftBuyPayload, sender: string, id: string, timestamp: number): Promise<{ valid: boolean; error?: string }> {
     try {
         const listing = (await cache.findOnePromise('nftListings', {
             _id: data.listingId,
@@ -90,13 +90,15 @@ export async function processTx(data: NftBuyPayload, sender: string, id: string,
         const isImmediatePurchase = bidAmount >= listingPrice || (listing.listingType === 'FIXED_PRICE' && !data.bidAmount);
 
         if (isImmediatePurchase) {
-            return await executeImmediatePurchase(listing, sender, bidAmount, id);
+            const result = await executeImmediatePurchase(listing, sender, bidAmount, id);
+            return result ? { valid: true } : { valid: false, error: 'failed to execute purchase' };
         } else {
-            return await submitBid(listing, sender, bidAmount, id, timestamp);
+            const result = await submitBid(listing, sender, bidAmount, id, timestamp);
+            return result ? { valid: true } : { valid: false, error: 'failed to submit bid' };
         }
     } catch (error) {
         logger.error(`[nft-buy-item] Error processing: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }
 

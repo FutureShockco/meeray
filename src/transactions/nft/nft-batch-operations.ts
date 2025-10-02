@@ -5,18 +5,18 @@ import { processTx as processList, validateTx as validateListTx } from './nft-li
 import { NftBatchPayload } from './nft-market-interfaces.js';
 import { processTx as processTransfer, validateTx as validateTransferTx } from './nft-transfer.js';
 
-export async function validateTx(data: NftBatchPayload, sender: string): Promise<boolean> {
+export async function validateTx(data: NftBatchPayload, sender: string): Promise<{ valid: boolean; error?: string }> {
     try {
         if (!data.operations?.length || data.operations.length > 50) {
             logger.warn('[nft-batch] Invalid operations array or too many operations (max 50).');
-            return false;
+            return { valid: false, error: 'invalid operations array or too many operations' };
         }
 
         for (let i = 0; i < data.operations.length; i++) {
             const op = data.operations[i];
             if (!op.operation || !op.data) {
                 logger.warn(`[nft-batch] Invalid operation at index ${i}.`);
-                return false;
+                return { valid: false, error: 'invalid operation' };
             }
 
             // normalize operation name locally to avoid mutating types
@@ -24,10 +24,10 @@ export async function validateTx(data: NftBatchPayload, sender: string): Promise
             const validOperations = ['LIST', 'DELIST', 'BUY', 'BID', 'TRANSFER'];
             if (!validOperations.includes(opName)) {
                 logger.warn(`[nft-batch] Invalid operation type: ${op.operation}.`);
-                return false;
+                return { valid: false, error: 'invalid operation type' };
             }
 
-            let isValid = false;
+            let isValid = { valid: false };
             try {
                 switch (opName) {
                     case 'LIST':
@@ -46,58 +46,58 @@ export async function validateTx(data: NftBatchPayload, sender: string): Promise
                 }
             } catch (error) {
                 logger.warn(`[nft-batch] Validation error at index ${i}: ${error}`);
-                return false;
+                return { valid: false, error: 'validation error' };
             }
 
             if (!isValid) {
                 logger.warn(`[nft-batch] Validation failed for operation ${i}: ${op.operation}.`);
-                return false;
+                return { valid: false, error: 'validation failed' };
             }
         }
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[nft-batch] Error validating batch: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }
-export async function processTx(data: NftBatchPayload, sender: string, id: string, timestamp: number): Promise<boolean> {
+export async function processTx(data: NftBatchPayload, sender: string, id: string, timestamp: number): Promise<{ valid: boolean; error?: string }> {
     try {
         const isAtomic = data.atomic !== false;
 
         for (let i = 0; i < data.operations.length; i++) {
             const op = data.operations[i];
-            let success = false;
+            let success = { valid: false };
 
             try {
                 const opId = `${id}_${i}`;
                 switch (op.operation) {
                     case 'LIST':
-                        success = (await processList(op.data, sender, opId)) !== null;
+                        success = { valid: (await processList(op.data, sender, opId)) !== null };
                         break;
                     case 'DELIST':
-                        success = await processDelist(op.data, sender, opId);
+                        success = { valid: await processDelist(op.data, sender, opId) !== null };
                         break;
                     case 'BUY':
                     case 'BID':
-                        success = await processBuy(op.data, sender, opId, timestamp);
+                        success = { valid: await processBuy(op.data, sender, opId, timestamp) !== null };
                         break;
                     case 'TRANSFER':
-                        success = await processTransfer(op.data, sender, opId);
+                        success = { valid: await processTransfer(op.data, sender, opId) !== null };
                         break;
                 }
             } catch (error) {
                 logger.error(`[nft-batch] Error processing operation ${i}: ${error}`);
-                success = false;
+                success = { valid: false };
             }
 
-            if (!success && isAtomic) {
+            if (!success.valid && isAtomic) {
                 logger.error(`[nft-batch] Operation ${i} failed in atomic mode.`);
-                return false;
+                return { valid: false, error: 'operation failed in atomic mode' };
             }
         }
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[nft-batch] Error processing batch: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }

@@ -7,26 +7,26 @@ export interface LaunchpadFinalizePresaleData {
     launchpadId: string;
 }
 
-export async function validateTx(data: LaunchpadFinalizePresaleData, sender: string): Promise<boolean> {
+export async function validateTx(data: LaunchpadFinalizePresaleData, sender: string): Promise<{ valid: boolean; error?: string }> {
     try {
         // Only launchpad owner may finalize presale; validate against launchpad owner
         const lp = await cache.findOnePromise('launchpads', { _id: data.launchpadId });
-        if (!lp) return false;
-        if (lp.issuer !== sender) return false;
-        if (!lp.presale || !lp.presaleDetailsSnapshot) return false;
+        if (!lp) return { valid: false, error: 'launchpad not found' };
+        if (lp.issuer !== sender) return { valid: false, error: 'not launchpad owner' };
+        if (!lp.presale || !lp.presaleDetailsSnapshot) return { valid: false, error: 'presale not configured' };
         // Must be ended
-        if (lp.status !== LaunchpadStatus.PRESALE_ENDED) return false;
-        return true;
+        if (lp.status !== LaunchpadStatus.PRESALE_ENDED) return { valid: false, error: 'presale not ended' };
+        return { valid: true };
     } catch (e) {
         logger.error('[launchpad-finalize-presale] validate error', e);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }
 
-export async function processTx(data: LaunchpadFinalizePresaleData, _sender: string): Promise<boolean> {
+export async function processTx(data: LaunchpadFinalizePresaleData, _sender: string): Promise<{ valid: boolean; error?: string }> {
     try {
         const lp = await cache.findOnePromise('launchpads', { _id: data.launchpadId });
-        if (!lp || !lp.presale || !lp.presaleDetailsSnapshot) return false;
+        if (!lp || !lp.presale || !lp.presaleDetailsSnapshot) return { valid: false, error: 'launchpad or presale missing' };
 
         const price = toBigInt(lp.presaleDetailsSnapshot.pricePerToken);
         const tokenDecimals = toBigInt(lp.tokenomicsSnapshot.tokenDecimals || 0);
@@ -56,9 +56,9 @@ export async function processTx(data: LaunchpadFinalizePresaleData, _sender: str
                 },
             }
         );
-        return !!ok;
+        return ok ? { valid: true } : { valid: false, error: 'update failed' };
     } catch (e) {
         logger.error('[launchpad-finalize-presale] process error', e);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }

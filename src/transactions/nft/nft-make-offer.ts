@@ -17,59 +17,59 @@ function generateOfferId(targetType: string, targetId: string, offerBy: string, 
     return crypto.createHash('sha256').update(`${targetType}_${targetId}_${offerBy}_${ts}`).digest('hex').substring(0, 16);
 }
 
-export async function validateTx(data: NftMakeOfferData, sender: string): Promise<boolean> {
+export async function validateTx(data: NftMakeOfferData, sender: string): Promise<{ valid: boolean; error?: string }> {
     try {
         if (!data.targetType) {
             logger.warn('[nft-make-offer] Invalid targetType.');
-            return false;
+            return { valid: false, error: 'invalid targetType' };
         }
         const targetType = String(data.targetType).toLowerCase();
         if (!['nft', 'collection', 'trait'].includes(targetType)) {
             logger.warn('[nft-make-offer] Invalid targetType.');
-            return false;
+            return { valid: false, error: 'invalid targetType' };
         }
 
         if (!data.targetId || !validate.string(data.targetId, 256, 3)) {
             logger.warn('[nft-make-offer] Invalid targetId.');
-            return false;
+            return { valid: false, error: 'invalid targetId' };
         }
 
         if (!data.offerAmount || !validate.string(data.offerAmount, 64, 1)) {
             logger.warn('[nft-make-offer] Invalid offerAmount.');
-            return false;
+            return { valid: false, error: 'invalid offerAmount' };
         }
 
         if (!data.paymentToken || !validate.string(data.paymentToken, 64, 1)) {
             logger.warn('[nft-make-offer] Invalid paymentToken.');
-            return false;
+            return { valid: false, error: 'invalid paymentToken' };
         }
 
         // Validate payment token
         const paymentToken = await getToken(data.paymentToken);
         if (!paymentToken) {
             logger.warn(`[nft-make-offer] Payment token ${data.paymentToken} not found.`);
-            return false;
+            return { valid: false, error: 'payment token not found' };
         }
 
         // Validate offer amount
         const offerAmount = toBigInt(data.offerAmount);
         if (offerAmount <= 0n) {
             logger.warn('[nft-make-offer] Offer amount must be positive.');
-            return false;
+            return { valid: false, error: 'invalid offer amount' };
         }
 
         // Check sender balance
         const senderAccount = await getAccount(sender);
         if (!senderAccount) {
             logger.warn(`[nft-make-offer] Sender account ${sender} not found.`);
-            return false;
+            return { valid: false, error: 'sender account not found' };
         }
 
         const senderBalance = toBigInt(senderAccount.balances?.[paymentToken.symbol] || 0);
 
         if (senderBalance < offerAmount) {
             logger.warn('[nft-make-offer] Insufficient balance for offer.');
-            return false;
+            return { valid: false, error: 'insufficient balance' };
         }
 
         // Validate target based on type (use normalized targetType)
@@ -78,12 +78,12 @@ export async function validateTx(data: NftMakeOfferData, sender: string): Promis
             const nft = (await cache.findOnePromise('nfts', { _id: data.targetId })) as NFTTokenData | null;
             if (!nft) {
                 logger.warn(`[nft-make-offer] NFT ${data.targetId} not found.`);
-                return false;
+                return { valid: false, error: 'nft not found' };
             }
 
             if (nft.owner === sender) {
                 logger.warn('[nft-make-offer] Cannot make offer on own NFT.');
-                return false;
+                return { valid: false, error: 'cannot make offer on own nft' };
             }
 
             // Check if NFT collection is transferable
@@ -95,31 +95,31 @@ export async function validateTx(data: NftMakeOfferData, sender: string): Promis
             })) as CachedNftCollectionForTransfer | null;
             if (!collection || collection.transferable === false) {
                 logger.warn(`[nft-make-offer] Collection ${collectionSymbol} is not transferable.`);
-                return false;
+                return { valid: false, error: 'collection not transferable' };
             }
         } else if (targetType === 'collection') {
             // For collection offers, validate collection exists
             const collection = await cache.findOnePromise('nftCollections', { _id: data.targetId });
             if (!collection) {
                 logger.warn(`[nft-make-offer] Collection ${data.targetId} not found.`);
-                return false;
+                return { valid: false, error: 'collection not found' };
             }
 
             if (collection.transferable === false) {
                 logger.warn(`[nft-make-offer] Collection ${data.targetId} is not transferable.`);
-                return false;
+                return { valid: false, error: 'collection not transferable' };
             }
         } else if (targetType === 'trait') {
             // For trait offers, validate collection exists and traits are provided
             if (!data.traits || Object.keys(data.traits).length === 0) {
                 logger.warn('[nft-make-offer] Trait offers require traits specification.');
-                return false;
+                return { valid: false, error: 'traits specification required' };
             }
 
             const collection = await cache.findOnePromise('nftCollections', { _id: data.targetId });
             if (!collection) {
                 logger.warn(`[nft-make-offer] Collection ${data.targetId} not found for trait offer.`);
-                return false;
+                return { valid: false, error: 'collection not found' };
             }
         }
 
@@ -128,18 +128,18 @@ export async function validateTx(data: NftMakeOfferData, sender: string): Promis
             const expirationDate = new Date(data.expiresAt);
             if (expirationDate <= new Date()) {
                 logger.warn('[nft-make-offer] Expiration date must be in the future.');
-                return false;
+                return { valid: false, error: 'invalid expiration date' };
             }
         }
 
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[nft-make-offer] Error validating: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }
 
-export async function processTx(data: NftMakeOfferData, sender: string, _id: string, timestamp: number): Promise<boolean> {
+export async function processTx(data: NftMakeOfferData, sender: string, _id: string, timestamp: number): Promise<{ valid: boolean; error?: string }> {
     try {
         const offerAmount = toBigInt(data.offerAmount);
 
@@ -163,7 +163,7 @@ export async function processTx(data: NftMakeOfferData, sender: string, _id: str
         // Escrow funds for new offer
         if (!(await adjustUserBalance(sender, data.paymentToken, -offerAmount))) {
             logger.error(`[nft-make-offer] Failed to escrow ${offerAmount} ${data.paymentToken} from ${sender}.`);
-            return false;
+            return { valid: false, error: 'failed to escrow funds' };
         }
 
         // Create offer document
@@ -204,7 +204,7 @@ export async function processTx(data: NftMakeOfferData, sender: string, _id: str
             // Rollback escrow
             await adjustUserBalance(sender, data.paymentToken, offerAmount);
             logger.error(`[nft-make-offer] Failed to insert offer document.`);
-            return false;
+            return { valid: false, error: 'failed to insert offer document' };
         }
 
         // Log event
@@ -220,9 +220,9 @@ export async function processTx(data: NftMakeOfferData, sender: string, _id: str
             createdAt: new Date().toISOString(),
         });
 
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[nft-make-offer] Error processing: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }

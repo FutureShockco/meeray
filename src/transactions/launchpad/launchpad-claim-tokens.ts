@@ -6,19 +6,19 @@ import { logEvent } from '../../utils/event-logger.js';
 import { calculateUserAllocation, calculateVestedAmount, parseSteemTimestamp } from '../../utils/vesting.js';
 import { LaunchpadClaimTokensData, LaunchpadStatus, TokenDistributionRecipient } from './launchpad-interfaces.js';
 
-export async function validateTx(data: LaunchpadClaimTokensData, sender: string, _blockTimestamp: string): Promise<boolean> {
+export async function validateTx(data: LaunchpadClaimTokensData, sender: string, _blockTimestamp: string): Promise<{ valid: boolean; error?: string }> {
     logger.debug(`[launchpad-claim-tokens] Validating claim from ${sender} for launchpad ${data.launchpadId}, type ${data.allocationType}`);
     // Sender is the claimant; payload `userId` is optional/back-compat. Use sender for checks below.
 
-    if (!data.launchpadId || !data.allocationType) {
+        if (!data.launchpadId || !data.allocationType) {
         logger.warn('[launchpad-claim-tokens] Missing required fields: launchpadId, allocationType.');
-        return false;
+        return { valid: false, error: 'missing required fields' };
     }
 
     const launchpad = await cache.findOnePromise('launchpads', { _id: data.launchpadId });
     if (!launchpad) {
         logger.warn(`[launchpad-claim-tokens] Launchpad project ${data.launchpadId} not found.`);
-        return false;
+        return { valid: false, error: 'launchpad not found' };
     }
 
     const claimableStatuses = [
@@ -31,76 +31,76 @@ export async function validateTx(data: LaunchpadClaimTokensData, sender: string,
 
     if (!claimableStatuses.includes(launchpad.status)) {
         logger.warn(`[launchpad-claim-tokens] Launchpad ${data.launchpadId} is not in a claimable status. Current status: ${launchpad.status}`);
-        return false;
+        return { valid: false, error: 'launchpad not claimable' };
     }
 
     if (!launchpad.mainTokenId) {
         logger.warn(`[launchpad-claim-tokens] Main token ID not yet set for launchpad ${data.launchpadId}.`);
-        return false;
+        return { valid: false, error: 'main token not set' };
     }
 
     // Validate specific allocation types — sender is the claimant
     if (data.allocationType === TokenDistributionRecipient.PRESALE_PARTICIPANTS) {
         if (!launchpad.presale || !launchpad.presale.participants) {
             logger.warn(`[launchpad-claim-tokens] No presale participant data found for ${data.launchpadId}.`);
-            return false;
+            return { valid: false, error: 'no presale participants' };
         }
         const participant = launchpad.presale.participants.find((p: any) => p.userId === sender);
         if (!participant) {
             logger.warn(`[launchpad-claim-tokens] Sender ${sender} not found in presale participants for ${data.launchpadId}.`);
-            return false;
+            return { valid: false, error: 'not a presale participant' };
         }
     } else if (data.allocationType === TokenDistributionRecipient.AIRDROP_REWARDS) {
         if (!launchpad.airdropRecipients) {
             logger.warn(`[launchpad-claim-tokens] No airdrop recipients found for ${data.launchpadId}.`);
-            return false;
+            return { valid: false, error: 'no airdrop recipients' };
         }
         const airdropRecipient = launchpad.airdropRecipients.find((r: any) => r.username === sender);
         if (!airdropRecipient) {
             logger.warn(`[launchpad-claim-tokens] Sender ${sender} not found in airdrop recipients for ${data.launchpadId}.`);
-            return false;
+            return { valid: false, error: 'not an airdrop recipient' };
         }
         if (airdropRecipient.claimed) {
             logger.warn(`[launchpad-claim-tokens] Sender ${sender} has already claimed airdrop tokens for ${data.launchpadId}.`);
-            return false;
+            return { valid: false, error: 'already claimed' };
         }
     } else {
         // For other allocations (team, advisors, etc.), check if tokenomics exists and user has permission
         if (!launchpad.tokenomicsSnapshot?.allocations) {
             logger.warn(`[launchpad-claim-tokens] No tokenomics configured for ${data.launchpadId}.`);
-            return false;
+            return { valid: false, error: 'no tokenomics configured' };
         }
 
         const allocation = launchpad.tokenomicsSnapshot.allocations.find((a: any) => a.recipient === data.allocationType);
         if (!allocation) {
             logger.warn(`[launchpad-claim-tokens] No allocation found for type ${data.allocationType} in ${data.launchpadId}.`);
-            return false;
+            return { valid: false, error: 'allocation not found' };
         }
 
         // For simplicity, assume project owner can claim team/advisor allocations
         // In production, you'd want more sophisticated access control
         if (sender !== launchpad.issuer) {
             logger.warn(`[launchpad-claim-tokens] Only project owner can claim ${data.allocationType} tokens.`);
-            return false;
+            return { valid: false, error: 'only owner can claim' };
         }
     }
 
     logger.debug('[launchpad-claim-tokens] Validation passed.');
-    return true;
+    return { valid: true };
 }
 
-export async function processTx(data: LaunchpadClaimTokensData, sender: string, transactionId: string, blockTimestamp: string): Promise<boolean> {
+export async function processTx(data: LaunchpadClaimTokensData, sender: string, transactionId: string, blockTimestamp: string): Promise<{ valid: boolean; error?: string }> {
     logger.debug(`[launchpad-claim-tokens] Processing claim from ${sender} for ${data.launchpadId}, type ${data.allocationType}`);
 
     try {
         const launchpad = await cache.findOnePromise('launchpads', { _id: data.launchpadId });
-        if (!launchpad) return false;
+    if (!launchpad) return { valid: false, error: 'launchpad not found' };
 
         const currentTimestamp = parseSteemTimestamp(blockTimestamp);
         const tokenInfo = await cache.findOnePromise('tokens', { _id: launchpad.mainTokenId });
         if (!tokenInfo) {
             logger.error(`[launchpad-claim-tokens] Token information for ${launchpad.mainTokenId} not found.`);
-            return false;
+            return { valid: false, error: 'token info not found' };
         }
 
         let tokensToMint = toBigInt(0);
@@ -112,13 +112,13 @@ export async function processTx(data: LaunchpadClaimTokensData, sender: string, 
             const participant = launchpad.presale.participants.find((p: any) => p.userId === sender);
             if (!participant || participant.claimed) {
                 logger.error(`[launchpad-claim-tokens] Sender ${sender} already claimed or not found in presale participants.`);
-                return false;
+                return { valid: false, error: 'participant not found or already claimed' };
             }
 
             tokensToMint = toBigInt(participant.tokensAllocated || '0');
             if (tokensToMint <= toBigInt(0)) {
                 logger.warn(`[launchpad-claim-tokens] No tokens allocated for presale participant ${sender}.`);
-                return false;
+                return { valid: false, error: 'no tokens allocated' };
             }
 
             // Mark participant as claimed
@@ -129,7 +129,7 @@ export async function processTx(data: LaunchpadClaimTokensData, sender: string, 
             const airdropRecipient = launchpad.airdropRecipients?.find((r: any) => r.username === sender);
             if (!airdropRecipient || airdropRecipient.claimed) {
                 logger.error(`[launchpad-claim-tokens] Airdrop recipient ${sender} already claimed or not found.`);
-                return false;
+                return { valid: false, error: 'airdrop recipient not found or already claimed' };
             }
 
             tokensToMint = toBigInt(airdropRecipient.amount);
@@ -142,7 +142,7 @@ export async function processTx(data: LaunchpadClaimTokensData, sender: string, 
             const allocation = launchpad.tokenomicsSnapshot?.allocations?.find((a: any) => a.recipient === data.allocationType);
             if (!allocation) {
                 logger.error(`[launchpad-claim-tokens] No allocation found for ${data.allocationType}.`);
-                return false;
+                return { valid: false, error: 'allocation not found' };
             }
 
             // Get or create vesting state
@@ -183,7 +183,7 @@ export async function processTx(data: LaunchpadClaimTokensData, sender: string, 
 
             if (tokensToMint <= toBigInt(0)) {
                 logger.warn(`[launchpad-claim-tokens] No tokens available to claim for ${sender}. Still locked: ${vestingResult.stillLocked}`);
-                return false;
+                return { valid: false, error: 'no vested tokens available' };
             }
 
             // Update vesting state
@@ -211,7 +211,7 @@ export async function processTx(data: LaunchpadClaimTokensData, sender: string, 
         const success = await adjustUserBalance(sender, launchpad.mainTokenId, tokensToMint);
         if (!success) {
             logger.error(`[launchpad-claim-tokens] Failed to mint ${tokensToMint} tokens to ${sender}.`);
-            return false;
+            return { valid: false, error: 'failed to mint tokens' };
         }
 
         // Update launchpad if needed
@@ -228,9 +228,9 @@ export async function processTx(data: LaunchpadClaimTokensData, sender: string, 
         });
 
         logger.debug(`[launchpad-claim-tokens] Successfully claimed ${tokensToMint} tokens for ${sender}.`);
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[launchpad-claim-tokens] Error processing: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }

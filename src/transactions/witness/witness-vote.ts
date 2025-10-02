@@ -3,25 +3,25 @@ import config from '../../config.js';
 import logger from '../../logger.js';
 import { toBigInt, toDbString } from '../../utils/bigint.js';
 
-export async function validateTx(data: { target: string }, sender: string): Promise<boolean> {
+export async function validateTx(data: { target: string }, sender: string): Promise<{ valid: boolean; error?: string }> {
     try {
         const senderAccount = await cache.findOnePromise('accounts', { name: sender });
         if (senderAccount?.votedWitnesses?.length >= config.maxWitnesses) {
             logger.warn(`Invalid witness vote: ${sender} already voting for ${senderAccount?.votedWitnesses?.length} witnesses`);
-            return false;
+            return { valid: false, error: 'max witnesses reached' };
         }
         if (senderAccount?.votedWitnesses?.includes(data.target)) {
             logger.warn(`Invalid witness vote: ${sender} already voting for witness ${data.target}`);
-            return false;
+            return { valid: false, error: 'already voting for target' };
         }
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`Error validating witness vote: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }
 
-export async function processTx(data: { target: string }, sender: string): Promise<boolean> {
+export async function processTx(data: { target: string }, sender: string): Promise<{ valid: boolean; error?: string }> {
     try {
         const senderAccount = await cache.findOnePromise('accounts', { name: sender });
         const originalVotedWitnesses = [...senderAccount!.votedWitnesses];
@@ -51,13 +51,13 @@ export async function processTx(data: { target: string }, sender: string): Promi
             const currentTargetVoteWeightStr = targetAccount!.totalVoteWeight || toBigInt(0);
             const finalTargetVoteWeightBigInt = toBigInt(currentTargetVoteWeightStr) + newSharePerWitnessBigIntCalculated;
             await cache.updateOnePromise('accounts', { name: data.target }, { $set: { totalVoteWeight: toDbString(finalTargetVoteWeightBigInt) } });
-            return true;
+            return { valid: true };
         } catch (updateError: any) {
             logger.error('Error updating accounts during witness vote:', updateError);
-            return false;
+            return { valid: false, error: 'internal error' };
         }
     } catch (error: any) {
         logger.error('Error processing witness vote:', error);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }

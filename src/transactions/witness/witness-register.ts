@@ -2,13 +2,13 @@ import cache from '../../cache.js';
 import { isValidPubKey } from '../../crypto.js';
 import logger from '../../logger.js';
 
-export async function validateTx(data: { pub: string }, sender: string): Promise<boolean> {
+export async function validateTx(data: { pub: string }, sender: string): Promise<{ valid: boolean; error?: string }> {
     try {
         if (!isValidPubKey(data.pub)) {
             logger.warn(
                 `[witness-register:validation] Invalid witness register: public key not provided or invalid format for sender ${sender}. Pub: ${data.pub}`
             );
-            return false;
+            return { valid: false, error: 'invalid public key format' };
         }
         const existingWitnessWithKey = await cache.findOnePromise('accounts', {
             witnessPubKey: data.pub,
@@ -16,28 +16,25 @@ export async function validateTx(data: { pub: string }, sender: string): Promise
         });
         if (existingWitnessWithKey) {
             logger.warn(`[witness-register:validation] Invalid witness register: public key ${data.pub} already in use by ${existingWitnessWithKey.name}.`);
-            return false;
+            return { valid: false, error: 'public key already in use' };
         }
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[witness-register:validation] Error validating witness register: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }
 
-export async function processTx(data: { pub: string }, sender: string): Promise<boolean> {
+export async function processTx(data: { pub: string }, sender: string): Promise<{ valid: boolean; error?: string }> {
     try {
         await cache.updateOnePromise('accounts', { name: sender }, { $set: { witnessPublicKey: data.pub } });
-        try {
-            await cache.addWitness(sender, false);
-            logger.info(`[witness-register:process] Successfully registered witness: ${sender} with public key: ${data.pub}`);
-            return true;
-        } catch (err) {
-            logger.error(`[witness-register:process] Error adding witness ${sender} to cache: ${err}`);
-            return false;
-        }
+
+        await cache.addWitness(sender, false);
+        logger.info(`[witness-register:process] Successfully registered witness: ${sender} with public key: ${data.pub}`);
+        return { valid: true };
+
     } catch (error) {
         logger.error(`[witness-register:process] Error processing witness register: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }

@@ -9,64 +9,64 @@ import { FarmData, FarmUpdateData, UserFarmPositionData } from './farm-interface
 import { recalculateNativeFarmRewards } from '../../utils/farm.js';
 
 
-export async function validateTx(data: FarmUpdateData, sender: string): Promise<boolean> {
+export async function validateTx(data: FarmUpdateData, sender: string): Promise<{ valid: boolean; error?: string }> {
     if (!data.farmId) {
         logger.warn('[farm-update] Missing farmId.');
-        return false;
+        return { valid: false, error: 'missing farmId' };
     }
 
     if (data.newWeight === undefined && data.newStatus === undefined) {
         logger.warn('[farm-update] Nothing to update: newWeight or newStatus required.');
-        return false;
+        return { valid: false, error: 'nothing to update' };
     }
 
     const farm = await cache.findOnePromise('farms', { _id: data.farmId });
     if (!farm) {
         logger.warn(`[farm-update] Farm ${data.farmId} not found.`);
-        return false;
+        return { valid: false, error: 'farm not found' };
     }
 
     if (farm.creator !== sender) {
         logger.warn(`[farm-update] Only the farm creator (${farm.creator}) can update the farm. Sender: ${sender}`);
-        return false;
+        return { valid: false, error: 'not farm creator' };
     }
 
     if (data.newWeight !== undefined) {
         if (!validate.integer(data.newWeight, true, false, 1000, 0)) {
             logger.warn(`[farm-update] Invalid weight: ${data.newWeight}. Must be between 0-1000.`);
-            return false;
+            return { valid: false, error: 'invalid weight' };
         }
         if (!farm.isNativeFarm) {
             logger.warn(`[farm-update] Farm ${data.farmId} is not a native farm. Weights only apply to native farms.`);
-            return false;
+            return { valid: false, error: 'not native farm' };
         }
     }
 
     if (data.newStatus !== undefined) {
         if (!['active', 'paused', 'cancelled'].includes(data.newStatus)) {
             logger.warn(`[farm-update] Invalid status: ${data.newStatus}.`);
-            return false;
+            return { valid: false, error: 'invalid status' };
         }
         if (farm.status === 'cancelled') {
             logger.warn(`[farm-update] Cannot update a cancelled farm ${data.farmId}.`);
-            return false;
+            return { valid: false, error: 'farm cancelled' };
         }
         if (farm.status === data.newStatus) {
             logger.warn(`[farm-update] Farm ${data.farmId} is already in status ${data.newStatus}.`);
-            return false;
+            return { valid: false, error: 'farm already in status' };
         }
         if (data.newStatus === 'active') {
             const currentBlockNum = await chain.getLatestBlock()._id;
             if (currentBlockNum < (farm.startBlock || 0)) {
                 logger.warn(`[farm-update] Cannot activate farm ${data.farmId} before its start block ${farm.startBlock}. Current block: ${currentBlockNum}`);
-                return false;
+                return { valid: false, error: 'farm not yet started' };
             }
         }
     }
-    return true;
+    return { valid: true };
 }
 
-export async function processTx(data: FarmUpdateData, sender: string, _transactionId: string): Promise<boolean> {
+export async function processTx(data: FarmUpdateData, sender: string, _transactionId: string): Promise<{ valid: boolean; error?: string }> {
     logger.debug(`[farm-update] Processing update from ${sender} for farm ${data.farmId}`);
 
     try {
@@ -139,7 +139,7 @@ export async function processTx(data: FarmUpdateData, sender: string, _transacti
 
         if (!result) {
             logger.error(`[farm-update] Failed to update farm ${data.farmId}.`);
-            return false;
+            return { valid: false, error: 'update failed' };
         }
 
         await logEvent('farm', 'updated', sender, {
@@ -158,18 +158,18 @@ export async function processTx(data: FarmUpdateData, sender: string, _transacti
                 const recalcOk = await recalculateNativeFarmRewards();
                 if (!recalcOk) {
                     logger.error('[farm-update] Recalculation of native farm rewards failed after update; aborting transaction to trigger rollback.');
-                    return false;
+                    return { valid: false, error: 'recalculation failed' };
                 }
                 logger.debug('[farm-update] Recalculated native farm rewards after update.');
             } catch (err) {
                 logger.error(`[farm-update] Error recalculating native farm rewards: ${err}; aborting transaction to trigger rollback.`);
-                return false;
+                return { valid: false, error: 'internal error' };
             }
         }
 
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[farm-update] Error processing: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }

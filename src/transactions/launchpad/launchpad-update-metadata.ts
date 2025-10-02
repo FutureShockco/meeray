@@ -4,54 +4,54 @@ import { logEvent } from '../../utils/event-logger.js';
 import validate from '../../validation/index.js';
 import { LaunchpadUpdateMetadataData } from './launchpad-interfaces.js';
 
-export async function validateTx(data: LaunchpadUpdateMetadataData, sender: string): Promise<boolean> {
+export async function validateTx(data: LaunchpadUpdateMetadataData, sender: string): Promise<{ valid: boolean; error?: string }> {
     logger.debug(`[launchpad-update-metadata] Validating metadata update from ${sender} for launchpad ${data.launchpadId}`);
     // Don't rely on payload userId; validate that sender is launchpad owner after fetching launchpad
     if (!data.launchpadId) {
         logger.warn('[launchpad-update-metadata] Missing required field: launchpadId.');
-        return false;
+        return { valid: false, error: 'missing launchpadId' };
     }
 
     const launchpad = await cache.findOnePromise('launchpads', { _id: data.launchpadId });
     if (!launchpad) {
         logger.warn(`[launchpad-update-metadata] Launchpad ${data.launchpadId} not found.`);
-        return false;
+        return { valid: false, error: 'launchpad not found' };
     }
 
     if (launchpad.issuer !== sender) {
         logger.warn(`[launchpad-update-metadata] Only launchpad owner can update metadata.`);
-        return false;
+        return { valid: false, error: 'not launchpad owner' };
     }
 
     // Validate optional fields if provided
     if (data.tokenDescription && !validate.string(data.tokenDescription, 1000, 0)) {
         logger.warn('[launchpad-update-metadata] tokenDescription too long (max 1000 chars).');
-        return false;
+        return { valid: false, error: 'tokenDescription too long' };
     }
 
     if (data.tokenLogoUrl && (!validate.string(data.tokenLogoUrl, 2048, 10) || !data.tokenLogoUrl.startsWith('http'))) {
         logger.warn('[launchpad-update-metadata] Invalid tokenLogoUrl. Must start with http and be <= 2048 chars.');
-        return false;
+        return { valid: false, error: 'invalid tokenLogoUrl' };
     }
 
     if (data.projectSocials) {
         for (const [platform, url] of Object.entries(data.projectSocials)) {
             if (!validate.string(platform, 32, 1)) {
                 logger.warn('[launchpad-update-metadata] Invalid projectSocials platform name.');
-                return false;
+                return { valid: false, error: 'invalid projectSocials platform' };
             }
             if (!validate.string(url, 2048, 10) || !url.startsWith('http')) {
                 logger.warn('[launchpad-update-metadata] Invalid projectSocials URL.');
-                return false;
+                return { valid: false, error: 'invalid projectSocials url' };
             }
         }
     }
 
     logger.debug('[launchpad-update-metadata] Validation passed.');
-    return true;
+    return { valid: true };
 }
 
-export async function processTx(data: LaunchpadUpdateMetadataData, sender: string, _transactionId: string): Promise<boolean> {
+export async function processTx(data: LaunchpadUpdateMetadataData, sender: string, _transactionId: string): Promise<{ valid: boolean; error?: string }> {
     logger.debug(`[launchpad-update-metadata] Processing metadata update from ${sender} for ${data.launchpadId}`);
 
     try {
@@ -78,7 +78,7 @@ export async function processTx(data: LaunchpadUpdateMetadataData, sender: strin
 
         if (!result) {
             logger.error(`[launchpad-update-metadata] Failed to update launchpad ${data.launchpadId}`);
-            return false;
+            return { valid: false, error: 'update failed' };
         }
 
         await logEvent('launchpad', 'metadata_updated', sender, {
@@ -91,9 +91,9 @@ export async function processTx(data: LaunchpadUpdateMetadataData, sender: strin
         });
 
         logger.debug(`[launchpad-update-metadata] Metadata updated for ${data.launchpadId}`);
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[launchpad-update-metadata] Error processing: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }

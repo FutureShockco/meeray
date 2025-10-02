@@ -6,25 +6,25 @@ import validate from '../../validation/index.js';
 import { MarketCancelOrderData, OrderData, OrderSide, OrderStatus } from './market-interfaces.js';
 import { matchingEngine } from './matching-engine.js';
 
-export async function validateTx(data: MarketCancelOrderData, sender: string): Promise<boolean> {
+export async function validateTx(data: MarketCancelOrderData, sender: string): Promise< { valid: boolean; error?: string } > {
     try {
         logger.debug(`[market-cancel-order] Validating cancellation from ${sender}: ${JSON.stringify(data)}`);
 
         // Validate required fields
         if (!data.orderId || !data.pairId) {
             logger.warn('[market-cancel-order] Missing required fields: orderId, pairId.');
-            return false;
+            return { valid: false, error: 'missing required fields' };
         }
 
         // Validate field formats
         if (!validate.string(data.orderId, 64, 1)) {
             logger.warn(`[market-cancel-order] Invalid orderId format: ${data.orderId}`);
-            return false;
+            return { valid: false, error: 'invalid orderId format' };
         }
 
         if (!validate.string(data.pairId, 128, 1)) {
             logger.warn(`[market-cancel-order] Invalid pairId format: ${data.pairId}`);
-            return false;
+            return { valid: false, error: 'invalid pairId format' };
         }
 
         // Check if order exists and belongs to sender
@@ -36,7 +36,7 @@ export async function validateTx(data: MarketCancelOrderData, sender: string): P
 
         if (!orderFromCache) {
             logger.warn(`[market-cancel-order] Order ${data.orderId} for pair ${data.pairId} by user ${sender} not found or not owned by sender.`);
-            return false;
+            return { valid: false, error: 'order not found or not owned by sender' };
         }
 
         // Check if order is in a cancellable state
@@ -47,25 +47,25 @@ export async function validateTx(data: MarketCancelOrderData, sender: string): P
             orderFromCache.status === OrderStatus.EXPIRED
         ) {
             logger.warn(`[market-cancel-order] Order ${data.orderId} is already in a final state: ${orderFromCache.status}. Cannot cancel.`);
-            return false;
+            return { valid: false, error: 'order is already in a final state' };
         }
 
         // Validate sender account exists
         const userAccount = await getAccount(sender);
         if (!userAccount) {
             logger.warn(`[market-cancel-order] User account ${sender} not found.`);
-            return false;
+            return { valid: false, error: 'user account not found' };
         }
 
         logger.debug('[market-cancel-order] Validation successful.');
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[market-cancel-order] Error validating order cancellation: ${error}`);
-        return false;
+        return { valid: false, error: 'unknown error' };
     }
 }
 
-export async function processTx(data: MarketCancelOrderData, sender: string, _id: string): Promise<boolean> {
+export async function processTx(data: MarketCancelOrderData, sender: string, _id: string): Promise<{ valid: boolean; error?: string }> {
     try {
         logger.debug(`[market-cancel-order] Processing cancellation from ${sender} for order ${data.orderId}`);
 
@@ -81,7 +81,7 @@ export async function processTx(data: MarketCancelOrderData, sender: string, _id
 
         if (!cancelSuccess) {
             logger.error(`[market-cancel-order] Failed to cancel order ${data.orderId} in matching engine.`);
-            return false;
+            return { valid: false, error: 'failed to cancel order in matching engine' };
         }
 
         // Update order status in database
@@ -108,7 +108,7 @@ export async function processTx(data: MarketCancelOrderData, sender: string, _id
 
         if (!updateSuccess) {
             logger.error(`[market-cancel-order] Failed to update order ${data.orderId} status to cancelled.`);
-            return false;
+            return { valid: false, error: 'failed to update order status' };
         }
 
         // If order was partially filled, we need to return locked funds
@@ -133,9 +133,9 @@ export async function processTx(data: MarketCancelOrderData, sender: string, _id
         }
 
         logger.info(`[market-cancel-order] Successfully cancelled order ${data.orderId} for user ${sender}`);
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[market-cancel-order] Error processing order cancellation: ${error}`);
-        return false;
+        return { valid: false, error: 'unknown error' };
     }
 }

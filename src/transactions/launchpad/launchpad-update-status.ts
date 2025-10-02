@@ -29,31 +29,31 @@ const ALLOWED_TRANSITIONS: Record<LaunchpadStatus, LaunchpadStatus[]> = {
     [LaunchpadStatus.CANCELLED]: [],
 };
 
-export async function validateTx(data: LaunchpadUpdateStatusData, sender: string): Promise<boolean> {
+export async function validateTx(data: LaunchpadUpdateStatusData, sender: string): Promise<{ valid: boolean; error?: string }> {
     try {
-        if (!data.launchpadId || !data.newStatus) return false;
+        if (!data.launchpadId || !data.newStatus) return { valid: false, error: 'missing launchpadId or newStatus' };
         // Validate that the sender is the launchpad owner
         const launchpad = await cache.findOnePromise('launchpads', { _id: data.launchpadId });
-        if (!launchpad) return false;
-        if (launchpad.issuer !== sender) return false;
+        if (!launchpad) return { valid: false, error: 'launchpad not found' };
+        if (launchpad.issuer !== sender) return { valid: false, error: 'not launchpad owner' };
         const currentStatus: LaunchpadStatus = launchpad.status;
         const desired = data.newStatus as LaunchpadStatus;
-        if (!(desired in LaunchpadStatus)) return false;
+        if (!(desired in LaunchpadStatus)) return { valid: false, error: 'invalid newStatus' };
 
         const allowed = ALLOWED_TRANSITIONS[currentStatus as LaunchpadStatus] || [];
-        if (!allowed.includes(desired)) return false;
+        if (!allowed.includes(desired)) return { valid: false, error: 'invalid status transition' };
 
-        return true;
+        return { valid: true };
     } catch (e) {
         logger.error('[launchpad-update-status] validate error', e);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }
 
-export async function processTx(data: LaunchpadUpdateStatusData, _sender: string): Promise<boolean> {
+export async function processTx(data: LaunchpadUpdateStatusData, _sender: string): Promise<{ valid: boolean; error?: string }> {
     try {
         const launchpad = await cache.findOnePromise('launchpads', { _id: data.launchpadId });
-        if (!launchpad) return false;
+        if (!launchpad) return { valid: false, error: 'launchpad not found' };
 
         const nowIso = new Date().toISOString();
         const update: any = { status: data.newStatus, updatedAt: nowIso };
@@ -66,10 +66,10 @@ export async function processTx(data: LaunchpadUpdateStatusData, _sender: string
             update['presale.endTimeActual'] = nowIso;
         }
 
-        const ok = await cache.updateOnePromise('launchpads', { _id: data.launchpadId }, { $set: update });
-        return !!ok;
+            const ok = await cache.updateOnePromise('launchpads', { _id: data.launchpadId }, { $set: update });
+            return ok ? { valid: true } : { valid: false, error: 'update failed' };
     } catch (e) {
         logger.error('[launchpad-update-status] process error', e);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }

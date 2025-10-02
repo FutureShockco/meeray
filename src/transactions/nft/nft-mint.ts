@@ -15,36 +15,36 @@ interface CachedNftCollection extends NFTCollectionCreateData {
     // maxSupply is already optional in NFTCollectionCreateData, will be handled as number | undefined
 }
 
-export async function validateTx(data: NFTMintData, sender: string): Promise<boolean> {
+export async function validateTx(data: NFTMintData, sender: string): Promise<{ valid: boolean; error?: string }> {
     try {
         if (!data.collectionSymbol || !data.owner) {
             logger.warn('[nft-mint] Invalid data: Missing required fields (collectionSymbol, owner).');
-            return false;
+            return { valid: false, error: 'missing required fields' };
         }
 
         // Validate collectionSymbol format (consistency with create-collection)
         if (!validate.string(data.collectionSymbol, 10, 3, config.tokenSymbolAllowedChars)) {
             logger.warn(`[nft-mint] Invalid collection symbol format: ${data.collectionSymbol}.`);
-            return false;
+            return { valid: false, error: 'invalid collection symbol' };
         }
         // Validate owner account name format
         if (!validate.string(data.owner, 16, 3)) {
             logger.warn(`[nft-mint] Invalid owner account name format: ${data.owner}.`);
-            return false;
+            return { valid: false, error: 'invalid owner account name' };
         }
 
         if (data.metadata !== undefined && typeof data.metadata !== 'object' || (!validate.json(data.metadata, 2048))) {
             logger.warn('[nft-mint] Invalid uri: incorrect format, or length (10-2048 chars), must start with http or ipfs://.');
-            return false;
+            return { valid: false, error: 'invalid metadata or uri' };
         }
 
         if (data.uri !== undefined && (!validate.string(data.uri, 2048, 10) || !(data.uri.startsWith('http') || data.uri.startsWith('ipfs://')))) {
             logger.warn('[nft-mint] Invalid uri: incorrect format, or length (10-2048 chars), must start with http or ipfs://.');
-            return false;
+            return { valid: false, error: 'invalid uri' };
         }
         if (data.coverUrl !== undefined && (!validate.string(data.coverUrl, 2048, 10) || !data.coverUrl.startsWith('http'))) {
             logger.warn('[nft-mint] Invalid coverUrl: incorrect format, or length (10-2048 chars), must start with http.');
-            return false;
+            return { valid: false, error: 'invalid coverUrl' };
         }
 
 
@@ -52,14 +52,14 @@ export async function validateTx(data: NFTMintData, sender: string): Promise<boo
 
         if (!collectionFromCache) {
             logger.warn(`[nft-mint] Collection ${data.collectionSymbol} not found.`);
-            return false;
+            return { valid: false, error: 'collection not found' };
         }
         // Type assertion after null check
         const collection = collectionFromCache as CachedNftCollection;
 
         if (!collection.mintable) {
             logger.warn(`[nft-mint] Collection ${data.collectionSymbol} is not mintable.`);
-            return false;
+            return { valid: false, error: 'collection not mintable' };
         }
 
         // Handle maxSupply: convert to number for comparison
@@ -78,29 +78,29 @@ export async function validateTx(data: NFTMintData, sender: string): Promise<boo
 
         if (collection.currentSupply >= effectiveMaxSupply && effectiveMaxSupply !== Number.MAX_SAFE_INTEGER) {
             logger.warn(`[nft-mint] Collection ${data.collectionSymbol} has reached its max supply of ${effectiveMaxSupply}.`);
-            return false;
+            return { valid: false, error: 'max supply reached' };
         }
 
         // Sender must be the collection creator to mint (typical initial model, can be changed by roles/permissions later)
         if (collection.creator !== sender) {
             logger.warn(`[nft-mint] Sender ${sender} is not the creator of collection ${data.collectionSymbol}. Only creator can mint.`);
-            return false;
+            return { valid: false, error: 'not collection creator' };
         }
 
         const ownerAccount = await cache.findOnePromise('accounts', { name: data.owner });
         if (!ownerAccount) {
             logger.warn(`[nft-mint] Owner account ${data.owner} not found.`);
-            return false;
+            return { valid: false, error: 'owner account not found' };
         }
 
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[nft-mint] Error validating data for collection ${data.collectionSymbol} by ${sender}: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }
 
-export async function processTx(data: NFTMintData, sender: string, _id: string): Promise<boolean> {
+export async function processTx(data: NFTMintData, sender: string, _id: string): Promise<{ valid: boolean; error?: string }> {
     try {
         const collection = (await cache.findOnePromise('nftCollections', {
             _id: data.collectionSymbol,
@@ -115,7 +115,7 @@ export async function processTx(data: NFTMintData, sender: string, _id: string):
         const existingNft = await cache.findOnePromise('nfts', { _id: fullInstanceId });
         if (existingNft) {
             logger.error(`[nft-mint] NFT with ID ${fullInstanceId} already exists during processing.`);
-            return false;
+            return { valid: false, error: 'nft already exists' };
         }
 
         // Create the NFT instance
@@ -141,7 +141,7 @@ export async function processTx(data: NFTMintData, sender: string, _id: string):
         });
 
         if (!insertSuccess) {
-            return false;
+            return { valid: false, error: 'failed to insert nft' };
         }
 
         const updateCollectionSuccess = await cache.updateOnePromise(
@@ -152,7 +152,7 @@ export async function processTx(data: NFTMintData, sender: string, _id: string):
 
         if (!updateCollectionSuccess) {
             logger.error(`[nft-mint] Failed to update total supply for collection ${data.collectionSymbol}.`);
-            return false;
+            return { valid: false, error: 'failed to update collection supply' };
         }
 
         logger.debug(`[nft-mint] NFT ${fullInstanceId} minted successfully by ${sender} for owner ${data.owner}.`);
@@ -167,9 +167,9 @@ export async function processTx(data: NFTMintData, sender: string, _id: string):
             metadata: data.metadata,
         });
 
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[nft-mint] Error processing NFT mint for ${data.collectionSymbol} by ${sender}: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }

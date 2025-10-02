@@ -13,27 +13,27 @@ import * as poolSwap from '../pool/pool-swap.js';
 import { liquidityAggregator } from './market-aggregator.js';
 import { HybridRoute, HybridTradeData, HybridTradeResult } from './market-interfaces.js';
 
-export async function validateTx(data: HybridTradeData, sender: string): Promise<boolean> {
+export async function validateTx(data: HybridTradeData, sender: string): Promise<{ valid: boolean; error?: string }> {
     try {
         if (!data.tokenIn || !data.tokenOut || data.amountIn === undefined) {
             logger.warn('[hybrid-trade] Invalid data: Missing required fields (tokenIn, tokenOut, amountIn).');
-            return false;
+            return { valid: false, error: 'missing required fields' };
         }
         if (!validate.tokenSymbols([data.tokenIn, data.tokenOut])) {
             logger.warn('[hybrid-trade] Invalid token symbols.');
-            return false;
+            return { valid: false, error: 'invalid token symbols' };
         }
         if (data.tokenIn === data.tokenOut) {
             logger.warn('[hybrid-trade] Cannot trade the same token.');
-            return false;
+            return { valid: false, error: 'cannot trade the same token' };
         }
         if (!(await validate.tokenExists(data.tokenIn)) || !(await validate.tokenExists(data.tokenOut))) {
             logger.warn('[hybrid-trade] Invalid token symbols.');
-            return false;
+            return { valid: false, error: 'invalid token symbols' };
         }
         if (toBigInt(data.amountIn) <= toBigInt(0)) {
             logger.warn('[hybrid-trade] amountIn must be positive.');
-            return false;
+            return { valid: false, error: 'amountIn must be positive' };
         }
 
         // Validate slippage protection vs price specification
@@ -61,19 +61,19 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
             logger.warn(
                 '[hybrid-trade] Cannot specify price together with slippage protection (minAmountOut or maxSlippagePercent). Choose either specific price or slippage protection.'
             );
-            return false;
+            return { valid: false, error: 'cannot specify price together with slippage protection' };
         }
 
         if (!hasPrice && !hasMinAmountOut && !hasMaxSlippage) {
             logger.warn(
                 '[hybrid-trade] Must specify either price, minAmountOut, or maxSlippagePercent. For market orders, maxSlippagePercent is recommended for better user experience.'
             );
-            return false;
+            return { valid: false, error: 'must specify either price, minAmountOut, or maxSlippagePercent' };
         }
 
         if (hasMinAmountOut && hasMaxSlippage) {
             logger.warn('[hybrid-trade] Cannot specify both minAmountOut and maxSlippagePercent. Choose one slippage protection method.');
-            return false;
+            return { valid: false, error: 'cannot specify both minAmountOut and maxSlippagePercent' };
         }
 
         // For market orders (no specific price), prefer maxSlippagePercent over minAmountOut
@@ -85,12 +85,12 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
 
         if (hasPrice && toBigInt(data.price!) <= toBigInt(0)) {
             logger.warn('[hybrid-trade] price must be positive.');
-            return false;
+            return { valid: false, error: 'price must be positive' };
         }
 
         if (hasMinAmountOut && toBigInt(data.minAmountOut!) < toBigInt(0)) {
             logger.warn('[hybrid-trade] minAmountOut cannot be negative.');
-            return false;
+            return { valid: false, error: 'minAmountOut cannot be negative' };
         }
 
         if (hasMinAmountOut) {
@@ -108,19 +108,19 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
 
         if (hasMaxSlippage && (data.maxSlippagePercent! < 0 || data.maxSlippagePercent! > 100)) {
             logger.warn('[hybrid-trade] maxSlippagePercent must be between 0 and 100.');
-            return false;
+            return { valid: false, error: 'maxSlippagePercent must be between 0 and 100' };
         }
 
         const senderAccount = await getAccount(sender);
         if (!senderAccount) {
             logger.warn(`[hybrid-trade] Sender account ${sender} not found.`);
-            return false;
+            return { valid: false, error: 'sender account not found' };
         }
 
         const tokenInBalance = toBigInt((senderAccount!.balances && senderAccount!.balances[data.tokenIn]) || '0');
         if (tokenInBalance < toBigInt(data.amountIn)) {
             logger.warn(`[hybrid-trade] Insufficient balance for ${data.tokenIn}. Required: ${data.amountIn}, Available: ${tokenInBalance}`);
-            return false;
+            return { valid: false, error: 'insufficient balance' };
         }
 
         // Additional route-level validation: ensure user has sufficient funds for ORDERBOOK routes
@@ -133,7 +133,7 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
                     const pair = await cache.findOnePromise('tradingPairs', { _id: obDetails.pairId });
                     if (!pair) {
                         logger.warn(`[hybrid-trade] Validation: Trading pair ${obDetails.pairId} not found for route.`);
-                        return false;
+                        return { valid: false, error: 'trading pair not found' };
                     }
 
                     // Determine side (prefer server-side determination when possible)
@@ -146,7 +146,7 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
                     const orderPriceRaw = data.price !== undefined ? data.price : obDetails.price;
                     if (side === OrderSide.BUY && orderPriceRaw === undefined) {
                         logger.warn('[hybrid-trade] Validation: ORDERBOOK BUY route requires a price to validate required quote balance.');
-                        return false;
+                        return { valid: false, error: 'missing required fields' };
                     }
 
                     const allocation = route.allocation || 100;
@@ -176,11 +176,11 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
                         logger.warn(
                             `[hybrid-trade] Insufficient balance for ${requiredToken}. Required: ${requiredAmount}, Available: ${senderBalForRequired} (needed for ORDERBOOK route)`
                         );
-                        return false;
+                        return { valid: false, error: 'insufficient balance' };
                     }
                 } catch (err) {
                     logger.error(`[hybrid-trade] Error during route-level validation: ${err}`);
-                    return false;
+                    return { valid: false, error: 'route-level validation error' };
                 }
             }
         }
@@ -189,13 +189,13 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
             const totalAllocation = data.routes.reduce((sum, route) => sum + route.allocation, 0);
             if (Math.abs(totalAllocation - 100) > 0.01) {
                 logger.warn('[hybrid-trade] Route allocations must sum to 100%.');
-                return false;
+                return { valid: false, error: 'invalid route allocations' };
             }
 
             for (const route of data.routes) {
                 if (route.allocation <= 0 || route.allocation > 100) {
                     logger.warn('[hybrid-trade] Route allocation must be between 0 and 100.');
-                    return false;
+                    return { valid: false, error: 'invalid route allocation' };
                 }
             }
         } else {
@@ -203,7 +203,7 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
                 const sources = await liquidityAggregator.getLiquiditySources(data.tokenIn, data.tokenOut);
                 if (sources.length === 0) {
                     logger.warn(`[hybrid-trade] No liquidity sources found for ${data.tokenIn}/${data.tokenOut}. Cannot auto-route trade.`);
-                    return false;
+                    return { valid: false, error: 'no liquidity sources found' };
                 }
 
                 const hasLiquidity = sources.some(source => {
@@ -219,7 +219,7 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
                     logger.warn(
                         `[hybrid-trade] No liquidity available for ${data.tokenIn}/${data.tokenOut}. Pools exist but have no liquidity, and orderbook has no orders.`
                     );
-                    return false;
+                    return { valid: false, error: 'no liquidity available' };
                 }
 
                 const ammSources = sources.filter(source => source.type === 'AMM');
@@ -231,7 +231,7 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
                             logger.warn(
                                 `[hybrid-trade] AMM route would produce zero output for ${data.amountIn} ${data.tokenIn} -> ${data.tokenOut}. Trade would fail.`
                             );
-                            return false;
+                            return { valid: false, error: 'AMM route would produce zero output' };
                         }
                     }
                 }
@@ -249,12 +249,12 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
                                 const pairId = await findTradingPairId(data.tokenIn, data.tokenOut);
                                 if (!pairId) {
                                     logger.error(`[hybrid-trade] No trading pair found for ${data.tokenIn} and ${data.tokenOut} when validating orderbook fallback`);
-                                    return false;
+                                    return { valid: false, error: 'no trading pair found' };
                                 }
                                 const pair = await cache.findOnePromise('tradingPairs', { _id: pairId });
                                 if (!pair) {
                                     logger.error(`[hybrid-trade] Trading pair ${pairId} not found when validating orderbook fallback`);
-                                    return false;
+                                    return { valid: false, error: 'trading pair not found' };
                                 }
 
                                 const orderSide = await determineOrderSide(data.tokenIn, data.tokenOut, pairId);
@@ -288,26 +288,26 @@ export async function validateTx(data: HybridTradeData, sender: string): Promise
                                     logger.warn(
                                         `[hybrid-trade] Insufficient balance for ${requiredToken} to cover potential ORDERBOOK fallback. Required: ${requiredAmount}, Available: ${senderBalForRequired}`
                                     );
-                                    return false;
+                                    return { valid: false, error: 'insufficient balance' };
                                 }
                             }
                         }
                     } catch (err) {
                         logger.error(`[hybrid-trade] Error checking ORDERBOOK fallback affordability: ${err}`);
-                        return false;
+                        return { valid: false, error: 'ORDERBOOK fallback affordability check failed' };
                     }
                 }
             }
         }
 
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[hybrid-trade] Error validating trade data by ${sender}: ${error}`);
-        return false;
+        return { valid: false, error: 'trade data validation failed' };
     }
 }
 
-export async function processTx(data: HybridTradeData, sender: string, transactionId: string): Promise<boolean> {
+export async function processTx(data: HybridTradeData, sender: string, transactionId: string): Promise< { valid: boolean; error?: string }> {
     try {
         logger.debug(`[hybrid-trade] Processing hybrid trade from ${sender}: ${data.amountIn} ${data.tokenIn} -> ${data.tokenOut}`);
 
@@ -319,7 +319,7 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
                 const quote = await liquidityAggregator.getBestQuote(data);
                 if (!quote) {
                     logger.warn('[hybrid-trade] No liquidity available for this trade. This should have been caught during validation.');
-                    return false;
+                    return { valid: false, error: 'no liquidity available' };
                 }
 
                 // Check if AMM output meets minAmountOut requirement
@@ -334,14 +334,14 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
                         const pairId = await findTradingPairId(data.tokenIn, data.tokenOut);
                         if (!pairId) {
                             logger.error(`[hybrid-trade] No trading pair found for ${data.tokenIn} and ${data.tokenOut}`);
-                            return false;
+                            return { valid: false, error: 'no trading pair found' };
                         }
 
                         // Get the trading pair to determine correct base/quote assignment
                         const pair = await cache.findOnePromise('tradingPairs', { _id: pairId });
                         if (!pair) {
                             logger.error(`[hybrid-trade] Trading pair ${pairId} not found`);
-                            return false;
+                            return { valid: false, error: 'trading pair not found' };
                         }
 
                         // Determine the correct order side
@@ -409,7 +409,7 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
                 const pairId = await findTradingPairId(data.tokenIn, data.tokenOut);
                 if (!pairId) {
                     logger.error(`[hybrid-trade] No trading pair found for ${data.tokenIn} and ${data.tokenOut}`);
-                    return false;
+                    return { valid: false, error: 'no trading pair found' };
                 }
 
                 // Determine the correct order side
@@ -433,7 +433,7 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
         // Execute trades across all routes
         if (!routes || routes.length === 0) {
             logger.error('[hybrid-trade] No routes available for execution.');
-            return false;
+            return { valid: false, error: 'no routes available' };
         }
 
         // Pre-execution affordability check: ensure sender has sufficient balances for deductions
@@ -441,7 +441,7 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
             const senderAccountForCheck = await getAccount(sender);
             if (!senderAccountForCheck) {
                 logger.warn(`[hybrid-trade] Sender account ${sender} not found before execution.`);
-                return false;
+                return { valid: false, error: 'sender account not found' };
             }
 
             for (const route of routes) {
@@ -454,7 +454,7 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
                     const pair = await cache.findOnePromise('tradingPairs', { _id: obDetails.pairId });
                     if (!pair) {
                         logger.warn(`[hybrid-trade] Execution validation: Trading pair ${obDetails.pairId} not found for route.`);
-                        return false;
+                        return { valid: false, error: 'trading pair not found' };
                     }
 
                     // Determine order side and price
@@ -462,7 +462,7 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
                     const orderPriceRaw = data.price !== undefined ? data.price : obDetails.price;
                     if (side === OrderSide.BUY && orderPriceRaw === undefined) {
                         logger.warn('[hybrid-trade] Execution validation: ORDERBOOK BUY route requires a price to validate required quote balance.');
-                        return false;
+                        return { valid: false, error: 'ORDERBOOK BUY route requires a price' };
                     }
 
                     let requiredToken: string;
@@ -485,20 +485,20 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
                         logger.warn(
                             `[hybrid-trade] Execution validation: Insufficient balance for ${requiredToken}. Required: ${requiredAmount}, Available: ${senderBalForRequired}`
                         );
-                        return false;
+                        return { valid: false, error: 'insufficient balance' };
                     }
                 } else if (route.type === 'AMM') {
                     // For AMM routes, ensure user has the input token (data.tokenIn) for the allocation
                     const senderBal = toBigInt((senderAccountForCheck.balances && senderAccountForCheck.balances[data.tokenIn]) || '0');
                     if (senderBal < routeAmountIn) {
                         logger.warn(`[hybrid-trade] Execution validation: Insufficient balance for ${data.tokenIn}. Required: ${routeAmountIn}, Available: ${senderBal}`);
-                        return false;
+                        return { valid: false, error: 'insufficient balance' };
                     }
                 }
             }
         } catch (err) {
             logger.error(`[hybrid-trade] Error during pre-execution affordability check: ${err}`);
-            return false;
+            return { valid: false, error: 'pre-execution affordability check failed' };
         }
 
         const results: HybridTradeResult['executedRoutes'] = [];
@@ -558,7 +558,7 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
 
         if (results.length === 0) {
             logger.error('[hybrid-trade] All routes failed to execute.');
-            return false;
+            return { valid: false, error: 'all routes failed' };
         }
 
         // Check slippage protection (this should rarely happen now with smart routing)
@@ -583,13 +583,13 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
                         `[hybrid-trade] Slippage protection triggered: Output amount ${totalAmountOut} is less than minimum required ${data.minAmountOut}. This suggests the orderbook route also couldn't meet your price requirements. Consider adjusting your minAmountOut or using maxSlippagePercent.`
                     );
                     // In a production system, you'd want to rollback here
-                    return false;
+                    return { valid: false, error: 'slippage protection triggered' };
                 }
             } else {
                 logger.info('[hybrid-trade] Limit order placed with no immediate fills; minAmountOut check deferred until fills occur.');
                 // For limit orders with no immediate fills, we consider the trade successful
                 // The order is placed and will be filled when matching orders are available
-                return true;
+                return { valid: true };
             }
         }
 
@@ -597,10 +597,10 @@ export async function processTx(data: HybridTradeData, sender: string, transacti
         // const actualPriceImpact = results.length > 0 ? Number(totalAmountIn - totalAmountOut) / Number(totalAmountIn) : 0;
 
         logger.debug(`[hybrid-trade] Hybrid trade completed: ${totalAmountIn} ${data.tokenIn} -> ${totalAmountOut} ${data.tokenOut}`);
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[hybrid-trade] Error processing hybrid trade by ${sender}: ${error}`);
-        return false;
+        return { valid: false, error: 'unknown error' };
     }
 }
 

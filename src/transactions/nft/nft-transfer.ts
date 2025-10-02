@@ -14,30 +14,30 @@ export interface CachedNftCollectionForTransfer extends NFTCollectionCreateData 
     _id: string;
 }
 
-export async function validateTx(data: NFTTransferData, sender: string): Promise<boolean> {
+export async function validateTx(data: NFTTransferData, sender: string): Promise<{ valid: boolean; error?: string }> {
     try {
         if (!data.collectionSymbol || !data.instanceId || !data.to) {
             logger.warn('[nft-transfer/burn] Invalid data: Missing required fields (collectionSymbol, tokenId, to).');
-            return false;
+            return { valid: false, error: 'missing fields' };
         }
 
         // Validate formats
         if (!validate.string(data.collectionSymbol, 10, 3, config.tokenSymbolAllowedChars)) {
             logger.warn(`[nft-transfer/burn] Invalid collection symbol format: ${data.collectionSymbol}.`);
-            return false;
+            return { valid: false, error: 'invalid collection symbol format' };
         }
         if (!validate.integer(data.instanceId, false, false, MAX_COLLECTION_SUPPLY, 1)) {
             // Max 128 for instanceId
             logger.warn('[nft-transfer/burn] Invalid instanceId length (1-128 chars).');
-            return false;
+            return { valid: false, error: 'invalid instanceId format' };
         }
         if (data.to !== BURN_ACCOUNT_NAME && !validate.string(data.to, 16, 3)) {
             logger.warn(`[nft-transfer/burn] Invalid recipient account name format: ${data.to}.`);
-            return false;
+            return { valid: false, error: 'invalid recipient account name format' };
         }
         if (data.memo && typeof data.memo === 'string' && !validate.string(data.memo, 256, 1)) {
             logger.warn('[nft-transfer/burn] Invalid memo: Exceeds maximum length of 256 chars.');
-            return false;
+            return { valid: false, error: 'invalid memo format' };
         }
 
         const fullInstanceId = `${data.collectionSymbol}_${data.instanceId}`;
@@ -45,11 +45,11 @@ export async function validateTx(data: NFTTransferData, sender: string): Promise
 
         if (!nft) {
             logger.warn(`[nft-transfer/burn] NFT ${fullInstanceId} not found.`);
-            return false;
+            return { valid: false, error: 'nft not found' };
         }
         if (nft.owner !== sender) {
             logger.warn(`[nft-transfer/burn] Sender ${sender} is not the owner of NFT ${fullInstanceId}. Current owner: ${nft.owner}.`);
-            return false;
+            return { valid: false, error: 'not nft owner' };
         }
 
         const listingId = generateListingId(data.collectionSymbol, data.instanceId, sender);
@@ -57,13 +57,13 @@ export async function validateTx(data: NFTTransferData, sender: string): Promise
 
         if (listing && listing.status === 'ACTIVE') {
             logger.warn(`[nft-transfer/burn] Listing ${listingId} is currently active.`);
-            return false;
+            return { valid: false, error: 'listing is currently active' };
         }
 
         const collectionFromCache = await cache.findOnePromise('nftCollections', { _id: data.collectionSymbol });
         if (!collectionFromCache) {
             logger.warn(`[nft-transfer/burn] Collection ${data.collectionSymbol} for NFT ${fullInstanceId} not found. This indicates a data integrity issue.`);
-            return false; // Should not happen if NFT exists
+            return { valid: false, error: 'collection not found' };
         }
         const collection = collectionFromCache as CachedNftCollectionForTransfer;
 
@@ -72,39 +72,39 @@ export async function validateTx(data: NFTTransferData, sender: string): Promise
             if (collection.burnable === false) {
                 // Explicitly check for false, as undefined defaults to true
                 logger.warn(`[nft-transfer/burn] NFT Collection ${data.collectionSymbol} does not allow burning of its NFTs.`);
-                return false;
+                return { valid: false, error: 'burning not allowed' };
             }
         } else {
             // Regular Transfer
             if (sender === data.to) {
                 logger.warn('[nft-transfer] Sender and recipient cannot be the same for a regular NFT transfer.');
-                return false;
+                return { valid: false, error: 'sender and recipient cannot be the same' };
             }
             if (collection.transferable === false) {
                 // Explicitly check for false, as undefined defaults to true
                 logger.warn(`[nft-transfer] NFT Collection ${data.collectionSymbol} does not allow transfer of its NFTs.`);
-                return false;
+                return { valid: false, error: 'transfers not allowed' };
             }
             const recipientAccount = await cache.findOnePromise('accounts', { name: data.to });
             if (!recipientAccount) {
                 logger.warn(`[nft-transfer] Recipient account ${data.to} not found.`);
-                return false;
+                return { valid: false, error: 'recipient account not found' };
             }
         }
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[nft-transfer/burn] Error validating NFT transfer/burn: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }
 
-export async function processTx(data: NFTTransferData, sender: string, _id: string): Promise<boolean> {
+export async function processTx(data: NFTTransferData, sender: string, _id: string): Promise<{ valid: boolean; error?: string }> {
     const isBurning = data.to === BURN_ACCOUNT_NAME;
 
     // Ensure required fields are present
     if (!data.collectionSymbol || !data.instanceId) {
         logger.error(`[nft-transfer] Missing required fields: collectionSymbol=${data.collectionSymbol}, instanceId=${data.instanceId}`);
-        return false;
+        return { valid: false, error: 'missing fields' };
     }
 
     const fullInstanceId = `${data.collectionSymbol}_${data.instanceId}`;
@@ -113,7 +113,7 @@ export async function processTx(data: NFTTransferData, sender: string, _id: stri
         const nftToProcess = (await cache.findOnePromise('nfts', { _id: fullInstanceId })) as NFTTokenData;
         if (nftToProcess.owner !== sender) {
             logger.error(`[${isBurning ? 'nft-burn' : 'nft-transfer'}] CRITICAL: Sender ${sender} is not owner during processing. Validation might be stale.`);
-            return false;
+            return { valid: false, error: 'not nft owner' };
         }
 
         if (isBurning) {
@@ -123,7 +123,7 @@ export async function processTx(data: NFTTransferData, sender: string, _id: stri
             const deleteSuccess = await cache.deleteOnePromise('nfts', { _id: fullInstanceId });
             if (!deleteSuccess) {
                 logger.error(`[nft-burn] Failed to delete NFT ${fullInstanceId} from cache.`);
-                return false; // Cannot proceed with burn if NFT deletion fails
+                return { valid: false, error: 'failed to delete nft' }; // Cannot proceed with burn if NFT deletion fails
             }
 
             // 2. Decrement currentSupply in the collection
@@ -156,7 +156,7 @@ export async function processTx(data: NFTTransferData, sender: string, _id: stri
 
             if (!updateOwnerSuccess) {
                 logger.error(`[nft-transfer] Failed to update owner for NFT ${fullInstanceId} to ${data.to}.`);
-                return false;
+                return { valid: false, error: 'failed to update owner' };
             }
 
             logger.debug(`[nft-transfer] NFT ${fullInstanceId} successfully transferred from ${sender} to ${data.to}. Memo: ${data.memo || 'N/A'}`);
@@ -171,9 +171,9 @@ export async function processTx(data: NFTTransferData, sender: string, _id: stri
                 memo: data.memo,
             });
         }
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[${isBurning ? 'nft-burn' : 'nft-transfer'}] Error processing NFT operation for ${fullInstanceId}: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }

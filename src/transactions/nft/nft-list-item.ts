@@ -11,11 +11,11 @@ import { CachedNftCollectionForTransfer } from './nft-transfer.js';
 import { generateListingId } from './nft-helpers.js';
 
 
-export async function validateTx(data: NftListPayload, sender: string): Promise<boolean> {
+export async function validateTx(data: NftListPayload, sender: string): Promise<{ valid: boolean; error?: string }> {
     try {
         if (!data.collectionSymbol || !data.instanceId || !data.price || !data.paymentToken) {
             logger.warn('[nft-list-item] Invalid data: Missing required fields (collectionSymbol, instanceId, price, paymentToken).');
-            return false;
+            return { valid: false, error: 'missing required fields' };
         }
 
         const listingType = data.listingType || 'FIXED_PRICE';
@@ -23,27 +23,27 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
         if (listingType === 'AUCTION' || listingType === 'RESERVE_AUCTION') {
             if (!data.auctionEndTime) {
                 logger.warn('[nft-list-item] Auction listings require auctionEndTime.');
-                return false;
+                return { valid: false, error: 'invalid auction end time' };
             }
 
             const endTime = new Date(data.auctionEndTime);
             if (isNaN(endTime.getTime()) || endTime <= new Date()) {
                 logger.warn('[nft-list-item] Invalid auctionEndTime: must be a valid future date.');
-                return false;
+                return { valid: false, error: 'reserve price invalid' };
             }
 
             // Validate minimum auction duration (e.g., at least 1 hour)
             const minDuration = 60 * 60 * 1000; // 1 hour in milliseconds
             if (endTime.getTime() - Date.now() < minDuration) {
                 logger.warn('[nft-list-item] Auction duration too short: minimum 1 hour required.');
-                return false;
+                return { valid: false, error: 'minimum bid increment invalid' };
             }
         }
 
         if (listingType === 'RESERVE_AUCTION') {
             if (!data.reservePrice) {
                 logger.warn('[nft-list-item] Reserve auctions require reservePrice.');
-                return false;
+                return { valid: false, error: 'missing reserve price' };
             }
 
             const reservePriceBigInt = toBigInt(data.reservePrice);
@@ -51,12 +51,12 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
 
             if (reservePriceBigInt <= toBigInt(0)) {
                 logger.warn('[nft-list-item] Reserve price must be positive.');
-                return false;
+                return { valid: false, error: 'invalid reserve price' };
             }
 
             if (reservePriceBigInt < startingPriceBigInt) {
                 logger.warn('[nft-list-item] Reserve price cannot be lower than starting price.');
-                return false;
+                return { valid: false, error: 'invalid reserve price' };
             }
         }
 
@@ -64,27 +64,27 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
             const incrementBigInt = toBigInt(data.minimumBidIncrement);
             if (incrementBigInt <= toBigInt(0)) {
                 logger.warn('[nft-list-item] Minimum bid increment must be positive.');
-                return false;
+                return { valid: false, error: 'invalid minimum bid increment' };
             }
         }
 
         if (!validate.bigint(data.price, false, false, toBigInt(1))) {
             logger.warn(`[nft-list-item] Invalid price format. Must be a string representing a big integer. Received: ${data.price}`);
-            return false;
+            return { valid: false, error: 'invalid price format' };
         }
 
         if (!validate.string(data.collectionSymbol, 10, 3, config.tokenSymbolAllowedChars)) {
             logger.warn(`[nft-list-item] Invalid collection symbol format: ${data.collectionSymbol}.`);
-            return false;
+            return { valid: false, error: 'invalid collection symbol' };
         }
         if (!validate.integer(data.instanceId, false, false, MAX_COLLECTION_SUPPLY, 1)) {
             logger.warn('[nft-list-item] Invalid instanceId length (1-128 chars).');
-            return false;
+            return { valid: false, error: 'invalid instance id' };
         }
 
         if (!await validate.tokenExists(data.paymentToken)) {
             logger.warn(`[nft-list-item] Payment token ${data.paymentToken} does not exist.`);
-            return false;
+            return { valid: false, error: 'payment token does not exist' };
         }
 
         const fullInstanceId = `${data.collectionSymbol}_${data.instanceId}`;
@@ -92,11 +92,11 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
 
         if (!nft) {
             logger.warn(`[nft-list-item] NFT ${fullInstanceId} not found.`);
-            return false;
+            return { valid: false, error: 'nft not found' };
         }
         if (nft.owner !== sender) {
             logger.warn(`[nft-list-item] Sender ${sender} is not the owner of NFT ${fullInstanceId}. Current owner: ${nft.owner}.`);
-            return false;
+            return { valid: false, error: 'not nft owner' };
         }
 
         const collection = (await cache.findOnePromise('nftCollections', {
@@ -104,30 +104,31 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
         })) as CachedNftCollectionForTransfer | null;
         if (!collection) {
             logger.warn(`[nft-list-item] Collection ${data.collectionSymbol} for NFT ${fullInstanceId} not found. Indicates data integrity issue.`);
-            return false;
+            return { valid: false, error: 'collection not found' };
         }
         if (collection.transferable === false) {
             logger.warn(`[nft-list-item] NFT Collection ${data.collectionSymbol} does not allow transfer of its NFTs, cannot be listed.`);
-            return false;
+            return { valid: false, error: 'collection not transferable' };
         }
 
         const listingId = generateListingId(data.collectionSymbol, data.instanceId, sender);
         // Check for an existing ACTIVE listing (accept both cases) to prevent duplicates
         const existingListing = (await cache.findOnePromise('nftListings', {
-            _id: listingId })) as NFTListingData | null;
+            _id: listingId
+        })) as NFTListingData | null;
         if (existingListing && existingListing.status === 'ACTIVE') {
             logger.warn(`[nft-list-item] NFT ${fullInstanceId} is already actively listed by ${sender} under listing ID ${listingId}.`);
-            return false;
+            return { valid: false, error: 'already listed' };
         }
 
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[nft-list-item] Error validating NFT listing payload for ${data.collectionSymbol}_${data.instanceId} by ${sender}: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }
 
-export async function processTx(data: NftListPayload, sender: string, _id: string): Promise<string | null> {
+export async function processTx(data: NftListPayload, sender: string, _id: string): Promise<{ valid: boolean; error?: string }> {
     try {
         const fullInstanceId = `${data.collectionSymbol}_${data.instanceId}`;
         const listingId = generateListingId(data.collectionSymbol, data.instanceId, sender);
@@ -159,7 +160,7 @@ export async function processTx(data: NftListPayload, sender: string, _id: strin
             if (existingAny.status === 'ACTIVE') {
                 // Shouldn't happen due to earlier check, but guard anyway
                 logger.warn(`[nft-list-item] NFT ${fullInstanceId} is already actively listed by ${sender} under listing ID ${listingId}.`);
-                return null;
+                return { valid: false, error: 'already listed' };
             }
 
             // Update the existing listing to ACTIVE with new fields
@@ -178,7 +179,7 @@ export async function processTx(data: NftListPayload, sender: string, _id: strin
         }
 
         if (!listSuccess) {
-            return null; // Indicate failure
+            return { valid: false, error: 'failed to create listing' };
         }
 
         const listingTypeStr = (data.listingType || 'fixed_price').toLowerCase();
@@ -202,9 +203,9 @@ export async function processTx(data: NftListPayload, sender: string, _id: strin
             minimumBidIncrement: data.minimumBidIncrement ? toDbString(data.minimumBidIncrement) : toDbString('100000'),
         });
 
-        return listingId; // Return the ID of the created listing
+        return { valid: true };
     } catch (error) {
         logger.error(`[nft-list-item] Error processing NFT listing for ${data.collectionSymbol}_${data.instanceId} by ${sender}: ${error}`);
-        return null;
+        return { valid: false, error: 'internal error' };
     }
 }

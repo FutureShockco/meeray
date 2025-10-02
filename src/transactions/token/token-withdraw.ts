@@ -12,48 +12,48 @@ import { TokenData, TokenTransferData } from './token-interfaces.js';
 
 const BURN_ACCOUNT_NAME = config.burnAccountName || 'null';
 
-export async function validateTx(data: TokenTransferData, sender: string): Promise<boolean> {
+export async function validateTx(data: TokenTransferData, sender: string): Promise<{ valid: boolean; error?: string }> {
     try {
         if (data.symbol !== settings.steemTokenSymbol && data.symbol !== settings.sbdTokenSymbol) {
             logger.warn(`[token-transfer] Non-Steem native token cannot be withdrawn.`);
-            return false;
+            return { valid: false, error: 'non-steem token' };
         }
 
-        if (!(await validate.tokenExists(data.symbol))) return false;
+        if (!(await validate.tokenExists(data.symbol))) return { valid: false, error: 'token does not exist' };
 
-        if (!(await validate.userBalances(sender, [{ symbol: data.symbol, amount: toBigInt(data.amount) }]))) return false;
+        if (!(await validate.userBalances(sender, [{ symbol: data.symbol, amount: toBigInt(data.amount) }]))) return { valid: false, error: 'insufficient balance' };
 
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[token-transfer] Error validating transfer: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }
 
-export async function processTx(data: TokenTransferData, sender: string): Promise<boolean> {
+export async function processTx(data: TokenTransferData, sender: string): Promise<{ valid: boolean; error?: string }> {
     try {
         const adjustedSender = await adjustUserBalance(sender, data.symbol, -toBigInt(data.amount));
         if (!adjustedSender) {
             logger.error(`[token-withdraw] Failed to debit sender ${sender} for ${toBigInt(data.amount).toString()} ${data.symbol}`);
-            return false;
+            return { valid: false, error: 'failed to debit sender' };
         }
 
         const adjustedRecipient = await adjustUserBalance(BURN_ACCOUNT_NAME, data.symbol, toBigInt(data.amount));
         if (!adjustedRecipient) {
             logger.error(`[token-withdraw] Failed to credit burn account ${BURN_ACCOUNT_NAME} for ${toBigInt(data.amount).toString()} ${data.symbol}`);
-            return false;
+            return { valid: false, error: 'failed to credit burn account' };
         }
 
         const token = (await cache.findOnePromise('tokens', { _id: data.symbol })) as TokenData | null;
         if (!token) {
             logger.error(`[token-withdraw] Token ${data.symbol} not found`);
-            return false;
+            return { valid: false, error: 'token not found' };
         }
 
         const adjustedSupply = await adjustTokenSupply(data.symbol, -toBigInt(data.amount));
         if (!adjustedSupply) {
             logger.error(`[token-withdraw] Failed to adjust supply for ${data.symbol} when burning ${toBigInt(data.amount).toString()}.`);
-            return false;
+            return { valid: false, error: 'failed to adjust supply' };
         }
         // Check if we should skip bridge operations (during replay)
         const currentBlock = chain.getLatestBlock();
@@ -69,9 +69,9 @@ export async function processTx(data: TokenTransferData, sender: string): Promis
             await steemBridge.enqueueWithdraw(sender, formattedAmount, data.symbol, 'Withdraw from MeeRay');
         }
 
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[token-transfer:process] Error processing transfer: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }

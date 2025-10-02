@@ -8,26 +8,26 @@ export interface LaunchpadRefundPresaleData {
     launchpadId: string;
 }
 
-export async function validateTx(data: LaunchpadRefundPresaleData, sender: string): Promise<boolean> {
+export async function validateTx(data: LaunchpadRefundPresaleData, sender: string): Promise<{ valid: boolean; error?: string }> {
     try {
         // Only launchpad owner may request refunds
         const lp = await cache.findOnePromise('launchpads', { _id: data.launchpadId });
-        if (!lp) return false;
-        if (lp.issuer !== sender) return false;
-        if (!lp.presale || !lp.presaleDetailsSnapshot) return false;
+        if (!lp) return { valid: false, error: 'launchpad not found' };
+        if (lp.issuer !== sender) return { valid: false, error: 'not launchpad owner' };
+        if (!lp.presale || !lp.presaleDetailsSnapshot) return { valid: false, error: 'presale not configured' };
         // Only if failed or cancelled before TGE
-        if (lp.status !== LaunchpadStatus.PRESALE_FAILED_SOFTCAP_NOT_MET && lp.status !== LaunchpadStatus.CANCELLED) return false;
-        return true;
+        if (lp.status !== LaunchpadStatus.PRESALE_FAILED_SOFTCAP_NOT_MET && lp.status !== LaunchpadStatus.CANCELLED) return { valid: false, error: 'invalid status for refund' };
+        return { valid: true };
     } catch (e) {
         logger.error('[launchpad-refund-presale] validate error', e);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }
 
-export async function processTx(data: LaunchpadRefundPresaleData, _sender: string): Promise<boolean> {
+export async function processTx(data: LaunchpadRefundPresaleData, _sender: string): Promise<{ valid: boolean; error?: string }> {
     try {
         const lp = await cache.findOnePromise('launchpads', { _id: data.launchpadId });
-        if (!lp || !lp.presale || !lp.presaleDetailsSnapshot) return false;
+        if (!lp || !lp.presale || !lp.presaleDetailsSnapshot) return { valid: false, error: 'launchpad or presale missing' };
         const quoteId = lp.presaleDetailsSnapshot.quoteAssetForPresaleSymbol;
 
         const participants = lp.presale.participants || [];
@@ -37,7 +37,7 @@ export async function processTx(data: LaunchpadRefundPresaleData, _sender: strin
                 const ok = await adjustUserBalance(p.userId, quoteId, amt);
                 if (!ok) {
                     logger.error(`[launchpad-refund-presale] Failed refund for ${p.userId}`);
-                    return false;
+                    return { valid: false, error: `failed refund for ${p.userId}` };
                 }
             }
         }
@@ -49,9 +49,9 @@ export async function processTx(data: LaunchpadRefundPresaleData, _sender: strin
                 $set: { updatedAt: new Date().toISOString() },
             }
         );
-        return !!ok;
+        return ok ? { valid: true } : { valid: false, error: 'update failed' };
     } catch (e) {
         logger.error('[launchpad-refund-presale] process error', e);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }

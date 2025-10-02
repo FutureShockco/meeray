@@ -9,45 +9,45 @@ import validate from '../../validation/index.js';
 import { FarmClaimRewardsData, FarmData, UserFarmPositionData } from './farm-interfaces.js';
 import { recalculateNativeFarmRewards } from '../../utils/farm.js';
 
-export async function validateTx(data: FarmClaimRewardsData, sender: string): Promise<boolean> {
+export async function validateTx(data: FarmClaimRewardsData, sender: string): Promise< { valid: boolean; error?: string } > {
     try {
         if (!data.farmId) {
             logger.warn('[farm-claim-rewards] Invalid data: Missing required fields (farmId, staker).');
-            return false;
+            return { valid: false, error: 'missing required fields' };
         }
         if (!validate.string(data.farmId, 96, 10)) {
             logger.warn('[farm-claim-rewards] Invalid farmId format.');
-            return false;
+            return { valid: false, error: 'invalid farmId format' };
         }
         const farm = await cache.findOnePromise('farms', { _id: data.farmId }) as FarmData | null;
         if (!farm) {
             logger.warn(`[farm-claim-rewards] Farm ${data.farmId} not found.`);
-            return false;
+            return { valid: false, error: 'farm not found' };
         }
         const currentBlockNum = chain.getLatestBlock()._id;
         const farmStartBlock = Number(farm.startBlock);
         // Allow claiming when farm is 'active' or 'ended' (ended means rewards exhausted but users can still claim pending rewards)
         if (currentBlockNum < farmStartBlock || (farm.status !== 'active' && farm.status !== 'ended')) {
             logger.warn(`[farm-claim-rewards] Farm ${data.farmId} not active/ended or not started at block=${currentBlockNum}.`);
-            return false;
+            return { valid: false, error: 'farm not active/ended or not started' };
         }
         const userFarmPositionId = `${sender}_${data.farmId}`;
         const userFarmPos = await cache.findOnePromise('userFarmPositions', { _id: userFarmPositionId }) as UserFarmPositionData | null;
         if (!userFarmPos) {
             logger.warn(`[farm-claim-rewards] Staker ${sender} has no staking position in farm ${data.farmId}.`);
-            return false;
+            return { valid: false, error: 'no staking position found' };
         }
         const rewardsPerBlock = toBigInt(farm.rewardsPerBlock || '0');
         const totalStaked = toBigInt(farm.totalStaked || '0');
         const stakedAmount = toBigInt(userFarmPos.stakedAmount || '0');
         if (totalStaked === toBigInt(0) || stakedAmount === toBigInt(0)) {
             logger.warn(`[farm-claim-rewards] No stake or totalStaked zero for farm ${data.farmId}.`);
-            return false;
+            return { valid: false, error: 'no stake or totalStaked zero' };
         }
         const token = await cache.findOnePromise('tokens', { symbol: farm.rewardToken });
         if (!token) {
             logger.warn(`[farm-claim-rewards] Reward token ${farm.rewardToken} for farm ${data.farmId} not found.`);
-            return false;
+            return { valid: false, error: 'reward token not found' };
         }
 
         // Compute newly-accrued rewards since lastHarvestBlock and include any already stored pending rewards
@@ -78,17 +78,17 @@ export async function validateTx(data: FarmClaimRewardsData, sender: string): Pr
         const totalToClaim = existingPending + computable;
         if (totalToClaim <= 0n) {
             logger.warn(`[farm-claim-rewards] No rewards available for ${sender} in farm ${data.farmId}. Blocks elapsed: ${blocksElapsed}`);
-            return false;
+            return { valid: false, error: 'no rewards available' };
         }
 
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[farm-claim-rewards] Error validating claim rewards data for farm ${data.farmId} by ${sender}: ${error}`);
-        return false;
+        return { valid: false, error: 'unknown error' };
     }
 }
 
-export async function processTx(data: FarmClaimRewardsData, sender: string, id: string, ts?: number): Promise<boolean> {
+export async function processTx(data: FarmClaimRewardsData, sender: string, id: string, ts?: number): Promise<{ valid: boolean; error?: string }> {
     try {
         const farm = (await cache.findOnePromise('farms', { _id: data.farmId })) as FarmData;
         const userFarmPositionId = `${sender}_${data.farmId}`;
@@ -179,7 +179,7 @@ export async function processTx(data: FarmClaimRewardsData, sender: string, id: 
         const creditOk = await adjustUserBalance(sender, farm.rewardToken, toBigInt(totalToClaim));
         if (!creditOk) {
             logger.error(`[farm-claim-rewards] Failed to credit rewards for ${sender} in ${farm.rewardToken}.`);
-            return false;
+            return { valid: false, error: 'failed to credit rewards' };
         }
         await cache.updateOnePromise('userFarmPositions', { _id: userFarmPositionId }, { $set: { lastHarvestBlock: currentBlockNum, lastUpdatedAt: new Date().toISOString(), pendingRewards: toDbString(0) } });
 
@@ -195,9 +195,9 @@ export async function processTx(data: FarmClaimRewardsData, sender: string, id: 
             stakedAmount: toDbString(stakedAmount),
         });
 
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[farm-claim-rewards] Error processing reward claim for farm ${data.farmId} by ${sender}: ${error}`);
-        return false;
+        return { valid: false, error: 'unknown error' };
     }
 }

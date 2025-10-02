@@ -8,36 +8,36 @@ import validate from '../../validation/index.js';
 import { UserLiquidityPositionData } from '../pool/pool-interfaces.js';
 import { FarmData, FarmUnstakeData, UserFarmPositionData } from './farm-interfaces.js';
 
-export async function validateTx(data: FarmUnstakeData, sender: string): Promise<boolean> {
+export async function validateTx(data: FarmUnstakeData, sender: string): Promise< { valid: boolean; error?: string } > {
     try {
         // Check required fields
         if (!data.farmId || !data.tokenAmount) {
             logger.warn('[farm-unstake] Missing required fields (farmId, tokenAmount).');
-            return false;
+            return { valid: false, error: 'missing required fields' };
         }
 
         // Validate farmId format
         if (!validate.string(data.farmId, 64, 1)) {
             logger.warn('[farm-unstake] Invalid farmId format.');
-            return false;
+            return { valid: false, error: 'invalid farmId format' };
         }
 
         // Validate amount
         if (!validate.bigint(data.tokenAmount, false, false, toBigInt(1))) {
             logger.warn('[farm-unstake] tokenAmount must be a positive number.');
-            return false;
+            return { valid: false, error: 'invalid tokenAmount' };
         }
 
         // Check farm existence and status
         const farm = await cache.findOnePromise('farms', { _id: data.farmId }) as FarmData | null;
         if (!farm) {
             logger.warn(`[farm-unstake] Farm ${data.farmId} not found.`);
-            return false;
+            return { valid: false, error: 'farm not found' };
         }
         // Allow unstaking from active, paused or ended farms; only reject cancelled farms
         if (farm.status === 'cancelled') {
             logger.warn(`[farm-unstake] Farm ${data.farmId} is cancelled and cannot be unstaked from.`);
-            return false;
+            return { valid: false, error: 'farm is cancelled' };
         }
 
         // Check user farm position and staked amount
@@ -45,17 +45,17 @@ export async function validateTx(data: FarmUnstakeData, sender: string): Promise
         const userFarmPos = await cache.findOnePromise('userFarmPositions', { _id: userFarmPositionId }) as UserFarmPositionData | null;
         if (!userFarmPos || toBigInt(userFarmPos.stakedAmount) < toBigInt(data.tokenAmount)) {
             logger.warn(`[farm-unstake] Insufficient staked amount for user ${sender} in farm ${data.farmId}.`);
-            return false;
+            return { valid: false, error: 'insufficient staked amount' };
         }
 
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[farm-unstake] Error validating unstake data for farm ${data.farmId} by ${sender}: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }
 
-export async function processTx(data: FarmUnstakeData, sender: string, id: string, ts?: number): Promise<boolean> {
+export async function processTx(data: FarmUnstakeData, sender: string, id: string, ts?: number): Promise<{ valid: boolean; error?: string }> {
     try {
         const farm = (await cache.findOnePromise('farms', { _id: data.farmId })) as FarmData;
         const stakingSymbol = farm.stakingToken;
@@ -187,9 +187,9 @@ export async function processTx(data: FarmUnstakeData, sender: string, id: strin
             totalStaked: toDbString(newTotalStaked),
         });
 
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[farm-unstake] Error processing unstake for farm ${data.farmId} by ${sender}: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }

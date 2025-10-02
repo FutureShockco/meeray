@@ -11,38 +11,38 @@ import { TokenData } from '../token/token-interfaces.js';
 import { FarmCreateData, FarmData } from './farm-interfaces.js';
 
 
-export async function validateTx(data: FarmCreateData, sender: string): Promise<boolean> {
+export async function validateTx(data: FarmCreateData, sender: string): Promise<{ valid: boolean; error?: string }> {
     try {
         // totalRewards may be omitted for auto farms (mintable reward tokens); rewardsPerBlock is required
         if (!data.stakingToken || !data.rewardToken || !data.startBlock || !data.rewardsPerBlock) {
             logger.warn('[farm-create] Invalid data: Missing required fields (stakingToken, rewardToken, startBlock, rewardsPerBlock).');
-            return false;
+            return { valid: false, error: 'missing required fields' };
         }
 
         if (!validate.bigint(data.rewardsPerBlock, false, false, toBigInt(1))) {
             logger.warn('[farm-create] rewardsPerBlock must be a positive bigint.');
-            return false;
+            return { valid: false, error: 'invalid rewardsPerBlock' };
         }
 
         if (!validate.blockNumber(data.startBlock)) {
             logger.warn('[farm-create] Invalid startBlock. Ensure it is a valid block number.');
-            return false;
+            return { valid: false, error: 'invalid startBlock' };
         }
 
         if (!await validate.tokenSymbols([data.stakingToken, data.rewardToken])) {
             logger.warn('[farm-create] Invalid token symbols provided.');
-            return false;
+            return { valid: false, error: 'invalid token symbols' };
         }
 
         if (!await validate.tokenExists(data.stakingToken)) {
             logger.warn('[farm-create] Invalid token symbols provided.');
-            return false;
+            return { valid: false, error: 'staking token does not exist' };
         }
 
         const rewardToken = await cache.findOnePromise('tokens', { symbol: data.rewardToken }) as TokenData;
         if (!rewardToken) {
             logger.warn(`[farm-create] Reward Token (${data.rewardToken}) not found.`);
-            return false;
+            return { valid: false, error: 'reward token not found' };
         }
         // If totalRewards is provided, ensure the sender can supply those tokens (either has balance or is issuer and token isn't mint-only)
         if (data.totalRewards !== undefined) {
@@ -50,14 +50,14 @@ export async function validateTx(data: FarmCreateData, sender: string): Promise<
             if (rewardToken.issuer !== sender) {
                 if (!await validate.userBalances(sender, [{ symbol: data.rewardToken, amount: toBigInt(data.totalRewards) }])) {
                     logger.warn(`[farm-create] Staker ${sender} has insufficient balance of ${data.rewardToken}.`);
-                    return false;
+                    return { valid: false, error: 'insufficient balance' };
                 }
             } else {
                 // Sender is issuer: if token is not mintable, they still must have enough balance to cover totalRewards
                 if (!rewardToken.mintable) {
                     if (!await validate.userBalances(sender, [{ symbol: data.rewardToken, amount: toBigInt(data.totalRewards) }])) {
                         logger.warn(`[farm-create] Issuer ${sender} does not have sufficient balance of non-mintable token ${data.rewardToken}.`);
-                        return false;
+                        return { valid: false, error: 'insufficient balance' };
                     }
                 }
                 // If issuer and mintable, OK (they can mint when needed)
@@ -66,67 +66,67 @@ export async function validateTx(data: FarmCreateData, sender: string): Promise<
             // Auto farms (no totalRewards provided) require the reward token to be mintable and sender must be issuer
             if (rewardToken.issuer !== sender) {
                 logger.warn(`[farm-create] Sender ${sender} is not the issuer of reward token ${data.rewardToken}. Cannot create auto farm.`);
-                return false;
+                return { valid: false, error: 'not token issuer' };
             }
             if (!rewardToken.mintable) {
                 logger.warn(`[farm-create] Reward token ${data.rewardToken} is not mintable. Cannot create auto farm.`);
-                return false;
+                return { valid: false, error: 'token not mintable' };
             }
         }
         if (rewardToken.symbol === config.nativeTokenSymbol && rewardToken.issuer === config.masterName) {
             if (data.weight !== undefined && !validate.integer(data.weight, true, false, 1000, 0)) {
                 logger.warn(`[farm-create] Invalid weight: ${data.weight}. Must be between 0-1000.`);
-                return false;
+                return { valid: false, error: 'invalid weight' };
             }
         }
         const farmId = generateFarmId(data.stakingToken, data.rewardToken);
         const existingFarm = await cache.findOnePromise('farms', { _id: farmId });
         if (existingFarm && (existingFarm.status === 'active' || existingFarm.status === 'paused')) {
             logger.warn(`[farm-create] Farm with ID ${farmId} already exists.`);
-            return false;
+            return { valid: false, error: 'farm already exists' };
         }
         if (data.minStakeAmount !== undefined && !validate.bigint(data.minStakeAmount, true, false, toBigInt(1))) {
             logger.warn('[farm-create] minStakeAmount must be a non-negative bigint if provided.');
-            return false;
+            return { valid: false, error: 'invalid minStakeAmount' };
         }
         if (data.maxStakeAmount !== undefined && !validate.bigint(data.maxStakeAmount, false, false, toBigInt(1))) {
             logger.warn('[farm-create] maxStakeAmount must be a non-negative bigint if provided.');
-            return false;
+            return { valid: false, error: 'invalid maxStakeAmount' };
         }
         if (data.maxStakeAmount && data.minStakeAmount && toBigInt(data.maxStakeAmount) < toBigInt(data.minStakeAmount)) {
             logger.warn('[farm-create] maxStakeAmount cannot be less than minStakeAmount.');
-            return false;
+            return { valid: false, error: 'maxStakeAmount less than minStakeAmount' };
         }
 
-        if (!(await validate.userBalances(sender, [{ symbol: config.nativeTokenSymbol, amount: toBigInt(config.farmCreationFee) }]))) return false;
+        if (!(await validate.userBalances(sender, [{ symbol: config.nativeTokenSymbol, amount: toBigInt(config.farmCreationFee) }]))) return { valid: false, error: 'insufficient balance' };
 
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[farm-create] Error validating farm creation: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }
 
-export async function processTx(data: FarmCreateData, sender: string, _id: string, _ts?: number): Promise<boolean> {
+export async function processTx(data: FarmCreateData, sender: string, _id: string, _ts?: number): Promise<{ valid: boolean; error?: string }> {
     try {
         const farmId = generateFarmId(data.stakingToken, data.rewardToken);
 
         const senderAccount = await getAccount(sender);
         if (!senderAccount || !senderAccount.balances) {
             logger.error(`[farm-create] Critical: Sender account or balances not found for ${sender} during processing.`);
-            return false;
+            return { valid: false, error: 'sender account not found' };
         }
 
         const feeDeducted = await adjustUserBalance(sender, config.nativeTokenSymbol, -toBigInt(config.farmCreationFee));
         if (!feeDeducted) {
             logger.error(`[farm-create] Failed to deduct farm creation fee from ${sender}.`);
-            return false;
+            return { valid: false, error: 'failed to deduct farm creation fee' };
         }
         if (data.totalRewards !== undefined) {
             const rewardDeducted = await adjustUserBalance(sender, data.rewardToken, -toBigInt(data.totalRewards));
             if (!rewardDeducted) {
                 logger.error(`[farm-create] Failed to deduct ${data.totalRewards} ${data.rewardToken} from ${sender} for farm creation.`);
-                return false;
+                return { valid: false, error: 'failed to deduct reward token' };
             }
         }
         const rewardToken = await cache.findOnePromise('tokens', { symbol: data.rewardToken }) as TokenData;
@@ -166,7 +166,7 @@ export async function processTx(data: FarmCreateData, sender: string, _id: strin
 
         if (!insertSuccess) {
             logger.error(`[farm-create] System error: Failed to insert farm ${farmId}.`);
-            return false;
+            return { valid: false, error: 'failed to insert farm' };
         }
 
         logger.debug(`[farm-create] Farm ${farmId} for staking token ${data.stakingToken} rewarding ${data.rewardToken} created by ${sender}.`);
@@ -177,18 +177,18 @@ export async function processTx(data: FarmCreateData, sender: string, _id: strin
                 const recalcOk = await recalculateNativeFarmRewards();
                 if (!recalcOk) {
                     logger.error('[farm-create] Recalculation of native farm rewards failed after creation; aborting transaction to trigger rollback.');
-                    return false;
+                    return { valid: false, error: 'failed to recalculate native farm rewards' };
                 }
                 logger.debug('[farm-create] Recalculated native farm rewards after creation.');
             } catch (err) {
                 logger.error(`[farm-create] Error recalculating native farm rewards: ${err}; aborting transaction to trigger rollback.`);
-                return false;
+                return { valid: false, error: 'failed to recalculate native farm rewards' };
             }
         }
 
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[farm-create] Error processing farm creation: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }

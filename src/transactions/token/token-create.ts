@@ -7,19 +7,19 @@ import { logEvent } from '../../utils/event-logger.js';
 import validate from '../../validation/index.js';
 import { TokenData } from './token-interfaces.js';
 
-export async function validateTx(data: TokenData, sender: string): Promise<boolean> {
+export async function validateTx(data: TokenData, sender: string): Promise<{ valid: boolean; error?: string }> {
     try {
-        if (!(await validate.newToken(data))) return false;
+        if (!(await validate.newToken(data))) return { valid: false, error: 'Invalid token data' };
 
-        if (!(await validate.userBalances(sender, [{ symbol: config.nativeTokenSymbol, amount: toBigInt(config.tokenCreationFee) }]))) return false;
-        return true;
+        if (!(await validate.userBalances(sender, [{ symbol: config.nativeTokenSymbol, amount: toBigInt(config.tokenCreationFee) }]))) return { valid: false, error: 'Insufficient balance' };
+        return { valid: true };
     } catch (error) {
         logger.error(`[token-create:validation] Error validating token creation: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }
 
-export async function processTx(data: TokenData, sender: string, transactionId: string): Promise<boolean> {
+export async function processTx(data: TokenData, sender: string, transactionId: string): Promise<{ valid: boolean; error?: string }> {
     try {
         const initialSupply = toBigInt(data.initialSupply || 0);
         const tokenToStore: TokenData = {
@@ -41,18 +41,18 @@ export async function processTx(data: TokenData, sender: string, transactionId: 
             const adjustedSupply = await adjustUserBalance(sender, tokenToStore.symbol, toBigInt(initialSupply));
             if (!adjustedSupply) {
                 logger.error(`[token-create:process] Failed to adjust balance for ${sender} when creating token ${tokenToStore.symbol}.`);
-                return false;
+                return { valid: false, error: 'Failed to adjust balance' };
             }
         }
         const feeDeducted = await adjustUserBalance(sender, config.nativeTokenSymbol, toBigInt(-config.tokenCreationFee));
         if (!feeDeducted) {
             logger.error(`[token-create:process] Failed to deduct token creation fee from ${sender}.`);
-            return false;
+            return { valid: false, error: 'Failed to deduct token creation fee' };
         }
         const newToken = await cache.insertOnePromise('tokens', tokenToStore);
         if (!newToken) {
             logger.error(`[token-create:process] Failed to store new token ${data.symbol} in the database.`);
-            return false;
+            return { valid: false, error: 'Failed to store new token' };
         }
 
         setTokenDecimals(data.symbol, data.precision);
@@ -61,9 +61,9 @@ export async function processTx(data: TokenData, sender: string, transactionId: 
         delete logToken.websiteUrl;
         delete logToken.description;
         await logEvent('token', 'create', sender, logToken, transactionId);
-        return true;
+        return { valid: true };
     } catch (error) {
         logger.error(`[token-create:process] Error processing token creation for ${data.symbol} by ${sender}: ${error}`);
-        return false;
+        return { valid: false, error: 'internal error' };
     }
 }
