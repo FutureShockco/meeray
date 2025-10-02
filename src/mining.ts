@@ -54,14 +54,38 @@ export const mining = {
 
             loopOne: for (let i = 0; i < mempool.length; i++) {
                 if (txs.length === config.maxTxPerBlock) break;
-                // do not allow multiple txs from same account in the same block
-                for (let y = 0; y < txs.length; y++) if (txs[y].sender === mempool[i].sender) continue loopOne;
+                
+                // Check if this transaction is already included
+                for (let y = 0; y < txs.length; y++) {
+                    const mempoolRef = (mempool[i] as any).ref;
+                    const txsRef = (txs[y] as any).ref;
+                    
+                    // If both have refs (Steem-derived), compare by ref to allow multiple ops from same tx
+                    if (mempoolRef && txsRef) {
+                        if (mempoolRef === txsRef) continue loopOne;
+                    } 
+                    // For non-Steem txs (no ref), don't allow multiple txs from same sender in same block
+                    else if (!mempoolRef && !txsRef && txs[y].sender === mempool[i].sender) {
+                        continue loopOne;
+                    }
+                }
                 txs.push(mempool[i]);
             }
 
             loopTwo: for (let i = 0; i < mempool.length; i++) {
                 if (txs.length === config.maxTxPerBlock) break;
-                for (let y = 0; y < txs.length; y++) if (txs[y].hash === mempool[i].hash) continue loopTwo;
+                
+                // Check if already included by ref (or hash for non-Steem txs)
+                for (let y = 0; y < txs.length; y++) {
+                    const mempoolRef = (mempool[i] as any).ref;
+                    const txsRef = (txs[y] as any).ref;
+                    
+                    if (mempoolRef && txsRef && mempoolRef === txsRef) {
+                        continue loopTwo;
+                    } else if (txs[y].hash === mempool[i].hash) {
+                        continue loopTwo;
+                    }
+                }
                 txs.push(mempool[i]);
             }
             txs = txs.sort((a: any, b: any) => a.ts - b.ts);
