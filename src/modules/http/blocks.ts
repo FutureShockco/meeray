@@ -298,4 +298,54 @@ router.get('/:height/transactions', (async (req: Request, res: Response) => {
     }
 }) as RequestHandler);
 
+/**
+ * @api {get} /blocks/transaction/:txHash Get Block by Transaction Hash
+ * @apiName GetBlockByTransactionHash
+ * @apiGroup Blocks
+ * @apiDescription Retrieves the complete block that contains a specific transaction by its hash
+ *
+ * @apiParam {String} txHash Transaction hash to search for
+ *
+ * @apiSuccess {Boolean} success True if request was successful
+ * @apiSuccess {Object} block Complete block object containing the transaction
+ * @apiSuccess {String} block.id Block identifier
+ * @apiSuccess {Number} block.blockNum Block number
+ * @apiSuccess {String} block.hash Block hash
+ * @apiSuccess {String} block.phash Previous block hash
+ * @apiSuccess {Number} block.timestamp Unix timestamp in milliseconds
+ * @apiSuccess {String} block.witness Account that produced this block
+ * @apiSuccess {Object[]} block.txs Array of all transactions in this block
+ * @apiSuccess {String} block.signature Block signature
+ * @apiSuccess {Number} block.steemBlockNum Corresponding Steem block number
+ * @apiSuccess {Number} block.steemBlockTimestamp Steem block timestamp
+ *
+ * @apiError {String} error Error message
+ * @apiError (404) {String} error Block containing transaction with hash {txHash} not found
+ *
+ * @apiExample {curl} Example request:
+ * curl "http://localhost:3000/blocks/transaction/b0ccf46e49752aecfc2971ff4554d54482b788c8"
+ */
+router.get('/transaction/:txHash', (async (req: Request, res: Response) => {
+    try {
+        const txHash = req.params.txHash;
+
+        // Find the block that contains a transaction with this hash
+        const blockFromDB = await mongo.getDb().collection('blocks').findOne({
+            'txs.hash': txHash
+        });
+
+        if (!blockFromDB) {
+            return res.status(404).json({ 
+                error: `Block containing transaction with hash ${txHash} not found` 
+            });
+        }
+
+        const transformedBlock = transformBlockData(blockFromDB);
+        res.json({ success: true, block: transformedBlock });
+    } catch (err) {
+        logger.error(`Error fetching block by transaction hash ${req.params.txHash}:`, err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+}) as RequestHandler);
+
 export default router;
