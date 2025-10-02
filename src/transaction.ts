@@ -55,7 +55,16 @@ const transaction: TransactionModule = {
         for (let y = 0; y < txs.length; y++) {
             let exists = false;
             for (let i = 0; i < transaction.pool.length; i++) {
-                if (transaction.pool[i].hash === txs[y].hash) {
+                // Check by ref (blockNum:opIndex) instead of hash, since one Steem tx hash can contain multiple operations
+                const txRef = (txs[y] as any).ref;
+                const poolRef = (transaction.pool[i] as any).ref;
+                
+                if (txRef && poolRef && txRef === poolRef) {
+                    exists = true;
+                    logr.info(`Transaction ${txs[y].hash} (ref: ${txRef}) already exists in pool, skipping`);
+                    break;
+                } else if (!txRef && transaction.pool[i].hash === txs[y].hash) {
+                    // Fallback to hash-based check for non-Steem transactions (local txs without ref)
                     exists = true;
                     logr.info(`Transaction ${txs[y].hash} already exists in pool, skipping`);
                     break;
@@ -65,7 +74,8 @@ const transaction: TransactionModule = {
             if (!exists) {
                 transaction.pool.push(txs[y]);
                 added++;
-                logr.info(`Added transaction to pool: type=${txs[y].type}, sender=${txs[y].sender}, hash=${txs[y].hash}`);
+                const txRef = (txs[y] as any).ref;
+                logr.info(`Added transaction to pool: type=${txs[y].type}, sender=${txs[y].sender}, hash=${txs[y].hash}${txRef ? `, ref=${txRef}` : ''}`);
             }
         }
         logr.info(`Added ${added} new transactions to pool (new size: ${transaction.pool.length})`);
