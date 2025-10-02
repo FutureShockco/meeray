@@ -526,15 +526,28 @@ router.get('/instances/id/:nftId/history', (async (req: Request, res: Response) 
 
 router.get('/listings', (async (req: Request, res: Response) => {
     const { limit, skip } = getPagination(req);
-    const status = (req.query.status as string) || 'active';
-    const query: any = { status: status };
+    // Only include status in the query when the caller explicitly provides it.
+    // If no status is provided, return listings for all statuses.
+    const status = req.query.status as string | undefined;
+    const query: any = {};
+    if (status !== undefined && status !== '') {
+        query.status = status;
+    }
 
-    if (req.query.collectionSymbol) {
-        query.collectionSymbol = req.query.collectionSymbol as string;
+    if (req.query.collectionId) {
+        query.collectionId = req.query.collectionId as string;
     }
 
     if (req.query.tokenId) {
-        query.tokenId = req.query.tokenId as string;
+        // tokenId is stored as a number in MongoDB; try to coerce numeric-looking queries to Number
+        const tokenIdStr = req.query.tokenId as string;
+        const tokenIdNum = Number(tokenIdStr);
+        if (!Number.isNaN(tokenIdNum) && tokenIdStr.trim() !== '') {
+            query.tokenId = tokenIdNum;
+        } else {
+            // fallback to string if it isn't a plain number
+            query.tokenId = tokenIdStr;
+        }
     }
 
     if (req.query.seller) {
@@ -561,7 +574,7 @@ router.get('/listings', (async (req: Request, res: Response) => {
         }
     }
 
-
+    console.log(query)
     const sortField = (req.query.sortBy as string) || 'createdAt';
     const sortDirection = req.query.sortDirection === 'asc' ? 1 : -1;
     const sort: any = {};
