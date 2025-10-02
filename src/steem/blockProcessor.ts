@@ -222,16 +222,22 @@ class BlockProcessor {
             });
             if (isValid) validSteemTxs.push(tx);
         }
+        
+        // Filter block transactions that came from Steem (have a ref field starting with the Steem block number)
         const blockSteemTxs = block.txs.filter(tx => tx.hash && tx.ref && tx.ref.startsWith(`${block.steemBlockNum}:`));
-        const parsedIds = new Set(validSteemTxs.map(tx => tx.hash));
-        const blockIds = new Set(blockSteemTxs.map(tx => tx.hash)); 
+        
+        // Use ref (blockNum:opIndex) as unique identifier since one Steem tx hash can contain multiple operations
+        const parsedRefs = new Set(validSteemTxs.map(tx => tx.ref));
+        const blockRefs = new Set(blockSteemTxs.map(tx => tx.ref)); 
 
-        if (parsedIds.size !== blockIds.size ||
-            ![...parsedIds].every(id => blockIds.has(id))) {
+        if (parsedRefs.size !== blockRefs.size ||
+            ![...parsedRefs].every(ref => blockRefs.has(ref))) {
             logger.error(`Block ${block._id}: Steem-derived transactions do not match parsed valid transactions`);
+            logger.error(`  Parsed refs (${parsedRefs.size}):`, Array.from(parsedRefs).sort());
+            logger.error(`  Block refs (${blockRefs.size}):`, Array.from(blockRefs).sort());
             return false;
         }
-        logger.debug(`Block ${block._id}: All Steem-derived transactions validated`);
+        logger.debug(`Block ${block._id}: All ${parsedRefs.size} Steem-derived transactions validated`);
         return true;
     }
 
