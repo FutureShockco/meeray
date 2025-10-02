@@ -80,9 +80,12 @@ export const mining = {
                     const mempoolRef = (mempool[i] as any).ref;
                     const txsRef = (txs[y] as any).ref;
                     
-                    if (mempoolRef && txsRef && mempoolRef === txsRef) {
-                        continue loopTwo;
-                    } else if (txs[y].hash === mempool[i].hash) {
+                    // If both have refs, compare by ref only (not hash, since one hash can have multiple ops)
+                    if (mempoolRef && txsRef) {
+                        if (mempoolRef === txsRef) continue loopTwo;
+                    } 
+                    // For non-Steem txs (no ref), compare by hash
+                    else if (!mempoolRef && !txsRef && txs[y].hash === mempool[i].hash) {
                         continue loopTwo;
                     }
                 }
