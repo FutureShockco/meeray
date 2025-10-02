@@ -532,6 +532,11 @@ router.get('/listings', (async (req: Request, res: Response) => {
     if (req.query.collectionSymbol) {
         query.collectionSymbol = req.query.collectionSymbol as string;
     }
+
+    if (req.query.tokenId) {
+        query.tokenId = req.query.tokenId as string;
+    }
+
     if (req.query.seller) {
         query.seller = req.query.seller as string;
     }
