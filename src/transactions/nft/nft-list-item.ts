@@ -128,7 +128,7 @@ export async function validateTx(data: NftListPayload, sender: string): Promise<
     }
 }
 
-export async function processTx(data: NftListPayload, sender: string, _id: string): Promise<{ valid: boolean; error?: string }> {
+export async function processTx(data: NftListPayload, sender: string, transactionId: string): Promise<{ valid: boolean; error?: string }> {
     try {
         const fullInstanceId = `${data.collectionSymbol}_${data.instanceId}`;
         const listingId = generateListingId(data.collectionSymbol, data.instanceId, sender);
@@ -201,7 +201,7 @@ export async function processTx(data: NftListPayload, sender: string, _id: strin
             auctionEndTime: data.auctionEndTime,
             allowBuyNow: data.allowBuyNow || false,
             minimumBidIncrement: data.minimumBidIncrement ? toDbString(data.minimumBidIncrement) : toDbString('100000'),
-        });
+        }, transactionId);
 
         return { valid: true };
     } catch (error) {

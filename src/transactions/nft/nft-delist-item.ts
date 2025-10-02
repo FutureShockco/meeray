@@ -41,7 +41,7 @@ export async function validateTx(data: NftDelistPayload, sender: string): Promis
     }
 }
 
-export async function processTx(data: NftDelistPayload, sender: string, _id: string): Promise<{ valid: boolean; error?: string }> {
+export async function processTx(data: NftDelistPayload, sender: string, transactionId: string): Promise<{ valid: boolean; error?: string }> {
     try {
         const listing = (await cache.findOnePromise('nftListings', { _id: data.listingId })) as NFTListingData;
 
@@ -67,7 +67,7 @@ export async function processTx(data: NftDelistPayload, sender: string, _id: str
             paymentToken: listing.paymentToken,
             listingType: listing.listingType,
             cancelledAt: new Date().toISOString(),
-        });
+        }, transactionId);
 
         logger.debug(`[nft-delist-item] Listing ${data.listingId} successfully delisted by ${sender}.`);
         return { valid: true };
