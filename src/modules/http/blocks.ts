@@ -4,6 +4,7 @@ import { chain } from '../../chain.js';
 import logger from '../../logger.js';
 import { mongo } from '../../mongo.js';
 import { transformTransactionData } from '../../utils/http.js';
+import { Block } from '../../block.js';
 
 const router = express.Router();
 
@@ -31,13 +32,13 @@ const transformBlockData = (block: any): any => {
         id: _id.toString(),
         txs: txs
             ? txs.map((tx: any) => {
-                  const { _id: txId, data, ...restOfTx } = tx;
-                  const transformedTx: any = { ...restOfTx, data: transformTransactionData(data) };
-                  if (txId) {
-                      transformedTx.id = txId.toString();
-                  }
-                  return transformedTx;
-              })
+                const { _id: txId, data, ...restOfTx } = tx;
+                const transformedTx: any = { ...restOfTx, data: transformTransactionData(data) };
+                if (txId) {
+                    transformedTx.id = txId.toString();
+                }
+                return transformedTx;
+            })
             : [],
     };
 };
@@ -183,7 +184,7 @@ router.get('/height/:height', (async (req: Request, res: Response) => {
         if (isNaN(height)) {
             return res.status(400).json({ error: 'Invalid block height. Must be a number.' });
         }
-        const blockFromDB = await mongo.getDb().collection('blocks').findOne({ height });
+        const blockFromDB = await mongo.getDb().collection<Block>('blocks').findOne({ _id: height });
         if (!blockFromDB) {
             return res.status(404).json({ error: `Block with height ${height} not found` });
         }
@@ -335,8 +336,8 @@ router.get('/transaction/:txHash', (async (req: Request, res: Response) => {
         });
 
         if (!blockFromDB) {
-            return res.status(404).json({ 
-                error: `Block containing transaction with hash ${txHash} not found` 
+            return res.status(404).json({
+                error: `Block containing transaction with hash ${txHash} not found`
             });
         }
 
